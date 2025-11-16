@@ -1,0 +1,61 @@
+{
+  "id": "chat_1763291321",
+  "nombre": "Que es la IA",
+  "fecha": "2025-11-16 05:49:25",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "¿Qué es la inteligencia artificial?",
+      "hora": "05:05"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "La inteligencia artificial (IA) es la capacidad de las máquinas y los ordenadores para realizar tareas que normalmente requieren inteligencia humana, como aprender, razonar, resolver problemas y tomar decisiones. Se enfoca en desarrollar algoritmos y modelos que permitan a las máquinas procesar y analizar grandes cantidades de datos para tomar acciones autónomas.\n\nLa IA se basa en técnicas como el aprendizaje automático, la reconocimiento de patrones y la lógica para imitar el comportamiento humano. Se utiliza en diversas áreas, como la automatización, la robótica, la medicina, la finanzas y la seguridad, entre otras.\n\nAlgunos ejemplos de aplicaciones de la IA son:\n\n* Asistentes virtuales como Siri, Alexa y Google Assistant\n* Sistemas de recomendación de contenido en plataformas como Netflix y Amazon\n* Autopiloto en los coches y drones\n* Sistemas de diagnóstico médico\n\nEn resumen, la IA es la capacidad de las máquinas para aprender y realizar tareas complejas de manera autónoma, lo que la hace una herramienta poderosa para mejorar la eficiencia y la productividad en diversas áreas.",
+      "hora": "05:08"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cuanto quedo el ulyimo partido de la seleccion mayor de costarica en futbol?",
+      "hora": "05:35",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "🌐 No pude encontrar información actualizada en internet sobre ese tema. Por favor, intenta reformular tu pregunta o busca directamente en un navegador.",
+      "hora": "05:35"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cuanto quedo el ulyimo partido de la seleccion mayor de costarica en futbol?",
+      "hora": "05:43",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "🌐 No pude encontrar información actualizada en internet sobre ese tema. Por favor, intenta reformular tu pregunta o busca directamente en un navegador.",
+      "hora": "05:43"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cuanto quedo el ulyimo partido de la seleccion mayor de costarica en futbol?",
+      "hora": "05:47",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "🌐 No pude encontrar información actualizada en internet sobre ese tema. Por favor, intenta reformular tu pregunta o busca directamente en un navegador.",
+      "hora": "05:47"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cuanto quedo el ulyimo partido de la seleccion mayor de costarica en futbol?",
+      "hora": "05:48",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "🌐 No pude encontrar información actualizada en internet sobre ese tema. Por favor, intenta reformular tu pregunta o busca directamente en un navegador.",
+      "hora": "05:48"
+    }
+  ]
+}

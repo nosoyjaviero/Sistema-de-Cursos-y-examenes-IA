@@ -1,0 +1,29 @@
+{
+  "id": "chat_1763297520",
+  "nombre": "Lionel messi",
+  "fecha": "2025-11-16 06:58:53",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "cual fue el ultimo partido de lionel messi?",
+      "hora": "06:47"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "⚠️ Consulta cancelada por el usuario",
+      "hora": "06:47"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cual fue el ultimo partido de lionel messi ?",
+      "hora": "06:47",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Según la información proporcionada, el último partido de Lionel Messi es un tema que se puede abordar de varias maneras:\n\n1. **Último partido en la Argentina**: Según el artículo de Ciudad, el último partido de Lionel Messi en la Argentina fue frente a Venezuela, aunque no se menciona la fecha específica en la que se jugó este partido.\n2. **Último partido en Dallas**: Según el artículo de CNN, el último partido de Lionel Messi en Dallas fue con Inter de Miami, aunque no se menciona la fecha específica en la que se jugó este partido.\n3. **Último partido en PSG antes del Mundial**: Según el artículo de Río Negro, el último partido de Lionel Messi en PSG antes del Mundial Qatar 2022 fue frente a Auxerre, con un resultado de 5-0 a favor de Paris Saint-Germain, jugado en el estadio de local.\n\nEn resumen, no se menciona una fecha específica para el último partido de Lionel Messi, pero se mencionan varios partidos en diferentes escenarios. Si se busca la fecha exacta del último partido de Lionel Messi, no se encuentra información específica en las fuentes proporcionadas.",
+      "hora": "06:50"
+    }
+  ],
+  "carpeta": "a"
+}
