@@ -57,6 +57,18 @@ function App() {
   const [chatsHistorialModal, setChatsHistorialModal] = useState([])
   const [loadingHistorialModal, setLoadingHistorialModal] = useState(false)
 
+  // Estados para exámenes
+  const [documentoExamen, setDocumentoExamen] = useState(null)
+  const [numMultiple, setNumMultiple] = useState(5)
+  const [numCorta, setNumCorta] = useState(3)
+  const [numDesarrollo, setNumDesarrollo] = useState(2)
+  const [examenGenerado, setExamenGenerado] = useState(null)
+  const [cargandoExamen, setCargandoExamen] = useState(false)
+  const [respuestasExamen, setRespuestasExamen] = useState({})
+  const [resultadoExamen, setResultadoExamen] = useState(null)
+  const [historialExamenes, setHistorialExamenes] = useState([])
+  const [mostrandoRespuestas, setMostrandoRespuestas] = useState(false)
+
   const API_URL = 'http://localhost:8000'
 
   // Auto-ocultar mensajes después de 8 segundos
@@ -1015,6 +1027,230 @@ function App() {
     }
   }, [selectedMenu])
 
+  // Effect para cargar historial de exámenes
+  useEffect(() => {
+    if (selectedMenu === 'historial') {
+      cargarHistorialExamenes()
+    }
+  }, [selectedMenu])
+
+  // ===== FUNCIONES PARA EXÁMENES =====
+  
+  // Seleccionar documento para examen
+  const seleccionarDocumentoExamen = (doc) => {
+    setDocumentoExamen(doc)
+    setSelectedMenu('generar')
+  }
+
+  // Generar examen
+  const generarExamen = async () => {
+    if (!documentoExamen) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Selecciona un documento primero'
+      })
+      return
+    }
+
+    if (!configuracion?.modelo_path) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Configura un modelo de IA primero'
+      })
+      return
+    }
+
+    setCargandoExamen(true)
+    try {
+      const response = await fetch(`${API_URL}/api/generar-examen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documento_path: documentoExamen.ruta,
+          num_multiple: numMultiple,
+          num_corta: numCorta,
+          num_desarrollo: numDesarrollo
+        })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setExamenGenerado(data.preguntas)
+        setRespuestasExamen({})
+        setResultadoExamen(null)
+        setMostrandoRespuestas(false)
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Examen generado: ${data.total_preguntas} preguntas (${data.puntos_totales} puntos)`
+        })
+      } else {
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error al generar examen'
+        })
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    } finally {
+      setCargandoExamen(false)
+    }
+  }
+
+  // Actualizar respuesta de pregunta
+  const actualizarRespuesta = (index, valor) => {
+    setRespuestasExamen(prev => ({
+      ...prev,
+      [index]: valor
+    }))
+  }
+
+  // Evaluar examen
+  const evaluarExamen = async () => {
+    if (!examenGenerado || !documentoExamen) return
+
+    setCargandoExamen(true)
+    try {
+      const response = await fetch(`${API_URL}/api/evaluar-examen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preguntas: examenGenerado,
+          respuestas: respuestasExamen,
+          documento_path: documentoExamen.ruta
+        })
+      })
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setResultadoExamen(data)
+        setMostrandoRespuestas(true)
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Examen evaluado: ${data.puntos_obtenidos}/${data.puntos_totales} puntos (${data.porcentaje.toFixed(1)}%)`
+        })
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al evaluar: ${error.message}`
+      })
+    } finally {
+      setCargandoExamen(false)
+    }
+  }
+
+  // Cargar historial de exámenes
+  const cargarHistorialExamenes = async (documentoPath = '') => {
+    try {
+      const url = documentoPath 
+        ? `${API_URL}/api/examenes/resultados?documento_path=${encodeURIComponent(documentoPath)}`
+        : `${API_URL}/api/examenes/resultados`
+      
+      const response = await fetch(url)
+      const data = await response.json()
+      setHistorialExamenes(data.resultados || [])
+    } catch (error) {
+      console.error('Error al cargar historial:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar historial de exámenes'
+      })
+    }
+  }
+
+  // Ver resultado de examen
+  const verResultadoExamen = async (resultadoId, documentoPath) => {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/examenes/resultado/${resultadoId}?documento_path=${encodeURIComponent(documentoPath)}`
+      )
+      const data = await response.json()
+      
+      setExamenGenerado(data.preguntas)
+      setResultadoExamen(data)
+      setRespuestasExamen({})
+      setMostrandoRespuestas(true)
+      setDocumentoExamen({ ruta: documentoPath })
+      setSelectedMenu('generar')
+      
+      setMensaje({
+        tipo: 'success',
+        texto: '✅ Resultado cargado'
+      })
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar resultado'
+      })
+    }
+  }
+
+  // Reintentar examen
+  const reintentarExamen = async (resultadoId, documentoPath) => {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/examenes/resultado/${resultadoId}?documento_path=${encodeURIComponent(documentoPath)}`
+      )
+      const data = await response.json()
+      
+      setExamenGenerado(data.preguntas)
+      setRespuestasExamen({})
+      setResultadoExamen(null)
+      setMostrandoRespuestas(false)
+      setDocumentoExamen({ ruta: documentoPath, nombre: documentoPath.split(/[\\\/]/).pop() })
+      setSelectedMenu('generar')
+      
+      setMensaje({
+        tipo: 'success',
+        texto: '🔄 Reintentando examen - ¡Buena suerte!'
+      })
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar examen'
+      })
+    }
+  }
+
+  // Eliminar resultado de examen
+  const eliminarResultadoExamen = async (resultadoId, documentoPath) => {
+    if (!confirm('¿Eliminar este resultado de examen?')) return
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/examenes/resultado/${resultadoId}?documento_path=${encodeURIComponent(documentoPath)}`,
+        { method: 'DELETE' }
+      )
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Resultado eliminado'
+        })
+        cargarHistorialExamenes()
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al eliminar resultado'
+      })
+    }
+  }
+
+  // Nuevo examen con mismo documento
+  const nuevoExamen = () => {
+    setExamenGenerado(null)
+    setRespuestasExamen({})
+    setResultadoExamen(null)
+    setMostrandoRespuestas(false)
+  }
+
   // Eliminar documento
   const eliminarDocumento = async (ruta, nombre) => {
     if (!confirm(`¿Eliminar el documento "${nombre}"?`)) return
@@ -1457,8 +1693,16 @@ function App() {
                             <button 
                               onClick={() => verDocumento(doc.ruta, doc.nombre)}
                               className="btn-ver"
+                              title="Ver contenido"
                             >
-                              👁️ Ver
+                              👁️
+                            </button>
+                            <button 
+                              onClick={() => seleccionarDocumentoExamen(doc)}
+                              className="btn-examen"
+                              title="Generar examen"
+                            >
+                              📝
                             </button>
                             <button 
                               onClick={() => renombrarDocumento(doc.ruta, doc.nombre)}
@@ -1470,6 +1714,7 @@ function App() {
                             <button 
                               onClick={() => eliminarDocumento(doc.ruta, doc.nombre)}
                               className="btn-eliminar"
+                              title="Eliminar documento"
                             >
                               🗑️
                             </button>
@@ -1512,16 +1757,305 @@ function App() {
         )}
 
         {selectedMenu === 'generar' && (
-          <div className="content-section">
-            <h1>Generar Examen</h1>
-            <p>Aquí podrás generar nuevos exámenes...</p>
+          <div className="content-section examen-section">
+            <div className="examen-header">
+              <h1>✨ Generar Examen</h1>
+              {documentoExamen && (
+                <div className="documento-seleccionado">
+                  📄 Documento: <strong>{documentoExamen.nombre || documentoExamen.ruta.split(/[\\\/]/).pop()}</strong>
+                </div>
+              )}
+            </div>
+
+            {!configuracion?.modelo_path ? (
+              <div className="no-data">
+                <p>⚠️ No hay modelo configurado</p>
+                <p>Ve a Configuración y selecciona un modelo para generar exámenes</p>
+                <button 
+                  className="btn-primary"
+                  onClick={() => setSelectedMenu('configuracion')}
+                >
+                  Ir a Configuración
+                </button>
+              </div>
+            ) : !documentoExamen && !examenGenerado ? (
+              <div className="no-data">
+                <p>📚 Selecciona un documento para generar un examen</p>
+                <p className="hint">Ve a "Mis Cursos" y haz clic en el icono 📝 de un documento</p>
+                <button 
+                  className="btn-primary"
+                  onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
+                >
+                  Ir a Mis Cursos
+                </button>
+              </div>
+            ) : !examenGenerado ? (
+              <div className="config-examen">
+                <h2>⚙️ Configuración del Examen</h2>
+                <div className="config-grid">
+                  <div className="config-item">
+                    <label>
+                      Preguntas de Opción Múltiple
+                      <span className="config-description">4 opciones (A, B, C, D)</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="20"
+                      value={numMultiple}
+                      onChange={(e) => setNumMultiple(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                  
+                  <div className="config-item">
+                    <label>
+                      Preguntas de Respuesta Corta
+                      <span className="config-description">2-4 líneas de respuesta</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="10"
+                      value={numCorta}
+                      onChange={(e) => setNumCorta(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                  
+                  <div className="config-item">
+                    <label>
+                      Preguntas de Desarrollo
+                      <span className="config-description">Análisis profundo</span>
+                    </label>
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max="5"
+                      value={numDesarrollo}
+                      onChange={(e) => setNumDesarrollo(parseInt(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+
+                <div className="config-resumen">
+                  <p>📊 Total: {numMultiple + numCorta + numDesarrollo} preguntas</p>
+                  <p>⏱️ Tiempo estimado: {Math.ceil((numMultiple * 2 + numCorta * 5 + numDesarrollo * 15) / 60)} minutos</p>
+                </div>
+
+                <div className="config-actions">
+                  <button 
+                    className="btn-secondary"
+                    onClick={() => { setDocumentoExamen(null); setSelectedMenu('cursos'); }}
+                  >
+                    ← Volver
+                  </button>
+                  <button 
+                    className="btn-primary"
+                    onClick={generarExamen}
+                    disabled={cargandoExamen || (numMultiple + numCorta + numDesarrollo === 0)}
+                  >
+                    {cargandoExamen ? '⏳ Generando...' : '✨ Generar Examen'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="examen-container">
+                {/* Header con acciones */}
+                <div className="examen-actions">
+                  {!mostrandoRespuestas && !resultadoExamen && (
+                    <>
+                      <button 
+                        className="btn-secondary"
+                        onClick={nuevoExamen}
+                      >
+                        ← Generar Nuevo
+                      </button>
+                      <button 
+                        className="btn-primary"
+                        onClick={evaluarExamen}
+                        disabled={cargandoExamen || Object.keys(respuestasExamen).length === 0}
+                      >
+                        {cargandoExamen ? '⏳ Evaluando...' : '✅ Evaluar Examen'}
+                      </button>
+                    </>
+                  )}
+                  {resultadoExamen && (
+                    <div className="resultado-header">
+                      <div className="resultado-score">
+                        <h2>{resultadoExamen.porcentaje.toFixed(1)}%</h2>
+                        <p>{resultadoExamen.puntos_obtenidos} / {resultadoExamen.puntos_totales} puntos</p>
+                      </div>
+                      <div className="resultado-acciones">
+                        <button 
+                          className="btn-secondary"
+                          onClick={nuevoExamen}
+                        >
+                          🔄 Nuevo Examen
+                        </button>
+                        <button 
+                          className="btn-primary"
+                          onClick={() => setSelectedMenu('historial')}
+                        >
+                          📋 Ver Historial
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Preguntas */}
+                <div className="preguntas-lista">
+                  {examenGenerado.map((pregunta, index) => (
+                    <div key={index} className="pregunta-card">
+                      <div className="pregunta-header">
+                        <span className="pregunta-numero">Pregunta {index + 1}</span>
+                        <span className="pregunta-tipo">{pregunta.tipo}</span>
+                        <span className="pregunta-puntos">{pregunta.puntos} pts</span>
+                      </div>
+                      
+                      <div className="pregunta-texto">
+                        {pregunta.pregunta}
+                      </div>
+
+                      {pregunta.tipo === 'multiple' && (
+                        <div className="pregunta-opciones">
+                          {pregunta.opciones.map((opcion, idx) => (
+                            <label key={idx} className="opcion-radio">
+                              <input 
+                                type="radio"
+                                name={`pregunta_${index}`}
+                                value={opcion[0]}
+                                checked={respuestasExamen[index] === opcion[0]}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                disabled={mostrandoRespuestas}
+                              />
+                              <span>{opcion}</span>
+                              {mostrandoRespuestas && resultadoExamen && (
+                                <span className={`opcion-feedback ${
+                                  opcion[0] === pregunta.respuesta_correcta ? 'correcta' : 
+                                  opcion[0] === respuestasExamen[index] ? 'incorrecta' : ''
+                                }`}>
+                                  {opcion[0] === pregunta.respuesta_correcta && '✓'}
+                                  {opcion[0] === respuestasExamen[index] && opcion[0] !== pregunta.respuesta_correcta && '✗'}
+                                </span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+
+                      {(pregunta.tipo === 'corta' || pregunta.tipo === 'desarrollo') && (
+                        <div className="pregunta-texto-area">
+                          <textarea
+                            rows={pregunta.tipo === 'corta' ? 4 : 8}
+                            placeholder="Escribe tu respuesta aquí..."
+                            value={respuestasExamen[index] || ''}
+                            onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                            disabled={mostrandoRespuestas}
+                          />
+                        </div>
+                      )}
+
+                      {mostrandoRespuestas && resultadoExamen && resultadoExamen.resultados[index] && (
+                        <div className="pregunta-resultado">
+                          <div className="resultado-puntos">
+                            <strong>Puntuación:</strong> {resultadoExamen.resultados[index].puntos} / {resultadoExamen.resultados[index].puntos_maximos}
+                          </div>
+                          {resultadoExamen.resultados[index].feedback && (
+                            <div className="resultado-feedback">
+                              <strong>Retroalimentación:</strong>
+                              <p>{resultadoExamen.resultados[index].feedback}</p>
+                            </div>
+                          )}
+                          {(pregunta.tipo === 'corta' || pregunta.tipo === 'desarrollo') && (
+                            <div className="respuesta-correcta">
+                              <strong>Respuesta modelo / Criterios:</strong>
+                              <p>{pregunta.respuesta_correcta}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {selectedMenu === 'historial' && (
-          <div className="content-section">
-            <h1>Historial</h1>
-            <p>Revisa los exámenes generados anteriormente...</p>
+          <div className="content-section historial-section">
+            <h1>📋 Historial de Exámenes</h1>
+            
+            {historialExamenes.length === 0 ? (
+              <div className="no-data">
+                <p>📭 No hay exámenes completados</p>
+                <p className="hint">Completa un examen para verlo aquí</p>
+                <button 
+                  className="btn-primary"
+                  onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
+                >
+                  Ir a Mis Cursos
+                </button>
+              </div>
+            ) : (
+              <div className="historial-lista">
+                {historialExamenes.map(resultado => (
+                  <div key={resultado.id} className="historial-card">
+                    <div className="historial-info">
+                      <div className="historial-documento">
+                        <h3>📄 {resultado.documento.split(/[\\\/]/).pop()}</h3>
+                        <p className="historial-fecha">
+                          🕒 {new Date(resultado.fecha).toLocaleString('es-ES')}
+                        </p>
+                      </div>
+                      <div className="historial-stats">
+                        <div className="stat-item">
+                          <span className="stat-label">Calificación</span>
+                          <span className={`stat-value ${
+                            resultado.porcentaje >= 70 ? 'aprobado' : 'reprobado'
+                          }`}>
+                            {resultado.porcentaje.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">Puntos</span>
+                          <span className="stat-value">
+                            {resultado.puntos_obtenidos} / {resultado.puntos_totales}
+                          </span>
+                        </div>
+                        <div className="stat-item">
+                          <span className="stat-label">Preguntas</span>
+                          <span className="stat-value">{resultado.num_preguntas}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="historial-acciones">
+                      <button 
+                        className="btn-secondary"
+                        onClick={() => verResultadoExamen(resultado.id, resultado.documento)}
+                        title="Ver respuestas"
+                      >
+                        👁️ Ver
+                      </button>
+                      <button 
+                        className="btn-primary"
+                        onClick={() => reintentarExamen(resultado.id, resultado.documento)}
+                        title="Reintentar examen"
+                      >
+                        🔄 Reintentar
+                      </button>
+                      <button 
+                        className="btn-eliminar"
+                        onClick={() => eliminarResultadoExamen(resultado.id, resultado.documento)}
+                        title="Eliminar resultado"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
