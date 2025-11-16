@@ -780,9 +780,12 @@ async def evaluar_examen(datos: dict):
         puntos_obtenidos += puntos
         puntos_totales += pregunta.puntos
         
+        # Include correct answer in results for display
         resultados.append({
             "pregunta": pregunta.pregunta,
             "tipo": pregunta.tipo,
+            "opciones": pregunta.opciones,
+            "respuesta_correcta": pregunta.respuesta_correcta,
             "respuesta_usuario": respuesta_usuario,
             "puntos": puntos,
             "puntos_maximos": pregunta.puntos,
@@ -791,20 +794,24 @@ async def evaluar_examen(datos: dict):
     
     # Guardar resultados
     documento_path = datos.get("documento_path")
+    resultado_id = None
     if documento_path:
         doc_path = Path(documento_path)
         carpeta_resultados = doc_path.parent / "resultados"
         carpeta_resultados.mkdir(exist_ok=True)
         
         fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+        resultado_id = fecha
         archivo_resultado = carpeta_resultados / f"resultado_{fecha}.json"
         
         resultado_completo = {
+            "id": resultado_id,
             "fecha": datetime.now().isoformat(),
             "documento": str(doc_path),
             "puntos_obtenidos": puntos_obtenidos,
             "puntos_totales": puntos_totales,
             "porcentaje": (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0,
+            "preguntas": preguntas_data,  # Save full exam for retry
             "resultados": resultados
         }
         
@@ -813,6 +820,7 @@ async def evaluar_examen(datos: dict):
     
     return {
         "success": True,
+        "resultado_id": resultado_id,
         "puntos_obtenidos": puntos_obtenidos,
         "puntos_totales": puntos_totales,
         "porcentaje": (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0,
@@ -1202,6 +1210,121 @@ async def eliminar_chat(chat_id: str):
                 }
     
     raise HTTPException(status_code=404, detail="Chat no encontrado")
+
+
+# ========================================
+# ENDPOINTS DE HISTORIAL DE EXÁMENES
+# ========================================
+
+@app.get("/api/examenes/resultados")
+async def listar_resultados_examenes(documento_path: str = ""):
+    """Lista los resultados de exámenes completados"""
+    try:
+        if documento_path:
+            # Listar resultados de un documento específico
+            doc_path = Path(documento_path)
+            carpeta_resultados = doc_path.parent / "resultados"
+            
+            if not carpeta_resultados.exists():
+                return {"resultados": []}
+            
+            resultados = []
+            for archivo in sorted(carpeta_resultados.glob("resultado_*.json"), reverse=True):
+                try:
+                    with open(archivo, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        resultados.append({
+                            "id": data.get("id", archivo.stem.replace("resultado_", "")),
+                            "fecha": data.get("fecha", ""),
+                            "documento": data.get("documento", ""),
+                            "puntos_obtenidos": data.get("puntos_obtenidos", 0),
+                            "puntos_totales": data.get("puntos_totales", 0),
+                            "porcentaje": data.get("porcentaje", 0),
+                            "num_preguntas": len(data.get("resultados", []))
+                        })
+                except Exception as e:
+                    print(f"Error al leer resultado {archivo}: {e}")
+                    continue
+            
+            return {"resultados": resultados}
+        else:
+            # Listar todos los resultados en todas las carpetas
+            extracciones_dir = Path("extracciones")
+            if not extracciones_dir.exists():
+                return {"resultados": []}
+            
+            resultados = []
+            for carpeta_resultados in extracciones_dir.rglob("resultados"):
+                if carpeta_resultados.is_dir():
+                    for archivo in sorted(carpeta_resultados.glob("resultado_*.json"), reverse=True):
+                        try:
+                            with open(archivo, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                resultados.append({
+                                    "id": data.get("id", archivo.stem.replace("resultado_", "")),
+                                    "fecha": data.get("fecha", ""),
+                                    "documento": data.get("documento", ""),
+                                    "puntos_obtenidos": data.get("puntos_obtenidos", 0),
+                                    "puntos_totales": data.get("puntos_totales", 0),
+                                    "porcentaje": data.get("porcentaje", 0),
+                                    "num_preguntas": len(data.get("resultados", []))
+                                })
+                        except Exception as e:
+                            print(f"Error al leer resultado {archivo}: {e}")
+                            continue
+            
+            # Ordenar por fecha
+            resultados.sort(key=lambda x: x.get("fecha", ""), reverse=True)
+            return {"resultados": resultados}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar resultados: {str(e)}")
+
+
+@app.get("/api/examenes/resultado/{resultado_id}")
+async def obtener_resultado_examen(resultado_id: str, documento_path: str):
+    """Obtiene los detalles completos de un resultado de examen"""
+    try:
+        doc_path = Path(documento_path)
+        carpeta_resultados = doc_path.parent / "resultados"
+        archivo_resultado = carpeta_resultados / f"resultado_{resultado_id}.json"
+        
+        if not archivo_resultado.exists():
+            raise HTTPException(status_code=404, detail="Resultado no encontrado")
+        
+        with open(archivo_resultado, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        return data
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener resultado: {str(e)}")
+
+
+@app.delete("/api/examenes/resultado/{resultado_id}")
+async def eliminar_resultado_examen(resultado_id: str, documento_path: str):
+    """Elimina un resultado de examen"""
+    try:
+        doc_path = Path(documento_path)
+        carpeta_resultados = doc_path.parent / "resultados"
+        archivo_resultado = carpeta_resultados / f"resultado_{resultado_id}.json"
+        
+        if not archivo_resultado.exists():
+            raise HTTPException(status_code=404, detail="Resultado no encontrado")
+        
+        archivo_resultado.unlink()
+        
+        return {
+            "success": True,
+            "message": "Resultado eliminado exitosamente"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar resultado: {str(e)}")
 
 
 if __name__ == "__main__":
