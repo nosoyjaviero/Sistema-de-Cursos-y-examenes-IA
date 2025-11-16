@@ -143,6 +143,33 @@ class CursosDatabase:
             "mensaje": f"Carpeta '{nombre_carpeta}' movida exitosamente"
         }
     
+    def renombrar_carpeta(self, ruta_actual: str, nuevo_nombre: str) -> dict:
+        """Renombra una carpeta"""
+        ruta_completa = self.base_path / ruta_actual
+        
+        if not ruta_completa.exists():
+            raise ValueError("La carpeta no existe")
+        
+        if not ruta_completa.is_dir():
+            raise ValueError("La ruta no es una carpeta")
+        
+        # Construir nueva ruta (mantener el padre, cambiar solo el nombre)
+        carpeta_padre = ruta_completa.parent
+        nueva_ruta = carpeta_padre / nuevo_nombre
+        
+        if nueva_ruta.exists():
+            raise ValueError("Ya existe una carpeta con ese nombre")
+        
+        # Renombrar carpeta
+        ruta_completa.rename(nueva_ruta)
+        
+        return {
+            "nombre_anterior": ruta_completa.name,
+            "nombre_nuevo": nuevo_nombre,
+            "nueva_ruta": str(nueva_ruta.relative_to(self.base_path)),
+            "mensaje": f"Carpeta renombrada a '{nuevo_nombre}'"
+        }
+    
     def eliminar_documento(self, ruta_relativa: str) -> bool:
         """Elimina un documento"""
         ruta_completa = self.base_path / ruta_relativa

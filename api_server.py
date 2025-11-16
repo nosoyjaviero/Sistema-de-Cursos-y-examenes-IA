@@ -594,6 +594,28 @@ async def eliminar_carpeta(ruta: str, forzar: bool = False):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/api/carpetas/renombrar")
+async def renombrar_carpeta(data: dict):
+    """Renombra una carpeta de cursos"""
+    ruta_actual = data.get("ruta_actual", "").strip()
+    nuevo_nombre = data.get("nuevo_nombre", "").strip()
+    
+    if not ruta_actual:
+        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vacía")
+    
+    if not nuevo_nombre:
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+    
+    try:
+        # Usar el método de base de datos para renombrar
+        resultado = cursos_db.renombrar_carpeta(ruta_actual, nuevo_nombre)
+        return {"success": True, **resultado}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/carpetas/mover")
 async def mover_carpeta(datos: dict):
     """Mueve una carpeta a otra ubicación"""
@@ -1006,6 +1028,63 @@ async def eliminar_carpeta_chat(ruta: str):
     }
 
 
+@app.put("/api/chats/carpetas/{ruta:path}/renombrar")
+async def renombrar_carpeta_chat(ruta: str, data: dict):
+    """Renombra una carpeta de chats"""
+    nuevo_nombre = data.get("nuevo_nombre", "").strip()
+    
+    if not nuevo_nombre:
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+    
+    chats_dir = Path("chats_historial")
+    carpeta_path = chats_dir / ruta
+    
+    if not carpeta_path.exists():
+        raise HTTPException(status_code=404, detail="La carpeta no existe")
+    
+    if not carpeta_path.is_dir():
+        raise HTTPException(status_code=400, detail="La ruta no es una carpeta")
+    
+    # Verificar que la ruta esté dentro de chats_historial (seguridad)
+    try:
+        carpeta_path.relative_to(chats_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    
+    # Construir nueva ruta (mantener el padre, cambiar solo el nombre)
+    carpeta_padre = carpeta_path.parent
+    nueva_ruta = carpeta_padre / nuevo_nombre
+    
+    if nueva_ruta.exists():
+        raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre")
+    
+    # Renombrar carpeta
+    carpeta_path.rename(nueva_ruta)
+    
+    # Actualizar campo "carpeta" en todos los chats dentro de la carpeta renombrada
+    import json
+    for chat_file in nueva_ruta.rglob("*.json"):
+        try:
+            with open(chat_file, 'r', encoding='utf-8') as f:
+                chat_data = json.load(f)
+            
+            # Actualizar ruta de carpeta si existe
+            if 'carpeta' in chat_data:
+                ruta_relativa = str(chat_file.parent.relative_to(chats_dir))
+                chat_data['carpeta'] = ruta_relativa if ruta_relativa != '.' else ''
+                
+                with open(chat_file, 'w', encoding='utf-8') as f:
+                    json.dump(chat_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error actualizando chat {chat_file}: {e}")
+    
+    return {
+        "success": True,
+        "message": f"Carpeta renombrada exitosamente",
+        "nueva_ruta": str(nueva_ruta.relative_to(chats_dir))
+    }
+
+
 @app.get("/api/chats/{chat_id}")
 async def obtener_chat(chat_id: str):
     """Obtiene un chat específico del historial"""
@@ -1026,6 +1105,48 @@ async def obtener_chat(chat_id: str):
                     return json.load(f)
     
     raise HTTPException(status_code=404, detail="Chat no encontrado")
+
+
+@app.put("/api/chats/{chat_id}/renombrar")
+async def renombrar_chat(chat_id: str, data: dict):
+    """Renombra un chat del historial"""
+    nuevo_nombre = data.get("nuevo_nombre", "").strip()
+    
+    if not nuevo_nombre:
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+    
+    chats_dir = Path("chats_historial")
+    archivo = None
+    
+    # Buscar en raíz
+    archivo_raiz = chats_dir / f"{chat_id}.json"
+    if archivo_raiz.exists():
+        archivo = archivo_raiz
+    else:
+        # Buscar en subcarpetas
+        for carpeta in chats_dir.iterdir():
+            if carpeta.is_dir():
+                archivo_carpeta = carpeta / f"{chat_id}.json"
+                if archivo_carpeta.exists():
+                    archivo = archivo_carpeta
+                    break
+    
+    if not archivo:
+        raise HTTPException(status_code=404, detail="Chat no encontrado")
+    
+    # Leer, modificar y guardar
+    with open(archivo, 'r', encoding='utf-8') as f:
+        chat_data = json.load(f)
+    
+    chat_data['nombre'] = nuevo_nombre
+    
+    with open(archivo, 'w', encoding='utf-8') as f:
+        json.dump(chat_data, f, ensure_ascii=False, indent=2)
+    
+    return {
+        "success": True,
+        "message": f"Chat renombrado a '{nuevo_nombre}'"
+    }
 
 
 @app.delete("/api/chats/{chat_id}")

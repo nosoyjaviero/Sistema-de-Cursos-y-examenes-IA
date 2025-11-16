@@ -147,6 +147,37 @@ function App() {
     }
   }
 
+  // Renombrar carpeta
+  const renombrarCarpeta = async (ruta, nombreActual) => {
+    const nuevoNombre = prompt(`Renombrar carpeta "${nombreActual}":`, nombreActual)
+    if (!nuevoNombre || nuevoNombre === nombreActual) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas/renombrar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ruta_actual: ruta,
+          nuevo_nombre: nuevoNombre 
+        })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Carpeta renombrada a "${nuevoNombre}"`
+        })
+        cargarCarpeta(rutaActual)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message}`
+      })
+    }
+  }
+
   // Iniciar proceso de mover carpeta
   const iniciarMoverCarpeta = (carpeta) => {
     setMoverCarpeta(carpeta)
@@ -679,6 +710,67 @@ function App() {
           texto: `✅ Carpeta "${nombre}" eliminada`
         })
         cargarContenidoHistorialModal(rutaHistorialModal)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    }
+  }
+
+  // Renombrar carpeta desde modal
+  const renombrarCarpetaModal = async (ruta, nombreActual) => {
+    const nuevoNombre = prompt(`Renombrar carpeta "${nombreActual}":`, nombreActual)
+    if (!nuevoNombre || nuevoNombre === nombreActual) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/chats/carpetas/${encodeURIComponent(ruta)}/renombrar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevo_nombre: nuevoNombre })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Carpeta renombrada a "${nuevoNombre}"`
+        })
+        cargarContenidoHistorialModal(rutaHistorialModal)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    }
+  }
+
+  // Renombrar chat desde modal
+  const renombrarChatModal = async (chatId, nombreActual) => {
+    const nuevoNombre = prompt(`Renombrar chat:`, nombreActual)
+    if (!nuevoNombre || nuevoNombre === nombreActual) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/chats/${chatId}/renombrar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevo_nombre: nuevoNombre })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Chat renombrado a "${nuevoNombre}"`
+        })
+        cargarContenidoHistorialModal(rutaHistorialModal)
+        
+        // Si es el chat actual, actualizar el nombre
+        if (chatActualId === chatId) {
+          setNombreChatNuevo(nuevoNombre)
+        }
       }
     } catch (error) {
       setMensaje({
@@ -1258,6 +1350,13 @@ function App() {
                             </button>
                             {menuAbierto === carpeta.ruta && (
                               <div className="dropdown-menu">
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  renombrarCarpeta(carpeta.ruta, carpeta.nombre);
+                                }}>
+                                  ✏️ Renombrar
+                                </button>
                                 <button onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuAbierto(null);
@@ -2129,16 +2228,28 @@ function App() {
                               </div>
                             </div>
                             </div>
-                            <button 
-                              className="btn-eliminar-carpeta-modal"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                eliminarCarpetaModal(carpeta.ruta, carpeta.nombre)
-                              }}
-                              title="Eliminar carpeta"
-                            >
-                              🗑️
-                            </button>
+                            <div className="carpeta-acciones-modal">
+                              <button 
+                                className="btn-renombrar-carpeta-modal"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  renombrarCarpetaModal(carpeta.ruta, carpeta.nombre)
+                                }}
+                                title="Renombrar carpeta"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                className="btn-eliminar-carpeta-modal"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  eliminarCarpetaModal(carpeta.ruta, carpeta.nombre)
+                                }}
+                                title="Eliminar carpeta"
+                              >
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2159,13 +2270,22 @@ function App() {
                                 <p>{chat.num_mensajes} mensajes · {new Date(chat.fecha).toLocaleDateString()}</p>
                               </div>
                             </div>
-                            <button 
-                              className="btn-eliminar-historial"
-                              onClick={() => eliminarChatModal(chat.id, chat.nombre)}
-                              title="Eliminar chat"
-                            >
-                              🗑️
-                            </button>
+                            <div className="historial-acciones">
+                              <button 
+                                className="btn-renombrar-historial"
+                                onClick={() => renombrarChatModal(chat.id, chat.nombre)}
+                                title="Renombrar chat"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                className="btn-eliminar-historial"
+                                onClick={() => eliminarChatModal(chat.id, chat.nombre)}
+                                title="Eliminar chat"
+                              >
+                                🗑️
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
