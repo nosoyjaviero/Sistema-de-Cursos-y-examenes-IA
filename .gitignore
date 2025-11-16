@@ -1,0 +1,80 @@
+# Python
+venv/
+.venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Modelos LLM (archivos grandes - no subir a Git)
+modelos/*.gguf
+modelos/*.bin
+modelos/*.safetensors
+
+# Extracciones y resultados generados
+extracciones/
+resultados/
+
+# Archivos de texto generados (excepto documentación)
+*.txt
+!requirements.txt
+!README.md
+
+# Archivos temporales y de prueba
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+demo.txt
+salida_completa.txt
+test_pdf.py
+
+# IDEs y editores
+.vscode/
+.idea/
+*.sublime-*
+*.code-workspace
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Node / React / Vite
+node_modules/
+examinator-web/node_modules/
+examinator-web/dist/
+examinator-web/build/
+examinator-web/.vite/
+.pnp
+.pnp.js
+
+# Variables de entorno
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs de npm/yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Configuración local específica del usuario
+config.json
+ajustes.json
+
