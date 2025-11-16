@@ -260,6 +260,31 @@ class CursosDatabase:
             "lineas": len(contenido.split('\n'))
         }
     
+    def actualizar_contenido_documento(self, ruta_relativa: str, nuevo_contenido: str) -> dict:
+        """Actualiza el contenido de un documento"""
+        ruta_completa = self.base_path / ruta_relativa
+        
+        if not ruta_completa.exists():
+            raise ValueError("Documento no encontrado")
+        
+        if not ruta_completa.is_file():
+            raise ValueError("La ruta no es un archivo")
+        
+        # Guardar el nuevo contenido
+        with open(ruta_completa, 'w', encoding='utf-8') as f:
+            f.write(nuevo_contenido)
+        
+        # Obtener estadísticas del archivo actualizado
+        nuevo_tamaño = round(ruta_completa.stat().st_size / 1024, 2)
+        nuevas_lineas = len(nuevo_contenido.split('\n'))
+        
+        return {
+            "mensaje": "Documento actualizado exitosamente",
+            "tamaño_kb": nuevo_tamaño,
+            "lineas": nuevas_lineas,
+            "caracteres": len(nuevo_contenido)
+        }
+    
     def obtener_arbol(self, ruta_relativa: str = "", max_depth: int = 3, depth: int = 0) -> dict:
         """Obtiene el árbol de carpetas y documentos"""
         if depth >= max_depth:

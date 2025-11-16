@@ -10,6 +10,8 @@ function App() {
   const [mensaje, setMensaje] = useState(null)
   const [visorAbierto, setVisorAbierto] = useState(false)
   const [documentoActual, setDocumentoActual] = useState(null)
+  const [modoEdicion, setModoEdicion] = useState(false)
+  const [contenidoEditado, setContenidoEditado] = useState('')
   const [menuAbierto, setMenuAbierto] = useState(null)
   const [moverCarpeta, setMoverCarpeta] = useState(null)
   const [modalMoverAbierto, setModalMoverAbierto] = useState(false)
@@ -1171,10 +1173,13 @@ function App() {
       
       setDocumentoActual({
         nombre: nombre,
+        ruta: ruta,
         contenido: data.contenido,
         tamaño_kb: data.tamaño_kb,
         lineas: data.lineas
       })
+      setContenidoEditado(data.contenido)
+      setModoEdicion(false)
       setVisorAbierto(true)
     } catch (error) {
       setMensaje({
@@ -1186,10 +1191,58 @@ function App() {
     }
   }
 
+  // Activar modo edición
+  const activarEdicion = () => {
+    setModoEdicion(true)
+  }
+
+  // Cancelar edición de documento
+  const cancelarEdicionDocumento = () => {
+    setContenidoEditado(documentoActual.contenido)
+    setModoEdicion(false)
+  }
+
+  // Guardar cambios del documento
+  const guardarDocumento = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/documentos/contenido`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ruta: documentoActual.ruta,
+          contenido: contenidoEditado
+        })
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Documento guardado exitosamente'
+        })
+        setDocumentoActual({
+          ...documentoActual,
+          contenido: contenidoEditado,
+          tamaño_kb: data.tamaño_kb,
+          lineas: data.lineas
+        })
+        setModoEdicion(false)
+        cargarCarpeta(rutaActual)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al guardar: ${error.message}`
+      })
+    }
+  }
+
   // Cerrar visor
   const cerrarVisor = () => {
     setVisorAbierto(false)
     setDocumentoActual(null)
+    setModoEdicion(false)
+    setContenidoEditado('')
   }
 
   return (
@@ -1494,7 +1547,7 @@ function App() {
         {/* Visor de documentos */}
         {visorAbierto && documentoActual && (
           <div className="modal-overlay" onClick={cerrarVisor}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content modal-content-editor" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h2>📄 {documentoActual.nombre}</h2>
                 <div className="modal-info">
@@ -1502,10 +1555,35 @@ function App() {
                   <span>•</span>
                   <span>{documentoActual.lineas} líneas</span>
                 </div>
-                <button onClick={cerrarVisor} className="btn-close">✕</button>
+                <div className="modal-actions">
+                  {!modoEdicion ? (
+                    <button onClick={activarEdicion} className="btn-editar" title="Editar documento">
+                      ✏️ Editar
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={guardarDocumento} className="btn-guardar" title="Guardar cambios">
+                        💾 Guardar
+                      </button>
+                      <button onClick={cancelarEdicionDocumento} className="btn-cancelar" title="Cancelar edición">
+                        ❌ Cancelar
+                      </button>
+                    </>
+                  )}
+                  <button onClick={cerrarVisor} className="btn-close">✕</button>
+                </div>
               </div>
               <div className="modal-body">
-                <pre className="documento-contenido">{documentoActual.contenido}</pre>
+                {!modoEdicion ? (
+                  <pre className="documento-contenido">{documentoActual.contenido}</pre>
+                ) : (
+                  <textarea 
+                    className="documento-editor"
+                    value={contenidoEditado}
+                    onChange={(e) => setContenidoEditado(e.target.value)}
+                    autoFocus
+                  />
+                )}
               </div>
             </div>
           </div>

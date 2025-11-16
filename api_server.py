@@ -468,20 +468,36 @@ async def extraer_texto_simple(file: UploadFile = File(...)):
 @app.post("/api/extraer-pdf")
 async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
     """Extrae texto de un PDF subido y lo guarda en la carpeta especificada"""
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
+    print(f"📄 Procesando archivo: {file.filename}")
+    print(f"   Tipo de contenido: {file.content_type}")
+    print(f"   Carpeta destino: {carpeta or 'raíz'}")
+    
+    if not file.filename.endswith('.pdf') and not file.filename.endswith('.txt'):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Solo se permiten archivos PDF o TXT. Archivo recibido: {file.filename}"
+        )
     
     # Guardar archivo temporalmente
     temp_dir = Path("temp")
     temp_dir.mkdir(exist_ok=True)
     temp_path = temp_dir / file.filename
     
+    print(f"   Guardando temporalmente en: {temp_path}")
+    
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
     try:
         # Extraer texto
-        texto = obtener_texto(str(temp_path), sin_limpiar=False, agresivo=False, verbose=False)
+        if file.filename.endswith('.pdf'):
+            print(f"   Extrayendo texto del PDF...")
+            texto = obtener_texto(str(temp_path), sin_limpiar=False, agresivo=False, verbose=False)
+        else:  # .txt
+            print(f"   Leyendo archivo TXT...")
+            texto = temp_path.read_text(encoding='utf-8')
+        
+        print(f"   ✅ Texto extraído: {len(texto)} caracteres")
         
         # Determinar carpeta de destino
         if carpeta:
@@ -503,9 +519,11 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
         
         archivo_salida.write_text(texto, encoding='utf-8')
         
+        print(f"   💾 Guardado en: {archivo_salida}")
+        
         return {
             "success": True,
-            "mensaje": "PDF extraído exitosamente",
+            "mensaje": "Archivo procesado exitosamente",
             "archivo": str(archivo_salida.relative_to(Path("extracciones"))),
             "ruta_completa": str(archivo_salida),
             "caracteres": len(texto),
@@ -514,12 +532,14 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al extraer PDF: {str(e)}")
+        print(f"   ❌ Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar archivo: {str(e)}")
     
     finally:
         # Limpiar archivo temporal
         if temp_path.exists():
             temp_path.unlink()
+            print(f"   🗑️ Archivo temporal eliminado")
 
 
 @app.get("/api/documentos")
@@ -701,6 +721,24 @@ async def obtener_contenido_documento(ruta: str):
     try:
         contenido = cursos_db.obtener_contenido_documento(ruta)
         return contenido
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/documentos/contenido")
+async def actualizar_contenido_documento(data: dict):
+    """Actualiza el contenido de un documento"""
+    ruta = data.get("ruta", "").strip()
+    contenido = data.get("contenido", "")
+    
+    if not ruta:
+        raise HTTPException(status_code=400, detail="La ruta no puede estar vacía")
+    
+    try:
+        resultado = cursos_db.actualizar_contenido_documento(ruta, contenido)
+        return {"success": True, **resultado}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
