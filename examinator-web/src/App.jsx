@@ -663,6 +663,31 @@ function App() {
     }
   }
 
+  // Eliminar carpeta desde modal
+  const eliminarCarpetaModal = async (ruta, nombre) => {
+    if (!confirm(`¿Eliminar la carpeta "${nombre}" y todo su contenido?`)) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/chats/carpetas/${encodeURIComponent(ruta)}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Carpeta "${nombre}" eliminada`
+        })
+        cargarContenidoHistorialModal(rutaHistorialModal)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    }
+  }
+
   // Cargar contenido cuando se abre el modal
   const abrirModalHistorial = () => {
     setMostrarModalHistorial(true)
@@ -2089,17 +2114,31 @@ function App() {
                         {carpetasHistorialModal.map((carpeta, index) => (
                           <div 
                             key={index}
-                            className="carpeta-card"
-                            onClick={() => navegarCarpetaHistorialModal(carpeta.ruta)}
+                            className="carpeta-card-wrapper"
                           >
-                            <div className="carpeta-card-icon">📁</div>
-                            <div className="carpeta-card-nombre">{carpeta.nombre}</div>
-                            <div className="carpeta-stats">
-                              <div className="carpeta-stat-item">
-                                <span className="stat-icon">💬</span>
-                                <span className="stat-value">{carpeta.num_chats} chat{carpeta.num_chats !== 1 ? 's' : ''}</span>
+                            <div 
+                              className="carpeta-card"
+                              onClick={() => navegarCarpetaHistorialModal(carpeta.ruta)}
+                            >
+                              <div className="carpeta-card-icon">📁</div>
+                              <div className="carpeta-card-nombre">{carpeta.nombre}</div>
+                              <div className="carpeta-stats">
+                                <div className="carpeta-stat-item">
+                                  <span className="stat-icon">💬</span>
+                                  <span className="stat-value">{carpeta.num_chats} chat{carpeta.num_chats !== 1 ? 's' : ''}</span>
                               </div>
                             </div>
+                            </div>
+                            <button 
+                              className="btn-eliminar-carpeta-modal"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                eliminarCarpetaModal(carpeta.ruta, carpeta.nombre)
+                              }}
+                              title="Eliminar carpeta"
+                            >
+                              🗑️
+                            </button>
                           </div>
                         ))}
                       </div>

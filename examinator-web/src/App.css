@@ -2092,6 +2092,36 @@
   transform: scale(1.1);
 }
 
+.btn-eliminar-carpeta-modal {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255, 68, 68, 0.1);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  color: #ff6b6b;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+}
+
+.carpeta-card-wrapper:hover .btn-eliminar-carpeta-modal {
+  opacity: 1;
+}
+
+.btn-eliminar-carpeta-modal:hover {
+  background: rgba(255, 68, 68, 0.3);
+  border-color: rgba(255, 68, 68, 0.6);
+  transform: scale(1.15);
+}
+
 .empty-state-modal {
   text-align: center;
   padding: 3rem 2rem;
@@ -2283,6 +2313,12 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.carpeta-card-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .carpeta-card {

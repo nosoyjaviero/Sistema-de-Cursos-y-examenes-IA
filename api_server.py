@@ -978,6 +978,34 @@ async def crear_carpeta_chat(data: dict):
     }
 
 
+@app.delete("/api/chats/carpetas/{ruta:path}")
+async def eliminar_carpeta_chat(ruta: str):
+    """Elimina una carpeta de chats y todo su contenido"""
+    chats_dir = Path("chats_historial")
+    carpeta_path = chats_dir / ruta
+    
+    if not carpeta_path.exists():
+        raise HTTPException(status_code=404, detail="La carpeta no existe")
+    
+    if not carpeta_path.is_dir():
+        raise HTTPException(status_code=400, detail="La ruta no es una carpeta")
+    
+    # Verificar que la ruta esté dentro de chats_historial (seguridad)
+    try:
+        carpeta_path.relative_to(chats_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ruta inválida")
+    
+    # Eliminar carpeta y todo su contenido
+    import shutil
+    shutil.rmtree(carpeta_path)
+    
+    return {
+        "success": True,
+        "message": f"Carpeta eliminada exitosamente"
+    }
+
+
 @app.get("/api/chats/{chat_id}")
 async def obtener_chat(chat_id: str):
     """Obtiene un chat específico del historial"""
