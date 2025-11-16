@@ -747,49 +747,65 @@ async def actualizar_contenido_documento(data: dict):
 
 @app.post("/api/generar-examen")
 async def generar_examen(datos: dict):
-    """Genera un examen basado en un documento"""
+    """Genera un examen basado en contenido de documentos"""
     global generador_actual
     
-    documento_path = datos.get("documento_path")
+    contenido = datos.get("contenido")
     num_multiple = datos.get("num_multiple", 5)
     num_corta = datos.get("num_corta", 3)
     num_desarrollo = datos.get("num_desarrollo", 2)
     
-    if not documento_path:
-        raise HTTPException(status_code=400, detail="Falta la ruta del documento")
+    print(f"\n{'='*60}")
+    print(f"📝 Solicitud de generación de examen")
+    print(f"📊 Configuración: {num_multiple} múltiple, {num_corta} corta, {num_desarrollo} desarrollo")
+    print(f"📄 Longitud del contenido: {len(contenido) if contenido else 0} caracteres")
+    print(f"{'='*60}\n")
     
-    # Leer documento
-    doc_path = Path(documento_path)
-    if not doc_path.exists():
-        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    if not contenido:
+        raise HTTPException(status_code=400, detail="Falta el contenido para generar el examen")
     
-    with open(doc_path, 'r', encoding='utf-8') as f:
-        contenido = f.read()
-    
-    # Cargar o crear generador
-    if generador_actual is None:
-        config = cargar_config()
-        modelo_path = config.get("modelo_path")
-        generador_actual = GeneradorExamenes(modelo_path=modelo_path)
-    
-    # Generar preguntas
-    num_preguntas = {
-        'multiple': num_multiple,
-        'corta': num_corta,
-        'desarrollo': num_desarrollo
-    }
-    
-    preguntas = generador_actual.generar_examen(contenido, num_preguntas)
-    
-    # Convertir a formato JSON
-    preguntas_json = [p.to_dict() for p in preguntas]
-    
-    return {
-        "success": True,
-        "preguntas": preguntas_json,
-        "total_preguntas": len(preguntas),
-        "puntos_totales": sum(p['puntos'] for p in preguntas_json)
-    }
+    try:
+        # Cargar o crear generador
+        if generador_actual is None:
+            print("🔄 Cargando generador de exámenes...")
+            config = cargar_config()
+            modelo_path = config.get("modelo_path")
+            print(f"📦 Modelo configurado: {modelo_path}")
+            generador_actual = GeneradorExamenes(modelo_path=modelo_path)
+        
+        # Generar preguntas
+        num_preguntas = {
+            'multiple': num_multiple,
+            'corta': num_corta,
+            'desarrollo': num_desarrollo
+        }
+        
+        print("🤖 Generando preguntas con IA...")
+        preguntas = generador_actual.generar_examen(contenido, num_preguntas)
+        print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
+        
+        # Convertir a formato JSON
+        preguntas_json = [p.to_dict() for p in preguntas]
+        
+        resultado = {
+            "success": True,
+            "preguntas": preguntas_json,
+            "total_preguntas": len(preguntas),
+            "puntos_totales": sum(p['puntos'] for p in preguntas_json)
+        }
+        
+        print(f"✅ Examen generado: {resultado['total_preguntas']} preguntas, {resultado['puntos_totales']} puntos totales\n")
+        return resultado
+        
+    except Exception as e:
+        import traceback
+        print(f"\n❌ ERROR generando examen:")
+        print(f"   Tipo: {type(e).__name__}")
+        print(f"   Mensaje: {str(e)}")
+        print(f"   Traceback:")
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        raise HTTPException(status_code=500, detail=f"Error al generar examen: {str(e)}")
 
 
 @app.post("/api/evaluar-examen")
@@ -797,65 +813,303 @@ async def evaluar_examen(datos: dict):
     """Evalúa las respuestas de un examen"""
     global generador_actual
     
-    if generador_actual is None:
-        config = cargar_config()
-        modelo_path = config.get("modelo_path")
-        generador_actual = GeneradorExamenes(modelo_path=modelo_path)
-    
-    preguntas_data = datos.get("preguntas", [])
-    respuestas = datos.get("respuestas", {})
-    
-    resultados = []
-    puntos_obtenidos = 0
-    puntos_totales = 0
-    
-    for i, pregunta_dict in enumerate(preguntas_data):
-        pregunta = PreguntaExamen.from_dict(pregunta_dict)
-        respuesta_usuario = respuestas.get(str(i), "")
+    try:
+        if generador_actual is None:
+            config = cargar_config()
+            modelo_path = config.get("modelo_path")
+            generador_actual = GeneradorExamenes(modelo_path=modelo_path)
         
-        puntos, feedback = generador_actual.evaluar_respuesta(pregunta, respuesta_usuario)
+        preguntas_data = datos.get("preguntas", [])
+        respuestas = datos.get("respuestas", {})
+        carpeta_path = datos.get("carpeta_path", "")
         
-        puntos_obtenidos += puntos
-        puntos_totales += pregunta.puntos
+        if not preguntas_data:
+            raise HTTPException(status_code=400, detail="No hay preguntas para evaluar")
         
-        resultados.append({
-            "pregunta": pregunta.pregunta,
-            "tipo": pregunta.tipo,
-            "respuesta_usuario": respuesta_usuario,
-            "puntos": puntos,
-            "puntos_maximos": pregunta.puntos,
-            "feedback": feedback
-        })
-    
-    # Guardar resultados
-    documento_path = datos.get("documento_path")
-    if documento_path:
-        doc_path = Path(documento_path)
-        carpeta_resultados = doc_path.parent / "resultados"
-        carpeta_resultados.mkdir(exist_ok=True)
+        resultados = []
+        puntos_obtenidos = 0
+        puntos_totales = 0
         
-        fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archivo_resultado = carpeta_resultados / f"resultado_{fecha}.json"
+        for i, pregunta_dict in enumerate(preguntas_data):
+            pregunta = PreguntaExamen.from_dict(pregunta_dict)
+            respuesta_usuario = respuestas.get(str(i), "")
+            
+            puntos, feedback = generador_actual.evaluar_respuesta(pregunta, respuesta_usuario)
+            
+            puntos_obtenidos += puntos
+            puntos_totales += pregunta.puntos
+            
+            resultados.append({
+                "pregunta": pregunta.pregunta,
+                "tipo": pregunta.tipo,
+                "respuesta_usuario": respuesta_usuario,
+                "respuesta_correcta": pregunta.respuesta_correcta if pregunta.tipo == 'multiple' else None,
+                "puntos": puntos,
+                "puntos_maximos": pregunta.puntos,
+                "feedback": feedback
+            })
         
-        resultado_completo = {
-            "fecha": datetime.now().isoformat(),
-            "documento": str(doc_path),
+        porcentaje = (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0
+        
+        # Guardar resultados si hay carpeta especificada
+        if carpeta_path:
+            try:
+                print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
+                
+                carpeta = Path(carpeta_path)
+                
+                # Si la ruta no existe, intentar buscarla en extracciones/
+                if not carpeta.exists():
+                    carpeta = Path("extracciones") / carpeta_path
+                    print(f"   Intentando ruta alternativa: {carpeta}")
+                
+                # Crear la ruta si no existe
+                if not carpeta.exists():
+                    print(f"   Creando carpeta: {carpeta}")
+                    carpeta.mkdir(parents=True, exist_ok=True)
+                
+                carpeta_resultados = carpeta / "resultados_examenes"
+                carpeta_resultados.mkdir(parents=True, exist_ok=True)
+                
+                fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archivo_resultado = carpeta_resultados / f"examen_{fecha}.json"
+                
+                resultado_completo = {
+                    "fecha_completado": datetime.now().isoformat(),
+                    "carpeta_ruta": str(carpeta),
+                    "carpeta_nombre": carpeta.name,
+                    "puntos_obtenidos": puntos_obtenidos,
+                    "puntos_totales": puntos_totales,
+                    "porcentaje": porcentaje,
+                    "resultados": resultados,
+                    "tipo": "completado"
+                }
+                
+                with open(archivo_resultado, 'w', encoding='utf-8') as f:
+                    json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
+                
+                print(f"✅ Resultados guardados en: {archivo_resultado}")
+                    
+                # Eliminar examen en progreso si existe
+                carpeta_examenes = carpeta / "examenes_progreso"
+                if carpeta_examenes.exists():
+                    for archivo in carpeta_examenes.glob("examen_progreso_*.json"):
+                        try:
+                            archivo.unlink()
+                            print(f"🗑️ Examen en progreso eliminado: {archivo.name}")
+                        except Exception as e:
+                            print(f"⚠️ No se pudo eliminar {archivo.name}: {e}")
+            except Exception as e:
+                print(f"❌ Error guardando resultados: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        return {
+            "success": True,
             "puntos_obtenidos": puntos_obtenidos,
             "puntos_totales": puntos_totales,
-            "porcentaje": (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0,
+            "porcentaje": porcentaje,
             "resultados": resultados
         }
+    except Exception as e:
+        print(f"Error evaluando examen: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al evaluar examen: {str(e)}")
+
+
+@app.post("/api/examenes/pausar")
+async def pausar_examen(datos: dict):
+    """Guarda el progreso de un examen para continuarlo después"""
+    try:
+        carpeta_ruta = datos.get("carpeta_ruta")
+        carpeta_nombre = datos.get("carpeta_nombre")
+        preguntas = datos.get("preguntas", [])
+        respuestas = datos.get("respuestas", {})
+        fecha_inicio = datos.get("fecha_inicio")
         
-        with open(archivo_resultado, 'w', encoding='utf-8') as f:
-            json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
-    
-    return {
-        "success": True,
-        "puntos_obtenidos": puntos_obtenidos,
-        "puntos_totales": puntos_totales,
-        "porcentaje": (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0,
-        "resultados": resultados
-    }
+        if not carpeta_ruta:
+            raise HTTPException(status_code=400, detail="Falta la ruta de la carpeta")
+        
+        print(f"📝 Pausando examen para carpeta: {carpeta_ruta}")
+        
+        # Convertir a Path y verificar si existe
+        carpeta = Path(carpeta_ruta)
+        
+        # Si la ruta no existe, intentar buscarla en extracciones/
+        if not carpeta.exists():
+            carpeta = Path("extracciones") / carpeta_ruta
+            print(f"   Intentando ruta alternativa: {carpeta}")
+        
+        # Si aún no existe, intentar sin el prefijo extracciones/ si lo tiene
+        if not carpeta.exists() and carpeta_ruta.startswith("extracciones"):
+            carpeta = Path(carpeta_ruta)
+        
+        # Crear la ruta si no existe
+        if not carpeta.exists():
+            print(f"   Creando carpeta: {carpeta}")
+            carpeta.mkdir(parents=True, exist_ok=True)
+        
+        carpeta_examenes = carpeta / "examenes_progreso"
+        carpeta_examenes.mkdir(parents=True, exist_ok=True)
+        
+        # IMPORTANTE: Eliminar exámenes anteriores de esta misma carpeta
+        # para evitar duplicados
+        for archivo_anterior in carpeta_examenes.glob("examen_progreso_*.json"):
+            try:
+                archivo_anterior.unlink()
+                print(f"🗑️ Examen anterior eliminado: {archivo_anterior.name}")
+            except Exception as e:
+                print(f"⚠️ No se pudo eliminar {archivo_anterior.name}: {e}")
+        
+        # Crear archivo único para este examen en progreso
+        fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archivo_progreso = carpeta_examenes / f"examen_progreso_{fecha}.json"
+        
+        datos_progreso = {
+            "carpeta_ruta": str(carpeta),
+            "carpeta_nombre": carpeta_nombre,
+            "preguntas": preguntas,
+            "respuestas": respuestas,
+            "fecha_inicio": fecha_inicio,
+            "fecha_pausa": datetime.now().isoformat(),
+            "tipo": "en_progreso"
+        }
+        
+        with open(archivo_progreso, 'w', encoding='utf-8') as f:
+            json.dump(datos_progreso, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ Examen pausado guardado en: {archivo_progreso}")
+        
+        return {"success": True, "message": "Examen pausado correctamente"}
+    except Exception as e:
+        print(f"❌ Error pausando examen: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al pausar examen: {str(e)}")
+
+
+@app.post("/api/examenes/guardar-temporal")
+async def guardar_examen_temporal(datos: dict):
+    """Guarda el examen en curso localmente para recuperarlo después"""
+    try:
+        # Crear carpeta temporal si no existe
+        carpeta_temp = Path("temp_examenes")
+        carpeta_temp.mkdir(exist_ok=True)
+        
+        # Siempre usar el mismo archivo para el examen temporal
+        archivo_temp = carpeta_temp / "examen_en_curso.json"
+        
+        datos_examen = {
+            "preguntas": datos.get("preguntas", []),
+            "respuestas": datos.get("respuestas", {}),
+            "carpeta": datos.get("carpeta"),
+            "fecha_guardado": datetime.now().isoformat()
+        }
+        
+        with open(archivo_temp, 'w', encoding='utf-8') as f:
+            json.dump(datos_examen, f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 Examen temporal guardado en: {archivo_temp}")
+        
+        return {"success": True, "message": "Guardado automático completado"}
+    except Exception as e:
+        print(f"❌ Error guardando examen temporal: {e}")
+        # No lanzar error para que no interrumpa al usuario
+        return {"success": False, "message": str(e)}
+
+
+@app.get("/api/examenes/cargar-temporal")
+async def cargar_examen_temporal():
+    """Carga el examen temporal si existe"""
+    try:
+        archivo_temp = Path("temp_examenes/examen_en_curso.json")
+        
+        if not archivo_temp.exists():
+            return {"success": False, "message": "No hay examen temporal guardado"}
+        
+        with open(archivo_temp, 'r', encoding='utf-8') as f:
+            datos = json.load(f)
+        
+        print(f"📂 Examen temporal cargado desde: {archivo_temp}")
+        
+        return {
+            "success": True,
+            "examen": datos
+        }
+    except Exception as e:
+        print(f"❌ Error cargando examen temporal: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@app.delete("/api/examenes/limpiar-temporal")
+async def limpiar_examen_temporal():
+    """Elimina el examen temporal"""
+    try:
+        archivo_temp = Path("temp_examenes/examen_en_curso.json")
+        
+        if archivo_temp.exists():
+            archivo_temp.unlink()
+            print(f"🗑️ Examen temporal eliminado")
+        
+        return {"success": True, "message": "Examen temporal eliminado"}
+    except Exception as e:
+        print(f"❌ Error eliminando examen temporal: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@app.get("/api/examenes/listar")
+async def listar_examenes():
+    """Lista todos los exámenes guardados (completados y en progreso)"""
+    try:
+        # Buscar en carpetas base (cursos y extracciones)
+        carpetas_base = [Path("cursos"), Path("extracciones")]
+        
+        completados = []
+        en_progreso = []
+        
+        # Buscar en cada carpeta base
+        for carpeta_base in carpetas_base:
+            if not carpeta_base.exists():
+                continue
+            
+            # Buscar recursivamente en todas las carpetas
+            for carpeta in carpeta_base.rglob("*"):
+                if not carpeta.is_dir():
+                    continue
+                
+                # Buscar exámenes completados
+                carpeta_resultados = carpeta / "resultados_examenes"
+                if carpeta_resultados.exists():
+                    for archivo in sorted(carpeta_resultados.glob("examen_*.json"), reverse=True):
+                        try:
+                            with open(archivo, 'r', encoding='utf-8') as f:
+                                examen = json.load(f)
+                                if examen.get("tipo") != "completado":
+                                    examen["tipo"] = "completado"
+                                completados.append(examen)
+                        except Exception as e:
+                            print(f"Error leyendo examen completado {archivo}: {e}")
+                
+                # Buscar exámenes en progreso
+                carpeta_progreso = carpeta / "examenes_progreso"
+                if carpeta_progreso.exists():
+                    for archivo in sorted(carpeta_progreso.glob("examen_progreso_*.json"), reverse=True):
+                        try:
+                            with open(archivo, 'r', encoding='utf-8') as f:
+                                examen = json.load(f)
+                                en_progreso.append(examen)
+                        except Exception as e:
+                            print(f"Error leyendo examen en progreso {archivo}: {e}")
+        
+        print(f"📊 Exámenes encontrados: {len(completados)} completados, {len(en_progreso)} en progreso")
+        
+        return {
+            "success": True,
+            "completados": completados,
+            "enProgreso": en_progreso
+        }
+    except Exception as e:
+        print(f"Error listando exámenes: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al listar exámenes: {str(e)}")
 
 
 # ========================================

@@ -1,7 +1,7 @@
 {
   "id": "chat_1763291321",
   "nombre": "Que es la IA",
-  "fecha": "2025-11-16 09:03:22",
+  "fecha": "2025-11-16 09:02:58",
   "mensajes": [
     {
       "tipo": "usuario",
@@ -58,5 +58,5 @@
       "hora": "05:48"
     }
   ],
-  "carpeta": "Tonteras"
+  "carpeta": "a"
 }

@@ -12,6 +12,9 @@ function App() {
   const [documentoActual, setDocumentoActual] = useState(null)
   const [modoEdicion, setModoEdicion] = useState(false)
   const [contenidoEditado, setContenidoEditado] = useState('')
+  const [leyendo, setLeyendo] = useState(false)
+  const [pausado, setPausado] = useState(false)
+  const [posicionLectura, setPosicionLectura] = useState({ inicio: 0, fin: 0 })
   const [menuAbierto, setMenuAbierto] = useState(null)
   const [moverCarpeta, setMoverCarpeta] = useState(null)
   const [modalMoverAbierto, setModalMoverAbierto] = useState(false)
@@ -42,6 +45,31 @@ function App() {
   const [carpetaChatActual, setCarpetaChatActual] = useState('')
   const [mostrarModalCarpetas, setMostrarModalCarpetas] = useState(false)
   
+  // Estados para exámenes
+  const [examenActivo, setExamenActivo] = useState(null)
+  const [preguntasExamen, setPreguntasExamen] = useState([])
+  const [respuestasUsuario, setRespuestasUsuario] = useState({})
+  const [resultadoExamen, setResultadoExamen] = useState(null)
+  const [carpetaExamen, setCarpetaExamen] = useState(null)
+  const [generandoExamen, setGenerandoExamen] = useState(false)
+  const [modalExamenAbierto, setModalExamenAbierto] = useState(false)
+  const [configExamen, setConfigExamen] = useState({
+    num_multiple: 8,
+    num_corta: 5,
+    num_desarrollo: 3
+  })
+  const [examenesGuardados, setExamenesGuardados] = useState({
+    completados: [],
+    enProgreso: []
+  })
+  const [viendoExamen, setViendoExamen] = useState(null)
+  const [modalListaExamenes, setModalListaExamenes] = useState(false)
+  
+  // Estados para reconocimiento de voz
+  const [reconocimientoVoz, setReconocimientoVoz] = useState(null)
+  const [escuchandoPregunta, setEscuchandoPregunta] = useState(null)
+  const [transcripcionTemp, setTranscripcionTemp] = useState('')
+  
   // Estados para ajustes avanzados
   const [ajustesAvanzados, setAjustesAvanzados] = useState({
     n_ctx: 4096,
@@ -71,6 +99,13 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [mensaje])
+
+  // Recargar exámenes cuando se cambia a la pestaña "generar"
+  useEffect(() => {
+    if (selectedMenu === 'generar') {
+      cargarExamenesGuardados()
+    }
+  }, [selectedMenu])
 
   // Cargar contenido de carpeta
   const cargarCarpeta = async (ruta = '') => {
@@ -1239,10 +1274,522 @@ function App() {
 
   // Cerrar visor
   const cerrarVisor = () => {
+    detenerLectura()
     setVisorAbierto(false)
     setDocumentoActual(null)
     setModoEdicion(false)
     setContenidoEditado('')
+    setPosicionLectura({ inicio: 0, fin: 0 })
+  }
+
+  // Control de voz - Leer documento
+  const leerDocumento = () => {
+    if (!documentoActual) return
+    
+    // Verificar si el navegador soporta Web Speech API
+    if (!('speechSynthesis' in window)) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Tu navegador no soporta síntesis de voz'
+      })
+      return
+    }
+
+    // Si ya está leyendo y pausado, reanudar
+    if (pausado) {
+      window.speechSynthesis.resume()
+      setPausado(false)
+      setLeyendo(true)
+      return
+    }
+
+    // Si ya está leyendo, no hacer nada
+    if (leyendo) return
+
+    // Crear nueva instancia de lectura
+    const utterance = new SpeechSynthesisUtterance(documentoActual.contenido)
+    
+    // Configurar voz en español si está disponible
+    const voices = window.speechSynthesis.getVoices()
+    const spanishVoice = voices.find(voice => voice.lang.startsWith('es'))
+    if (spanishVoice) {
+      utterance.voice = spanishVoice
+    }
+    utterance.lang = 'es-ES'
+    utterance.rate = 1.0 // Velocidad normal
+    utterance.pitch = 1.0 // Tono normal
+    utterance.volume = 1.0 // Volumen máximo
+
+    // Eventos
+    utterance.onstart = () => {
+      setLeyendo(true)
+      setPausado(false)
+      setPosicionLectura({ inicio: 0, fin: 0 })
+    }
+
+    utterance.onboundary = (event) => {
+      // Actualizar posición de lectura cuando cambia de palabra
+      if (event.name === 'word') {
+        setPosicionLectura({
+          inicio: event.charIndex,
+          fin: event.charIndex + (event.charLength || 0)
+        })
+      }
+    }
+
+    utterance.onend = () => {
+      setLeyendo(false)
+      setPausado(false)
+      setPosicionLectura({ inicio: 0, fin: 0 })
+    }
+
+    utterance.onerror = (error) => {
+      console.error('Error en síntesis de voz:', error)
+      setLeyendo(false)
+      setPausado(false)
+      setPosicionLectura({ inicio: 0, fin: 0 })
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al leer el documento'
+      })
+    }
+
+    // Iniciar lectura
+    window.speechSynthesis.speak(utterance)
+  }
+
+  // Pausar lectura
+  const pausarLectura = () => {
+    if (leyendo && !pausado) {
+      window.speechSynthesis.pause()
+      setPausado(true)
+      setLeyendo(false)
+    }
+  }
+
+  // Detener lectura
+  const detenerLectura = () => {
+    window.speechSynthesis.cancel()
+    setLeyendo(false)
+    setPausado(false)
+    setPosicionLectura({ inicio: 0, fin: 0 })
+  }
+
+  // ============= FUNCIONES DE EXÁMENES =============
+  
+  // Cargar exámenes guardados y verificar examen local al inicio
+  useEffect(() => {
+    cargarExamenesGuardados()
+    
+    // Verificar si hay un examen guardado localmente
+    const hayExamenLocal = cargarExamenLocal()
+    if (hayExamenLocal) {
+      console.log('✅ Examen local recuperado')
+    }
+  }, [])
+  
+  const cargarExamenesGuardados = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/examenes/listar')
+      const data = await response.json()
+      if (data.success) {
+        setExamenesGuardados({
+          completados: data.completados || [],
+          enProgreso: data.enProgreso || []
+        })
+      }
+    } catch (error) {
+      console.error('Error cargando exámenes:', error)
+    }
+  }
+  
+  // Generar examen desde carpeta
+  const generarExamenDesdeCarpeta = async (carpeta) => {
+    console.log('🎓 Generando examen desde carpeta:', carpeta.nombre)
+    setGenerandoExamen(true)
+    setMensaje(null)
+    
+    try {
+      // Obtener todos los documentos de la carpeta
+      const response = await fetch(`http://localhost:8000/api/carpetas?ruta=${encodeURIComponent(carpeta.ruta)}`)
+      const data = await response.json()
+      
+      if (!data.documentos || data.documentos.length === 0) {
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ La carpeta no contiene documentos para generar el examen'
+        })
+        return
+      }
+      
+      // Leer contenido de todos los documentos
+      let contenidoCompleto = ''
+      for (const doc of data.documentos) {
+        try {
+          const respDoc = await fetch(`http://localhost:8000/api/documentos/contenido?ruta=${encodeURIComponent(doc.ruta)}`)
+          const dataDoc = await respDoc.json()
+          contenidoCompleto += `\n\n=== ${doc.nombre} ===\n${dataDoc.contenido}\n`
+        } catch (error) {
+          console.error(`Error leyendo ${doc.nombre}:`, error)
+        }
+      }
+      
+      if (!contenidoCompleto.trim()) {
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ No se pudo leer el contenido de los documentos'
+        })
+        return
+      }
+      
+      // Generar examen con la IA
+      const respExamen = await fetch('http://localhost:8000/api/generar-examen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contenido: contenidoCompleto,
+          num_multiple: configExamen.num_multiple,
+          num_corta: configExamen.num_corta,
+          num_desarrollo: configExamen.num_desarrollo
+        })
+      })
+      
+      const dataExamen = await respExamen.json()
+      
+      if (dataExamen.success) {
+        setPreguntasExamen(dataExamen.preguntas)
+        setExamenActivo(true)
+        setCarpetaExamen(carpeta)
+        setRespuestasUsuario({})
+        setResultadoExamen(null)
+        setModalExamenAbierto(true)
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Examen generado: ${dataExamen.total_preguntas} preguntas (${dataExamen.puntos_totales} puntos)`
+        })
+      } else {
+        throw new Error(dataExamen.message || 'Error al generar examen')
+      }
+    } catch (error) {
+      console.error('Error generando examen:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al generar el examen: ' + error.message
+      })
+    } finally {
+      setGenerandoExamen(false)
+    }
+  }
+  
+  // Actualizar respuesta del usuario
+  const actualizarRespuesta = (indice, respuesta) => {
+    const nuevasRespuestas = {
+      ...respuestasUsuario,
+      [indice]: respuesta
+    }
+    setRespuestasUsuario(nuevasRespuestas)
+    
+    // Guardar automáticamente en archivo local (mediante servidor)
+    if (examenActivo && preguntasExamen.length > 0) {
+      guardarExamenLocal(nuevasRespuestas)
+    }
+  }
+  
+  // Guardar examen en archivo local (a través del servidor)
+  const guardarExamenLocal = async (respuestas = respuestasUsuario) => {
+    try {
+      await fetch('http://localhost:8000/api/examenes/guardar-temporal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preguntas: preguntasExamen,
+          respuestas: respuestas,
+          carpeta: carpetaExamen
+        })
+      })
+      // No mostrar mensaje para no molestar al usuario
+    } catch (error) {
+      // Ignorar errores silenciosamente (servidor podría estar apagado)
+      console.log('Guardado automático sin servidor - OK')
+    }
+  }
+  
+  // Cargar examen desde archivo local
+  const cargarExamenLocal = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/examenes/cargar-temporal')
+      const data = await response.json()
+      
+      if (data.success && data.examen) {
+        const examen = data.examen
+        setPreguntasExamen(examen.preguntas)
+        setRespuestasUsuario(examen.respuestas || {})
+        setCarpetaExamen(examen.carpeta)
+        setExamenActivo(true)
+        setModalExamenAbierto(true)
+        setMensaje({
+          tipo: 'success',
+          texto: '📋 Examen recuperado desde última sesión'
+        })
+        return true
+      }
+    } catch (error) {
+      console.log('No hay examen temporal para cargar')
+    }
+    return false
+  }
+  
+  // Limpiar examen local
+  const limpiarExamenLocal = async () => {
+    try {
+      await fetch('http://localhost:8000/api/examenes/limpiar-temporal', {
+        method: 'DELETE'
+      })
+    } catch (error) {
+      console.log('No se pudo limpiar examen temporal')
+    }
+  }
+  
+  // Inicializar reconocimiento de voz
+  const iniciarReconocimientoVoz = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Tu navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.'
+      })
+      return null
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    
+    recognition.lang = 'es-ES'
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+    
+    return recognition
+  }
+  
+  // Alternar escucha de voz para una pregunta
+  const alternarEscuchaVoz = (indicePregunta) => {
+    // Si ya está escuchando esta pregunta, detener
+    if (escuchandoPregunta === indicePregunta) {
+      if (reconocimientoVoz) {
+        reconocimientoVoz.stop()
+      }
+      setEscuchandoPregunta(null)
+      setTranscripcionTemp('')
+      return
+    }
+    
+    // Si hay otro reconocimiento activo, detenerlo
+    if (reconocimientoVoz) {
+      reconocimientoVoz.stop()
+    }
+    
+    // Crear nuevo reconocimiento
+    const nuevoReconocimiento = iniciarReconocimientoVoz()
+    if (!nuevoReconocimiento) return
+    
+    // Eventos del reconocimiento
+    nuevoReconocimiento.onstart = () => {
+      setEscuchandoPregunta(indicePregunta)
+      setTranscripcionTemp('')
+    }
+    
+    nuevoReconocimiento.onresult = (event) => {
+      let transcripcionInterina = ''
+      let transcripcionFinal = ''
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          transcripcionFinal += transcript + ' '
+        } else {
+          transcripcionInterina += transcript
+        }
+      }
+      
+      // Actualizar transcripción temporal
+      if (transcripcionInterina) {
+        setTranscripcionTemp(transcripcionInterina)
+      }
+      
+      // Si hay transcripción final, agregar a la respuesta
+      if (transcripcionFinal) {
+        const respuestaActual = respuestasUsuario[indicePregunta] || ''
+        const nuevaRespuesta = respuestaActual + transcripcionFinal
+        actualizarRespuesta(indicePregunta, nuevaRespuesta)
+        setTranscripcionTemp('')
+      }
+    }
+    
+    nuevoReconocimiento.onerror = (event) => {
+      console.error('Error en reconocimiento de voz:', event.error)
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error en el reconocimiento de voz: ' + event.error
+        })
+      }
+      setEscuchandoPregunta(null)
+      setTranscripcionTemp('')
+    }
+    
+    nuevoReconocimiento.onend = () => {
+      // Si se detuvo inesperadamente y seguimos queriendo escuchar, reiniciar
+      if (escuchandoPregunta === indicePregunta) {
+        try {
+          nuevoReconocimiento.start()
+        } catch (e) {
+          setEscuchandoPregunta(null)
+          setTranscripcionTemp('')
+        }
+      }
+    }
+    
+    setReconocimientoVoz(nuevoReconocimiento)
+    nuevoReconocimiento.start()
+  }
+  
+  // Limpiar reconocimiento al cerrar examen
+  const detenerReconocimientoVoz = () => {
+    if (reconocimientoVoz) {
+      reconocimientoVoz.stop()
+      setReconocimientoVoz(null)
+    }
+    setEscuchandoPregunta(null)
+    setTranscripcionTemp('')
+  }
+  
+  // Enviar examen para calificar
+  const enviarExamen = async () => {
+    if (Object.keys(respuestasUsuario).length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Debes responder al menos una pregunta'
+      })
+      return
+    }
+    
+    setGenerandoExamen(true)
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/evaluar-examen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          preguntas: preguntasExamen,
+          respuestas: respuestasUsuario,
+          carpeta_path: carpetaExamen?.ruta || ''
+        })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success || data.resultados) {
+        limpiarExamenLocal() // Limpiar guardado local
+        setResultadoExamen(data)
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Examen calificado: ${data.puntos_obtenidos}/${data.puntos_totales} puntos (${data.porcentaje.toFixed(1)}%)`
+        })
+        // Recargar lista de exámenes guardados
+        cargarExamenesGuardados()
+      } else {
+        throw new Error(data.message || 'Error al evaluar')
+      }
+    } catch (error) {
+      console.error('Error evaluando examen:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al calificar el examen: ' + error.message
+      })
+    } finally {
+      setGenerandoExamen(false)
+    }
+  }
+  
+  // Pausar examen (guardar progreso)
+  const pausarExamen = async () => {
+    if (!carpetaExamen || preguntasExamen.length === 0) return
+    
+    try {
+      const response = await fetch('http://localhost:8000/api/examenes/pausar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta_ruta: carpetaExamen.ruta,
+          carpeta_nombre: carpetaExamen.nombre,
+          preguntas: preguntasExamen,
+          respuestas: respuestasUsuario,
+          fecha_inicio: new Date().toISOString()
+        })
+      })
+      
+      const data = await response.json()
+      if (data.success) {
+        limpiarExamenLocal() // Limpiar guardado local
+        setMensaje({
+          tipo: 'success',
+          texto: '⏸️ Examen pausado correctamente. Ve a la pestaña "Generar Exámenes" para continuarlo'
+        })
+        cerrarExamen()
+        cargarExamenesGuardados()
+        // Cambiar automáticamente a la pestaña de generar exámenes
+        setTimeout(() => {
+          setSelectedMenu('generar')
+        }, 2000)
+      }
+    } catch (error) {
+      console.error('Error pausando examen:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al pausar el examen'
+      })
+    }
+  }
+  
+  // Continuar examen pausado
+  const continuarExamen = (examen) => {
+    limpiarExamenLocal() // Limpiar cualquier examen local anterior
+    setPreguntasExamen(examen.preguntas)
+    setRespuestasUsuario(examen.respuestas || {})
+    setCarpetaExamen({
+      ruta: examen.carpeta_ruta,
+      nombre: examen.carpeta_nombre
+    })
+    setExamenActivo(true)
+    setResultadoExamen(null)
+    setModalExamenAbierto(true)
+    setModalListaExamenes(false)
+    // Guardar en localStorage para continuar trabajando sin servidor
+    guardarExamenLocal(examen.respuestas || {})
+  }
+  
+  // Ver resultado de examen completado
+  const verResultadoExamen = (examen) => {
+    setViendoExamen(examen)
+    setModalListaExamenes(false)
+  }
+  
+  // Cerrar examen
+  const cerrarExamen = () => {
+    detenerReconocimientoVoz() // Detener reconocimiento de voz
+    setModalExamenAbierto(false)
+    setExamenActivo(null)
+    setPreguntasExamen([])
+    setRespuestasUsuario({})
+    setResultadoExamen(null)
+    setCarpetaExamen(null)
+  }
+  
+  // Reiniciar examen
+  const reiniciarExamen = () => {
+    detenerReconocimientoVoz() // Detener reconocimiento de voz
+    setRespuestasUsuario({})
+    setResultadoExamen(null)
   }
 
   return (
@@ -1369,7 +1916,7 @@ function App() {
         {selectedMenu === 'cursos' && (
           <div className="content-section">
             <div className="carpetas-header">
-              <h1>📁 {rutaActual ? rutaActual.split('\\').pop() || 'Mis Cursos' : 'Mis Cursos'}</h1>
+              <h1>📁 {rutaActual ? rutaActual.split('\\').pop() || 'Mis Cursos' : 'Mis Cursos'} 🎓</h1>
               <div className="carpetas-actions">
                 <button onClick={crearCarpeta} className="btn-primary">
                   ➕ Nueva Carpeta
@@ -1431,12 +1978,18 @@ function App() {
 
             {loading ? (
               <p className="loading">Cargando...</p>
+            ) : generandoExamen ? (
+              <div className="loading-examen">
+                <div className="spinner"></div>
+                <p>⏳ Generando examen con IA...</p>
+                <p className="hint">Esto puede tomar unos momentos</p>
+              </div>
             ) : (
               <>
                 {/* Carpetas */}
                 {carpetas.length > 0 && (
                   <div className="items-section">
-                    <h3>📂 Carpetas</h3>
+                    <h3>📂 Carpetas (Generar Examen disponible)</h3>
                     <div className="items-grid">
                       {carpetas.map(carpeta => (
                         <div 
@@ -1464,6 +2017,13 @@ function App() {
                             </button>
                             {menuAbierto === carpeta.ruta && (
                               <div className="dropdown-menu">
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  generarExamenDesdeCarpeta(carpeta);
+                                }}>
+                                  📝 Generar Examen
+                                </button>
                                 <button onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuAbierto(null);
@@ -1557,9 +2117,31 @@ function App() {
                 </div>
                 <div className="modal-actions">
                   {!modoEdicion ? (
-                    <button onClick={activarEdicion} className="btn-editar" title="Editar documento">
-                      ✏️ Editar
-                    </button>
+                    <>
+                      <button onClick={activarEdicion} className="btn-editar" title="Editar documento">
+                        ✏️ Editar
+                      </button>
+                      {!leyendo && !pausado && (
+                        <button onClick={leerDocumento} className="btn-leer" title="Leer documento con voz">
+                          🔊 Leer
+                        </button>
+                      )}
+                      {leyendo && (
+                        <button onClick={pausarLectura} className="btn-pausar" title="Pausar lectura">
+                          ⏸️ Pausar
+                        </button>
+                      )}
+                      {pausado && (
+                        <button onClick={leerDocumento} className="btn-reanudar" title="Reanudar lectura">
+                          ▶️ Reanudar
+                        </button>
+                      )}
+                      {(leyendo || pausado) && (
+                        <button onClick={detenerLectura} className="btn-detener" title="Detener lectura">
+                          ⏹️ Detener
+                        </button>
+                      )}
+                    </>
                   ) : (
                     <>
                       <button onClick={guardarDocumento} className="btn-guardar" title="Guardar cambios">
@@ -1575,7 +2157,19 @@ function App() {
               </div>
               <div className="modal-body">
                 {!modoEdicion ? (
-                  <pre className="documento-contenido">{documentoActual.contenido}</pre>
+                  <pre className="documento-contenido">
+                    {posicionLectura.inicio > 0 ? (
+                      <>
+                        {documentoActual.contenido.substring(0, posicionLectura.inicio)}
+                        <span className="texto-leyendo">
+                          {documentoActual.contenido.substring(posicionLectura.inicio, posicionLectura.fin)}
+                        </span>
+                        {documentoActual.contenido.substring(posicionLectura.fin)}
+                      </>
+                    ) : (
+                      documentoActual.contenido
+                    )}
+                  </pre>
                 ) : (
                   <textarea 
                     className="documento-editor"
@@ -1591,8 +2185,120 @@ function App() {
 
         {selectedMenu === 'generar' && (
           <div className="content-section">
-            <h1>Generar Examen</h1>
-            <p>Aquí podrás generar nuevos exámenes...</p>
+            <h1>📝 Gestión de Exámenes</h1>
+            
+            {/* Exámenes en Progreso */}
+            <div className="examenes-section">
+              <h2>⏳ Por Completar ({examenesGuardados.enProgreso.length})</h2>
+              {examenesGuardados.enProgreso.length === 0 ? (
+                <div className="no-data">
+                  <p>No tienes exámenes pausados</p>
+                </div>
+              ) : (
+                <div className="examenes-grid">
+                  {examenesGuardados.enProgreso.map((examen, idx) => (
+                    <div key={idx} className="examen-card en-progreso">
+                      <div className="examen-card-header">
+                        <h3>📁 {examen.carpeta_nombre}</h3>
+                        <span className="badge badge-warning">En Progreso</span>
+                      </div>
+                      <div className="examen-card-body">
+                        <p className="examen-fecha">
+                          Iniciado: {new Date(examen.fecha_inicio).toLocaleString('es-ES')}
+                        </p>
+                        <p className="examen-info">
+                          {examen.preguntas.length} preguntas • {Object.keys(examen.respuestas || {}).length} respondidas
+                        </p>
+                        <div className="examen-progreso">
+                          <div className="progreso-bar">
+                            <div 
+                              className="progreso-fill"
+                              style={{
+                                width: `${(Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100}%`
+                              }}
+                            ></div>
+                          </div>
+                          <span className="progreso-texto">
+                            {Math.round((Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100)}% completado
+                          </span>
+                        </div>
+                      </div>
+                      <div className="examen-card-actions">
+                        <button 
+                          className="btn-continuar"
+                          onClick={() => continuarExamen(examen)}
+                        >
+                          ▶️ Continuar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Exámenes Completados */}
+            <div className="examenes-section">
+              <h2>✅ Completados ({examenesGuardados.completados.length})</h2>
+              {examenesGuardados.completados.length === 0 ? (
+                <div className="no-data">
+                  <p>No tienes exámenes completados</p>
+                  <p className="hint">Ve a Cursos y genera tu primer examen desde una carpeta</p>
+                </div>
+              ) : (
+                <div className="examenes-grid">
+                  {examenesGuardados.completados.map((examen, idx) => (
+                    <div key={idx} className="examen-card completado">
+                      <div className="examen-card-header">
+                        <h3>📁 {examen.carpeta_nombre}</h3>
+                        <span 
+                          className={`badge ${
+                            examen.porcentaje >= 70 ? 'badge-success' : 
+                            examen.porcentaje >= 50 ? 'badge-warning' : 
+                            'badge-danger'
+                          }`}
+                        >
+                          {examen.porcentaje.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="examen-card-body">
+                        <p className="examen-fecha">
+                          Completado: {new Date(examen.fecha_completado).toLocaleString('es-ES')}
+                        </p>
+                        <div className="examen-resultado">
+                          <div className="resultado-item">
+                            <span className="resultado-label">Puntuación:</span>
+                            <span className="resultado-valor">
+                              {examen.puntos_obtenidos} / {examen.puntos_totales}
+                            </span>
+                          </div>
+                          <div className="resultado-item">
+                            <span className="resultado-label">Estado:</span>
+                            <span className={`resultado-estado ${
+                              examen.porcentaje >= 70 ? 'aprobado' : 
+                              examen.porcentaje >= 50 ? 'regular' : 
+                              'reprobado'
+                            }`}>
+                              {examen.porcentaje >= 70 ? '✅ Aprobado' : 
+                               examen.porcentaje >= 50 ? '⚠️ Regular' : 
+                               '❌ Reprobado'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="examen-card-actions">
+                        <button 
+                          className="btn-ver-resultado"
+                          onClick={() => verResultadoExamen(examen)}
+                        >
+                          👁️ Ver Detalles
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -2528,6 +3234,272 @@ function App() {
                   <p className="hint">Crea tu primer proyecto para organizar tus chats</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Examen */}
+      {modalExamenAbierto && (
+        <div className="modal-overlay" onClick={cerrarExamen}>
+          <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📝 Examen - {carpetaExamen?.nombre}</h2>
+              <button onClick={cerrarExamen} className="btn-close">✕</button>
+            </div>
+            
+            <div className="modal-body examen-body">
+              {!resultadoExamen ? (
+                <>
+                  {/* Formulario de Examen */}
+                  <div className="examen-info">
+                    <p>Total de preguntas: <strong>{preguntasExamen.length}</strong></p>
+                    <p>Puntos totales: <strong>{preguntasExamen.reduce((sum, p) => sum + p.puntos, 0)}</strong></p>
+                  </div>
+
+                  <div className="preguntas-lista">
+                    {preguntasExamen.map((pregunta, index) => (
+                      <div key={index} className="pregunta-card">
+                        <div className="pregunta-header">
+                          <span className="pregunta-numero">Pregunta {index + 1}</span>
+                          <span className="pregunta-tipo">{pregunta.tipo === 'multiple' ? '📋 Selección' : pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : '📖 Desarrollo'}</span>
+                          <span className="pregunta-puntos">{pregunta.puntos} pts</span>
+                        </div>
+                        
+                        <p className="pregunta-texto">{pregunta.pregunta}</p>
+                        
+                        {/* Respuesta según tipo */}
+                        {pregunta.tipo === 'multiple' && (
+                          <div className="opciones-multiple">
+                            {pregunta.opciones.map((opcion, i) => (
+                              <label key={i} className="opcion-radio">
+                                <input
+                                  type="radio"
+                                  name={`pregunta-${index}`}
+                                  value={opcion.charAt(0)}
+                                  checked={respuestasUsuario[index] === opcion.charAt(0)}
+                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                />
+                                <span>{opcion}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {pregunta.tipo === 'corta' && (
+                          <div className="respuesta-con-voz">
+                            <textarea
+                              className="respuesta-corta"
+                              placeholder="Escribe tu respuesta aquí (2-3 líneas)..."
+                              value={respuestasUsuario[index] || ''}
+                              onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                              rows="3"
+                            />
+                            <button
+                              type="button"
+                              className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
+                              onClick={() => alternarEscuchaVoz(index)}
+                              title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
+                            >
+                              {escuchandoPregunta === index ? '🔴' : '🎤'}
+                            </button>
+                            {escuchandoPregunta === index && transcripcionTemp && (
+                              <div className="transcripcion-temp">
+                                Escuchando: "{transcripcionTemp}"
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {pregunta.tipo === 'desarrollo' && (
+                          <div className="respuesta-con-voz">
+                            <textarea
+                              className="respuesta-desarrollo"
+                              placeholder="Desarrolla tu respuesta completa aquí..."
+                              value={respuestasUsuario[index] || ''}
+                              onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                              rows="8"
+                            />
+                            <button
+                              type="button"
+                              className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
+                              onClick={() => alternarEscuchaVoz(index)}
+                              title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
+                            >
+                              {escuchandoPregunta === index ? '🔴' : '🎤'}
+                            </button>
+                            {escuchandoPregunta === index && transcripcionTemp && (
+                              <div className="transcripcion-temp">
+                                Escuchando: "{transcripcionTemp}"
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="examen-info-guardado">
+                    <p className="info-autosave">💾 Tus respuestas se guardan automáticamente en archivo local</p>
+                    <p className="info-hint">Sobrevive al reinicio de PC. Para guardar en el servidor, haz clic en "Pausar"</p>
+                  </div>
+
+                  <div className="examen-acciones">
+                    <button onClick={enviarExamen} className="btn-enviar-examen" disabled={generandoExamen}>
+                      {generandoExamen ? '⏳ Calificando...' : '✅ Enviar Examen'}
+                    </button>
+                    <button onClick={pausarExamen} className="btn-pausar-examen">
+                      ⏸️ Pausar
+                    </button>
+                    <button onClick={cerrarExamen} className="btn-cancelar">
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Resultados del Examen */}
+                  <div className="resultado-header">
+                    <div className="resultado-puntuacion">
+                      <h3>Calificación: {resultadoExamen.puntos_obtenidos} / {resultadoExamen.puntos_totales}</h3>
+                      <div className="resultado-porcentaje" style={{
+                        color: resultadoExamen.porcentaje >= 70 ? '#22c55e' : resultadoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                      }}>
+                        {resultadoExamen.porcentaje.toFixed(1)}%
+                      </div>
+                    </div>
+                    
+                    <div className="resultado-estado">
+                      {resultadoExamen.porcentaje >= 70 ? (
+                        <span className="estado-aprobado">✅ APROBADO</span>
+                      ) : resultadoExamen.porcentaje >= 50 ? (
+                        <span className="estado-regular">⚠️ REGULAR</span>
+                      ) : (
+                        <span className="estado-reprobado">❌ REPROBADO</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="resultados-detalle">
+                    {resultadoExamen.resultados.map((resultado, index) => (
+                      <div key={index} className="resultado-pregunta">
+                        <div className="resultado-pregunta-header">
+                          <span className="pregunta-numero">Pregunta {index + 1}</span>
+                          <span className="resultado-puntos" style={{
+                            color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                   resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                          }}>
+                            {resultado.puntos} / {resultado.puntos_maximos} pts
+                          </span>
+                        </div>
+                        
+                        <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
+                        
+                        <div className="resultado-respuesta">
+                          <strong>Tu respuesta:</strong>
+                          <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                        </div>
+                        
+                        <div className="resultado-feedback" style={{
+                          borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                          resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                        }}>
+                          <strong>Retroalimentación:</strong>
+                          <p>{resultado.feedback}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="examen-acciones">
+                    <button onClick={reiniciarExamen} className="btn-reintentar">
+                      🔄 Reintentar Examen
+                    </button>
+                    <button onClick={cerrarExamen} className="btn-close-resultado">
+                      Cerrar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Ver Resultado de Examen Completado */}
+      {viendoExamen && (
+        <div className="modal-overlay" onClick={() => setViendoExamen(null)}>
+          <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📊 Resultado - {viendoExamen.carpeta_nombre}</h2>
+              <button onClick={() => setViendoExamen(null)} className="btn-close">✕</button>
+            </div>
+            
+            <div className="modal-body examen-body">
+              <div className="resultado-header">
+                <div className="resultado-puntuacion">
+                  <h3>Calificación: {viendoExamen.puntos_obtenidos} / {viendoExamen.puntos_totales}</h3>
+                  <div className="resultado-porcentaje" style={{
+                    color: viendoExamen.porcentaje >= 70 ? '#22c55e' : viendoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                  }}>
+                    {viendoExamen.porcentaje.toFixed(1)}%
+                  </div>
+                </div>
+                
+                <div className="resultado-estado">
+                  {viendoExamen.porcentaje >= 70 ? (
+                    <span className="estado-aprobado">✅ APROBADO</span>
+                  ) : viendoExamen.porcentaje >= 50 ? (
+                    <span className="estado-regular">⚠️ REGULAR</span>
+                  ) : (
+                    <span className="estado-reprobado">❌ REPROBADO</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="resultados-detalle">
+                {viendoExamen.resultados.map((resultado, index) => (
+                  <div key={index} className="resultado-pregunta">
+                    <div className="resultado-pregunta-header">
+                      <span className="pregunta-numero">Pregunta {index + 1}</span>
+                      <span className="resultado-puntos" style={{
+                        color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                               resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                      }}>
+                        {resultado.puntos} / {resultado.puntos_maximos} pts
+                      </span>
+                    </div>
+                    
+                    <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
+                    
+                    <div className="resultado-respuesta">
+                      <strong>Tu respuesta:</strong>
+                      <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                    </div>
+                    
+                    {resultado.respuesta_correcta && resultado.tipo === 'multiple' && (
+                      <div className="resultado-respuesta-correcta">
+                        <strong>Respuesta correcta:</strong>
+                        <p>{resultado.respuesta_correcta}</p>
+                      </div>
+                    )}
+                    
+                    <div className="resultado-feedback" style={{
+                      borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                      resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                    }}>
+                      <strong>Retroalimentación:</strong>
+                      <p>{resultado.feedback}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="examen-acciones">
+                <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>

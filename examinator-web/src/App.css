@@ -1056,6 +1056,24 @@
   border: 1px solid #2a2a3e;
 }
 
+.texto-leyendo {
+  background: rgba(147, 51, 234, 0.4);
+  color: #ffffff;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  animation: pulso-lectura 0.8s ease-in-out infinite;
+}
+
+@keyframes pulso-lectura {
+  0%, 100% {
+    background: rgba(147, 51, 234, 0.4);
+  }
+  50% {
+    background: rgba(147, 51, 234, 0.7);
+  }
+}
+
 .documento-editor {
   width: 100%;
   min-height: 400px;
@@ -1130,6 +1148,70 @@
 }
 
 .btn-cancelar:hover {
+  background: rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-leer {
+  padding: 0.5rem 1rem;
+  background: rgba(147, 51, 234, 0.15);
+  color: #9333ea;
+  border: 1px solid #9333ea;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-leer:hover {
+  background: rgba(147, 51, 234, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-pausar {
+  padding: 0.5rem 1rem;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid #fbbf24;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-pausar:hover {
+  background: rgba(251, 191, 36, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-reanudar {
+  padding: 0.5rem 1rem;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-reanudar:hover {
+  background: rgba(34, 197, 94, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-detener {
+  padding: 0.5rem 1rem;
+  background: rgba(239, 68, 68, 0.15);
+  color: rgb(239, 68, 68);
+  border: 1px solid rgb(239, 68, 68);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-detener:hover {
   background: rgba(239, 68, 68, 0.25);
   transform: translateY(-1px);
 }
@@ -2668,6 +2750,744 @@
   }
 }
 
+/* ===============================================
+   ESTILOS DE EXAMEN
+   =============================================== */
+
+.modal-examen {
+  background: rgba(23, 23, 40, 0.98);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 2px solid #646cff;
+  box-shadow: 0 20px 60px rgba(100, 108, 255, 0.4);
+}
+
+.examen-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.examen-info {
+  background: rgba(100, 108, 255, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  gap: 2rem;
+  border: 1px solid rgba(100, 108, 255, 0.3);
+}
+
+.examen-info p {
+  margin: 0;
+  font-size: 1rem;
+  color: #e0e0e0;
+}
+
+.examen-info strong {
+  color: #646cff;
+  font-size: 1.2rem;
+}
+
+.preguntas-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.pregunta-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s;
+}
+
+.pregunta-card:hover {
+  border-color: #646cff;
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.2);
+}
+
+.pregunta-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.pregunta-numero {
+  background: rgba(100, 108, 255, 0.2);
+  color: #646cff;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.pregunta-tipo {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.pregunta-puntos {
+  margin-left: auto;
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.pregunta-texto {
+  color: #e0e0e0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.opciones-multiple {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.opcion-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.opcion-radio:hover {
+  background: rgba(100, 108, 255, 0.1);
+  border-color: #646cff;
+}
+
+.opcion-radio input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.opcion-radio span {
+  color: #e0e0e0;
+  font-size: 0.95rem;
+}
+
+/* Contenedor de respuesta con voz */
+.respuesta-con-voz {
+  position: relative;
+  width: 100%;
+}
+
+.respuesta-corta,
+.respuesta-desarrollo {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 1rem;
+  padding-right: 3.5rem; /* Espacio para el botón de micrófono */
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  resize: vertical;
+  transition: all 0.2s;
+}
+
+.respuesta-corta:focus,
+.respuesta-desarrollo:focus {
+  outline: none;
+  border-color: #646cff;
+  box-shadow: 0 0 0 2px rgba(100, 108, 255, 0.2);
+}
+
+/* Botón de micrófono */
+.btn-microfono {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(100, 108, 255, 0.3);
+  z-index: 10;
+}
+
+.btn-microfono:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.5);
+}
+
+.btn-microfono.escuchando {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  animation: pulso-grabacion 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+}
+
+@keyframes pulso-grabacion {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+.btn-microfono:active {
+  transform: scale(0.95);
+}
+
+/* Transcripción temporal */
+.transcripcion-temp {
+  position: absolute;
+  bottom: -35px;
+  left: 0;
+  right: 0;
+  background: rgba(100, 108, 255, 0.1);
+  border: 1px solid rgba(100, 108, 255, 0.3);
+  border-radius: 6px;
+  padding: 0.5rem;
+  color: #a0a0ff;
+  font-size: 0.85rem;
+  font-style: italic;
+  animation: aparecer-transcripcion 0.3s ease;
+}
+
+@keyframes aparecer-transcripcion {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Información de guardado automático */
+.examen-info-guardado {
+  background: rgba(100, 108, 255, 0.1);
+  border: 1px solid rgba(100, 108, 255, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.info-autosave {
+  color: #a0a0ff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.info-hint {
+  color: #8080cc;
+  font-size: 0.85rem;
+  margin: 0;
+  font-style: italic;
+}
+
+.examen-acciones {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #2a2a3e;
+}
+
+.btn-enviar-examen {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-enviar-examen:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+}
+
+.btn-enviar-examen:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Resultados del Examen */
+.resultado-header {
+  background: linear-gradient(135deg, rgba(100, 108, 255, 0.2), rgba(147, 51, 234, 0.2));
+  border: 2px solid #646cff;
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.resultado-puntuacion h3 {
+  color: #e0e0e0;
+  margin: 0 0 1rem 0;
+  font-size: 1.5rem;
+}
+
+.resultado-porcentaje {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 1rem 0;
+}
+
+.resultado-estado {
+  margin-top: 1rem;
+}
+
+.estado-aprobado,
+.estado-regular,
+.estado-reprobado {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.estado-aprobado {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 2px solid #22c55e;
+}
+
+.estado-regular {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 2px solid #fbbf24;
+}
+
+.estado-reprobado {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+}
+
+.resultados-detalle {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.resultado-pregunta {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.resultado-pregunta-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.resultado-puntos {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.resultado-pregunta-texto {
+  color: #e0e0e0;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.resultado-respuesta {
+  background: rgba(100, 108, 255, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border-left: 3px solid #646cff;
+}
+
+.resultado-respuesta strong {
+  color: #646cff;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.resultado-respuesta p {
+  color: #e0e0e0;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.resultado-feedback {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  border-left: 3px solid;
+}
+
+.resultado-feedback strong {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #e0e0e0;
+}
+
+.resultado-feedback p {
+  color: #b0b0b0;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.btn-reintentar {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #646cff, #9333ea);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-reintentar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(100, 108, 255, 0.4);
+}
+
+.btn-close-resultado {
+  padding: 0.75rem 2rem;
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-close-resultado:hover {
+  background: rgba(239, 68, 68, 0.3);
+  transform: translateY(-2px);
+}
+
+.btn-pausar-examen {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-pausar-examen:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(251, 191, 36, 0.4);
+}
+
+/* Estilos para gestión de exámenes */
+.examenes-section {
+  margin: 2rem 0;
+}
+
+.examenes-section h2 {
+  color: #e0e0e0;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.examenes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.examen-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s;
+}
+
+.examen-card:hover {
+  border-color: #646cff;
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.examen-card.en-progreso {
+  border-left: 4px solid #fbbf24;
+}
+
+.examen-card.completado {
+  border-left: 4px solid #22c55e;
+}
+
+.examen-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.examen-card-header h3 {
+  color: #e0e0e0;
+  font-size: 1.1rem;
+  margin: 0;
+  flex: 1;
+}
+
+.badge {
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.badge-warning {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+  border: 1px solid #fbbf24;
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.examen-card-body {
+  margin-bottom: 1rem;
+}
+
+.examen-fecha {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.examen-info {
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.examen-progreso {
+  margin-top: 1rem;
+}
+
+.progreso-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progreso-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  transition: width 0.3s ease;
+}
+
+.progreso-texto {
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.examen-resultado {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resultado-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.resultado-label {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.resultado-valor {
+  color: #e0e0e0;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.resultado-estado {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.resultado-estado.aprobado {
+  color: #22c55e;
+}
+
+.resultado-estado.regular {
+  color: #fbbf24;
+}
+
+.resultado-estado.reprobado {
+  color: #ef4444;
+}
+
+.examen-card-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #2a2a3e;
+}
+
+.btn-continuar {
+  flex: 1;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-continuar:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+}
+
+.btn-ver-resultado {
+  flex: 1;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, #646cff, #9333ea);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-ver-resultado:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.4);
+}
+
+.resultado-respuesta-correcta {
+  background: rgba(34, 197, 94, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border-left: 3px solid #22c55e;
+}
+
+.resultado-respuesta-correcta strong {
+  color: #22c55e;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.resultado-respuesta-correcta p {
+  color: #e0e0e0;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.loading-examen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  text-align: center;
+}
+
+.loading-examen .spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(100, 108, 255, 0.2);
+  border-top-color: #646cff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-examen p {
+  color: #e0e0e0;
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
+}
+
+.loading-examen .hint {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
 /* Responsive para Historial */
 @media (max-width: 768px) {
   .carpeta-card {
@@ -2676,6 +3496,20 @@
   }
   
   .carpeta-card-icon {
+    font-size: 2rem;
+  }
+  
+  .modal-examen {
+    width: 95%;
+    max-height: 95vh;
+  }
+  
+  .examen-info {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .resultado-porcentaje {
     font-size: 2rem;
   }
 }
