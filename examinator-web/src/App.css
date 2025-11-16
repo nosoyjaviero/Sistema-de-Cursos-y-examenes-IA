@@ -424,6 +424,23 @@
   background: rgba(100, 108, 255, 0.25);
 }
 
+.btn-renombrar {
+  padding: 0.5rem 0.75rem;
+  background: rgba(100, 108, 255, 0.1);
+  color: #646cff;
+  border: 1px solid rgba(100, 108, 255, 0.3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: all 0.2s;
+}
+
+.btn-renombrar:hover {
+  background: rgba(100, 108, 255, 0.2);
+  border-color: rgba(100, 108, 255, 0.5);
+  transform: scale(1.05);
+}
+
 .btn-eliminar {
   padding: 0.5rem 1rem;
   background: rgba(239, 68, 68, 0.15);

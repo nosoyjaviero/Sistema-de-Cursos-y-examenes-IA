@@ -1040,6 +1040,67 @@ function App() {
     }
   }
 
+  const renombrarDocumento = async (ruta, nombreActual) => {
+    // Extraer extensión de forma más robusta
+    const lastDotIndex = nombreActual.lastIndexOf('.')
+    
+    // Tiene extensión si el punto no está al inicio y hay caracteres después
+    let extension = ''
+    let nombreSinExt = nombreActual
+    
+    if (lastDotIndex > 0 && lastDotIndex < nombreActual.length - 1) {
+      extension = nombreActual.substring(lastDotIndex)
+      nombreSinExt = nombreActual.substring(0, lastDotIndex)
+    }
+    
+    console.log('DEBUG Renombrar:', { 
+      nombreActual, 
+      lastDotIndex,
+      extension, 
+      nombreSinExt 
+    })
+    
+    const nuevoNombreSinExt = prompt(`Renombrar documento (sin extensión):`, nombreSinExt)
+    
+    if (!nuevoNombreSinExt || nuevoNombreSinExt.trim() === '') return
+    if (nuevoNombreSinExt.trim() === nombreSinExt) return
+    
+    const nuevoNombreCompleto = nuevoNombreSinExt.trim() + extension
+    
+    console.log('DEBUG Enviando:', { 
+      ruta_actual: ruta, 
+      nuevo_nombre: nuevoNombreCompleto,
+      extension_agregada: extension
+    })
+
+    try {
+      const response = await fetch(`${API_URL}/api/documentos/renombrar`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ruta_actual: ruta,
+          nuevo_nombre: nuevoNombreCompleto
+        })
+      })
+
+      const data = await response.json()
+      console.log('DEBUG Respuesta:', data)
+      
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Documento renombrado a "${nuevoNombreCompleto}"`
+        })
+        cargarCarpeta(rutaActual)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message}`
+      })
+    }
+  }
+
   // Cargar configuración cuando se selecciona el menú
   useEffect(() => {
     if (selectedMenu === 'configuracion') {
@@ -1398,6 +1459,13 @@ function App() {
                               className="btn-ver"
                             >
                               👁️ Ver
+                            </button>
+                            <button 
+                              onClick={() => renombrarDocumento(doc.ruta, doc.nombre)}
+                              className="btn-renombrar"
+                              title="Renombrar documento"
+                            >
+                              ✏️
                             </button>
                             <button 
                               onClick={() => eliminarDocumento(doc.ruta, doc.nombre)}

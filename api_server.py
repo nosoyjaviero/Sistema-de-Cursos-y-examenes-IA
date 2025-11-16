@@ -645,6 +645,33 @@ async def eliminar_documento(ruta: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.put("/api/documentos/renombrar")
+async def renombrar_documento(data: dict):
+    """Renombra un documento"""
+    ruta_actual = data.get("ruta_actual", "").strip()
+    nuevo_nombre = data.get("nuevo_nombre", "").strip()
+    
+    print(f"🔄 Renombrar documento:")
+    print(f"   Ruta actual: {ruta_actual}")
+    print(f"   Nuevo nombre: {nuevo_nombre}")
+    
+    if not ruta_actual:
+        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vacía")
+    
+    if not nuevo_nombre:
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+    
+    try:
+        resultado = cursos_db.renombrar_documento(ruta_actual, nuevo_nombre)
+        print(f"   ✅ Resultado: {resultado}")
+        return {"success": True, **resultado}
+    except ValueError as e:
+        print(f"   ❌ Error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/arbol")
 async def obtener_arbol(ruta: str = "", profundidad: int = 3):
     """Obtiene el árbol completo de carpetas y documentos"""

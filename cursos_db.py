@@ -180,6 +180,43 @@ class CursosDatabase:
         ruta_completa.unlink()
         return True
     
+    def renombrar_documento(self, ruta_actual: str, nuevo_nombre: str) -> dict:
+        """Renombra un documento"""
+        ruta_completa = self.base_path / ruta_actual
+        
+        if not ruta_completa.exists():
+            raise ValueError("El documento no existe")
+        
+        if not ruta_completa.is_file():
+            raise ValueError("La ruta no es un archivo")
+        
+        # Guardar nombre anterior y extensión antes de renombrar
+        nombre_anterior = ruta_completa.name
+        extension_original = ruta_completa.suffix  # Obtiene .txt, .pdf, etc.
+        
+        # Si el nuevo nombre no tiene extensión, agregar la original
+        if not nuevo_nombre.endswith(extension_original) and extension_original:
+            nuevo_nombre_final = nuevo_nombre + extension_original
+        else:
+            nuevo_nombre_final = nuevo_nombre
+        
+        # Construir nueva ruta (mantener el padre, cambiar solo el nombre)
+        carpeta_padre = ruta_completa.parent
+        nueva_ruta = carpeta_padre / nuevo_nombre_final
+        
+        if nueva_ruta.exists():
+            raise ValueError("Ya existe un documento con ese nombre")
+        
+        # Renombrar documento
+        ruta_completa.rename(nueva_ruta)
+        
+        return {
+            "nombre_anterior": nombre_anterior,
+            "nombre_nuevo": nuevo_nombre_final,
+            "nueva_ruta": str(nueva_ruta.relative_to(self.base_path)),
+            "mensaje": f"Documento renombrado a '{nuevo_nombre_final}'"
+        }
+    
     def obtener_ruta_completa(self, ruta_relativa: str) -> str:
         """Convierte una ruta relativa a absoluta"""
         return str(self.base_path / ruta_relativa)
