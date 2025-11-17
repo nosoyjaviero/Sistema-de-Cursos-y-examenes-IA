@@ -3,15 +3,20 @@ API Backend para Examinator Web
 """
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pathlib import Path
 from typing import List, Optional
 import json
 import shutil
 from datetime import datetime
+import asyncio
+import uuid
+import requests
 
 from examinator import obtener_texto
-from generador_examenes import GeneradorExamenes, PreguntaExamen, guardar_examen
+from generador_dos_pasos import GeneradorDosPasos, PreguntaExamen
+from generador_unificado import GeneradorUnificado
+from generador_examenes import guardar_examen
 from cursos_db import CursosDatabase
 from busqueda_web import buscar_y_resumir
 
@@ -20,10 +25,10 @@ app = FastAPI(title="Examinator API")
 # Inicializar gestor de carpetas
 cursos_db = CursosDatabase("extracciones")
 
-# Configurar CORS para permitir peticiones desde React
+# Configurar CORS para permitir peticiones desde React y red local
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["*"],  # Permitir todas las IPs de la red local
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,6 +37,8 @@ app.add_middleware(
 # Estado global
 config_path = Path("config.json")
 generador_actual = None
+generador_unificado = None  # GeneradorUnificado para GPU/CPU
+progreso_generacion = {}  # {session_id: {progreso, mensaje, completado}}
 
 
 def cargar_config():
@@ -39,13 +46,120 @@ def cargar_config():
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return {"modelo_path": None}
+    return {
+        "modelo_path": None,
+        "ajustes_avanzados": {
+            "n_ctx": 4096,
+            "temperature": 0.7,
+            "max_tokens": 512,
+            "top_p": 0.9,
+            "repeat_penalty": 1.15,
+            "n_gpu_layers": 35
+        }
+    }
 
 
 def guardar_config(config: dict):
     """Guarda la configuración"""
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+def inicializar_modelo():
+    """Carga automáticamente el modelo configurado al iniciar el servidor"""
+    global generador_actual
+    try:
+        config = cargar_config()
+        modelo_path = config.get("modelo_path")
+        modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+        usar_ollama = config.get("usar_ollama", True)
+        
+        print(f"\n{'='*60}")
+        print(f"🚀 Iniciando Examinator API con Ollama + GPU...")
+        print(f"{'='*60}\n")
+        
+        # Intentar usar Ollama primero (GPU automática)
+        if usar_ollama:
+            try:
+                generador_actual = GeneradorUnificado(
+                    usar_ollama=True,
+                    modelo_ollama=modelo_ollama,
+                    modelo_path_gguf=modelo_path,
+                    n_gpu_layers=35
+                )
+                print(f"✅ Ollama cargado - Usando GPU automáticamente")
+                print(f"🎮 Modelo activo: {modelo_ollama}")
+                print(f"{'='*60}\n")
+            except Exception as e:
+                print(f"⚠️  Ollama no disponible: {e}")
+                print(f"💡 Intentando con modelo GGUF...\n")
+                
+                # Fallback a GeneradorDosPasos si Ollama falla
+                if modelo_path and Path(modelo_path).exists():
+                    ajustes = config.get("ajustes_avanzados", {})
+                    gpu_layers = ajustes.get('n_gpu_layers', 35)
+                    generador_actual = GeneradorDosPasos(modelo_path=modelo_path, n_gpu_layers=gpu_layers)
+                    print(f"✅ Modelo GGUF cargado: {modelo_path}")
+                    print(f"{'='*60}\n")
+                else:
+                    print("\n⚠️ No hay modelo configurado o no existe el archivo")
+                    print("💡 Ve a Configuración para seleccionar un modelo\n")
+        else:
+            # Usar modelo GGUF
+            if modelo_path and Path(modelo_path).exists():
+                ajustes = config.get("ajustes_avanzados", {})
+                gpu_layers = ajustes.get('n_gpu_layers', 0)
+                generador_actual = GeneradorUnificado(
+                    usar_ollama=False,
+                    modelo_path_gguf=modelo_path,
+                    n_gpu_layers=gpu_layers
+                )
+                print(f"✅ Modelo GGUF cargado: {modelo_path}")
+                print(f"{'='*60}\n")
+            else:
+                print("\n⚠️ No hay modelo configurado o no existe el archivo")
+                print("💡 Ve a Configuración para seleccionar un modelo\n")
+    except Exception as e:
+        print(f"\n❌ Error al cargar modelo inicial: {e}")
+        print("💡 Puedes configurar el modelo desde la interfaz web\n")
+
+
+# Inicializar modelo al arrancar
+@app.on_event("startup")
+async def startup_event():
+    """Se ejecuta cuando arranca el servidor"""
+    inicializar_modelo()
+
+
+@app.get("/api/prompt-template")
+async def obtener_prompt_template():
+    """Obtiene el template del prompt predeterminado"""
+    from generador_examenes import GeneradorExamenes
+    return {
+        "template": GeneradorExamenes.obtener_prompt_template()
+    }
+
+
+@app.get("/api/prompt-personalizado")
+async def obtener_prompt_personalizado():
+    """Obtiene el prompt personalizado guardado"""
+    config = cargar_config()
+    return {
+        "prompt": config.get("prompt_personalizado", "")
+    }
+
+
+@app.post("/api/prompt-personalizado")
+async def guardar_prompt_personalizado(datos: dict):
+    """Guarda el prompt personalizado"""
+    prompt = datos.get("prompt", "")
+    config = cargar_config()
+    config["prompt_personalizado"] = prompt
+    guardar_config(config)
+    return {
+        "success": True,
+        "message": "Prompt guardado exitosamente"
+    }
 
 
 @app.get("/")
@@ -263,7 +377,34 @@ async def listar_modelos_disponibles():
 @app.get("/api/config")
 async def obtener_config():
     """Obtiene la configuración actual"""
-    return cargar_config()
+    config = cargar_config()
+    
+    # Añadir información del modelo cargado en memoria
+    global generador_actual
+    if generador_actual:
+        if hasattr(generador_actual, 'modelo_ollama') and generador_actual.usar_ollama:
+            config["modelo_cargado"] = generador_actual.modelo_ollama
+            config["modelo_activo"] = True
+            config["tipo_motor"] = "ollama"
+            config["gpu_activa"] = True
+        elif hasattr(generador_actual, 'modelo_path_gguf') and generador_actual.modelo_path_gguf:
+            config["modelo_cargado"] = generador_actual.modelo_path_gguf
+            config["modelo_activo"] = True
+            config["tipo_motor"] = "gguf"
+            gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 0
+            config["gpu_activa"] = gpu_layers > 0
+        else:
+            config["modelo_cargado"] = None
+            config["modelo_activo"] = False
+            config["tipo_motor"] = None
+            config["gpu_activa"] = False
+    else:
+        config["modelo_cargado"] = None
+        config["modelo_activo"] = False
+        config["tipo_motor"] = None
+        config["gpu_activa"] = False
+    
+    return config
 
 
 @app.post("/api/config")
@@ -275,9 +416,26 @@ async def actualizar_config(config: dict):
     global generador_actual
     if config.get("modelo_path"):
         try:
-            generador_actual = GeneradorExamenes(modelo_path=config["modelo_path"])
+            # Liberar modelo anterior si existe
+            if generador_actual and generador_actual.llm:
+                print("🔄 Liberando modelo anterior...")
+                del generador_actual.llm
+                generador_actual.llm = None
+                del generador_actual
+                generador_actual = None
+                
+                # Forzar garbage collection
+                import gc
+                gc.collect()
+                print("✅ Modelo anterior liberado")
+            
+            # Cargar nuevo modelo
+            print(f"🔄 Cargando nuevo modelo: {config['modelo_path']}")
+            generador_actual = GeneradorDosPasos(modelo_path=config["modelo_path"])
+            print("✅ Nuevo modelo cargado exitosamente")
             return {"message": "Configuración actualizada y modelo cargado", "success": True}
         except Exception as e:
+            print(f"❌ Error al cargar modelo: {e}")
             return {"message": f"Error al cargar modelo: {str(e)}", "success": False}
     
     return {"message": "Configuración actualizada", "success": True}
@@ -300,28 +458,52 @@ async def chat_con_modelo(data: dict):
     # Inicializar generador si no existe
     if generador_actual is None:
         try:
-            generador_actual = GeneradorExamenes(modelo_path=config["modelo_path"])
+            generador_actual = GeneradorDosPasos(modelo_path=config["modelo_path"])
         except Exception as e:
             return {"respuesta": f"❌ Error al cargar el modelo: {str(e)}"}
     
     try:
+        # Obtener ajustes avanzados del frontend
+        ajustes = data.get("ajustes", {})
+        n_ctx = ajustes.get("n_ctx", 4096)
+        temperature = ajustes.get("temperature", 0.7)
+        max_tokens = ajustes.get("max_tokens", 768)
+        
+        # Mostrar configuración en consola
+        print(f"\n{'='*60}")
+        print(f"💬 Solicitud de chat")
+        print(f"⚙️ Configuración avanzada:")
+        print(f"   • Contexto (n_ctx): {n_ctx} tokens")
+        print(f"   • Temperatura: {temperature}")
+        print(f"   • Tokens máximos: {max_tokens}")
+        print(f"{'='*60}\n")
+        
         # Usar el modelo para generar respuesta
         from llama_cpp import Llama
         
-        # Crear instancia del modelo si no existe
-        if not hasattr(generador_actual, 'llm') or generador_actual.llm is None:
+        # Obtener n_gpu_layers de config
+        ajustes = config.get("ajustes_avanzados", {})
+        gpu_layers = ajustes.get('n_gpu_layers', 35)
+        
+        # Crear instancia del modelo si no existe o si cambió n_ctx
+        if not hasattr(generador_actual, 'llm') or generador_actual.llm is None or \
+           (hasattr(generador_actual, '_n_ctx') and generador_actual._n_ctx != n_ctx):
+            print(f"🔄 Recargando modelo con n_ctx={n_ctx}...")
             generador_actual.llm = Llama(
                 model_path=config["modelo_path"],
-                n_ctx=4096,  # Aumentado para mejor memoria (2x contexto)
-                n_threads=6,  # Optimizado para mejor rendimiento
+                n_ctx=n_ctx,
+                n_threads=6,
+                n_gpu_layers=gpu_layers,
                 verbose=False
             )
+            generador_actual._n_ctx = n_ctx
+            print("✅ Modelo cargado con nueva configuración")
         
         # Preparar el contexto si existe
         contexto = data.get("contexto", None)
         buscar_web = data.get("buscar_web", False)
         mensaje_completo = mensaje
-        system_prompt = "Eres un asistente educativo útil y amigable. Responde de manera clara y concisa en español."
+        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español."
         
         # Si se solicita búsqueda web
         if buscar_web:
@@ -398,15 +580,21 @@ INSTRUCCIONES: Responde usando SOLO la información del documento."""
         # Agregar mensaje actual
         messages.append({"role": "user", "content": mensaje_completo})
         
-        # Generar respuesta
+        # Generar respuesta con configuración personalizada
+        top_p = ajustes.get('top_p', 0.9)
+        repeat_penalty = ajustes.get('repeat_penalty', 1.15)
+        
+        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}, top_p={top_p}, repeat_penalty={repeat_penalty}")
         respuesta = generador_actual.llm.create_chat_completion(
             messages=messages,
-            max_tokens=768,  # Aumentado para respuestas más completas
-            temperature=0.7,
-            top_p=0.9
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            repeat_penalty=repeat_penalty
         )
         
         texto_respuesta = respuesta['choices'][0]['message']['content']
+        print(f"✅ Respuesta generada: {len(texto_respuesta)} caracteres\n")
         return {"respuesta": texto_respuesta}
         
     except Exception as e:
@@ -719,6 +907,10 @@ async def buscar_documentos(q: str):
 async def obtener_contenido_documento(ruta: str):
     """Obtiene el contenido de un documento"""
     try:
+        # Obtener solo el nombre del archivo
+        nombre_archivo = Path(ruta).name
+        print(f"📄 Cargando: {nombre_archivo}")
+        
         contenido = cursos_db.obtener_contenido_documento(ruta)
         return contenido
     except ValueError as e:
@@ -748,47 +940,156 @@ async def actualizar_contenido_documento(data: dict):
 @app.post("/api/generar-examen")
 async def generar_examen(datos: dict):
     """Genera un examen basado en contenido de documentos"""
-    global generador_actual
+    global generador_actual, progreso_generacion
     
     contenido = datos.get("contenido")
+    prompt_personalizado = datos.get("prompt_personalizado", "")
+    prompt_sistema = datos.get("prompt_sistema", None)  # Prompt completo del sistema si se proporciona
     num_multiple = datos.get("num_multiple", 5)
     num_corta = datos.get("num_corta", 3)
     num_desarrollo = datos.get("num_desarrollo", 2)
+    num_verdadero_falso = datos.get("num_verdadero_falso", 0)
+    session_id = datos.get("session_id", str(uuid.uuid4()))
+    
+    # Cargar ajustes avanzados desde config
+    config = cargar_config()
+    ajustes = config.get("ajustes_avanzados", {
+        "n_ctx": 4096,
+        "temperature": 0.7,
+        "max_tokens": 512
+    })
+    
+    # Extraer nombres de archivos del contenido
+    import re
+    archivos = re.findall(r'=== (.+?) ===', contenido)
     
     print(f"\n{'='*60}")
-    print(f"📝 Solicitud de generación de examen")
-    print(f"📊 Configuración: {num_multiple} múltiple, {num_corta} corta, {num_desarrollo} desarrollo")
-    print(f"📄 Longitud del contenido: {len(contenido) if contenido else 0} caracteres")
+    print(f"📝 Solicitud de generación de examen (Session: {session_id})")
+    print(f"📊 Configuración de preguntas:")
+    if num_multiple > 0:
+        print(f"   • Opción múltiple: {num_multiple}")
+    if num_verdadero_falso > 0:
+        print(f"   • Verdadero/Falso: {num_verdadero_falso}")
+    if num_corta > 0:
+        print(f"   • Corta: {num_corta}")
+    if num_desarrollo > 0:
+        print(f"   • Desarrollo: {num_desarrollo}")
+    print(f"\n🎮 Motor de IA:")
+    if generador_actual and hasattr(generador_actual, 'usar_ollama') and generador_actual.usar_ollama:
+        print(f"   ✅ USANDO GPU - Ollama")
+        print(f"   🎯 Modelo: {generador_actual.modelo_ollama}")
+        print(f"   💡 GPU activada automáticamente")
+    else:
+        print(f"   ⚠️  Usando llama-cpp-python")
+    print(f"\n⚙️ Configuración del modelo:")
+    print(f"   • Temperatura: {ajustes.get('temperature', 0.7)}")
+    print(f"   • Tokens máximos: {ajustes.get('max_tokens', 512)}")
+    print(f"   • Contexto (n_ctx): {ajustes.get('n_ctx', 4096)} tokens")
+    print(f"   • Top P: 0.9")
+    print(f"   • Repetición: 1.15")
+    print(f"\n📄 Longitud del contenido: {len(contenido) if contenido else 0} caracteres")
+    if archivos:
+        print(f"📚 Archivos cargados en contexto ({len(archivos)}):")
+        for i, archivo in enumerate(archivos, 1):
+            print(f"   {i}. 📄 {archivo}")
+    if prompt_personalizado:
+        print(f"💬 Prompt personalizado: {prompt_personalizado[:100]}...")
+    if prompt_sistema:
+        print(f"🎨 Prompt sistema personalizado recibido: {len(prompt_sistema)} caracteres")
+        print(f"   Primeros 100 caracteres: {prompt_sistema[:100]}...")
+    else:
+        print(f"📋 Usando prompt del sistema predeterminado")
     print(f"{'='*60}\n")
     
     if not contenido:
         raise HTTPException(status_code=400, detail="Falta el contenido para generar el examen")
     
+    # Inicializar progreso
+    progreso_generacion[session_id] = {
+        'progreso': 0,
+        'mensaje': 'Iniciando generación...',
+        'completado': False,
+        'error': None
+    }
+    
+    def callback_progreso(progreso: int, mensaje: str):
+        """Callback para actualizar el progreso"""
+        progreso_generacion[session_id] = {
+            'progreso': progreso,
+            'mensaje': mensaje,
+            'completado': False,
+            'error': None
+        }
+        print(f"📊 Progreso {progreso}%: {mensaje}")
+    
     try:
-        # Cargar o crear generador
-        if generador_actual is None:
-            print("🔄 Cargando generador de exámenes...")
-            config = cargar_config()
-            modelo_path = config.get("modelo_path")
-            print(f"📦 Modelo configurado: {modelo_path}")
-            generador_actual = GeneradorExamenes(modelo_path=modelo_path)
+        # Recargar generador con la configuración actual
+        callback_progreso(5, "Cargando modelo de IA...")
+        config = cargar_config()
+        modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+        usar_ollama = config.get("usar_ollama", True)
+        modelo_path = config.get("modelo_path")
+        gpu_layers = ajustes.get('n_gpu_layers', 35)
+        
+        print(f"📦 Configuración actual:")
+        print(f"   • Usar Ollama: {usar_ollama}")
+        if usar_ollama:
+            print(f"   • Modelo Ollama: {modelo_ollama}")
+        else:
+            print(f"   • Modelo GGUF: {modelo_path}")
+            print(f"   • GPU Layers: {gpu_layers}")
+        
+        # Crear generador con la configuración actual
+        if usar_ollama:
+            print(f"🔄 Cargando modelo Ollama: {modelo_ollama}")
+            generador_actual = GeneradorUnificado(
+                usar_ollama=True,
+                modelo_ollama=modelo_ollama,
+                n_gpu_layers=gpu_layers
+            )
+        else:
+            print(f"🔄 Cargando modelo GGUF: {modelo_path}")
+            generador_actual = GeneradorUnificado(
+                usar_ollama=False,
+                modelo_path_gguf=modelo_path,
+                n_gpu_layers=gpu_layers
+            )
         
         # Generar preguntas
         num_preguntas = {
             'multiple': num_multiple,
+            'verdadero_falso': num_verdadero_falso,
             'corta': num_corta,
             'desarrollo': num_desarrollo
         }
         
-        print("🤖 Generando preguntas con IA...")
-        preguntas = generador_actual.generar_examen(contenido, num_preguntas)
+        callback_progreso(10, "Preparando generación de preguntas...")
+        print("🤖 Generando preguntas con IA en DOS PASOS...")
+        preguntas = generador_actual.generar_examen(
+            contenido, 
+            num_preguntas,
+            ajustes_modelo=ajustes,
+            callback_progreso=callback_progreso,
+            archivos=archivos,  # Pasar lista de archivos
+            session_id=session_id  # Pasar session_id para el log
+        )
         print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
         
         # Convertir a formato JSON
+        callback_progreso(95, "Finalizando...")
         preguntas_json = [p.to_dict() for p in preguntas]
+        
+        # Marcar como completado
+        progreso_generacion[session_id] = {
+            'progreso': 100,
+            'mensaje': 'Examen generado exitosamente',
+            'completado': True,
+            'error': None
+        }
         
         resultado = {
             "success": True,
+            "session_id": session_id,
             "preguntas": preguntas_json,
             "total_preguntas": len(preguntas),
             "puntos_totales": sum(p['puntos'] for p in preguntas_json)
@@ -805,112 +1106,196 @@ async def generar_examen(datos: dict):
         print(f"   Traceback:")
         traceback.print_exc()
         print(f"{'='*60}\n")
+        
+        # Marcar progreso como error
+        if session_id in progreso_generacion:
+            progreso_generacion[session_id] = {
+                'progreso': 0,
+                'mensaje': f'Error: {str(e)}',
+                'completado': True,
+                'error': str(e)
+            }
+        
         raise HTTPException(status_code=500, detail=f"Error al generar examen: {str(e)}")
+
+
+@app.get("/api/progreso-examen/{session_id}")
+async def obtener_progreso_examen(session_id: str):
+    """Endpoint SSE para streaming de progreso de generación de examen"""
+    async def event_generator():
+        try:
+            while True:
+                # Obtener progreso actual
+                if session_id in progreso_generacion:
+                    progreso = progreso_generacion[session_id]
+                    
+                    # Enviar evento SSE
+                    data = json.dumps({
+                        'progreso': progreso['progreso'],
+                        'mensaje': progreso['mensaje'],
+                        'completado': progreso['completado'],
+                        'error': progreso['error']
+                    })
+                    yield f"data: {data}\n\n"
+                    
+                    # Si está completado (exitoso o error), terminar stream
+                    if progreso['completado']:
+                        # Limpiar progreso después de 5 segundos
+                        await asyncio.sleep(5)
+                        if session_id in progreso_generacion:
+                            del progreso_generacion[session_id]
+                        break
+                else:
+                    # Si no existe la sesión, enviar progreso inicial
+                    data = json.dumps({
+                        'progreso': 0,
+                        'mensaje': 'Esperando inicio...',
+                        'completado': False,
+                        'error': None
+                    })
+                    yield f"data: {data}\n\n"
+                
+                # Esperar un poco antes de la siguiente actualización
+                await asyncio.sleep(0.5)
+                
+        except asyncio.CancelledError:
+            # Cliente desconectó
+            print(f"🔌 Cliente desconectado del stream de progreso: {session_id}")
+            if session_id in progreso_generacion:
+                del progreso_generacion[session_id]
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @app.post("/api/evaluar-examen")
 async def evaluar_examen(datos: dict):
     """Evalúa las respuestas de un examen"""
-    global generador_actual
+    global generador_unificado
     
     try:
-        if generador_actual is None:
+        # Usar GeneradorUnificado (con GPU/CPU según configuración)
+        if generador_unificado is None:
             config = cargar_config()
-            modelo_path = config.get("modelo_path")
-            generador_actual = GeneradorExamenes(modelo_path=modelo_path)
-        
-        preguntas_data = datos.get("preguntas", [])
-        respuestas = datos.get("respuestas", {})
-        carpeta_path = datos.get("carpeta_path", "")
-        
-        if not preguntas_data:
-            raise HTTPException(status_code=400, detail="No hay preguntas para evaluar")
-        
-        resultados = []
-        puntos_obtenidos = 0
-        puntos_totales = 0
-        
-        for i, pregunta_dict in enumerate(preguntas_data):
-            pregunta = PreguntaExamen.from_dict(pregunta_dict)
-            respuesta_usuario = respuestas.get(str(i), "")
+            usar_ollama = config.get("usar_ollama", True)
+            modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+            modelo_path_gguf = config.get("modelo_path")
+            ajustes = config.get("ajustes_avanzados", {})
+            n_gpu_layers = ajustes.get("n_gpu_layers", 35)
             
-            puntos, feedback = generador_actual.evaluar_respuesta(pregunta, respuesta_usuario)
-            
-            puntos_obtenidos += puntos
-            puntos_totales += pregunta.puntos
-            
-            resultados.append({
-                "pregunta": pregunta.pregunta,
-                "tipo": pregunta.tipo,
-                "respuesta_usuario": respuesta_usuario,
-                "respuesta_correcta": pregunta.respuesta_correcta if pregunta.tipo == 'multiple' else None,
-                "puntos": puntos,
-                "puntos_maximos": pregunta.puntos,
-                "feedback": feedback
-            })
+            generador_unificado = GeneradorUnificado(
+                usar_ollama=usar_ollama,
+                modelo_ollama=modelo_ollama,
+                modelo_path_gguf=modelo_path_gguf,
+                n_gpu_layers=n_gpu_layers
+            )
         
-        porcentaje = (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0
-        
-        # Guardar resultados si hay carpeta especificada
-        if carpeta_path:
-            try:
-                print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
-                
-                carpeta = Path(carpeta_path)
-                
-                # Si la ruta no existe, intentar buscarla en extracciones/
-                if not carpeta.exists():
-                    carpeta = Path("extracciones") / carpeta_path
-                    print(f"   Intentando ruta alternativa: {carpeta}")
-                
-                # Crear la ruta si no existe
-                if not carpeta.exists():
-                    print(f"   Creando carpeta: {carpeta}")
-                    carpeta.mkdir(parents=True, exist_ok=True)
-                
-                carpeta_resultados = carpeta / "resultados_examenes"
-                carpeta_resultados.mkdir(parents=True, exist_ok=True)
-                
-                fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
-                archivo_resultado = carpeta_resultados / f"examen_{fecha}.json"
-                
-                resultado_completo = {
-                    "fecha_completado": datetime.now().isoformat(),
-                    "carpeta_ruta": str(carpeta),
-                    "carpeta_nombre": carpeta.name,
-                    "puntos_obtenidos": puntos_obtenidos,
-                    "puntos_totales": puntos_totales,
-                    "porcentaje": porcentaje,
-                    "resultados": resultados,
-                    "tipo": "completado"
-                }
-                
-                with open(archivo_resultado, 'w', encoding='utf-8') as f:
-                    json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
-                
-                print(f"✅ Resultados guardados en: {archivo_resultado}")
-                    
-                # Eliminar examen en progreso si existe
-                carpeta_examenes = carpeta / "examenes_progreso"
-                if carpeta_examenes.exists():
-                    for archivo in carpeta_examenes.glob("examen_progreso_*.json"):
-                        try:
+        try:
+            # Validar que los datos requeridos estén presentes
+            if not isinstance(datos, dict):
+                raise HTTPException(status_code=400, detail="El cuerpo de la solicitud debe ser un diccionario JSON válido.")
+
+            preguntas_data = datos.get("preguntas")
+            respuestas = datos.get("respuestas")
+            carpeta_path = datos.get("carpeta_path", "")
+
+            if not preguntas_data:
+                raise HTTPException(status_code=400, detail="El campo 'preguntas' es obligatorio y no puede estar vacío.")
+
+            if not isinstance(respuestas, dict):
+                raise HTTPException(status_code=400, detail="El campo 'respuestas' debe ser un diccionario.")
+
+            # Validar que cada respuesta sea una cadena válida
+            for key, value in respuestas.items():
+                if not isinstance(value, str):
+                    raise HTTPException(status_code=400, detail=f"La respuesta para la pregunta {key} debe ser una cadena de texto.")
+
+            # Continuar con la lógica existente
+            resultados = []
+            puntos_obtenidos = 0
+            puntos_totales = 0
+
+            for i, pregunta_dict in enumerate(preguntas_data):
+                pregunta = PreguntaExamen.from_dict(pregunta_dict)
+                respuesta_usuario = respuestas.get(str(i), "")
+
+                # Evaluar respuesta
+                resultado_eval = generador_unificado.evaluar_respuesta(pregunta, respuesta_usuario)
+                puntos = resultado_eval["puntos_obtenidos"]
+                feedback = resultado_eval["feedback"]
+
+                puntos_obtenidos += puntos
+                puntos_totales += pregunta.puntos
+
+                resultados.append({
+                    "pregunta": pregunta.pregunta,
+                    "tipo": pregunta.tipo,
+                    "opciones": pregunta.opciones if pregunta.tipo == 'multiple' else [],
+                    "respuesta_usuario": respuesta_usuario,
+                    "respuesta_correcta": pregunta.respuesta_correcta if pregunta.tipo == 'multiple' else None,
+                    "puntos": puntos,
+                    "puntos_maximos": pregunta.puntos,
+                    "feedback": feedback
+                })
+            
+            porcentaje = (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0
+            
+            # Guardar resultados si hay carpeta especificada
+            if carpeta_path:
+                try:
+                    print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
+                    carpeta = Path(carpeta_path)
+                    if not carpeta.exists():
+                        carpeta = Path("extracciones") / carpeta_path
+
+                    carpeta_examenes = Path("examenes") / carpeta.relative_to(Path("extracciones"))
+                    carpeta_examenes.mkdir(parents=True, exist_ok=True)
+
+                    fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    archivo_resultado = carpeta_examenes / f"examen_{fecha}.json"
+
+                    resultado_completo = {
+                        "id": fecha,
+                        "archivo": f"examen_{fecha}.json",
+                        "fecha_completado": datetime.now().isoformat(),
+                        "carpeta_ruta": str(carpeta.relative_to(Path("extracciones"))),
+                        "carpeta_nombre": carpeta.name,
+                        "puntos_obtenidos": puntos_obtenidos,
+                        "puntos_totales": puntos_totales,
+                        "porcentaje": porcentaje,
+                        "resultados": resultados,
+                        "tipo": "completado"
+                    }
+
+                    with open(archivo_resultado, 'w', encoding='utf-8') as f:
+                        json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
+
+                    print(f"✅ Resultados guardados en: {archivo_resultado}")
+
+                    carpeta_progreso = carpeta_examenes / "examenes_progreso"
+                    if carpeta_progreso.exists():
+                        for archivo in carpeta_progreso.glob("examen_progreso_*.json"):
                             archivo.unlink()
-                            print(f"🗑️ Examen en progreso eliminado: {archivo.name}")
-                        except Exception as e:
-                            print(f"⚠️ No se pudo eliminar {archivo.name}: {e}")
-            except Exception as e:
-                print(f"❌ Error guardando resultados: {e}")
-                import traceback
-                traceback.print_exc()
-        
-        return {
-            "success": True,
-            "puntos_obtenidos": puntos_obtenidos,
-            "puntos_totales": puntos_totales,
-            "porcentaje": porcentaje,
-            "resultados": resultados
-        }
+                except Exception as e:
+                    print(f"❌ Error guardando resultados: {e}")
+
+            return {
+                "success": True,
+                "puntos_obtenidos": puntos_obtenidos,
+                "puntos_totales": puntos_totales,
+                "porcentaje": porcentaje,
+                "resultados": resultados
+            }
+        except Exception as e:
+            print(f"Error evaluando examen: {e}")
+            raise HTTPException(status_code=500, detail=f"Error al evaluar examen: {str(e)}")
     except Exception as e:
         print(f"Error evaluando examen: {e}")
         raise HTTPException(status_code=500, detail=f"Error al evaluar examen: {str(e)}")
@@ -931,25 +1316,26 @@ async def pausar_examen(datos: dict):
         
         print(f"📝 Pausando examen para carpeta: {carpeta_ruta}")
         
-        # Convertir a Path y verificar si existe
+        # Determinar ruta relativa desde extracciones/
         carpeta = Path(carpeta_ruta)
-        
-        # Si la ruta no existe, intentar buscarla en extracciones/
         if not carpeta.exists():
             carpeta = Path("extracciones") / carpeta_ruta
-            print(f"   Intentando ruta alternativa: {carpeta}")
         
-        # Si aún no existe, intentar sin el prefijo extracciones/ si lo tiene
-        if not carpeta.exists() and carpeta_ruta.startswith("extracciones"):
-            carpeta = Path(carpeta_ruta)
+        # Obtener ruta relativa respecto a extracciones
+        try:
+            ruta_relativa = carpeta.relative_to(Path("extracciones"))
+        except ValueError:
+            # Si no está en extracciones, usar la ruta tal cual
+            ruta_relativa = Path(carpeta_ruta)
         
-        # Crear la ruta si no existe
-        if not carpeta.exists():
-            print(f"   Creando carpeta: {carpeta}")
-            carpeta.mkdir(parents=True, exist_ok=True)
+        # Crear estructura paralela en examenes/
+        carpeta_examenes_base = Path("examenes") / ruta_relativa
+        carpeta_examenes_base.mkdir(parents=True, exist_ok=True)
         
-        carpeta_examenes = carpeta / "examenes_progreso"
+        carpeta_examenes = carpeta_examenes_base / "examenes_progreso"
         carpeta_examenes.mkdir(parents=True, exist_ok=True)
+        
+        print(f"   Guardando en estructura paralela: {carpeta_examenes}")
         
         # IMPORTANTE: Eliminar exámenes anteriores de esta misma carpeta
         # para evitar duplicados
@@ -965,7 +1351,9 @@ async def pausar_examen(datos: dict):
         archivo_progreso = carpeta_examenes / f"examen_progreso_{fecha}.json"
         
         datos_progreso = {
-            "carpeta_ruta": str(carpeta),
+            "id": fecha,
+            "archivo": f"examen_progreso_{fecha}.json",
+            "carpeta_ruta": str(ruta_relativa),
             "carpeta_nombre": carpeta_nombre,
             "preguntas": preguntas,
             "respuestas": respuestas,
@@ -1056,38 +1444,182 @@ async def limpiar_examen_temporal():
         return {"success": False, "message": str(e)}
 
 
-@app.get("/api/examenes/listar")
-async def listar_examenes():
-    """Lista todos los exámenes guardados (completados y en progreso)"""
+@app.delete("/api/examenes/carpeta")
+async def eliminar_carpeta_examenes(ruta: str, forzar: bool = False):
+    """Elimina una carpeta de exámenes (forzar=true elimina con contenido)"""
     try:
-        # Buscar en carpetas base (cursos y extracciones)
-        carpetas_base = [Path("cursos"), Path("extracciones")]
+        base_examenes = Path("examenes")
+        ruta_completa = base_examenes / ruta if ruta else None
         
-        completados = []
-        en_progreso = []
+        if not ruta_completa or not ruta_completa.exists():
+            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
         
-        # Buscar en cada carpeta base
-        for carpeta_base in carpetas_base:
-            if not carpeta_base.exists():
-                continue
-            
-            # Buscar recursivamente en todas las carpetas
-            for carpeta in carpeta_base.rglob("*"):
-                if not carpeta.is_dir():
-                    continue
-                
-                # Buscar exámenes completados
-                carpeta_resultados = carpeta / "resultados_examenes"
-                if carpeta_resultados.exists():
-                    for archivo in sorted(carpeta_resultados.glob("examen_*.json"), reverse=True):
+        # Verificar si tiene contenido
+        tiene_contenido = any(ruta_completa.iterdir())
+        
+        if tiene_contenido and not forzar:
+            raise HTTPException(
+                status_code=400, 
+                detail="La carpeta contiene archivos. Use forzar=true para eliminar con contenido"
+            )
+        
+        # Eliminar carpeta
+        import shutil
+        shutil.rmtree(ruta_completa)
+        print(f"🗑️ Carpeta de exámenes eliminada: {ruta}")
+        
+        return {"success": True, "mensaje": "Carpeta eliminada"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error eliminando carpeta de exámenes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/examenes/examen")
+async def eliminar_examen(ruta: str, archivo: str):
+    """Elimina un examen específico (completado o en progreso)"""
+    try:
+        base_examenes = Path("examenes")
+        
+        # Puede ser un examen completado o en progreso
+        archivo_completo = base_examenes / ruta / archivo
+        
+        if not archivo_completo.exists():
+            # Intentar en la carpeta de progreso
+            archivo_completo = base_examenes / ruta / "examenes_progreso" / archivo
+        
+        if not archivo_completo.exists():
+            raise HTTPException(status_code=404, detail="Examen no encontrado")
+        
+        # Eliminar archivo
+        archivo_completo.unlink()
+        print(f"🗑️ Examen eliminado: {archivo}")
+        
+        return {"success": True, "mensaje": "Examen eliminado"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error eliminando examen: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/examenes/carpetas")
+async def listar_carpetas_examenes(ruta: str = ""):
+    """Lista carpetas y exámenes en una ruta de examenes/ (estructura paralela)"""
+    try:
+        base_examenes = Path("examenes")
+        
+        # Construir ruta completa
+        if ruta:
+            ruta_completa = base_examenes / ruta
+        else:
+            ruta_completa = base_examenes
+        
+        if not ruta_completa.exists():
+            return {
+                "ruta_actual": ruta,
+                "carpetas": [],
+                "examenes_completados": [],
+                "examenes_progreso": [],
+                "examenes_progreso_global": []
+            }
+        
+        carpetas = []
+        examenes_completados = []
+        examenes_progreso = []
+        examenes_progreso_global = []
+        
+        # Si estamos en la raíz, buscar TODOS los exámenes en progreso recursivamente
+        if not ruta:
+            print("📊 Buscando todos los exámenes en progreso...")
+            for carpeta in base_examenes.rglob("*"):
+                if carpeta.is_dir() and carpeta.name == "examenes_progreso":
+                    for archivo in sorted(carpeta.glob("examen_progreso_*.json"), reverse=True):
                         try:
                             with open(archivo, 'r', encoding='utf-8') as f:
                                 examen = json.load(f)
-                                if examen.get("tipo") != "completado":
-                                    examen["tipo"] = "completado"
-                                completados.append(examen)
+                                examenes_progreso_global.append(examen)
                         except Exception as e:
-                            print(f"Error leyendo examen completado {archivo}: {e}")
+                            print(f"Error leyendo {archivo}: {e}")
+            print(f"   ✅ Encontrados {len(examenes_progreso_global)} exámenes en progreso")
+        
+        # Listar carpetas
+        for item in sorted(ruta_completa.iterdir()):
+            if item.is_dir() and item.name != "examenes_progreso":
+                # Contar exámenes en la carpeta
+                num_completados = len(list(item.glob("examen_*.json")))
+                num_progreso = 0
+                carpeta_progreso = item / "examenes_progreso"
+                if carpeta_progreso.exists():
+                    num_progreso = len(list(carpeta_progreso.glob("examen_progreso_*.json")))
+                
+                carpetas.append({
+                    "nombre": item.name,
+                    "ruta": str(item.relative_to(base_examenes)) if ruta else item.name,
+                    "num_completados": num_completados,
+                    "num_progreso": num_progreso,
+                    "total_examenes": num_completados + num_progreso
+                })
+        
+        # Listar exámenes completados en esta carpeta
+        for archivo in sorted(ruta_completa.glob("examen_*.json"), reverse=True):
+            try:
+                with open(archivo, 'r', encoding='utf-8') as f:
+                    examen = json.load(f)
+                    if examen.get("tipo") == "completado":
+                        examenes_completados.append(examen)
+            except Exception as e:
+                print(f"Error leyendo {archivo}: {e}")
+        
+        # Listar exámenes en progreso en esta carpeta específica (solo si no es raíz)
+        if ruta:
+            carpeta_progreso = ruta_completa / "examenes_progreso"
+            if carpeta_progreso.exists():
+                for archivo in sorted(carpeta_progreso.glob("examen_progreso_*.json"), reverse=True):
+                    try:
+                        with open(archivo, 'r', encoding='utf-8') as f:
+                            examen = json.load(f)
+                            examenes_progreso.append(examen)
+                    except Exception as e:
+                        print(f"Error leyendo {archivo}: {e}")
+        
+        return {
+            "ruta_actual": ruta,
+            "carpetas": carpetas,
+            "examenes_completados": examenes_completados,
+            "examenes_progreso": examenes_progreso,
+            "examenes_progreso_global": examenes_progreso_global  # Solo lleno en raíz
+        }
+    except Exception as e:
+        print(f"Error listando carpetas de exámenes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/examenes/listar")
+async def listar_examenes():
+    """Lista todos los exámenes guardados (completados y en progreso) - DEPRECATED"""
+    try:
+        # Buscar en la carpeta examenes/ con estructura paralela
+        carpeta_examenes = Path("examenes")
+        completados = []
+        en_progreso = []
+        
+        if carpeta_examenes.exists():
+            # Buscar recursivamente en todas las carpetas de examenes/
+            for carpeta in carpeta_examenes.rglob("*"):
+                if not carpeta.is_dir():
+                    continue
+                
+                # Buscar exámenes completados directamente en la carpeta
+                for archivo in sorted(carpeta.glob("examen_*.json"), reverse=True):
+                    try:
+                        with open(archivo, 'r', encoding='utf-8') as f:
+                            examen = json.load(f)
+                            if examen.get("tipo") == "completado":
+                                completados.append(examen)
+                    except Exception as e:
+                        print(f"Error leyendo examen completado {archivo}: {e}")
                 
                 # Buscar exámenes en progreso
                 carpeta_progreso = carpeta / "examenes_progreso"
@@ -1496,9 +2028,272 @@ async def eliminar_chat(chat_id: str):
     raise HTTPException(status_code=404, detail="Chat no encontrado")
 
 
+# ========================================
+# ENDPOINTS DE OLLAMA Y GPU
+# ========================================
+
+@app.get("/api/ollama/modelos")
+async def listar_modelos_ollama():
+    """Lista todos los modelos disponibles en Ollama"""
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            modelos = data.get('models', [])
+            
+            # Formatear modelos con información adicional
+            modelos_formateados = []
+            for modelo in modelos:
+                nombre = modelo.get('name', '')
+                tamaño_bytes = modelo.get('size', 0)
+                tamaño_gb = round(tamaño_bytes / (1024**3), 2)
+                
+                # Detectar tipo de modelo por nombre
+                tipo = "Desconocido"
+                velocidad = "Media"
+                if "3b" in nombre.lower():
+                    tipo = "Pequeño (3B)"
+                    velocidad = "Muy rápida"
+                elif "7b" in nombre.lower() or "8b" in nombre.lower():
+                    tipo = "Mediano (7-8B)"
+                    velocidad = "Rápida"
+                elif "13b" in nombre.lower() or "14b" in nombre.lower():
+                    tipo = "Grande (13-14B)"
+                    velocidad = "Media"
+                elif "70b" in nombre.lower():
+                    tipo = "Muy Grande (70B)"
+                    velocidad = "Lenta"
+                
+                modelos_formateados.append({
+                    'nombre': nombre,
+                    'tamaño_gb': tamaño_gb,
+                    'tipo': tipo,
+                    'velocidad': velocidad,
+                    'modified_at': modelo.get('modified_at', ''),
+                    'digest': modelo.get('digest', '')[:12]  # Primeros 12 caracteres del digest
+                })
+            
+            return {
+                "success": True,
+                "modelos": modelos_formateados,
+                "total": len(modelos_formateados),
+                "ollama_activo": True
+            }
+        else:
+            return {
+                "success": False,
+                "modelos": [],
+                "total": 0,
+                "ollama_activo": False,
+                "mensaje": "Ollama no responde correctamente"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "modelos": [],
+            "total": 0,
+            "ollama_activo": False,
+            "mensaje": f"Ollama no disponible: {str(e)}"
+        }
+
+
+@app.post("/api/ollama/cambiar-modelo")
+async def cambiar_modelo_ollama(datos: dict):
+    """Cambia el modelo activo de Ollama"""
+    global generador_actual
+    
+    modelo = datos.get("modelo", "").strip()
+    if not modelo:
+        raise HTTPException(status_code=400, detail="Falta el nombre del modelo")
+    
+    try:
+        print(f"\n🔄 Cambiando a modelo Ollama: {modelo}")
+        
+        # Liberar generador anterior
+        if generador_actual:
+            del generador_actual
+            generador_actual = None
+            import gc
+            gc.collect()
+        
+        # Crear nuevo generador con Ollama
+        from generador_unificado import GeneradorUnificado
+        generador_actual = GeneradorUnificado(
+            usar_ollama=True,
+            modelo_ollama=modelo,
+            n_gpu_layers=35
+        )
+        
+        # Guardar en config
+        config = cargar_config()
+        config["modelo_ollama_activo"] = modelo
+        config["usar_ollama"] = True
+        guardar_config(config)
+        
+        print(f"✅ Modelo cambiado a: {modelo}")
+        
+        return {
+            "success": True,
+            "mensaje": f"Modelo cambiado a {modelo}",
+            "modelo": modelo
+        }
+    except Exception as e:
+        print(f"❌ Error cambiando modelo: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al cambiar modelo: {str(e)}")
+
+
+@app.delete("/api/ollama/modelo/{nombre_modelo:path}")
+async def eliminar_modelo_ollama(nombre_modelo: str):
+    """Elimina un modelo de Ollama"""
+    try:
+        print(f"\n🗑️ Eliminando modelo de Ollama: {nombre_modelo}")
+        
+        # Verificar que no sea el modelo activo
+        config = cargar_config()
+        modelo_activo = config.get("modelo_ollama_activo", "")
+        
+        if nombre_modelo == modelo_activo:
+            return {
+                "success": False,
+                "mensaje": "No puedes eliminar el modelo activo. Cambia a otro modelo primero."
+            }
+        
+        # Llamar a Ollama para eliminar el modelo
+        response = requests.delete(
+            f"http://localhost:11434/api/delete",
+            json={"name": nombre_modelo},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            print(f"✅ Modelo eliminado: {nombre_modelo}")
+            return {
+                "success": True,
+                "mensaje": f"Modelo '{nombre_modelo}' eliminado correctamente"
+            }
+        else:
+            error_msg = response.text if response.text else "Error desconocido"
+            print(f"❌ Error eliminando modelo: {error_msg}")
+            return {
+                "success": False,
+                "mensaje": f"Error al eliminar modelo: {error_msg}"
+            }
+            
+    except Exception as e:
+        print(f"❌ Error eliminando modelo: {e}")
+        return {
+            "success": False,
+            "mensaje": f"Error al eliminar modelo: {str(e)}"
+        }
+
+
+@app.post("/api/motor/cambiar")
+async def cambiar_motor_ia(datos: dict):
+    """Cambia entre Ollama (GPU) y llama-cpp-python (CPU/GPU)"""
+    global generador_actual
+    
+    usar_ollama = datos.get("usar_ollama", True)
+    modelo_ollama = datos.get("modelo_ollama", "llama31-local")
+    modelo_gguf = datos.get("modelo_gguf", None)
+    n_gpu_layers = datos.get("n_gpu_layers", 35)
+    
+    try:
+        motor = "Ollama (GPU automática)" if usar_ollama else "llama-cpp-python"
+        print(f"\n🔄 Cambiando motor de IA a: {motor}")
+        
+        # Liberar generador anterior
+        if generador_actual:
+            del generador_actual
+            generador_actual = None
+            import gc
+            gc.collect()
+        
+        # Crear nuevo generador
+        from generador_unificado import GeneradorUnificado
+        
+        if usar_ollama:
+            generador_actual = GeneradorUnificado(
+                usar_ollama=True,
+                modelo_ollama=modelo_ollama,
+                n_gpu_layers=n_gpu_layers
+            )
+            print(f"✅ Motor Ollama activo - GPU automática")
+            print(f"🎯 Modelo: {modelo_ollama}")
+        else:
+            if not modelo_gguf:
+                config = cargar_config()
+                modelo_gguf = config.get("modelo_path")
+            
+            if not modelo_gguf or not Path(modelo_gguf).exists():
+                raise ValueError("No hay modelo GGUF configurado o no existe")
+            
+            generador_actual = GeneradorUnificado(
+                usar_ollama=False,
+                modelo_path_gguf=modelo_gguf,
+                n_gpu_layers=n_gpu_layers
+            )
+            
+            gpu_info = f"GPU activada ({n_gpu_layers} capas)" if n_gpu_layers > 0 else "Solo CPU (0 capas)"
+            print(f"✅ Motor llama-cpp-python activo - {gpu_info}")
+            print(f"📁 Modelo: {Path(modelo_gguf).name}")
+        
+        # Guardar configuración
+        config = cargar_config()
+        config["usar_ollama"] = usar_ollama
+        config["modelo_ollama_activo"] = modelo_ollama if usar_ollama else None
+        config["ajustes_avanzados"]["n_gpu_layers"] = n_gpu_layers
+        guardar_config(config)
+        
+        return {
+            "success": True,
+            "mensaje": f"Motor cambiado a {motor}",
+            "usar_ollama": usar_ollama,
+            "gpu_activa": n_gpu_layers > 0 or usar_ollama
+        }
+    except Exception as e:
+        print(f"❌ Error cambiando motor: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al cambiar motor: {str(e)}")
+
+
+@app.get("/api/motor/estado")
+async def obtener_estado_motor():
+    """Obtiene el estado actual del motor de IA"""
+    global generador_actual
+    
+    if not generador_actual:
+        return {
+            "activo": False,
+            "tipo": None,
+            "modelo": None,
+            "gpu_activa": False
+        }
+    
+    if hasattr(generador_actual, 'usar_ollama') and generador_actual.usar_ollama:
+        return {
+            "activo": True,
+            "tipo": "ollama",
+            "modelo": generador_actual.modelo_ollama,
+            "gpu_activa": True,
+            "gpu_automatica": True,
+            "descripcion": "Ollama activa la GPU automáticamente"
+        }
+    else:
+        gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 0
+        return {
+            "activo": True,
+            "tipo": "llama-cpp-python",
+            "modelo": Path(generador_actual.modelo_path_gguf).name if hasattr(generador_actual, 'modelo_path_gguf') else None,
+            "gpu_activa": gpu_layers > 0,
+            "gpu_layers": gpu_layers,
+            "descripcion": f"GPU con {gpu_layers} capas" if gpu_layers > 0 else "Solo CPU"
+        }
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Iniciando servidor API de Examinator...")
     print("📍 URL: http://localhost:8000")
     print("📚 Docs: http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

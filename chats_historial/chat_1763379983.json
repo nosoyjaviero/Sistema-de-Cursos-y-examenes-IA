@@ -1,0 +1,30 @@
+{
+  "id": "chat_1763379983",
+  "nombre": "Chat 17/11/2025",
+  "fecha": "2025-11-17 05:53:32",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "puedes investiga cual fue el ultimo partido de messi con argentina?",
+      "hora": "05:45",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Sí, el último partido oficial de Lionel Messi con la Selección Argentina como local fue el 5 de septiembre de 2021 en el Estadio Monumental de Buenos Aires, cuando la selección argentina recibió a Venezuela. Durante el partido, Messi no logró anotar goles, pero sí ayudó a su equipo a ganar por 2-0. Es importante destacar que, después de ese partido, se cree que el último partido de Messi en suelo argentino ya pudo haber sido una realidad.",
+      "hora": "05:46"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "en que año estamos? que dia es hoy",
+      "hora": "05:52",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Sí, en el año 2022 hay 326 días, y el día 321 del año fue el Viernes 18 de noviembre de 2022.",
+      "hora": "05:53"
+    }
+  ],
+  "carpeta": ""
+}

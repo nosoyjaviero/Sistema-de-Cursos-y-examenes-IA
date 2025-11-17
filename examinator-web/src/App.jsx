@@ -52,6 +52,10 @@ function App() {
   const [resultadoExamen, setResultadoExamen] = useState(null)
   const [carpetaExamen, setCarpetaExamen] = useState(null)
   const [generandoExamen, setGenerandoExamen] = useState(false)
+  const [abortController, setAbortController] = useState(null)
+  const [progresoGeneracion, setProgresoGeneracion] = useState(0)
+  const [mensajeProgreso, setMensajeProgreso] = useState('')
+  const [sessionIdGeneracion, setSessionIdGeneracion] = useState(null)
   const [modalExamenAbierto, setModalExamenAbierto] = useState(false)
   const [configExamen, setConfigExamen] = useState({
     num_multiple: 8,
@@ -65,21 +69,45 @@ function App() {
   const [viendoExamen, setViendoExamen] = useState(null)
   const [modalListaExamenes, setModalListaExamenes] = useState(false)
   
+  // Estados para modal de configuración de generación de examen
+  const [modalConfigExamen, setModalConfigExamen] = useState(false)
+  const [carpetaConfigExamen, setCarpetaConfigExamen] = useState(null)
+  const [archivosDisponibles, setArchivosDisponibles] = useState([])
+  const [archivosSeleccionados, setArchivosSeleccionados] = useState([])
+  const [promptPersonalizado, setPromptPersonalizado] = useState('')
+  const [promptSistema, setPromptSistema] = useState('')
+  const [rutaExploracion, setRutaExploracion] = useState('')
+  const [carpetasExploracion, setCarpetasExploracion] = useState([])
+  
+  // Estados para navegación de carpetas de exámenes
+  const [rutaActualExamenes, setRutaActualExamenes] = useState('')
+  const [carpetasExamenes, setCarpetasExamenes] = useState([])
+  const [examenesCompletados, setExamenesCompletados] = useState([])
+  const [examenesProgreso, setExamenesProgreso] = useState([])
+  const [examenesProgresoGlobal, setExamenesProgresoGlobal] = useState([])
+  
   // Estados para reconocimiento de voz
   const [reconocimientoVoz, setReconocimientoVoz] = useState(null)
   const [escuchandoPregunta, setEscuchandoPregunta] = useState(null)
   const [transcripcionTemp, setTranscripcionTemp] = useState('')
   
+  // Estados para menú móvil
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
+  
   // Estados para ajustes avanzados
   const [ajustesAvanzados, setAjustesAvanzados] = useState({
     n_ctx: 4096,
     temperature: 0.7,
-    max_tokens: 512
+    max_tokens: 512,
+    top_p: 0.9,
+    repeat_penalty: 1.15,
+    n_gpu_layers: 35
   })
   const [mostrarAjustesAvanzados, setMostrarAjustesAvanzados] = useState(false)
-
-  // Control de cancelación de peticiones
-  const [abortController, setAbortController] = useState(null)
+  
+  // Estados para Ollama
+  const [modelosOllama, setModelosOllama] = useState([])
+  const [pestanaModelos, setPestanaModelos] = useState('ollama') // 'ollama' o 'gguf'
 
   // Estados para navegación en modal de historial
   const [rutaHistorialModal, setRutaHistorialModal] = useState('')
@@ -87,7 +115,23 @@ function App() {
   const [chatsHistorialModal, setChatsHistorialModal] = useState([])
   const [loadingHistorialModal, setLoadingHistorialModal] = useState(false)
 
-  const API_URL = 'http://localhost:8000'
+  // Detectar automáticamente la URL del API
+  // Si accedes desde otra IP (móvil/tablet), usa esa IP para el backend
+  // Si accedes desde localhost, usa localhost
+  const getApiUrl = () => {
+    const hostname = window.location.hostname
+    const apiUrl = (hostname === 'localhost' || hostname === '127.0.0.1') 
+      ? 'http://localhost:8000' 
+      : `http://${hostname}:8000`
+    
+    // Debug: mostrar en consola qué URL está usando
+    console.log(`🌐 Frontend: ${window.location.hostname}:${window.location.port}`)
+    console.log(`🔌 Backend API: ${apiUrl}`)
+    
+    return apiUrl
+  }
+
+  const API_URL = getApiUrl()
 
   // Auto-ocultar mensajes después de 8 segundos
   useEffect(() => {
@@ -103,9 +147,71 @@ function App() {
   // Recargar exámenes cuando se cambia a la pestaña "generar"
   useEffect(() => {
     if (selectedMenu === 'generar') {
-      cargarExamenesGuardados()
+      cargarCarpetasExamenes()
     }
   }, [selectedMenu])
+
+  // Cargar prompt del sistema al inicio (solo una vez)
+  useEffect(() => {
+    const cargarPromptInicial = async () => {
+      try {
+        console.log('🔄 Cargando prompt del sistema...')
+        const promptResp = await fetch(`${API_URL}/api/prompt-personalizado`)
+        const promptData = await promptResp.json()
+        
+        if (promptData.prompt) {
+          // Hay un prompt guardado, usarlo
+          console.log('✅ Prompt guardado cargado')
+          setPromptSistema(promptData.prompt)
+        } else {
+          // No hay prompt guardado, cargar el template
+          console.log('📝 Cargando template predeterminado...')
+          const templateResp = await fetch(`${API_URL}/api/prompt-template`)
+          const templateData = await templateResp.json()
+          setPromptSistema(templateData.template)
+          console.log('✅ Template cargado')
+        }
+      } catch (error) {
+        console.error('❌ Error cargando prompt inicial:', error)
+        // Si hay error, cargar un prompt por defecto simple
+        setPromptSistema('Eres un profesor universitario experto. Crea preguntas basadas en:\n{contenido}\n\nGenera {total_preguntas} preguntas en formato JSON.')
+      }
+    }
+    
+    cargarPromptInicial()
+  }, [])  // Solo se ejecuta una vez al montar el componente
+
+  // Cargar configuración del modelo al inicio
+  useEffect(() => {
+    cargarConfiguracion()
+  }, [])  // Solo una vez al montar
+  
+  // Cargar carpetas de exámenes (estructura paralela)
+  const cargarCarpetasExamenes = async (ruta = '') => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/examenes/carpetas?ruta=${encodeURIComponent(ruta)}`)
+      const data = await response.json()
+      
+      setCarpetasExamenes(data.carpetas || [])
+      setExamenesCompletados(data.examenes_completados || [])
+      setExamenesProgreso(data.examenes_progreso || [])
+      setExamenesProgresoGlobal(data.examenes_progreso_global || [])
+      setRutaActualExamenes(ruta)
+      
+      console.log('Carpetas exámenes:', data.carpetas)
+      console.log('Exámenes en progreso (carpeta actual):', data.examenes_progreso)
+      console.log('Exámenes en progreso (global):', data.examenes_progreso_global)
+    } catch (error) {
+      console.error('Error cargando exámenes:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar exámenes'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Cargar contenido de carpeta
   const cargarCarpeta = async (ruta = '') => {
@@ -175,6 +281,70 @@ function App() {
           texto: '✅ Carpeta eliminada'
         })
         cargarCarpeta(rutaActual)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message}`
+      })
+    }
+  }
+
+  // Eliminar carpeta de exámenes
+  const eliminarCarpetaExamenes = async (ruta, nombre) => {
+    const confirmMsg = `¿Eliminar la carpeta de exámenes "${nombre}"?\n\nSe eliminarán TODOS los exámenes dentro (completados y en progreso).`
+    if (!confirm(confirmMsg)) return
+
+    try {
+      const response = await fetch(`${API_URL}/api/examenes/carpeta?ruta=${encodeURIComponent(ruta)}&forzar=true`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Carpeta de exámenes eliminada'
+        })
+        cargarCarpetasExamenes(rutaActualExamenes)
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message}`
+      })
+    }
+  }
+
+  // Eliminar examen individual
+  const eliminarExamen = async (examen, tipo) => {
+    const tipoTexto = tipo === 'progreso' ? 'en progreso' : 'completado'
+    const confirmMsg = `¿Eliminar el examen ${tipoTexto} "${examen.carpeta_nombre}"?`
+    if (!confirm(confirmMsg)) return
+
+    try {
+      // Determinar el nombre del archivo según el tipo
+      let nombreArchivo
+      if (tipo === 'progreso') {
+        // Los exámenes en progreso están en examenes_progreso/
+        nombreArchivo = examen.archivo || `examen_progreso_${examen.id}.json`
+      } else {
+        // Los exámenes completados están en la raíz de la carpeta
+        nombreArchivo = examen.archivo || `examen_${examen.id}.json`
+      }
+
+      const ruta = examen.carpeta_ruta || rutaActualExamenes
+      const response = await fetch(`${API_URL}/api/examenes/examen?ruta=${encodeURIComponent(ruta)}&archivo=${encodeURIComponent(nombreArchivo)}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Examen eliminado'
+        })
+        cargarCarpetasExamenes(rutaActualExamenes)
       }
     } catch (error) {
       setMensaje({
@@ -317,6 +487,18 @@ function App() {
       console.log('Configuración cargada:', configData)
       setConfiguracion(configData)
       setModeloSeleccionado(configData.modelo_path || null)
+      
+      // Cargar ajustes avanzados si existen en la configuración
+      if (configData.ajustes_avanzados) {
+        setAjustesAvanzados({
+          n_ctx: configData.ajustes_avanzados.n_ctx || 4096,
+          temperature: configData.ajustes_avanzados.temperature || 0.7,
+          max_tokens: configData.ajustes_avanzados.max_tokens || 512,
+          top_p: configData.ajustes_avanzados.top_p || 0.9,
+          repeat_penalty: configData.ajustes_avanzados.repeat_penalty || 1.15
+        })
+        console.log('⚙️ Ajustes avanzados cargados:', configData.ajustes_avanzados)
+      }
 
       // Cargar modelos instalados
       const modelosResponse = await fetch(`${API_URL}/api/modelos`)
@@ -355,20 +537,24 @@ function App() {
       const response = await fetch(`${API_URL}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modelo_path: modeloSeleccionado })
+        body: JSON.stringify({ 
+          modelo_path: modeloSeleccionado,
+          ajustes_avanzados: ajustesAvanzados
+        })
       })
 
       const data = await response.json()
       if (data.success) {
         setMensaje({
           tipo: 'success',
-          texto: '✅ Configuración guardada exitosamente'
+          texto: '✅ Modelo cambiado exitosamente. Recarga la configuración para verificar.'
         })
-        setConfiguracion({ modelo_path: modeloSeleccionado })
+        // Recargar configuración para verificar
+        cargarConfiguracion()
       } else {
         setMensaje({
           tipo: 'error',
-          texto: `❌ ${data.message || 'Error al guardar configuración'}`
+          texto: `❌ ${data.message || 'Error al cambiar modelo'}`
         })
       }
     } catch (error) {
@@ -378,6 +564,29 @@ function App() {
       })
     } finally {
       setCargandoConfig(false)
+    }
+  }
+
+  // Guardar solo ajustes avanzados (sin mostrar mensaje)
+  const guardarAjustesAvanzados = async () => {
+    try {
+      // Obtener configuración actual
+      const configResponse = await fetch(`${API_URL}/api/config`)
+      const configData = await configResponse.json()
+      
+      // Guardar con ajustes actualizados
+      await fetch(`${API_URL}/api/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          modelo_path: configData.modelo_path,
+          ajustes_avanzados: ajustesAvanzados
+        })
+      })
+      
+      console.log('⚙️ Ajustes avanzados guardados:', ajustesAvanzados)
+    } catch (error) {
+      console.error('Error guardando ajustes:', error)
     }
   }
 
@@ -414,6 +623,8 @@ function App() {
 
     setCargandoChat(true)
     try {
+      console.log('⚙️ Configuración avanzada:', ajustesAvanzados)
+      
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -421,7 +632,8 @@ function App() {
           mensaje,
           contexto: contenidoContexto || null,
           buscar_web: busquedaWebActiva,
-          historial: mensajesChat  // Enviar historial completo para mantener contexto
+          historial: mensajesChat,  // Enviar historial completo para mantener contexto
+          ajustes: ajustesAvanzados  // Enviar configuración avanzada
         }),
         signal: controller.signal
       })
@@ -1377,10 +1589,8 @@ function App() {
 
   // ============= FUNCIONES DE EXÁMENES =============
   
-  // Cargar exámenes guardados y verificar examen local al inicio
+  // Verificar examen local al inicio (sin cargar del servidor)
   useEffect(() => {
-    cargarExamenesGuardados()
-    
     // Verificar si hay un examen guardado localmente
     const hayExamenLocal = cargarExamenLocal()
     if (hayExamenLocal) {
@@ -1390,7 +1600,7 @@ function App() {
   
   const cargarExamenesGuardados = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/examenes/listar')
+      const response = await fetch(`${API_URL}/api/examenes/listar`)
       const data = await response.json()
       if (data.success) {
         setExamenesGuardados({
@@ -1405,14 +1615,14 @@ function App() {
   
   // Generar examen desde carpeta
   const generarExamenDesdeCarpeta = async (carpeta) => {
-    console.log('🎓 Generando examen desde carpeta:', carpeta.nombre)
-    setGenerandoExamen(true)
-    setMensaje(null)
+    console.log('🎓 Preparando generación de examen desde carpeta:', carpeta.nombre)
     
     try {
-      // Obtener todos los documentos de la carpeta
-      const response = await fetch(`http://localhost:8000/api/carpetas?ruta=${encodeURIComponent(carpeta.ruta)}`)
+      // Obtener archivos de la carpeta
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(carpeta.ruta)}`)
       const data = await response.json()
+      
+      console.log('📁 Datos recibidos:', data)
       
       if (!data.documentos || data.documentos.length === 0) {
         setMensaje({
@@ -1422,36 +1632,178 @@ function App() {
         return
       }
       
-      // Leer contenido de todos los documentos
+      console.log('📄 Archivos encontrados:', data.documentos.length)
+      
+      // Abrir modal de configuración (el prompt ya está cargado desde el useEffect inicial)
+      setCarpetaConfigExamen(carpeta)
+      setArchivosDisponibles(data.documentos)
+      setArchivosSeleccionados(data.documentos.map(doc => doc.ruta))
+      setPromptPersonalizado('')
+      setRutaExploracion(carpeta.ruta)
+      setCarpetasExploracion(data.carpetas || [])
+      setModalConfigExamen(true)
+      
+      console.log('✅ Modal de configuración debería abrirse ahora')
+      
+    } catch (error) {
+      console.error('Error preparando examen:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al preparar la generación del examen'
+      })
+    }
+  }
+
+  const toggleSeleccionArchivo = (ruta) => {
+    setArchivosSeleccionados(prev => {
+      if (prev.includes(ruta)) {
+        return prev.filter(r => r !== ruta)
+      } else {
+        return [...prev, ruta]
+      }
+    })
+  }
+
+  const cargarArchivosSubcarpeta = async (rutaSubcarpeta) => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(rutaSubcarpeta)}`)
+      const data = await response.json()
+      
+      // Agregar nuevos archivos que no estén ya en la lista
+      const nuevosArchivos = data.documentos.filter(
+        doc => !archivosDisponibles.some(a => a.ruta === doc.ruta)
+      )
+      
+      if (nuevosArchivos.length > 0) {
+        setArchivosDisponibles(prev => [...prev, ...nuevosArchivos])
+        setArchivosSeleccionados(prev => [...prev, ...nuevosArchivos.map(doc => doc.ruta)])
+      }
+      
+      setRutaExploracion(rutaSubcarpeta)
+      setCarpetasExploracion(data.carpetas || [])
+      
+    } catch (error) {
+      console.error('Error cargando subcarpeta:', error)
+    }
+  }
+
+  const volverCarpetaPadre = () => {
+    const partes = rutaExploracion.split(/[/\\\\]/).filter(Boolean)
+    partes.pop()
+    const nuevaRuta = partes.join('/')
+    cargarArchivosSubcarpeta(nuevaRuta || carpetaConfigExamen.ruta)
+  }
+
+  const confirmarGeneracionExamen = async () => {
+    if (archivosSeleccionados.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Debes seleccionar al menos un archivo'
+      })
+      return
+    }
+
+    setModalConfigExamen(false)
+    setGenerandoExamen(true)
+    setProgresoGeneracion(0)
+    setMensajeProgreso('Preparando generación...')
+    
+    // Crear nuevo AbortController para esta generación
+    const controller = new AbortController()
+    setAbortController(controller)
+    setMensaje(null)
+    
+    // Generar ID de sesión único
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    setSessionIdGeneracion(sessionId)
+    
+    // Conectar al stream de progreso SSE
+    const eventSource = new EventSource(`${API_URL}/api/progreso-examen/${sessionId}`)
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        setProgresoGeneracion(data.progreso)
+        setMensajeProgreso(data.mensaje)
+        
+        if (data.completado) {
+          eventSource.close()
+          if (data.error) {
+            console.error('Error en generación:', data.error)
+          }
+        }
+      } catch (error) {
+        console.error('Error parseando evento SSE:', error)
+      }
+    }
+    
+    eventSource.onerror = (error) => {
+      console.error('Error en EventSource:', error)
+      eventSource.close()
+    }
+    
+    try {
+      // Leer contenido solo de los archivos seleccionados
+      setProgresoGeneracion(5)
+      setMensajeProgreso('Leyendo archivos seleccionados...')
       let contenidoCompleto = ''
-      for (const doc of data.documentos) {
+      
+      console.log('📚 Cargando archivos para el examen:')
+      console.log(`   Total de archivos seleccionados: ${archivosSeleccionados.length}`)
+      
+      for (const rutaArchivo of archivosSeleccionados) {
         try {
-          const respDoc = await fetch(`http://localhost:8000/api/documentos/contenido?ruta=${encodeURIComponent(doc.ruta)}`)
+          const archivo = archivosDisponibles.find(a => a.ruta === rutaArchivo)
+          console.log(`   📄 Cargando: ${archivo?.nombre || rutaArchivo}`)
+          
+          const respDoc = await fetch(`${API_URL}/api/documentos/contenido?ruta=${encodeURIComponent(rutaArchivo)}`, {
+            signal: controller.signal
+          })
           const dataDoc = await respDoc.json()
-          contenidoCompleto += `\n\n=== ${doc.nombre} ===\n${dataDoc.contenido}\n`
+          
+          console.log(`      ✓ Cargado: ${dataDoc.contenido?.length || 0} caracteres`)
+          contenidoCompleto += `\n\n=== ${archivo?.nombre || 'Documento'} ===\n${dataDoc.contenido}\n`
         } catch (error) {
-          console.error(`Error leyendo ${doc.nombre}:`, error)
+          if (error.name === 'AbortError') {
+            eventSource.close()
+            throw error
+          }
+          console.error(`      ✗ Error leyendo archivo:`, error)
         }
       }
       
+      console.log(`✅ Total de contenido cargado: ${contenidoCompleto.length} caracteres`)
+      
       if (!contenidoCompleto.trim()) {
+        eventSource.close()
         setMensaje({
           tipo: 'error',
           texto: '❌ No se pudo leer el contenido de los documentos'
         })
+        setGenerandoExamen(false)
         return
       }
       
+      // Logging de configuración
+      console.log('⚙️ Configuración de generación:')
+      console.log(`   Prompt personalizado: ${promptPersonalizado ? 'SÍ (' + promptPersonalizado.length + ' caracteres)' : 'NO'}`)
+      console.log(`   Prompt sistema: ${promptSistema ? 'SÍ (' + promptSistema.length + ' caracteres)' : 'NO'}`)
+      console.log(`   Preguntas: ${configExamen.num_multiple} múltiple, ${configExamen.num_corta} corta, ${configExamen.num_desarrollo} desarrollo`)
+      
       // Generar examen con la IA
-      const respExamen = await fetch('http://localhost:8000/api/generar-examen', {
+      const respExamen = await fetch(`${API_URL}/api/generar-examen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contenido: contenidoCompleto,
+          prompt_personalizado: promptPersonalizado,
+          prompt_sistema: promptSistema || null,  // Enviar el prompt del sistema si existe
           num_multiple: configExamen.num_multiple,
           num_corta: configExamen.num_corta,
-          num_desarrollo: configExamen.num_desarrollo
-        })
+          num_desarrollo: configExamen.num_desarrollo,
+          session_id: sessionId
+        }),
+        signal: controller.signal
       })
       
       const dataExamen = await respExamen.json()
@@ -1459,7 +1811,7 @@ function App() {
       if (dataExamen.success) {
         setPreguntasExamen(dataExamen.preguntas)
         setExamenActivo(true)
-        setCarpetaExamen(carpeta)
+        setCarpetaExamen(carpetaConfigExamen)
         setRespuestasUsuario({})
         setResultadoExamen(null)
         setModalExamenAbierto(true)
@@ -1471,14 +1823,148 @@ function App() {
         throw new Error(dataExamen.message || 'Error al generar examen')
       }
     } catch (error) {
-      console.error('Error generando examen:', error)
-      setMensaje({
-        tipo: 'error',
-        texto: '❌ Error al generar el examen: ' + error.message
-      })
+      eventSource.close()
+      if (error.name === 'AbortError') {
+        console.log('⏹️ Generación de examen cancelada')
+        setMensaje({
+          tipo: 'info',
+          texto: '⏹️ Generación de examen cancelada'
+        })
+      } else {
+        console.error('Error generando examen:', error)
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error al generar el examen: ' + error.message
+        })
+      }
     } finally {
       setGenerandoExamen(false)
+      setAbortController(null)
+      setProgresoGeneracion(0)
+      setMensajeProgreso('')
+      setSessionIdGeneracion(null)
     }
+  }
+
+  const cancelarGeneracionExamen = () => {
+    if (abortController) {
+      abortController.abort()
+      console.log('🛑 Cancelando generación de examen...')
+    }
+  }
+
+  const guardarPromptSistema = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/prompt-personalizado`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptSistema })
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Prompt guardado exitosamente'
+        })
+      }
+    } catch (error) {
+      console.error('Error guardando prompt:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al guardar el prompt'
+      })
+    }
+  }
+
+  const cargarPromptPredeterminado = async () => {
+    // Cargar directamente el template por defecto sin depender del servidor
+    const templateDefault = `Eres un profesor universitario experto. Tu trabajo es crear preguntas de examen QUE EVALÚEN DIRECTAMENTE EL CONTENIDO del material proporcionado.
+
+⚠️ CRÍTICO: Todas las preguntas DEBEN estar basadas en información ESPECÍFICA del documento. NO inventes conceptos que no aparecen en el texto.
+
+CONTENIDO DEL MATERIAL DE ESTUDIO:
+{contenido}
+
+OBJETIVO: Crear preguntas que evalúen si el estudiante LEYÓ Y COMPRENDIÓ el material proporcionado.
+
+⚠️ REGLAS ABSOLUTAS:
+1. Cada pregunta debe referirse a INFORMACIÓN ESPECÍFICA que aparece en el documento
+2. Menciona conceptos, nombres, términos o ideas QUE ESTÁN EN EL TEXTO
+3. NO inventes preguntas sobre temas generales
+4. Las respuestas correctas deben estar JUSTIFICADAS por el contenido del documento
+
+INSTRUCCIONES ESTRICTAS:
+Genera EXACTAMENTE {total_preguntas} preguntas siguiendo esta distribución:
+- {num_multiple} preguntas de opción múltiple
+- {num_corta} preguntas de respuesta corta
+- {num_desarrollo} preguntas de desarrollo
+
+CRITERIOS DE CALIDAD OBLIGATORIOS:
+
+1. PREGUNTAS DE OPCIÓN MÚLTIPLE (tipo: "multiple"):
+   - Deben evaluar COMPRENSIÓN, no solo memoria
+   - Incluir casos prácticos o escenarios reales
+   - Opciones incorrectas deben ser plausibles pero claramente erróneas
+   - Evitar preguntas triviales tipo "¿Qué es...?"
+   - Formato de respuesta: Solo la letra (A, B, C o D)
+   - Valor: 3 puntos cada una
+
+2. PREGUNTAS DE RESPUESTA CORTA (tipo: "corta"):
+   - Pedir EXPLICACIONES de conceptos clave
+   - Solicitar COMPARACIONES entre ideas
+   - Preguntar CÓMO aplicar el conocimiento
+   - Requieren 2-4 oraciones de respuesta
+   - La respuesta_correcta debe ser una guía detallada de lo que se espera
+   - Valor: 4 puntos cada una
+
+3. PREGUNTAS DE DESARROLLO (tipo: "desarrollo"):
+   - Requieren ANÁLISIS PROFUNDO y ARGUMENTACIÓN
+   - Deben conectar múltiples conceptos del material
+   - Pedir ejemplos, aplicaciones o críticas fundamentadas
+   - La respuesta_correcta debe listar criterios de evaluación específicos
+   - Valor: 6 puntos cada una
+
+FORMATO DE RESPUESTA (JSON ESTRICTO - sin comentarios):
+{
+  "preguntas": [
+    {
+      "tipo": "multiple",
+      "pregunta": "[Pregunta práctica sobre aplicación del concepto]",
+      "opciones": ["A) [Opción plausible pero incorrecta]", "B) [Respuesta correcta bien justificada]", "C) [Error conceptual común]", "D) [Otro error plausible]"],
+      "respuesta_correcta": "B",
+      "puntos": 3
+    },
+    {
+      "tipo": "corta",
+      "pregunta": "[Pregunta que requiere explicación clara]",
+      "respuesta_correcta": "Debe explicar: [punto 1], mencionar [punto 2], y ejemplificar con [punto 3]",
+      "puntos": 4
+    },
+    {
+      "tipo": "desarrollo",
+      "pregunta": "[Pregunta que requiere análisis profundo]",
+      "respuesta_correcta": "Criterios: 1) Identifica los conceptos clave [específicos], 2) Analiza la relación entre ellos, 3) Proporciona ejemplos concretos, 4) Argumenta conclusiones lógicas",
+      "puntos": 6
+    }
+  ]
+}
+
+IMPORTANTE: 
+- Responde SOLO con el JSON válido
+- NO agregues texto antes o después del JSON
+- Asegúrate que las preguntas cubran TODO el contenido importante
+- Las preguntas deben ser DESAFIANTES pero JUSTAS
+- Enfócate en comprensión y aplicación, NO en memorización
+
+JSON:`
+    
+    setPromptSistema(templateDefault)
+    setMensaje({
+      tipo: 'success',
+      texto: '✅ Prompt predeterminado cargado'
+    })
   }
   
   // Actualizar respuesta del usuario
@@ -1498,7 +1984,7 @@ function App() {
   // Guardar examen en archivo local (a través del servidor)
   const guardarExamenLocal = async (respuestas = respuestasUsuario) => {
     try {
-      await fetch('http://localhost:8000/api/examenes/guardar-temporal', {
+      await fetch(`${API_URL}/api/examenes/guardar-temporal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1517,7 +2003,7 @@ function App() {
   // Cargar examen desde archivo local
   const cargarExamenLocal = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/examenes/cargar-temporal')
+      const response = await fetch(`${API_URL}/api/examenes/cargar-temporal`)
       const data = await response.json()
       
       if (data.success && data.examen) {
@@ -1542,7 +2028,7 @@ function App() {
   // Limpiar examen local
   const limpiarExamenLocal = async () => {
     try {
-      await fetch('http://localhost:8000/api/examenes/limpiar-temporal', {
+      await fetch(`${API_URL}/api/examenes/limpiar-temporal`, {
         method: 'DELETE'
       })
     } catch (error) {
@@ -1676,7 +2162,7 @@ function App() {
     setGenerandoExamen(true)
     
     try {
-      const response = await fetch('http://localhost:8000/api/evaluar-examen', {
+      const response = await fetch(`${API_URL}/api/evaluar-examen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1697,6 +2183,8 @@ function App() {
         })
         // Recargar lista de exámenes guardados
         cargarExamenesGuardados()
+        // Recargar carpetas de exámenes para actualizar contadores
+        cargarCarpetasExamenes(rutaActualExamenes)
       } else {
         throw new Error(data.message || 'Error al evaluar')
       }
@@ -1716,7 +2204,7 @@ function App() {
     if (!carpetaExamen || preguntasExamen.length === 0) return
     
     try {
-      const response = await fetch('http://localhost:8000/api/examenes/pausar', {
+      const response = await fetch(`${API_URL}/api/examenes/pausar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1774,6 +2262,36 @@ function App() {
     setModalListaExamenes(false)
   }
   
+  // Reintentar examen completado
+  const reintentarExamen = (examen) => {
+    // Cargar las preguntas del examen
+    setPreguntasExamen(examen.resultados.map((r, idx) => ({
+      pregunta: r.pregunta,
+      tipo: r.tipo,
+      opciones: r.opciones || [],
+      respuesta_correcta: r.respuesta_correcta,
+      puntos: r.puntos_maximos
+    })))
+    
+    // Configurar la carpeta
+    setCarpetaExamen({
+      ruta: examen.carpeta_ruta,
+      nombre: examen.carpeta_nombre
+    })
+    
+    // Limpiar respuestas y abrir modal
+    setRespuestasUsuario({})
+    setResultadoExamen(null)
+    setExamenActivo(true)
+    setModalExamenAbierto(true)
+    setViendoExamen(null)
+    
+    setMensaje({
+      tipo: 'info',
+      texto: '🔄 Reintentando examen. ¡Buena suerte!'
+    })
+  }
+  
   // Cerrar examen
   const cerrarExamen = () => {
     detenerReconocimientoVoz() // Detener reconocimiento de voz
@@ -1794,59 +2312,109 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* Botón menú móvil */}
+      <button 
+        className="mobile-menu-btn"
+        onClick={() => setMenuMovilAbierto(!menuMovilAbierto)}
+        aria-label="Menú"
+      >
+        <span className="icon">{menuMovilAbierto ? '✕' : '☰'}</span>
+      </button>
+
+      {/* Overlay para cerrar menú */}
+      <div 
+        className={`sidebar-overlay ${menuMovilAbierto ? 'show' : ''}`}
+        onClick={() => setMenuMovilAbierto(false)}
+      />
+
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${menuMovilAbierto ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h2>📝 Examinator</h2>
         </div>
         <nav className="sidebar-nav">
           <button 
             className={`nav-item ${selectedMenu === 'inicio' ? 'active' : ''}`}
-            onClick={() => setSelectedMenu('inicio')}
+            onClick={() => { 
+              setSelectedMenu('inicio'); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">🏠</span>
-            Inicio
+            <span>Inicio</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'cursos' ? 'active' : ''}`}
-            onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
+            onClick={() => { 
+              setSelectedMenu('cursos'); 
+              cargarCarpeta(''); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">📚</span>
-            Mis Cursos
+            <span>Mis Cursos</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'generar' ? 'active' : ''}`}
-            onClick={() => setSelectedMenu('generar')}
+            onClick={() => { 
+              setSelectedMenu('generar'); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">✨</span>
-            Generar Examen
+            <span>Examenes</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'historial' ? 'active' : ''}`}
-            onClick={() => setSelectedMenu('historial')}
+            onClick={() => { 
+              setSelectedMenu('historial'); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">📋</span>
-            Historial
+            <span>Historial</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'chat' ? 'active' : ''}`}
-            onClick={() => setSelectedMenu('chat')}
+            onClick={() => { 
+              setSelectedMenu('chat'); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">💬</span>
-            Chat con IA
+            <span>Chat con IA</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'configuracion' ? 'active' : ''}`}
-            onClick={() => setSelectedMenu('configuracion')}
+            onClick={() => { 
+              setSelectedMenu('configuracion'); 
+              setMenuMovilAbierto(false); 
+            }}
           >
             <span className="icon">⚙️</span>
-            Configuración
+            <span>Configuración</span>
           </button>
         </nav>
       </aside>
 
       {/* Main Content */}
       <main className="main-content">
+        {/* Banner de debug para verificar la URL del API */}
+        {window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+          <div style={{
+            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            fontSize: '0.85rem',
+            fontFamily: 'monospace'
+          }}>
+            🌐 Accediendo desde: <strong>{window.location.hostname}:{window.location.port}</strong><br/>
+            🔌 API Backend: <strong>{API_URL}</strong>
+          </div>
+        )}
+        
         {mensaje && (
           <div className={`mensaje ${mensaje.tipo}`}>
             {mensaje.texto}
@@ -1982,7 +2550,27 @@ function App() {
               <div className="loading-examen">
                 <div className="spinner"></div>
                 <p>⏳ Generando examen con IA...</p>
-                <p className="hint">Esto puede tomar unos momentos</p>
+                
+                {/* Barra de progreso */}
+                <div className="progreso-container">
+                  <div className="progreso-barra">
+                    <div 
+                      className="progreso-fill" 
+                      style={{width: `${progresoGeneracion}%`}}
+                    >
+                      <span className="progreso-texto">{progresoGeneracion}%</span>
+                    </div>
+                  </div>
+                  <p className="progreso-mensaje">{mensajeProgreso}</p>
+                </div>
+                
+                <p className="hint">Esto puede tomar varios minutos dependiendo del modelo</p>
+                <button 
+                  onClick={cancelarGeneracionExamen}
+                  className="btn-cancelar-generacion"
+                >
+                  ⏹️ Cancelar Generación
+                </button>
               </div>
             ) : (
               <>
@@ -2185,120 +2773,333 @@ function App() {
 
         {selectedMenu === 'generar' && (
           <div className="content-section">
-            <h1>📝 Gestión de Exámenes</h1>
+            <h1>📝 Mis Exámenes</h1>
             
-            {/* Exámenes en Progreso */}
-            <div className="examenes-section">
-              <h2>⏳ Por Completar ({examenesGuardados.enProgreso.length})</h2>
-              {examenesGuardados.enProgreso.length === 0 ? (
-                <div className="no-data">
-                  <p>No tienes exámenes pausados</p>
-                </div>
-              ) : (
-                <div className="examenes-grid">
-                  {examenesGuardados.enProgreso.map((examen, idx) => (
-                    <div key={idx} className="examen-card en-progreso">
-                      <div className="examen-card-header">
-                        <h3>📁 {examen.carpeta_nombre}</h3>
-                        <span className="badge badge-warning">En Progreso</span>
-                      </div>
-                      <div className="examen-card-body">
-                        <p className="examen-fecha">
-                          Iniciado: {new Date(examen.fecha_inicio).toLocaleString('es-ES')}
-                        </p>
-                        <p className="examen-info">
-                          {examen.preguntas.length} preguntas • {Object.keys(examen.respuestas || {}).length} respondidas
-                        </p>
-                        <div className="examen-progreso">
-                          <div className="progreso-bar">
-                            <div 
-                              className="progreso-fill"
-                              style={{
-                                width: `${(Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100}%`
-                              }}
-                            ></div>
-                          </div>
-                          <span className="progreso-texto">
-                            {Math.round((Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100)}% completado
-                          </span>
-                        </div>
-                      </div>
-                      <div className="examen-card-actions">
-                        <button 
-                          className="btn-continuar"
-                          onClick={() => continuarExamen(examen)}
-                        >
-                          ▶️ Continuar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Navegación de ruta */}
+            <div className="ruta-navegacion">
+              <button 
+                className="btn-ruta"
+                onClick={() => cargarCarpetasExamenes('')}
+              >
+                🏠 Exámenes
+              </button>
+              {rutaActualExamenes && rutaActualExamenes.split(/[/\\]/).map((parte, idx, arr) => {
+                const rutaParcial = arr.slice(0, idx + 1).join('/')
+                return (
+                  <span key={idx}>
+                    <span className="separador-ruta"> › </span>
+                    <button 
+                      className="btn-ruta"
+                      onClick={() => cargarCarpetasExamenes(rutaParcial)}
+                    >
+                      {parte}
+                    </button>
+                  </span>
+                )
+              })}
             </div>
 
-            {/* Exámenes Completados */}
-            <div className="examenes-section">
-              <h2>✅ Completados ({examenesGuardados.completados.length})</h2>
-              {examenesGuardados.completados.length === 0 ? (
-                <div className="no-data">
-                  <p>No tienes exámenes completados</p>
-                  <p className="hint">Ve a Cursos y genera tu primer examen desde una carpeta</p>
-                </div>
-              ) : (
-                <div className="examenes-grid">
-                  {examenesGuardados.completados.map((examen, idx) => (
-                    <div key={idx} className="examen-card completado">
-                      <div className="examen-card-header">
-                        <h3>📁 {examen.carpeta_nombre}</h3>
-                        <span 
-                          className={`badge ${
-                            examen.porcentaje >= 70 ? 'badge-success' : 
-                            examen.porcentaje >= 50 ? 'badge-warning' : 
-                            'badge-danger'
-                          }`}
-                        >
-                          {examen.porcentaje.toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="examen-card-body">
-                        <p className="examen-fecha">
-                          Completado: {new Date(examen.fecha_completado).toLocaleString('es-ES')}
-                        </p>
-                        <div className="examen-resultado">
-                          <div className="resultado-item">
-                            <span className="resultado-label">Puntuación:</span>
-                            <span className="resultado-valor">
-                              {examen.puntos_obtenidos} / {examen.puntos_totales}
-                            </span>
+            {loading ? (
+              <div className="loading">Cargando exámenes...</div>
+            ) : (
+              <>
+                {/* Exámenes en Progreso GLOBALES (solo en raíz) */}
+                {!rutaActualExamenes && examenesProgresoGlobal.length > 0 && (
+                  <div className="examenes-section">
+                    <h2>⏳ Exámenes Pendientes ({examenesProgresoGlobal.length})</h2>
+                    <p className="section-hint">Todos tus exámenes sin completar de todas las carpetas</p>
+                    <div className="examenes-grid">
+                      {examenesProgresoGlobal.map((examen, idx) => (
+                        <div key={idx} className="examen-card en-progreso">
+                          <div className="examen-card-header">
+                            <h3>📝 {examen.carpeta_nombre}</h3>
+                            <div className="header-badges">
+                              <span className="badge badge-warning">En Progreso</span>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `examen-progreso-global-${idx}` ? null : `examen-progreso-global-${idx}`);
+                                }}
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `examen-progreso-global-${idx}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    eliminarExamen(examen, 'progreso');
+                                  }} className="btn-menu-eliminar">
+                                    🗑️ Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="resultado-item">
-                            <span className="resultado-label">Estado:</span>
-                            <span className={`resultado-estado ${
-                              examen.porcentaje >= 70 ? 'aprobado' : 
-                              examen.porcentaje >= 50 ? 'regular' : 
-                              'reprobado'
-                            }`}>
-                              {examen.porcentaje >= 70 ? '✅ Aprobado' : 
-                               examen.porcentaje >= 50 ? '⚠️ Regular' : 
-                               '❌ Reprobado'}
-                            </span>
+                          <div className="examen-card-body">
+                            <p className="examen-fecha">
+                              Iniciado: {new Date(examen.fecha_inicio).toLocaleString('es-ES')}
+                            </p>
+                            <p className="examen-info">
+                              {examen.preguntas.length} preguntas • {Object.keys(examen.respuestas || {}).length} respondidas
+                            </p>
+                            <div className="examen-progreso">
+                              <div className="progreso-bar">
+                                <div 
+                                  className="progreso-fill"
+                                  style={{
+                                    width: `${(Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100}%`
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="progreso-texto">
+                                {Math.round((Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100)}% completado
+                              </span>
+                            </div>
+                          </div>
+                          <div className="examen-card-actions">
+                            <button 
+                              className="btn-continuar"
+                              onClick={() => continuarExamen(examen)}
+                            >
+                              ▶️ Continuar
+                            </button>
                           </div>
                         </div>
-                      </div>
-                      <div className="examen-card-actions">
-                        <button 
-                          className="btn-ver-resultado"
-                          onClick={() => verResultadoExamen(examen)}
-                        >
-                          👁️ Ver Detalles
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+
+                {/* Carpetas */}
+                {carpetasExamenes.length > 0 && (
+                  <div className="carpetas-section">
+                    <h2>📁 Carpetas</h2>
+                    <div className="carpetas-grid">
+                      {carpetasExamenes.map((carpeta, idx) => (
+                        <div 
+                          key={idx}
+                          className="carpeta-card"
+                        >
+                          <div 
+                            className="carpeta-card-clickable"
+                            onClick={() => cargarCarpetasExamenes(carpeta.ruta)}
+                          >
+                            <div className="carpeta-card-icon">📁</div>
+                            <div className="carpeta-card-content">
+                              <h4>{carpeta.nombre}</h4>
+                              {carpeta.total_examenes > 0 ? (
+                                <p className="carpeta-stats">
+                                  {carpeta.num_completados > 0 && (
+                                    <span className="stat-badge completado">
+                                      ✅ {carpeta.num_completados}
+                                    </span>
+                                  )}
+                                  {carpeta.num_progreso > 0 && (
+                                    <span className="stat-badge progreso">
+                                      ⏳ {carpeta.num_progreso}
+                                    </span>
+                                  )}
+                                </p>
+                              ) : (
+                                <p className="carpeta-stats">
+                                  <span className="stat-badge vacio">Sin exámenes</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="carpeta-menu">
+                            <button 
+                              className="btn-menu-dots"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuAbierto(menuAbierto === `carpeta-examen-${idx}` ? null : `carpeta-examen-${idx}`);
+                              }}
+                            >
+                              ⋮
+                            </button>
+                            {menuAbierto === `carpeta-examen-${idx}` && (
+                              <div className="menu-dropdown">
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  eliminarCarpetaExamenes(carpeta.ruta, carpeta.nombre);
+                                }} className="btn-menu-eliminar">
+                                  🗑️ Eliminar
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Exámenes en Progreso en esta carpeta */}
+                {examenesProgreso.length > 0 && (
+                  <div className="examenes-section">
+                    <h2>⏳ Por Completar ({examenesProgreso.length})</h2>
+                    <div className="examenes-grid">
+                      {examenesProgreso.map((examen, idx) => (
+                        <div key={idx} className="examen-card en-progreso">
+                          <div className="examen-card-header">
+                            <h3>📝 {examen.carpeta_nombre}</h3>
+                            <div className="header-badges">
+                              <span className="badge badge-warning">En Progreso</span>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `examen-progreso-${idx}` ? null : `examen-progreso-${idx}`);
+                                }}
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `examen-progreso-${idx}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    eliminarExamen(examen, 'progreso');
+                                  }} className="btn-menu-eliminar">
+                                    🗑️ Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="examen-card-body">
+                            <p className="examen-fecha">
+                              Iniciado: {new Date(examen.fecha_inicio).toLocaleString('es-ES')}
+                            </p>
+                            <p className="examen-info">
+                              {examen.preguntas.length} preguntas • {Object.keys(examen.respuestas || {}).length} respondidas
+                            </p>
+                            <div className="examen-progreso">
+                              <div className="progreso-bar">
+                                <div 
+                                  className="progreso-fill"
+                                  style={{
+                                    width: `${(Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100}%`
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="progreso-texto">
+                                {Math.round((Object.keys(examen.respuestas || {}).length / examen.preguntas.length) * 100)}% completado
+                              </span>
+                            </div>
+                          </div>
+                          <div className="examen-card-actions">
+                            <button 
+                              className="btn-continuar"
+                              onClick={() => continuarExamen(examen)}
+                            >
+                              ▶️ Continuar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Exámenes Completados en esta carpeta */}
+                {examenesCompletados.length > 0 && (
+                  <div className="examenes-section">
+                    <h2>✅ Completados ({examenesCompletados.length})</h2>
+                    <div className="examenes-grid">
+                      {examenesCompletados.map((examen, idx) => (
+                        <div key={idx} className="examen-card completado">
+                          <div className="examen-card-header">
+                            <h3>📝 {examen.carpeta_nombre}</h3>
+                            <div className="header-badges">
+                              <span 
+                                className={`badge ${
+                                  examen.porcentaje >= 70 ? 'badge-success' : 
+                                  examen.porcentaje >= 50 ? 'badge-warning' : 
+                                  'badge-danger'
+                                }`}
+                              >
+                                {examen.porcentaje.toFixed(1)}%
+                              </span>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `examen-completado-${idx}` ? null : `examen-completado-${idx}`);
+                                }}
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `examen-completado-${idx}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    eliminarExamen(examen, 'completado');
+                                  }} className="btn-menu-eliminar">
+                                    🗑️ Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="examen-card-body">
+                            <p className="examen-fecha">
+                              Completado: {new Date(examen.fecha_completado).toLocaleString('es-ES')}
+                            </p>
+                            <div className="examen-resultado">
+                              <div className="resultado-item">
+                                <span className="resultado-label">Puntuación:</span>
+                                <span className="resultado-valor">
+                                  {examen.puntos_obtenidos} / {examen.puntos_totales}
+                                </span>
+                              </div>
+                              <div className="resultado-item">
+                                <span className="resultado-label">Estado:</span>
+                                <span className={`resultado-estado ${
+                                  examen.porcentaje >= 70 ? 'aprobado' : 
+                                  examen.porcentaje >= 50 ? 'regular' : 
+                                  'reprobado'
+                                }`}>
+                                  {examen.porcentaje >= 70 ? '✅ Aprobado' : 
+                                   examen.porcentaje >= 50 ? '⚠️ Regular' : 
+                                   '❌ Reprobado'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="examen-card-actions">
+                            <button 
+                              className="btn-ver-resultado"
+                              onClick={() => verResultadoExamen(examen)}
+                            >
+                              👁️ Ver Detalles
+                            </button>
+                            <button 
+                              className="btn-reintentar"
+                              onClick={() => reintentarExamen(examen)}
+                            >
+                              🔄 Reintentar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Mensaje cuando no hay nada */}
+                {carpetasExamenes.length === 0 && examenesCompletados.length === 0 && examenesProgreso.length === 0 && (
+                  <div className="no-data">
+                    <p>📭 No hay exámenes en esta carpeta</p>
+                    <p className="hint">Ve a Cursos y genera un examen desde una carpeta</p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -2351,10 +3152,19 @@ function App() {
               </div>
             )}
 
-            {!configuracion?.modelo_path ? (
+            {!configuracion?.modelo_path || !configuracion?.modelo_activo ? (
               <div className="no-data">
-                <p>⚠️ No hay modelo configurado</p>
-                <p>Ve a Configuración y selecciona un modelo para comenzar a chatear</p>
+                {!configuracion?.modelo_path ? (
+                  <>
+                    <p>⚠️ No hay modelo configurado</p>
+                    <p>Ve a Configuración y selecciona un modelo para comenzar a chatear</p>
+                  </>
+                ) : (
+                  <>
+                    <p>⚠️ El modelo está configurado pero no cargado</p>
+                    <p>Recarga la página o reinicia el servidor para cargar el modelo</p>
+                  </>
+                )}
                 <button 
                   className="btn-primary"
                   onClick={() => setSelectedMenu('configuracion')}
@@ -2565,6 +3375,21 @@ function App() {
                       <div className="modelo-actual-info">
                         <h3>✅ Modelo configurado</h3>
                         <p className="modelo-nombre">{configuracion.modelo_path.split('\\').pop().split('/').pop()}</p>
+                        {configuracion.modelo_cargado && (
+                          <p className="modelo-estado">
+                            {configuracion.modelo_activo ? (
+                              <span className="estado-activo">🟢 Activo en memoria</span>
+                            ) : (
+                              <span className="estado-inactivo">⚪ No cargado</span>
+                            )}
+                          </p>
+                        )}
+                        {configuracion.modelo_cargado && configuracion.modelo_cargado !== configuracion.modelo_path && (
+                          <p className="modelo-advertencia">
+                            ⚠️ El modelo en memoria es diferente al configurado. 
+                            Genera un examen para aplicar el cambio.
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -2577,58 +3402,362 @@ function App() {
                   )}
                 </div>
 
-                {/* Modelos disponibles */}
+                {/* Motor de IA (GPU/CPU) */}
                 <div className="config-section">
-                  <h2>📂 Modelos Disponibles</h2>
-                  {modelosDisponibles.length > 0 ? (
-                    <div className="modelos-grid">
-                      {modelosDisponibles.map(modelo => (
-                        <div 
-                          key={modelo.ruta}
-                          className={`modelo-card ${modeloSeleccionado === modelo.ruta ? 'seleccionado' : ''}`}
-                          onClick={() => setModeloSeleccionado(modelo.ruta)}
-                        >
-                          <div className="modelo-header">
-                            <h3>🤖 {modelo.nombre}</h3>
-                            <span className="modelo-badge">{modelo.tamaño_modelo}</span>
-                          </div>
-                          
-                          <div className="modelo-stats">
-                            <div className="stat">
-                              <span className="stat-label">Tamaño:</span>
-                              <span className="stat-value">{modelo.tamaño_gb} GB</span>
-                            </div>
-                            <div className="stat">
-                              <span className="stat-label">Parámetros:</span>
-                              <span className="stat-value">{modelo.parametros}</span>
-                            </div>
-                            <div className="stat">
-                              <span className="stat-label">Velocidad:</span>
-                              <span className="stat-value">{modelo.velocidad}</span>
-                            </div>
-                            <div className="stat">
-                              <span className="stat-label">RAM necesaria:</span>
-                              <span className="stat-value">{modelo.ram_necesaria}</span>
-                            </div>
-                          </div>
+                  <h2>🎮 Modo de Ejecución</h2>
+                  <p className="subtitle" style={{marginBottom: '1.5rem'}}>
+                    Selecciona si quieres usar GPU o CPU
+                  </p>
 
-                          <div className="modelo-descripcion">
-                            <p><strong>Calidad:</strong> {modelo.calidad}</p>
-                            <p>{modelo.descripcion}</p>
-                          </div>
-
-                          {modeloSeleccionado === modelo.ruta && (
-                            <div className="modelo-seleccionado-badge">
-                              ✓ Seleccionado
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                  <div className="motor-selector">
+                    <div 
+                      className={`motor-opcion ${configuracion?.gpu_activa ? 'seleccionada' : ''}`}
+                      onClick={async () => {
+                        try {
+                          setLoading(true)
+                          const response = await fetch(`${API_URL}/api/motor/cambiar`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                              usar_ollama: true,
+                              modelo_ollama: configuracion?.modelo_ollama_activo || 'llama31-local',
+                              n_gpu_layers: 35
+                            })
+                          })
+                          const data = await response.json()
+                          if (data.success) {
+                            setMensaje({tipo: 'exito', texto: '✅ Modo GPU activado'})
+                            cargarConfiguracion()
+                          }
+                        } catch (error) {
+                          setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                        } finally {
+                          setLoading(false)
+                        }
+                      }}
+                    >
+                      <div className="motor-icon">🎮</div>
+                      <h3>Modo GPU</h3>
+                      <div className="motor-badge motor-badge-gpu">Recomendado</div>
+                      <p className="motor-descripcion">
+                        Usa tu tarjeta gráfica para procesar más rápido
+                      </p>
                     </div>
-                  ) : (
-                    <div className="empty-state">
-                      <p>💭 No hay modelos instalados</p>
-                      <p className="empty-hint">Descarga un modelo desde la sección de abajo</p>
+
+                    <div 
+                      className={`motor-opcion ${!configuracion?.gpu_activa ? 'seleccionada' : ''}`}
+                      onClick={async () => {
+                        if (!configuracion?.modelo_path) {
+                          setMensaje({tipo: 'error', texto: '⚠️ Primero configura un modelo GGUF abajo'})
+                          return
+                        }
+                        try {
+                          setLoading(true)
+                          const response = await fetch(`${API_URL}/api/motor/cambiar`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                              usar_ollama: false,
+                              modelo_gguf: configuracion.modelo_path,
+                              n_gpu_layers: 0
+                            })
+                          })
+                          const data = await response.json()
+                          if (data.success) {
+                            setMensaje({tipo: 'exito', texto: '✅ Modo CPU activado'})
+                            cargarConfiguracion()
+                          }
+                        } catch (error) {
+                          setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                        } finally {
+                          setLoading(false)
+                        }
+                      }}
+                    >
+                      <div className="motor-icon">💻</div>
+                      <h3>Modo CPU</h3>
+                      <div className="motor-badge motor-badge-manual">Más lento</div>
+                      <p className="motor-descripcion">
+                        Usa solo el procesador (no requiere GPU)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Estado actual */}
+                  <div className="motor-estado-actual">
+                    {configuracion?.gpu_activa ? (
+                      <div className="estado-activo">
+                        🎮 <strong>Modo activo:</strong> GPU | 
+                        🤖 <strong>Modelo:</strong> {configuracion.modelo_cargado || 'N/A'}
+                      </div>
+                    ) : (
+                      <div className="estado-activo">
+                        💻 <strong>Modo activo:</strong> CPU | 
+                        🤖 <strong>Modelo:</strong> {configuracion.modelo_cargado ? configuracion.modelo_cargado.split('\\').pop() : 'N/A'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modelos con pestañas */}
+                <div className="config-section">
+                  <h2>🤖 Gestión de Modelos</h2>
+                  
+                  {/* Pestañas */}
+                  <div className="pestanas-modelos">
+                    <button 
+                      className={`pestana-btn ${pestanaModelos === 'ollama' ? 'activa' : ''}`}
+                      onClick={() => setPestanaModelos('ollama')}
+                    >
+                      🎮 Modelos Ollama (GPU)
+                    </button>
+                    <button 
+                      className={`pestana-btn ${pestanaModelos === 'gguf' ? 'activa' : ''}`}
+                      onClick={() => setPestanaModelos('gguf')}
+                    >
+                      💻 Modelos GGUF (CPU)
+                    </button>
+                  </div>
+
+                  {/* Contenido de Ollama */}
+                  {pestanaModelos === 'ollama' && (
+                    <div className="pestana-contenido">
+                      <p className="subtitle">Modelos que usan GPU automáticamente</p>
+                      
+                      <button 
+                        onClick={async () => {
+                          try {
+                            setLoading(true)
+                            const response = await fetch(`${API_URL}/api/ollama/modelos`)
+                            const data = await response.json()
+                            if (data.success) {
+                              setModelosOllama(data.modelos)
+                              setMensaje({tipo: 'exito', texto: `✅ ${data.total} modelos encontrados`})
+                            } else {
+                              setMensaje({tipo: 'error', texto: '⚠️ ' + data.mensaje})
+                            }
+                          } catch (error) {
+                            setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                          } finally {
+                            setLoading(false)
+                          }
+                        }}
+                        className="btn-refrescar-ollama"
+                        disabled={loading}
+                      >
+                        🔄 Cargar Modelos de Ollama
+                      </button>
+
+                      {modelosOllama.length > 0 ? (
+                        <div className="modelos-ollama-grid">
+                          {modelosOllama.map(modelo => (
+                            <div 
+                              key={modelo.nombre}
+                              className={`modelo-ollama-card ${configuracion?.modelo_ollama_activo === modelo.nombre ? 'seleccionado' : ''}`}
+                            >
+                              <div className="modelo-ollama-header">
+                                <h3>🤖 {modelo.nombre}</h3>
+                                <span className="modelo-badge modelo-badge-gpu">{modelo.tipo}</span>
+                              </div>
+                              <div className="modelo-ollama-info">
+                                <div className="info-item">
+                                  <span className="info-label">Tamaño:</span>
+                                  <span className="info-value">{modelo.tamaño_gb} GB</span>
+                                </div>
+                                <div className="info-item">
+                                  <span className="info-label">Velocidad:</span>
+                                  <span className="info-value">{modelo.velocidad}</span>
+                                </div>
+                                <div className="info-item">
+                                  <span className="info-label">ID:</span>
+                                  <span className="info-value" style={{fontSize: '0.8rem'}}>{modelo.digest}</span>
+                                </div>
+                              </div>
+                              <div className="modelo-ollama-actions">
+                                <button
+                                  className="btn-activar-modelo"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    try {
+                                      setLoading(true)
+                                      const responseMotor = await fetch(`${API_URL}/api/motor/cambiar`, {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({
+                                          usar_ollama: true,
+                                          modelo_ollama: modelo.nombre,
+                                          n_gpu_layers: 35
+                                        })
+                                      })
+                                      const dataMotor = await responseMotor.json()
+                                      
+                                      if (dataMotor.success) {
+                                        setMensaje({tipo: 'exito', texto: `✅ Modelo ${modelo.nombre} activado con GPU`})
+                                        cargarConfiguracion()
+                                      }
+                                    } catch (error) {
+                                      setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                                    } finally {
+                                      setLoading(false)
+                                    }
+                                  }}
+                                  disabled={configuracion?.modelo_ollama_activo === modelo.nombre}
+                                >
+                                  {configuracion?.modelo_ollama_activo === modelo.nombre ? '✓ Activo' : '🚀 Activar'}
+                                </button>
+                                <button
+                                  className="btn-eliminar-modelo"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    if (!window.confirm(`¿Estás seguro de eliminar el modelo "${modelo.nombre}"?\n\nEsto liberará ${modelo.tamaño_gb} GB de espacio.`)) {
+                                      return
+                                    }
+                                    try {
+                                      setLoading(true)
+                                      const response = await fetch(`${API_URL}/api/ollama/modelo/${encodeURIComponent(modelo.nombre)}`, {
+                                        method: 'DELETE'
+                                      })
+                                      const data = await response.json()
+                                      
+                                      if (data.success) {
+                                        setMensaje({tipo: 'exito', texto: data.mensaje})
+                                        // Recargar lista de modelos
+                                        const responseModelos = await fetch(`${API_URL}/api/ollama/modelos`)
+                                        const dataModelos = await responseModelos.json()
+                                        if (dataModelos.success) {
+                                          setModelosOllama(dataModelos.modelos)
+                                        }
+                                      } else {
+                                        setMensaje({tipo: 'error', texto: data.mensaje})
+                                      }
+                                    } catch (error) {
+                                      setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                                    } finally {
+                                      setLoading(false)
+                                    }
+                                  }}
+                                  disabled={configuracion?.modelo_ollama_activo === modelo.nombre}
+                                  title={configuracion?.modelo_ollama_activo === modelo.nombre ? 'No puedes eliminar el modelo activo' : 'Eliminar modelo'}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">
+                          <p>📭 No hay modelos de Ollama cargados</p>
+                          <p className="empty-hint">
+                            Haz clic en "Cargar Modelos" o instala modelos con: <code>ollama pull llama3.2:3b</code>
+                          </p>
+                          <div style={{marginTop: '1rem', padding: '1rem', background: 'rgba(100, 108, 255, 0.1)', borderRadius: '8px'}}>
+                            <p style={{fontSize: '0.9rem', color: '#b0b0c0', margin: 0}}>
+                              <strong>Modelos recomendados:</strong>
+                            </p>
+                            <ul style={{fontSize: '0.85rem', color: '#999', marginTop: '0.5rem'}}>
+                              <li><code>ollama pull llama3.2:3b</code> - Rápido y ligero (2 GB)</li>
+                              <li><code>ollama pull qwen2.5:7b</code> - Excelente en español (4.4 GB)</li>
+                              <li><code>ollama pull llama3.1:8b</code> - Balance perfecto (4.9 GB)</li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Contenido de GGUF */}
+                  {pestanaModelos === 'gguf' && (
+                    <div className="pestana-contenido">
+                      <p className="subtitle">Modelos que se ejecutan en CPU</p>
+                      
+                      {modelosDisponibles.length > 0 ? (
+                        <div className="modelos-grid">
+                          {modelosDisponibles.map(modelo => (
+                            <div 
+                              key={modelo.ruta}
+                              className={`modelo-card ${modeloSeleccionado === modelo.ruta ? 'seleccionado' : ''}`}
+                              onClick={async () => {
+                                try {
+                                  setLoading(true)
+                                  setModeloSeleccionado(modelo.ruta)
+                                  
+                                  // Cambiar a modo CPU con este modelo
+                                  const response = await fetch(`${API_URL}/api/motor/cambiar`, {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({
+                                      usar_ollama: false,
+                                      modelo_gguf: modelo.ruta,
+                                      n_gpu_layers: 0
+                                    })
+                                  })
+                                  const data = await response.json()
+                                  
+                                  if (data.success) {
+                                    // Guardar configuración
+                                    await fetch(`${API_URL}/api/config`, {
+                                      method: 'POST',
+                                      headers: {'Content-Type': 'application/json'},
+                                      body: JSON.stringify({
+                                        modelo_path: modelo.ruta,
+                                        ajustes_avanzados: ajustesAvanzados
+                                      })
+                                    })
+                                    
+                                    setMensaje({tipo: 'exito', texto: `✅ Modelo ${modelo.nombre} activado en CPU`})
+                                    cargarConfiguracion()
+                                  }
+                                } catch (error) {
+                                  setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                                } finally {
+                                  setLoading(false)
+                                }
+                              }}
+                            >
+                              <div className="modelo-header">
+                                <h3>🤖 {modelo.nombre}</h3>
+                                <span className="modelo-badge modelo-badge-manual">{modelo.tamaño_modelo}</span>
+                              </div>
+                              
+                              <div className="modelo-stats">
+                                <div className="stat">
+                                  <span className="stat-label">Tamaño:</span>
+                                  <span className="stat-value">{modelo.tamaño_gb} GB</span>
+                                </div>
+                                <div className="stat">
+                                  <span className="stat-label">Parámetros:</span>
+                                  <span className="stat-value">{modelo.parametros}</span>
+                                </div>
+                                <div className="stat">
+                                  <span className="stat-label">Velocidad:</span>
+                                  <span className="stat-value">{modelo.velocidad}</span>
+                                </div>
+                                <div className="stat">
+                                  <span className="stat-label">RAM necesaria:</span>
+                                  <span className="stat-value">{modelo.ram_necesaria}</span>
+                                </div>
+                              </div>
+
+                              <div className="modelo-descripcion">
+                                <p><strong>Calidad:</strong> {modelo.calidad}</p>
+                                <p>{modelo.descripcion}</p>
+                              </div>
+
+                              {!configuracion?.gpu_activa && configuracion?.modelo_path === modelo.ruta && (
+                                <div className="modelo-seleccionado-badge">
+                                  ✓ Activo en CPU
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">
+                          <p>💭 No hay modelos GGUF instalados</p>
+                          <p className="empty-hint">Descarga modelos desde la sección de abajo</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2761,6 +3890,8 @@ function App() {
                           step="1024"
                           value={ajustesAvanzados.n_ctx}
                           onChange={(e) => setAjustesAvanzados({...ajustesAvanzados, n_ctx: parseInt(e.target.value)})}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
                           className="ajuste-slider"
                         />
                         <div className="ajuste-explicacion">
@@ -2803,6 +3934,8 @@ function App() {
                           step="0.1"
                           value={ajustesAvanzados.temperature}
                           onChange={(e) => setAjustesAvanzados({...ajustesAvanzados, temperature: parseFloat(e.target.value)})}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
                           className="ajuste-slider"
                         />
                         <div className="ajuste-explicacion">
@@ -2845,6 +3978,8 @@ function App() {
                           step="128"
                           value={ajustesAvanzados.max_tokens}
                           onChange={(e) => setAjustesAvanzados({...ajustesAvanzados, max_tokens: parseInt(e.target.value)})}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
                           className="ajuste-slider"
                         />
                         <div className="ajuste-explicacion">
@@ -2870,6 +4005,153 @@ function App() {
                           <p className="recomendacion">
                             <strong>💡 Recomendado:</strong> 512 tokens para chat normal (respuestas de 1-2 párrafos). 
                             Sube a 1024+ si necesitas generar exámenes completos o textos largos.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Top P */}
+                      <div className="ajuste-item">
+                        <div className="ajuste-header">
+                          <label>🎯 Top P (Selección de palabras)</label>
+                          <span className="ajuste-valor">{ajustesAvanzados.top_p}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0.1" 
+                          max="1.0" 
+                          step="0.05"
+                          value={ajustesAvanzados.top_p}
+                          onChange={(e) => setAjustesAvanzados({...ajustesAvanzados, top_p: parseFloat(e.target.value)})}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
+                          className="ajuste-slider"
+                        />
+                        <div className="ajuste-explicacion">
+                          <p><strong>¿Qué es?</strong> Controla qué tan diversas pueden ser las palabras que elige el modelo.</p>
+                          <div className="pros-cons">
+                            <div className="pros">
+                              <strong>✅ Top P bajo (0.5-0.7):</strong>
+                              <ul>
+                                <li>Más preciso y enfocado</li>
+                                <li>Menos errores o "alucinaciones"</li>
+                                <li>Mejor para tareas técnicas</li>
+                              </ul>
+                            </div>
+                            <div className="cons">
+                              <strong>⚠️ Top P alto (0.9-1.0):</strong>
+                              <ul>
+                                <li>Más variedad en las respuestas</li>
+                                <li>Puede ser menos predecible</li>
+                                <li>A veces genera ideas interesantes</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <p className="recomendacion">
+                            <strong>💡 Recomendado:</strong> 0.9 para la mayoría de casos. Si quieres respuestas más directas y precisas, baja a 0.7.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Repeat Penalty */}
+                      <div className="ajuste-item">
+                        <div className="ajuste-header">
+                          <label>🔁 Penalización por Repetición</label>
+                          <span className="ajuste-valor">{ajustesAvanzados.repeat_penalty}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="1.0" 
+                          max="1.5" 
+                          step="0.05"
+                          value={ajustesAvanzados.repeat_penalty}
+                          onChange={(e) => setAjustesAvanzados({...ajustesAvanzados, repeat_penalty: parseFloat(e.target.value)})}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
+                          className="ajuste-slider"
+                        />
+                        <div className="ajuste-explicacion">
+                          <p><strong>¿Qué es?</strong> Evita que el modelo repita las mismas palabras o frases constantemente.</p>
+                          <div className="pros-cons">
+                            <div className="pros">
+                              <strong>✅ Penalty bajo (1.0-1.1):</strong>
+                              <ul>
+                                <li>Más natural y fluido</li>
+                                <li>Puede usar palabras clave repetidas</li>
+                                <li>Mejor para textos técnicos</li>
+                              </ul>
+                            </div>
+                            <div className="cons">
+                              <strong>⚠️ Penalty alto (1.3-1.5):</strong>
+                              <ul>
+                                <li>Evita mucho la repetición</li>
+                                <li>Más variedad de vocabulario</li>
+                                <li>A veces usa sinónimos raros</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <p className="recomendacion">
+                            <strong>💡 Recomendado:</strong> 1.15 para la mayoría de casos. Si el modelo repite mucho, sube a 1.3.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* GPU Layers */}
+                      <div className="ajuste-item">
+                        <div className="ajuste-header">
+                          <label>🎮 Capas en GPU (Aceleración)</label>
+                          <span className="ajuste-valor">{ajustesAvanzados.n_gpu_layers === -1 ? 'Todas' : ajustesAvanzados.n_gpu_layers}</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" 
+                          max="50" 
+                          step="5"
+                          value={ajustesAvanzados.n_gpu_layers === -1 ? 50 : ajustesAvanzados.n_gpu_layers}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAjustesAvanzados({...ajustesAvanzados, n_gpu_layers: val === 50 ? -1 : val});
+                          }}
+                          onMouseUp={guardarAjustesAvanzados}
+                          onTouchEnd={guardarAjustesAvanzados}
+                          className="ajuste-slider"
+                        />
+                        <div className="ajuste-escala">
+                          <span>0 (Solo CPU)</span>
+                          <span>25</span>
+                          <span>50 (Todas)</span>
+                        </div>
+                        <div className="ajuste-explicacion">
+                          <p><strong>¿Qué es?</strong> Cuántas partes del modelo se cargan en tu tarjeta gráfica (GPU) para hacerlo más rápido.</p>
+                          <div className="pros-cons">
+                            <div className="pros">
+                              <strong>✅ Más capas en GPU (30-50):</strong>
+                              <ul>
+                                <li>⚡ Mucho más rápido</li>
+                                <li>✨ Respuestas instantáneas</li>
+                                <li>🚀 Mejor para generar exámenes</li>
+                              </ul>
+                            </div>
+                            <div className="cons">
+                              <strong>⚠️ Pocas capas (0-15):</strong>
+                              <ul>
+                                <li>🐌 Más lento</li>
+                                <li>💻 Usa CPU en lugar de GPU</li>
+                                <li>⏰ Puede tardar minutos</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <p className="recomendacion">
+                            <strong>💡 Guía según tu GPU:</strong>
+                          </p>
+                          <ul style={{fontSize: '0.9rem', marginTop: '0.5rem', color: '#999'}}>
+                            <li><strong>4GB VRAM:</strong> Usa 20-25 capas</li>
+                            <li><strong>6GB VRAM:</strong> Usa 30-35 capas</li>
+                            <li><strong>8GB+ VRAM:</strong> Usa 40-45 capas</li>
+                            <li><strong>12GB+ VRAM:</strong> Usa 50 (todas las capas)</li>
+                            <li><strong>Sin GPU o GPU débil:</strong> Usa 0 (solo CPU)</li>
+                          </ul>
+                          <p style={{fontSize: '0.85rem', color: '#ff9800', marginTop: '0.8rem'}}>
+                            ⚠️ <strong>Si tu PC se congela o da error de memoria:</strong> Baja el número de capas. Empieza con 0 y sube gradualmente.
                           </p>
                         </div>
                       </div>
@@ -3239,6 +4521,191 @@ function App() {
         </div>
       )}
 
+      {/* Modal de Configuración de Examen */}
+      {modalConfigExamen && (
+        <div className="modal-overlay" onClick={() => setModalConfigExamen(false)}>
+          {console.log('🎨 Renderizando modal de configuración')}
+          <div className="modal-content modal-config-examen" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>⚙️ Configurar Generación de Examen</h2>
+              <button onClick={() => setModalConfigExamen(false)} className="btn-close">✕</button>
+            </div>
+            
+            <div className="modal-body">
+              {/* Prompt Personalizado */}
+              <div className="config-section">
+                <label className="config-label">
+                  💬 Instrucciones Adicionales (opcional)
+                  <span className="hint-text">Agrega instrucciones específicas que se añadirán al prompt del sistema</span>
+                </label>
+                <textarea
+                  className="prompt-textarea"
+                  placeholder="Ejemplo: Enfócate en conceptos prácticos, incluye ejemplos del mundo real..."
+                  value={promptPersonalizado}
+                  onChange={(e) => setPromptPersonalizado(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              {/* Prompt del Sistema */}
+              <div className="config-section">
+                <label className="config-label">
+                  🎨 Prompt del Sistema (avanzado)
+                  <span className="hint-text">
+                    {promptSistema 
+                      ? `${promptSistema.length} caracteres cargados - Puedes editarlo libremente`
+                      : 'Esperando carga... Si no aparece, usa el botón "Cargar Predeterminado"'
+                    }
+                  </span>
+                </label>
+                <div className="prompt-sistema-container">
+                  <textarea
+                    className="prompt-textarea prompt-sistema"
+                    placeholder="Cargando prompt del sistema...&#10;&#10;Si no carga automáticamente, haz click en '🔄 Cargar Predeterminado'&#10;&#10;El prompt te permitirá personalizar completamente cómo la IA genera los exámenes."
+                    value={promptSistema}
+                    onChange={(e) => setPromptSistema(e.target.value)}
+                    rows={12}
+                  />
+                  <div className="prompt-sistema-info">
+                    <span className="prompt-info-text">
+                      Variables: {'{contenido}'}, {'{num_multiple}'}, {'{num_corta}'}, {'{num_desarrollo}'}
+                    </span>
+                  </div>
+                  <div className="prompt-sistema-acciones">
+                    <button 
+                      className="btn-cargar-template"
+                      onClick={cargarPromptPredeterminado}
+                    >
+                      🔄 Cargar Predeterminado
+                    </button>
+                    <button 
+                      className="btn-guardar-prompt"
+                      onClick={guardarPromptSistema}
+                      disabled={!promptSistema}
+                    >
+                      💾 Guardar Prompt
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Explorador de Carpetas */}
+              <div className="config-section">
+                <label className="config-label">
+                  📁 Explorar Carpetas
+                  <span className="hint-text">Navega a subcarpetas para agregar más archivos</span>
+                </label>
+                <div className="explorador-carpetas">
+                  <div className="ruta-actual">
+                    {rutaExploracion !== carpetaConfigExamen?.ruta && (
+                      <button 
+                        className="btn-volver"
+                        onClick={volverCarpetaPadre}
+                      >
+                        ⬅️ Volver
+                      </button>
+                    )}
+                    <span className="ruta-texto">📂 {rutaExploracion || 'Raíz'}</span>
+                  </div>
+                  
+                  {carpetasExploracion.length > 0 && (
+                    <div className="subcarpetas-lista">
+                      {carpetasExploracion.map((carpeta, idx) => (
+                        <button
+                          key={idx}
+                          className="subcarpeta-item"
+                          onClick={() => cargarArchivosSubcarpeta(carpeta.ruta)}
+                        >
+                          📁 {carpeta.nombre}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Lista de Archivos */}
+              <div className="config-section">
+                <label className="config-label">
+                  📄 Archivos Seleccionados ({archivosSeleccionados.length}/{archivosDisponibles.length})
+                  <span className="hint-text">Marca/desmarca los archivos que quieres incluir</span>
+                </label>
+                <div className="archivos-lista">
+                  {archivosDisponibles.map((archivo, idx) => (
+                    <label key={idx} className="archivo-item">
+                      <input
+                        type="checkbox"
+                        checked={archivosSeleccionados.includes(archivo.ruta)}
+                        onChange={() => toggleSeleccionArchivo(archivo.ruta)}
+                      />
+                      <div className="archivo-info">
+                        <span className="archivo-nombre">📄 {archivo.nombre}</span>
+                        <span className="archivo-detalles">{archivo.tamaño_kb} KB</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Configuración de Preguntas */}
+              <div className="config-section">
+                <label className="config-label">
+                  📋 Cantidad de Preguntas
+                </label>
+                <div className="config-preguntas">
+                  <div className="config-item">
+                    <label>Opción Múltiple:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={configExamen.num_multiple}
+                      onChange={(e) => setConfigExamen({...configExamen, num_multiple: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Respuesta Corta:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={configExamen.num_corta}
+                      onChange={(e) => setConfigExamen({...configExamen, num_corta: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                  <div className="config-item">
+                    <label>Desarrollo:</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="20"
+                      value={configExamen.num_desarrollo}
+                      onChange={(e) => setConfigExamen({...configExamen, num_desarrollo: parseInt(e.target.value) || 0})}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn-cancelar"
+                onClick={() => setModalConfigExamen(false)}
+              >
+                ❌ Cancelar
+              </button>
+              <button 
+                className="btn-generar"
+                onClick={confirmarGeneracionExamen}
+                disabled={archivosSeleccionados.length === 0}
+              >
+                ✨ Generar Examen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Examen */}
       {modalExamenAbierto && (
         <div className="modal-overlay" onClick={cerrarExamen}>
@@ -3262,7 +4729,12 @@ function App() {
                       <div key={index} className="pregunta-card">
                         <div className="pregunta-header">
                           <span className="pregunta-numero">Pregunta {index + 1}</span>
-                          <span className="pregunta-tipo">{pregunta.tipo === 'multiple' ? '📋 Selección' : pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : '📖 Desarrollo'}</span>
+                          <span className="pregunta-tipo">{
+                            pregunta.tipo === 'multiple' ? '📋 Selección' : 
+                            pregunta.tipo === 'verdadero_falso' ? '✓✗ Verdadero/Falso' :
+                            pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : 
+                            '📖 Desarrollo'
+                          }</span>
                           <span className="pregunta-puntos">{pregunta.puntos} pts</span>
                         </div>
                         
@@ -3271,18 +4743,50 @@ function App() {
                         {/* Respuesta según tipo */}
                         {pregunta.tipo === 'multiple' && (
                           <div className="opciones-multiple">
-                            {pregunta.opciones.map((opcion, i) => (
-                              <label key={i} className="opcion-radio">
-                                <input
-                                  type="radio"
-                                  name={`pregunta-${index}`}
-                                  value={opcion.charAt(0)}
-                                  checked={respuestasUsuario[index] === opcion.charAt(0)}
-                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                                />
-                                <span>{opcion}</span>
-                              </label>
-                            ))}
+                            {pregunta.opciones && pregunta.opciones.length > 0 ? (
+                              pregunta.opciones.map((opcion, i) => (
+                                <label key={i} className="opcion-radio">
+                                  <input
+                                    type="radio"
+                                    name={`pregunta-${index}`}
+                                    value={opcion.charAt(0)}
+                                    checked={respuestasUsuario[index] === opcion.charAt(0)}
+                                    onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                  />
+                                  <span>{opcion}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <div className="opciones-no-disponibles">
+                                ⚠️ Las opciones no están disponibles para este examen. 
+                                Solo puedes reintentar exámenes generados recientemente.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {pregunta.tipo === 'verdadero_falso' && (
+                          <div className="opciones-verdadero-falso">
+                            <label className="opcion-vf">
+                              <input
+                                type="radio"
+                                name={`pregunta-${index}`}
+                                value="verdadero"
+                                checked={respuestasUsuario[index] === 'verdadero'}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                              />
+                              <span className="texto-vf verdadero">✓ Verdadero</span>
+                            </label>
+                            <label className="opcion-vf">
+                              <input
+                                type="radio"
+                                name={`pregunta-${index}`}
+                                value="falso"
+                                checked={respuestasUsuario[index] === 'falso'}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                              />
+                              <span className="texto-vf falso">✗ Falso</span>
+                            </label>
                           </div>
                         )}
                         
@@ -3477,7 +4981,7 @@ function App() {
                       <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
                     </div>
                     
-                    {resultado.respuesta_correcta && resultado.tipo === 'multiple' && (
+                    {resultado.respuesta_correcta && (
                       <div className="resultado-respuesta-correcta">
                         <strong>Respuesta correcta:</strong>
                         <p>{resultado.respuesta_correcta}</p>

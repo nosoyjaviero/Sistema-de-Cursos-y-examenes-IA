@@ -22,11 +22,14 @@ class CursosDatabase:
             return []
         
         carpetas = []
+        # Carpetas internas que no deben mostrarse al usuario
+        carpetas_sistema = {"resultados", "examenes_progreso", "resultados_examenes"}
+        
         for item in sorted(ruta_completa.iterdir()):
-            if item.is_dir() and item.name != "resultados":
-                # Contar documentos y subcarpetas
+            if item.is_dir() and item.name not in carpetas_sistema:
+                # Contar documentos y subcarpetas (excluyendo carpetas de sistema)
                 num_documentos = len(list(item.glob("*.txt")))
-                num_subcarpetas = len([x for x in item.iterdir() if x.is_dir() and x.name != "resultados"])
+                num_subcarpetas = len([x for x in item.iterdir() if x.is_dir() and x.name not in carpetas_sistema])
                 
                 carpetas.append({
                     "nombre": item.name,
@@ -48,7 +51,8 @@ class CursosDatabase:
         
         documentos = []
         for archivo in sorted(ruta_completa.glob("*.txt")):
-            if archivo.parent.name == "resultados":
+            # Excluir carpetas especiales y archivos de sistema
+            if archivo.parent.name in ["resultados", "examenes_progreso"]:
                 continue
             
             stat = archivo.stat()

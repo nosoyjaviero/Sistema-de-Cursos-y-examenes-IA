@@ -6,6 +6,7 @@ from typing import List
 import argparse
 import sys
 from generador_examenes import GeneradorExamenes, PreguntaExamen, guardar_examen, cargar_examen
+from generador_unificado import GeneradorUnificado
 
 
 def limpiar_pantalla():
@@ -188,8 +189,14 @@ def main():
     
     print(f"Documento cargado: {len(contenido)} caracteres")
     
-    # Inicializar generador
-    generador = GeneradorExamenes(modelo_path=args.modelo)
+    # Inicializar generador con Ollama (GPU automática)
+    print("🚀 Usando Ollama con GPU...")
+    generador = GeneradorUnificado(
+        usar_ollama=True,
+        modelo_ollama="llama31-local",  # Puedes cambiar a: llama32-local, qwen-local, deepseek-r1-local
+        modelo_path_gguf=args.modelo,
+        n_gpu_layers=35
+    )
     
     # Generar o cargar examen
     if args.cargar_examen:

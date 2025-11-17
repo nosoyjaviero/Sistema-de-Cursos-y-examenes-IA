@@ -1,0 +1,78 @@
+{
+  "preguntas": [
+    {
+      "pregunta": "¿Qué define el arte como un sustantivo, según la explicación de la clase?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Arte es una forma de autoexpresión",
+        "B) Arte busca resolver problemas prácticos",
+        "C) Arte se entiende como un concepto",
+        "D) Arte es una técnica"
+      ],
+      "respuesta_correcta": "A",
+      "puntos": 3
+    },
+    {
+      "pregunta": "El diseño se trata solo de comunicar la funcionalidad de un objeto.",
+      "tipo": "verdadero_falso",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 2
+    },
+    {
+      "pregunta": "¿Qué diferencia hay entre el arte y el diseño según la clase?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 3
+    },
+    {
+      "pregunta": "Explica cómo la forma moldea el contenido según los principios de la clase en relación con arte vs. diseño.",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 5
+    },
+    {
+      "pregunta": "¿En qué año se centró HCI principalmente en crear sistemas que fueran fáciles de aprender y usar?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) 1980",
+        "B) 1990",
+        "C) 2000",
+        "D) 2010"
+      ],
+      "respuesta_correcta": "B",
+      "puntos": 3
+    },
+    {
+      "pregunta": "El diseño de producto resuelve problemas y hace que el producto sea agradable de usar para el consumidor.",
+      "tipo": "verdadero_falso",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 2
+    },
+    {
+      "pregunta": "¿Qué destacó desde mediados de los 2000 hasta 2010 en HCI?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 3
+    },
+    {
+      "pregunta": "Explica cómo el diseño basado en valores tomó la delantera desde mediados de los 2000 hasta 2010, según la clase.",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_correcta": null,
+      "puntos": 5
+    }
+  ],
+  "respuestas": {
+    "7": "Ggghgg"
+  },
+  "carpeta": {
+    "ruta": "Platzi\\Diseño de Producto y UX\\Ruta 1 Fundamentos de Diseño UX UI\\Curso de Fundamentos de Diseño de Interfaces UX UI\\1 Intro\\ 4 Historia y Evolución del Diseño Gráfico e Industrial",
+    "nombre": " 4 Historia y Evolución del Diseño Gráfico e Industrial"
+  },
+  "fecha_guardado": "2025-11-17T11:31:16.676718"
+}

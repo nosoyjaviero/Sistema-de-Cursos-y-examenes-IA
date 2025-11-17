@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test de Conexión - Examinator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #0a0a0a;
+            color: white;
+        }
+        .test-box {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 15px 0;
+            border: 1px solid #2a2a3e;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .success { background: #10b981; color: white; }
+        .error { background: #ef4444; color: white; }
+        .info { background: #3b82f6; color: white; }
+        .loading { background: #f59e0b; color: white; }
+        button {
+            background: linear-gradient(135deg, #646cff 0%, #535bf2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin: 10px 0;
+        }
+        button:active {
+            transform: scale(0.98);
+        }
+        pre {
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        h1 { color: #646cff; }
+        h2 { color: #a0a0b0; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test de Conexión - Examinator</h1>
+    
+    <div class="test-box">
+        <h2>📍 Información de Red</h2>
+        <div id="info" class="status info">Cargando...</div>
+    </div>
+
+    <div class="test-box">
+        <h2>🔌 Test de Backend API</h2>
+        <button onclick="testBackend()">Probar Conexión al Backend</button>
+        <div id="backend-status"></div>
+        <pre id="backend-response" style="display:none;"></pre>
+    </div>
+
+    <div class="test-box">
+        <h2>📋 Instrucciones</h2>
+        <div style="color: #a0a0b0; font-size: 14px;">
+            <p>1. Este test verifica la conexión entre tu dispositivo y el servidor</p>
+            <p>2. Haz clic en "Probar Conexión al Backend" para verificar</p>
+            <p>3. Si ves "✅ Conexión exitosa", todo está funcionando</p>
+            <p>4. Si ves "❌ Error", verifica el firewall de Windows</p>
+        </div>
+    </div>
+
+    <script>
+        // Mostrar información de red
+        const hostname = window.location.hostname;
+        const port = window.location.port || '80';
+        const apiUrl = (hostname === 'localhost' || hostname === '127.0.0.1') 
+            ? 'http://localhost:8000' 
+            : `http://${hostname}:8000`;
+
+        document.getElementById('info').innerHTML = `
+            🌐 Tu dispositivo está en: <strong>${hostname}</strong><br>
+            🔌 Backend debería estar en: <strong>${apiUrl}</strong>
+        `;
+
+        async function testBackend() {
+            const statusDiv = document.getElementById('backend-status');
+            const responseDiv = document.getElementById('backend-response');
+            
+            statusDiv.innerHTML = '<div class="status loading">⏳ Probando conexión...</div>';
+            responseDiv.style.display = 'none';
+
+            try {
+                console.log('Intentando conectar a:', apiUrl);
+                
+                const response = await fetch(`${apiUrl}/`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerHTML = `
+                        <div class="status success">
+                            ✅ Conexión exitosa!<br>
+                            <small>Status: ${response.status} ${response.statusText}</small>
+                        </div>
+                    `;
+                    responseDiv.textContent = JSON.stringify(data, null, 2);
+                    responseDiv.style.display = 'block';
+                } else {
+                    statusDiv.innerHTML = `
+                        <div class="status error">
+                            ❌ Error HTTP: ${response.status}<br>
+                            <small>${response.statusText}</small>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                statusDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ No se puede conectar<br>
+                        <small>Error: ${error.message}</small><br><br>
+                        <strong>Posibles causas:</strong><br>
+                        • El backend no está corriendo<br>
+                        • El firewall está bloqueando el puerto 8000<br>
+                        • No estás en la misma red WiFi<br><br>
+                        <strong>Solución:</strong><br>
+                        1. Ejecuta "configurar_firewall.bat" como Administrador en tu PC<br>
+                        2. Verifica que el backend esté corriendo (puerto 8000)<br>
+                        3. Asegúrate de estar en la misma WiFi
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-test al cargar
+        window.addEventListener('load', () => {
+            setTimeout(testBackend, 1000);
+        });
+    </script>
+</body>
+</html>

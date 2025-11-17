@@ -1,10 +1,11 @@
 """
-Sistema de generación y evaluación de exámenes con IA local
+Sistema de generación y evaluación de exámenes con IA local - VERSIÓN 2.0
+Completamente reescrito desde cero - Compatible con la interfaz web
 """
 from pathlib import Path
 from typing import List, Dict, Optional
 import json
-import sys
+import re
 from datetime import datetime
 
 
@@ -13,7 +14,7 @@ class PreguntaExamen:
     
     def __init__(self, tipo: str, pregunta: str, opciones: List[str] = None, 
                  respuesta_correcta: str = "", puntos: int = 1):
-        self.tipo = tipo  # 'multiple', 'combo', 'corta', 'desarrollo'
+        self.tipo = tipo
         self.pregunta = pregunta
         self.opciones = opciones or []
         self.respuesta_correcta = respuesta_correcta
@@ -42,7 +43,7 @@ class PreguntaExamen:
 
 
 class GeneradorExamenes:
-    """Genera exámenes usando un modelo LLM local"""
+    """Generador de exámenes completamente nuevo"""
     
     def __init__(self, modelo_path: Optional[str] = None):
         self.modelo_path = modelo_path
@@ -54,424 +55,604 @@ class GeneradorExamenes:
         """Carga el modelo LLM"""
         try:
             from llama_cpp import Llama
-            print(f"Cargando modelo desde: {self.modelo_path}")
+            print(f"🔄 Cargando: {self.modelo_path}")
             self.llm = Llama(
                 model_path=self.modelo_path,
-                n_ctx=4096,  # Contexto largo para documentos grandes
-                n_threads=4,
+                n_ctx=8192,
+                n_threads=6,
+                n_gpu_layers=35,  # GPU habilitada - usa -1 para todas las capas
                 verbose=False
             )
-            print("Modelo cargado exitosamente")
+            print("✅ Modelo cargado con GPU")
         except Exception as e:
-            print(f"Error al cargar modelo: {e}")
+            print(f"❌ Error: {e}")
             self.llm = None
     
-    def generar_prompt_preguntas(self, contenido: str, num_preguntas: Dict[str, int]) -> str:
-        """Genera el prompt para crear preguntas"""
-        # Limitar contenido pero mantener suficiente contexto
-        contenido_limitado = contenido[:6000] if len(contenido) > 6000 else contenido
+    def _formatear_prompt_llama(self, system_msg: str, user_msg: str) -> str:
+        """Formatea el prompt usando el chat template de Llama 3.1"""
+        return f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+{system_msg}<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+{user_msg}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
+    
+    @staticmethod
+    def obtener_prompt_template() -> str:
+        """Template simple sin emojis"""
+        return """Genera preguntas de examen en JSON del material:
+
+{contenido}
+
+Genera {total_preguntas} preguntas:
+- {num_multiple} tipo "multiple" (4 opciones A/B/C/D)
+- {num_corta} tipo "corta"
+- {num_desarrollo} tipo "desarrollo"
+
+Formato JSON:
+{{"preguntas":[{{"tipo":"multiple","pregunta":"?","opciones":["A)","B)","C)","D)"],"respuesta_correcta":"B","puntos":3}}]}}
+
+JSON:"""
+    
+    def generar_prompt_preguntas(self, contenido: str, num_preguntas: Dict[str, int], prompt_personalizado: str = "") -> str:
+        """Genera prompt optimizado para Llama 3.1"""
+        cont = contenido[:7000] if len(contenido) > 7000 else contenido
+        total = num_preguntas.get('multiple', 8)  # Empezar solo con múltiple
         
-        prompt = f"""Eres un profesor universitario experto creando un examen PRÁCTICO y ÚTIL para que los estudiantes realmente comprendan la materia.
+        system_msg = """Eres un experto en crear exámenes educativos. Generas preguntas de opción múltiple claras y precisas basadas únicamente en el contenido proporcionado. Respondes SOLO con JSON válido, sin texto adicional."""
+        
+        user_msg = f"""Crea {total} preguntas de opción múltiple basadas en este texto:
 
-CONTENIDO DEL MATERIAL DE ESTUDIO:
-{contenido_limitado}
+{cont}
 
-OBJETIVO: Crear preguntas que evalúen COMPRENSIÓN PROFUNDA, APLICACIÓN PRÁCTICA y PENSAMIENTO CRÍTICO, NO solo memorización.
+REGLAS:
+1. Cada pregunta debe evaluar un concepto clave del texto
+2. NO inventes información
+3. Las 4 opciones deben ser plausibles
+4. Solo UNA opción es correcta
 
-INSTRUCCIONES ESTRICTAS:
-Genera EXACTAMENTE {sum(num_preguntas.values())} preguntas siguiendo esta distribución:
-- {num_preguntas.get('multiple', 0)} preguntas de opción múltiple
-- {num_preguntas.get('corta', 0)} preguntas de respuesta corta
-- {num_preguntas.get('desarrollo', 0)} preguntas de desarrollo
-
-CRITERIOS DE CALIDAD OBLIGATORIOS:
-
-1. PREGUNTAS DE OPCIÓN MÚLTIPLE (tipo: "multiple"):
-   - Deben evaluar COMPRENSIÓN, no solo memoria
-   - Incluir casos prácticos o escenarios reales
-   - Opciones incorrectas deben ser plausibles pero claramente erróneas
-   - Evitar preguntas triviales tipo "¿Qué es...?"
-   - Formato de respuesta: Solo la letra (A, B, C o D)
-   - Valor: 3 puntos cada una
-
-2. PREGUNTAS DE RESPUESTA CORTA (tipo: "corta"):
-   - Pedir EXPLICACIONES de conceptos clave
-   - Solicitar COMPARACIONES entre ideas
-   - Preguntar CÓMO aplicar el conocimiento
-   - Requieren 2-4 oraciones de respuesta
-   - La respuesta_correcta debe ser una guía detallada de lo que se espera
-   - Valor: 4 puntos cada una
-
-3. PREGUNTAS DE DESARROLLO (tipo: "desarrollo"):
-   - Requieren ANÁLISIS PROFUNDO y ARGUMENTACIÓN
-   - Deben conectar múltiples conceptos del material
-   - Pedir ejemplos, aplicaciones o críticas fundamentadas
-   - La respuesta_correcta debe listar criterios de evaluación específicos
-   - Valor: 6 puntos cada una
-
-EJEMPLOS DE BUENAS PREGUNTAS:
-
-Opción múltiple BUENA:
-"En un proyecto donde necesitas implementar [concepto del material], ¿cuál sería el enfoque más adecuado considerando las limitaciones mencionadas en el documento?"
-
-Respuesta corta BUENA:
-"Explica con tus propias palabras cómo el concepto X se relaciona con Y, y proporciona un ejemplo práctico de su aplicación."
-
-Desarrollo BUENA:
-"Analiza críticamente la solución propuesta en el material. ¿Qué ventajas y desventajas presenta? ¿Cómo la mejorarías en un contexto real?"
-
-FORMATO DE RESPUESTA (JSON ESTRICTO - sin comentarios):
+Responde SOLO con este JSON:
 {{
   "preguntas": [
     {{
       "tipo": "multiple",
-      "pregunta": "[Pregunta práctica sobre aplicación del concepto]",
-      "opciones": ["A) [Opción plausible pero incorrecta]", "B) [Respuesta correcta bien justificada]", "C) [Error conceptual común]", "D) [Otro error plausible]"],
-      "respuesta_correcta": "B",
+      "pregunta": "¿Texto de la pregunta?",
+      "opciones": ["A) opción 1", "B) opción 2", "C) opción 3", "D) opción 4"],
+      "respuesta_correcta": "A",
       "puntos": 3
     }},
     {{
-      "tipo": "corta",
-      "pregunta": "[Pregunta que requiere explicación clara]",
-      "respuesta_correcta": "Debe explicar: [punto 1], mencionar [punto 2], y ejemplificar con [punto 3]",
-      "puntos": 4
-    }},
-    {{
-      "tipo": "desarrollo",
-      "pregunta": "[Pregunta que requiere análisis profundo]",
-      "respuesta_correcta": "Criterios: 1) Identifica los conceptos clave [específicos], 2) Analiza la relación entre ellos, 3) Proporciona ejemplos concretos, 4) Argumenta conclusiones lógicas",
-      "puntos": 6
+      "tipo": "verdadero_falso",
+      "pregunta": "Afirmación para evaluar",
+      "respuesta_correcta": "verdadero",
+      "puntos": 2
     }}
   ]
-}}
-
-IMPORTANTE: 
-- Responde SOLO con el JSON válido
-- NO agregues texto antes o después del JSON
-- Asegúrate que las preguntas cubran TODO el contenido importante
-- Las preguntas deben ser DESAFIANTES pero JUSTAS
-- Enfócate en comprensión y aplicación, NO en memorización
-
-JSON:"""
-        return prompt
+}}"""
+        
+        return self._formatear_prompt_llama(system_msg, user_msg)
     
     def generar_examen(self, contenido_documento: str, 
-                      num_preguntas: Dict[str, int] = None) -> List[PreguntaExamen]:
-        """Genera un examen basado en el contenido"""
+                      num_preguntas: Dict[str, int] = None,
+                      prompt_personalizado: str = "",
+                      prompt_sistema: str = None,
+                      callback_progreso = None,
+                      ajustes_modelo: dict = None) -> List[PreguntaExamen]:
+        """NUEVO GENERADOR - Ignora prompts con emojis"""
+        
         if not self.llm:
-            print("⚠️ Modelo no cargado. Generando examen de ejemplo...")
-            return self._generar_examen_ejemplo()
+            print("⚠️ Sin modelo")
+            return self._fallback_mejorado(contenido_documento, num_preguntas)
         
         if num_preguntas is None:
-            num_preguntas = {
-                'multiple': 8,
-                'corta': 5,
-                'desarrollo': 3
-            }
+            num_preguntas = {'multiple': 6, 'verdadero_falso': 4, 'corta': 4, 'desarrollo': 2}
         
-        prompt = self.generar_prompt_preguntas(contenido_documento, num_preguntas)
+        if callback_progreso:
+            callback_progreso(15, "Preparando...")
         
-        print(f"🤖 Generando {sum(num_preguntas.values())} preguntas con IA...")
-        print(f"   📝 {num_preguntas.get('multiple', 0)} opción múltiple")
-        print(f"   ✍️ {num_preguntas.get('corta', 0)} respuesta corta")
-        print(f"   📖 {num_preguntas.get('desarrollo', 0)} desarrollo")
+        # IGNORAR prompts con emojis o muy largos
+        usar_simple = True
+        if prompt_sistema:
+            if len(prompt_sistema) > 1500 or '✅' in prompt_sistema or '📘' in prompt_sistema or '🚨' in prompt_sistema:
+                print("⚠️ Ignorando prompt con emojis/muy largo")
+            else:
+                usar_simple = False
+                cont = contenido_documento[:10000]
+                prompt = prompt_sistema.replace('{contenido}', cont)
+                prompt = prompt.replace('{num_multiple}', str(num_preguntas.get('multiple', 0)))
+                prompt = prompt.replace('{num_corta}', str(num_preguntas.get('corta', 0)))
+                prompt = prompt.replace('{num_desarrollo}', str(num_preguntas.get('desarrollo', 0)))
+                prompt = prompt.replace('{total_preguntas}', str(sum(num_preguntas.values())))
+        
+        if usar_simple:
+            print("📋 Prompt simple optimizado")
+            prompt = self.generar_prompt_preguntas(contenido_documento, num_preguntas)
+        
+        print(f"📝 {sum(num_preguntas.values())} preguntas, prompt {len(prompt)} chars")
+        
+        if callback_progreso:
+            callback_progreso(20, "Generando...")
         
         try:
-            respuesta = self.llm(
+            # Obtener ajustes de configuraci\u00f3n o usar valores por defecto
+            if ajustes_modelo is None:
+                ajustes_modelo = {}
+            
+            temperature = ajustes_modelo.get('temperature', 0.25)
+            max_tokens = ajustes_modelo.get('max_tokens', 3000)
+            top_p = ajustes_modelo.get('top_p', 0.9)
+            repeat_penalty = ajustes_modelo.get('repeat_penalty', 1.15)
+            
+            # Obtener nombre del modelo
+            modelo_nombre = Path(self.modelo_path).stem if self.modelo_path else "modelo"
+            print(f"\ud83e\udd16 Llamando al modelo ({modelo_nombre})...")
+            resp = self.llm(
                 prompt,
-                max_tokens=3500,  # Aumentado para permitir más preguntas
-                temperature=0.8,   # Mayor creatividad para preguntas variadas
-                top_p=0.95,
-                repeat_penalty=1.2,  # Evitar repetición
-                stop=["```", "\n\n\n"]
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                repeat_penalty=repeat_penalty,
+                stop=["<|eot_id|>", "<|end_of_text|>", "```", "\n\n\n\n"]
             )
             
-            texto_respuesta = respuesta['choices'][0]['text'].strip()
+            if callback_progreso:
+                callback_progreso(70, "Procesando...")
             
-            # Limpiar posible texto antes/después del JSON
-            if '{' in texto_respuesta:
-                inicio = texto_respuesta.find('{')
-                fin = texto_respuesta.rfind('}') + 1
-                texto_respuesta = texto_respuesta[inicio:fin]
+            texto = resp['choices'][0]['text'].strip()
             
-            # Intentar parsear JSON
-            try:
-                datos = json.loads(texto_respuesta)
-                preguntas = [PreguntaExamen.from_dict(p) for p in datos['preguntas']]
+            print(f"\n{'='*60}")
+            print(f"📥 RESPUESTA DEL MODELO ({len(texto)} chars):")
+            print(f"{'='*60}")
+            print(texto[:800] if len(texto) > 800 else texto)
+            print(f"{'='*60}\n")
+            
+            self._log(texto, num_preguntas)
+            
+            if callback_progreso:
+                callback_progreso(75, "Extrayendo...")
+            
+            pregs = self._extraer(texto, num_preguntas, contenido_documento)
+            
+            if callback_progreso:
+                callback_progreso(90, "Validando...")
+            
+            # MODO HÍBRIDO: Usar preguntas del modelo y completar con fallback mejorado
+            pregs_modelo = len(pregs) if pregs else 0
+            total_necesario = sum(num_preguntas.values())
+            
+            print(f"\n📊 RESULTADO: {pregs_modelo} preguntas del modelo / {total_necesario} solicitadas")
+            
+            if pregs_modelo >= 1:  # Si hay al menos 1 pregunta válida del modelo
+                print(f"✅ Usando {pregs_modelo} preguntas del MODELO")
                 
-                if len(preguntas) < sum(num_preguntas.values()) * 0.7:
-                    print(f"⚠️ Solo se generaron {len(preguntas)} preguntas, esperadas {sum(num_preguntas.values())}")
-                else:
-                    print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
-                
-                return preguntas if preguntas else self._generar_examen_ejemplo()
-                
-            except json.JSONDecodeError as e:
-                print(f"❌ Error al parsear JSON de IA: {e}")
-                print(f"Respuesta recibida: {texto_respuesta[:200]}...")
-                return self._generar_examen_ejemplo()
+                if pregs_modelo < total_necesario:
+                    faltantes = total_necesario - pregs_modelo
+                    print(f"🔧 Completando con {faltantes} preguntas del FALLBACK MEJORADO...")
+                    
+                    # Calcular qué tipos faltan
+                    tipos_generados = {'multiple': 0, 'corta': 0, 'desarrollo': 0}
+                    for p in pregs:
+                        tipos_generados[p.tipo] = tipos_generados.get(p.tipo, 0) + 1
+                    
+                    tipos_faltantes = {}
+                    for tipo, cant in num_preguntas.items():
+                        falta = cant - tipos_generados.get(tipo, 0)
+                        if falta > 0:
+                            tipos_faltantes[tipo] = falta
+                    
+                    fallback_pregs = self._fallback_mejorado(contenido_documento, tipos_faltantes)
+                    pregs.extend(fallback_pregs)
+                    
+                print(f"✅ TOTAL: {len(pregs)} preguntas ({pregs_modelo} modelo + {len(pregs)-pregs_modelo} fallback)")
+                return pregs
+            else:
+                print(f"⚠️ Modelo no generó preguntas válidas, usando FALLBACK MEJORADO")
+                return self._fallback_mejorado(contenido_documento, num_preguntas)
                 
         except Exception as e:
-            print(f"❌ Error al generar examen con IA: {e}")
-            return self._generar_examen_ejemplo()
+            print(f"❌ Error: {e}")
+            return self._fallback_mejorado(contenido_documento, num_preguntas)
     
-    def _generar_examen_ejemplo(self) -> List[PreguntaExamen]:
-        """Genera un examen de ejemplo sin IA"""
-        print("📝 Generando examen de ejemplo (sin modelo IA cargado)")
-        return [
-            # Preguntas de opción múltiple
-            PreguntaExamen(
-                tipo='multiple',
-                pregunta='¿Cuál de las siguientes afirmaciones describe mejor la idea central del documento?',
-                opciones=[
-                    'A) Presenta una lista de datos sin conexión',
-                    'B) Desarrolla conceptos fundamentales con ejemplos prácticos',
-                    'C) Solo contiene definiciones técnicas',
-                    'D) Es únicamente material de referencia'
-                ],
-                respuesta_correcta='B',
-                puntos=3
-            ),
-            PreguntaExamen(
-                tipo='multiple',
-                pregunta='Si tuvieras que aplicar los conceptos del documento en un proyecto real, ¿qué factor sería más crítico considerar?',
-                opciones=[
-                    'A) El costo de implementación',
-                    'B) La comprensión profunda de los fundamentos teóricos',
-                    'C) La velocidad de ejecución',
-                    'D) La popularidad de la tecnología'
-                ],
-                respuesta_correcta='B',
-                puntos=3
-            ),
-            PreguntaExamen(
-                tipo='multiple',
-                pregunta='¿Qué relación existe entre los principales conceptos presentados en el material?',
-                opciones=[
-                    'A) Son independientes y no se relacionan',
-                    'B) Cada concepto contradice al anterior',
-                    'C) Se complementan formando un marco conceptual integrado',
-                    'D) Solo uno de ellos es relevante'
-                ],
-                respuesta_correcta='C',
-                puntos=3
-            ),
-            PreguntaExamen(
-                tipo='multiple',
-                pregunta='Al evaluar la aplicabilidad del contenido, ¿cuál sería la mejor estrategia?',
-                opciones=[
-                    'A) Memorizar todas las definiciones',
-                    'B) Comprender los principios y adaptarlos al contexto',
-                    'C) Copiar los ejemplos tal cual',
-                    'D) Ignorar la teoría y enfocarse en la práctica'
-                ],
-                respuesta_correcta='B',
-                puntos=3
-            ),
-            # Preguntas de respuesta corta
-            PreguntaExamen(
-                tipo='corta',
-                pregunta='Explica con tus propias palabras los 3 conceptos más importantes del material y cómo se relacionan entre sí.',
-                respuesta_correcta='Debe identificar 3 conceptos clave del material, explicar cada uno brevemente, y mostrar cómo se conectan o complementan. Se espera comprensión conceptual, no simple repetición.',
-                puntos=4
-            ),
-            PreguntaExamen(
-                tipo='corta',
-                pregunta='Describe una situación real donde podrías aplicar el conocimiento adquirido y explica cómo lo harías.',
-                respuesta_correcta='Debe proporcionar un ejemplo concreto y práctico, explicar el contexto de aplicación, y detallar los pasos o consideraciones necesarias para implementarlo.',
-                puntos=4
-            ),
-            PreguntaExamen(
-                tipo='corta',
-                pregunta='¿Qué diferencia existe entre los dos enfoques principales discutidos en el material? Proporciona un ejemplo de cada uno.',
-                respuesta_correcta='Debe identificar los enfoques principales, explicar sus diferencias fundamentales, y dar ejemplos específicos que ilustren cada enfoque.',
-                puntos=4
-            ),
-            # Preguntas de desarrollo
-            PreguntaExamen(
-                tipo='desarrollo',
-                pregunta='Analiza críticamente el material: identifica sus fortalezas, posibles limitaciones, y propón cómo podrías extender o mejorar los conceptos presentados basándote en tu comprensión.',
-                respuesta_correcta='Criterios: 1) Identifica al menos 2 fortalezas específicas del material con justificación, 2) Reconoce limitaciones o áreas de mejora, 3) Propone extensiones o mejoras fundamentadas, 4) Demuestra pensamiento crítico y comprensión profunda.',
-                puntos=6
-            ),
-            PreguntaExamen(
-                tipo='desarrollo',
-                pregunta='Integra los conceptos principales del documento en un marco coherente. Explica cómo cada elemento contribuye al todo y qué implicaciones prácticas tiene esta integración.',
-                respuesta_correcta='Criterios: 1) Identifica los conceptos principales, 2) Explica las relaciones e interdependencias, 3) Construye un marco integrado lógico, 4) Discute implicaciones prácticas específicas.',
-                puntos=6
-            ),
+    def _extraer(self, texto: str, num_preguntas: Dict[str, int], contenido: str) -> List[PreguntaExamen]:
+        """Extrae preguntas incluso de JSON incompleto"""
+        
+        print("🔍 Buscando JSON...")
+        
+        if '{' not in texto or '"preguntas"' not in texto:
+            print("❌ No hay JSON")
+            return []
+        
+        inicio = texto.find('{')
+        fin = texto.rfind('}') + 1
+        
+        if fin <= inicio:
+            json_str = texto[inicio:] + ']}'
+        else:
+            json_str = texto[inicio:fin]
+        
+        print(f"📦 JSON: {len(json_str)} chars")
+        
+        preguntas = []
+        
+        # Intentar parsear completo
+        try:
+            datos = json.loads(json_str)
+            if 'preguntas' in datos:
+                for p in datos['preguntas']:
+                    try:
+                        preguntas.append(PreguntaExamen.from_dict(p))
+                    except Exception as e:
+                        print(f"⚠️ Error en pregunta: {e}")
+                        continue
+                print(f"✅ {len(preguntas)} parseadas")
+                return preguntas
+        except json.JSONDecodeError as e:
+            print(f"⚠️ JSON incompleto pos {e.pos}")
+            # Intentar parcial
+            preguntas = self._parcial(json_str)
+            if preguntas:
+                print(f"🔧 {len(preguntas)} recuperadas")
+                return preguntas
+        
+        return []
+    
+    def _parcial(self, json_str: str) -> List[PreguntaExamen]:
+        """Extrae preguntas de JSON incompleto con regex"""
+        preguntas = []
+        
+        # Buscar objetos de pregunta
+        patron = r'\{{\s*"tipo"\s*:\s*"(multiple|corta|desarrollo|verdadero_falso)"[^}}]*"pregunta"\s*:\s*"([^"]+)"'
+        
+        for match in re.finditer(patron, json_str, re.DOTALL):
+            tipo = match.group(1)
+            pregunta_txt = match.group(2)
+            
+            try:
+                if tipo == 'multiple':
+                    # Buscar opciones
+                    inicio_obj = match.start()
+                    fragmento = json_str[inicio_obj:inicio_obj+800]
+                    
+                    opc_patron = r'"opciones"\s*:\s*\[(.*?)\]'
+                    opc_match = re.search(opc_patron, fragmento, re.DOTALL)
+                    
+                    opciones = None  # No usar opciones genéricas, mejor fallar y usar fallback
+                    resp_correcta = 'B'
+                    
+                    if opc_match:
+                        opc_str = opc_match.group(1)
+                        opc_list = re.findall(r'"([^"]+)"', opc_str)
+                        if len(opc_list) >= 4:
+                            opciones = opc_list[:4]
+                    
+                    # Si no hay opciones válidas, descartar esta pregunta
+                    if not opciones:
+                        continue
+                    # Buscar respuesta correcta
+                    resp_patron = r'"respuesta_correcta"\s*:\s*"([^"]+)"'
+                    resp_match = re.search(resp_patron, fragmento)
+                    if resp_match:
+                        resp_correcta = resp_match.group(1)
+                    
+                    preguntas.append(PreguntaExamen(
+                        tipo='multiple',
+                        pregunta=pregunta_txt,
+                        opciones=opciones,
+                        respuesta_correcta=resp_correcta,
+                        puntos=3
+                    ))
+                elif tipo == 'verdadero_falso':
+                    # Buscar respuesta correcta para verdadero/falso
+                    inicio_obj = match.start()
+                    fragmento = json_str[inicio_obj:inicio_obj+500]
+                    
+                    resp_patron = r'"respuesta_correcta"\s*:\s*"(verdadero|falso)"'
+                    resp_match = re.search(resp_patron, fragmento, re.IGNORECASE)
+                    resp_correcta = resp_match.group(1).lower() if resp_match else 'verdadero'
+                    
+                    preguntas.append(PreguntaExamen(
+                        tipo='verdadero_falso',
+                        pregunta=pregunta_txt,
+                        respuesta_correcta=resp_correcta,
+                        puntos=2
+                    ))
+                else:
+                    preguntas.append(PreguntaExamen(
+                        tipo=tipo,
+                        pregunta=pregunta_txt,
+                        respuesta_correcta='Criterios de evaluación basados en el material',
+                        puntos=4 if tipo == 'corta' else 6
+                    ))
+            except Exception as e:
+                print(f"⚠️ Error extrayendo: {e}")
+                continue
+        
+        return preguntas
+    
+    def _log(self, respuesta: str, num_preguntas: Dict[str, int]):
+        """Guarda log"""
+        try:
+            logs_dir = Path("logs_generacion")
+            logs_dir.mkdir(exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log = logs_dir / f"r_{ts}.txt"
+            with open(log, 'w', encoding='utf-8') as f:
+                f.write(f"LOG {datetime.now()}\n{'='*60}\n{respuesta}\n{'='*60}\n")
+            print(f"📄 {log}")
+        except:
+            pass
+    
+    def _fallback_mejorado(self, contenido: str, num_preguntas: Dict[str, int]) -> List[PreguntaExamen]:
+        """Genera preguntas MEJORADAS basadas en contenido cuando falla el modelo"""
+        
+        print("\n🔧 Activando FALLBACK MEJORADO...")
+        
+        if num_preguntas is None:
+            num_preguntas = {'multiple': 6, 'verdadero_falso': 4, 'corta': 4, 'desarrollo': 2}
+        
+        # Extraer oraciones significativas (más largas y con contenido)
+        oraciones = [s.strip() for s in re.split(r'[.!?]+', contenido) if len(s.strip()) > 50]
+        
+        if not oraciones:
+            oraciones = ["El material contiene información importante"]
+        
+        # Extraer conceptos clave (palabras capitalizadas, términos técnicos, definiciones)
+        conceptos_importantes = self._extraer_conceptos_clave(contenido)
+        
+        pregs = []
+        
+        # PREGUNTAS DE OPCIÓN MÚLTIPLE - Mejoradas para evitar absurdos
+        pregs_generadas = 0
+        for i in range(len(oraciones)):
+            if pregs_generadas >= num_preguntas.get('multiple', 4):
+                break
+                
+            oracion = oraciones[i]
+            
+            # Buscar si la oración contiene una definición clara
+            if ' es ' in oracion.lower() or ' son ' in oracion.lower() or ' significa' in oracion.lower():
+                partes = re.split(r'\s+es\s+|\s+son\s+|\s+significa\s+', oracion, maxsplit=1, flags=re.IGNORECASE)
+                if len(partes) == 2:
+                    concepto = partes[0].strip()
+                    # Validar que el concepto sea razonable (no muy largo, no empieza con minúscula)
+                    if len(concepto) > 5 and len(concepto) < 60 and not concepto[0].islower():
+                        definicion = partes[1].strip()[:80]
+                        
+                        pregs.append(PreguntaExamen(
+                            tipo='multiple',
+                            pregunta=f'Según el texto, ¿qué es {concepto}?',
+                            opciones=[
+                                f'A) {definicion}',
+                                f'B) Un concepto diferente no mencionado',
+                                f'C) Una técnica alternativa',
+                                f'D) Otro término relacionado'
+                            ],
+                            respuesta_correcta='A',
+                            puntos=3
+                        ))
+                        pregs_generadas += 1
+                        continue
+            
+            # Usar conceptos clave extraídos inteligentemente
+            if pregs_generadas < num_preguntas.get('multiple', 4) and conceptos_importantes:
+                idx_concepto = pregs_generadas % len(conceptos_importantes)
+                concepto = conceptos_importantes[idx_concepto]
+                
+                # Buscar oraciones que mencionen este concepto
+                oraciones_con_concepto = [o for o in oraciones if concepto.lower() in o.lower()]
+                if oraciones_con_concepto:
+                    oracion_relevante = oraciones_con_concepto[0][:100]
+                    
+                    pregs.append(PreguntaExamen(
+                        tipo='multiple',
+                        pregunta=f'¿Qué se menciona en el texto sobre {concepto}?',
+                        opciones=[
+                            f'A) {oracion_relevante}',
+                            f'B) Información que no aparece en el texto',
+                            f'C) Un concepto completamente diferente',
+                            f'D) Una definición no relacionada'
+                        ],
+                        respuesta_correcta='A',
+                        puntos=3
+                    ))
+                    pregs_generadas += 1
+        
+        # PREGUNTAS DE VERDADERO/FALSO - Basadas en afirmaciones del texto
+        vf_plantillas_verdaderas = [
+            'Según el texto, {}',
+            'El material indica que {}',
+            'Se menciona que {}',
+            'El texto afirma que {}'
         ]
+        
+        vf_plantillas_falsas = [
+            'El texto indica que {} (información incorrecta)',
+            'Según el material, {} (afirmación falsa)',
+            'Se menciona que {} (dato erróneo)'
+        ]
+        
+        for i in range(num_preguntas.get('verdadero_falso', 4)):
+            if i < len(oraciones):
+                oracion = oraciones[i]
+                # Alternar entre verdadero y falso
+                es_verdadero = (i % 2 == 0)
+                
+                if es_verdadero:
+                    # Usar afirmación del texto (verdadera)
+                    plantilla_idx = i % len(vf_plantillas_verdaderas)
+                    plantilla = vf_plantillas_verdaderas[plantilla_idx]
+                    afirmacion = oracion.strip()[:120]  # Limitar longitud
+                    
+                    pregs.append(PreguntaExamen(
+                        tipo='verdadero_falso',
+                        pregunta=plantilla.format(afirmacion),
+                        respuesta_correcta='verdadero',
+                        puntos=2
+                    ))
+                else:
+                    # Crear afirmación falsa modificando el texto
+                    plantilla_idx = i % len(vf_plantillas_falsas)
+                    plantilla = vf_plantillas_falsas[plantilla_idx]
+                    # Tomar una parte del texto pero marcarla como incorrecta
+                    afirmacion = oracion.strip()[:100]
+                    
+                    pregs.append(PreguntaExamen(
+                        tipo='verdadero_falso',
+                        pregunta=plantilla.format(afirmacion),
+                        respuesta_correcta='falso',
+                        puntos=2
+                    ))
+        
+        # PREGUNTAS DE RESPUESTA CORTA - Basadas en secciones del contenido
+        corta_plantillas = [
+            'Explica brevemente qué se menciona en el material sobre: {}',
+            'Describe con tus propias palabras: {}',
+            '¿Qué información proporciona el material acerca de {}?',
+            'Resume la información sobre: {}',
+            'Define según el material: {}'
+        ]
+        
+        for i in range(num_preguntas.get('corta', 2)):
+            idx = i + num_preguntas.get('multiple', 0)
+            if idx < len(oraciones):
+                plantilla_idx = i % len(corta_plantillas)
+                plantilla = corta_plantillas[plantilla_idx]
+                
+                # Extraer el tema principal de la oración
+                oracion = oraciones[idx]
+                # Buscar sustantivos/conceptos clave (primeras palabras significativas)
+                palabras = [p for p in oracion.split() if len(p) > 4]
+                tema = ' '.join(palabras[:5]) if len(palabras) >= 5 else oracion[:60]
+                
+                pregs.append(PreguntaExamen(
+                    tipo='corta',
+                    pregunta=plantilla.format(tema),
+                    respuesta_correcta=f'Debe explicar basándose en: "{oracion[:150]}..."',
+                    puntos=4
+                ))
+        
+        # PREGUNTAS DE DESARROLLO - Basadas en temas del contenido
+        # Identificar temas principales (primeras oraciones de cada párrafo o sección)
+        parrafos = [p.strip() for p in contenido.split('\n\n') if len(p.strip()) > 100]
+        temas_principales = []
+        
+        for parrafo in parrafos[:5]:  # Máximo 5 temas
+            primera_oracion = re.split(r'[.!?]+', parrafo)[0].strip()
+            if len(primera_oracion) > 30:
+                # Extraer el tema (primeras palabras clave)
+                palabras = [p for p in primera_oracion.split() if len(p) > 4]
+                tema = ' '.join(palabras[:6]) if len(palabras) >= 6 else primera_oracion[:80]
+                temas_principales.append(tema)
+        
+        desarrollo_plantillas = [
+            ('Desarrolla una explicación completa sobre {}', 'Debe explicar el concepto en profundidad, proporcionar ejemplos y conectar con otros temas del material'),
+            ('Analiza detalladamente la información presentada sobre: {}', 'Debe analizar críticamente, identificar puntos clave y fundamentar con el material'),
+            ('Explica de forma extendida {}', 'Debe mostrar comprensión profunda, relacionar conceptos y ejemplificar'),
+            ('Elabora una respuesta comprehensiva sobre {}', 'Debe sintetizar información, organizar ideas coherentemente y argumentar'),
+            ('Desarrolla un análisis del siguiente aspecto: {}', 'Debe explicar, analizar y relacionar con el contexto del material')
+        ]
+        
+        for i in range(num_preguntas.get('desarrollo', 1)):
+            plantilla_idx = i % len(desarrollo_plantillas)
+            pregunta_base, respuesta_base = desarrollo_plantillas[plantilla_idx]
+            
+            # Usar temas principales si están disponibles
+            if i < len(temas_principales):
+                tema = temas_principales[i]
+                pregunta_txt = pregunta_base.format(tema)
+            elif i < len(conceptos_importantes):
+                pregunta_txt = pregunta_base.format(conceptos_importantes[i])
+            else:
+                pregunta_txt = 'Desarrolla un análisis comprensivo de los conceptos principales presentados en el material'
+            
+            pregs.append(PreguntaExamen(
+                tipo='desarrollo',
+                pregunta=pregunta_txt,
+                respuesta_correcta=respuesta_base,
+                puntos=6
+            ))
+        
+        print(f"✅ {len(pregs)} preguntas inteligentes generadas")
+        return pregs
+    
+    def _extraer_conceptos_clave(self, contenido: str) -> List[str]:
+        """Extrae conceptos clave del contenido evitando muletillas y palabras vacías"""
+        conceptos = []
+        
+        # Lista expandida de palabras a evitar (muletillas, conectores, etc.)
+        palabras_excluir = {
+            'El', 'La', 'Los', 'Las', 'Un', 'Una', 'Este', 'Esta', 'Estos', 'Estas',
+            'Que', 'Como', 'Para', 'Por', 'Con', 'Sin', 'Sobre', 'Entre', 'Desde',
+            'Hacia', 'Hasta', 'Según', 'Durante', 'Mediante', 'También', 'Además',
+            'Supongo', 'Creo', 'Pienso', 'Quizás', 'Tal', 'Vez', 'Siempre', 'Nunca',
+            'Muchas', 'Veces', 'Algunos', 'Varios', 'Ciertos', 'Todas', 'Todos',
+            'Cualquier', 'Otro', 'Otra', 'Misma', 'Mismo', 'Primera', 'Segundo',
+            'Comúnmente', 'Generalmente', 'Usualmente', 'Normalmente'
+        }
+        
+        # Buscar términos técnicos (mayúsculas, números, guiones)
+        terminos_tecnicos = re.findall(r'\b[A-Z]{2,}[a-z0-9]*\b|\b[a-z]+-[a-z]+\b', contenido)
+        if terminos_tecnicos:
+            conceptos.extend([t for t in terminos_tecnicos if len(t) > 2][:5])
+        
+        # Buscar términos entre comillas (conceptos destacados)
+        terminos_comillas = re.findall(r'"([^"]+)"', contenido)
+        if terminos_comillas:
+            conceptos.extend([t for t in terminos_comillas if len(t) > 3 and t not in palabras_excluir][:5])
+        
+        # Buscar palabras capitalizadas pero filtrar muletillas
+        palabras_capitalizadas = re.findall(r'\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{3,}\b', contenido)
+        if palabras_capitalizadas:
+            conceptos.extend([p for p in palabras_capitalizadas if p not in palabras_excluir][:5])
+        
+        # Buscar definiciones explícitas ("X es Y", "X significa Y")
+        definiciones = re.findall(r'\b([A-Za-záéíóúñÁÉÍÓÚÑ]{4,})\s+(?:es|son|significa|representa|define)\b', contenido)
+        if definiciones:
+            conceptos.extend([d for d in definiciones if d not in palabras_excluir][:5])
+        
+        # Eliminar duplicados manteniendo orden
+        conceptos_unicos = []
+        for c in conceptos:
+            c_limpio = c.strip()
+            if c_limpio and len(c_limpio) > 3 and c_limpio not in conceptos_unicos and c_limpio not in palabras_excluir:
+                conceptos_unicos.append(c_limpio)
+        
+        return conceptos_unicos[:12]
     
     def evaluar_respuesta(self, pregunta: PreguntaExamen, respuesta_usuario: str) -> tuple[int, str]:
-        """Evalúa una respuesta del usuario"""
+        """Evalúa respuesta"""
         if pregunta.tipo == 'multiple':
-            return self._evaluar_multiple(pregunta, respuesta_usuario)
-        elif pregunta.tipo == 'corta':
-            return self._evaluar_corta(pregunta, respuesta_usuario)
-        elif pregunta.tipo == 'desarrollo':
-            return self._evaluar_desarrollo(pregunta, respuesta_usuario)
-        else:
-            return 0, "Tipo de pregunta no soportado"
-    
-    def _evaluar_multiple(self, pregunta: PreguntaExamen, respuesta: str) -> tuple[int, str]:
-        """Evalúa pregunta de opción múltiple"""
-        respuesta = respuesta.strip().upper()
-        correcta = pregunta.respuesta_correcta.strip().upper()
+            r = respuesta_usuario.strip().upper()
+            c = pregunta.respuesta_correcta.strip().upper()
+            if r == c or r == c[0]:
+                return pregunta.puntos, "¡Correcto!"
+            return 0, f"Incorrecto. Correcta: {pregunta.respuesta_correcta}"
         
-        if respuesta == correcta or respuesta == correcta[0]:
-            return pregunta.puntos, "¡Correcto!"
-        else:
-            return 0, f"Incorrecto. La respuesta correcta es: {pregunta.respuesta_correcta}"
-    
-    def _evaluar_corta(self, pregunta: PreguntaExamen, respuesta: str) -> tuple[int, str]:
-        """Evalúa pregunta de respuesta corta con IA"""
-        if not respuesta or len(respuesta.strip()) < 10:
-            return 0, "❌ Respuesta insuficiente o vacía. Se requiere una explicación clara y completa."
+        if not respuesta_usuario or len(respuesta_usuario.strip()) < 10:
+            return 0, "❌ Insuficiente"
         
-        if not self.llm:
-            # Sin IA, evaluación básica por longitud y palabras clave
-            palabras = len(respuesta.split())
-            if palabras < 15:
-                return pregunta.puntos // 4, "⚠️ Respuesta muy breve. Se esperaba mayor desarrollo."
-            elif palabras < 30:
-                return pregunta.puntos // 2, "⚠️ Respuesta aceptable pero podría ser más detallada."
-            else:
-                return int(pregunta.puntos * 0.7), "✓ Respuesta con buen desarrollo (evaluación automática)."
+        pals = len(respuesta_usuario.split())
         
-        prompt = f"""Eres un profesor ESTRICTO evaluando una respuesta corta. Sé crítico pero justo.
-
-PREGUNTA: {pregunta.pregunta}
-
-CRITERIOS DE EVALUACIÓN: {pregunta.respuesta_correcta}
-
-RESPUESTA DEL ESTUDIANTE: 
-{respuesta}
-
-PUNTOS MÁXIMOS: {pregunta.puntos}
-
-INSTRUCCIONES DE EVALUACIÓN ESTRICTA:
-1. ¿La respuesta demuestra COMPRENSIÓN REAL del concepto? (no solo copiar)
-2. ¿Incluye los elementos clave mencionados en los criterios?
-3. ¿Proporciona ejemplos o explicaciones claras?
-4. ¿La redacción es coherente y precisa?
-
-ESCALA:
-- {pregunta.puntos} puntos: Excelente, completa todos los criterios con claridad
-- {int(pregunta.puntos * 0.75)}-{pregunta.puntos - 1} puntos: Buena, cumple la mayoría de criterios
-- {int(pregunta.puntos * 0.5)}-{int(pregunta.puntos * 0.7)} puntos: Aceptable, cumple criterios básicos pero falta profundidad
-- {int(pregunta.puntos * 0.25)}-{int(pregunta.puntos * 0.45)} puntos: Insuficiente, solo aspectos superficiales
-- 0-{int(pregunta.puntos * 0.2)} puntos: Inadecuada, no demuestra comprensión
-
-Responde SOLO con JSON:
-{{
-  "puntos": <número de 0 a {pregunta.puntos}>,
-  "feedback": "Feedback específico: qué está bien, qué falta, cómo mejorar"
-}}"""
+        if pregunta.tipo == 'corta':
+            if pals < 15:
+                return pregunta.puntos // 3, "⚠️ Muy breve"
+            elif pals < 40:
+                return int(pregunta.puntos * 0.7), "✓ Aceptable"
+            return pregunta.puntos, "✅ Completa"
         
-        try:
-            resultado = self.llm(prompt, max_tokens=250, temperature=0.2)
-            texto = resultado['choices'][0]['text'].strip()
-            
-            if '{' in texto:
-                inicio = texto.find('{')
-                fin = texto.rfind('}') + 1
-                texto = texto[inicio:fin]
-            
-            datos = json.loads(texto)
-            puntos = min(datos['puntos'], pregunta.puntos)
-            return puntos, datos['feedback']
-        except:
-            # Fallback con evaluación por similitud de longitud
-            palabras = len(respuesta.split())
-            if palabras < 20:
-                return pregunta.puntos // 3, "⚠️ Respuesta incompleta. Falta desarrollo y profundidad."
-            else:
-                return int(pregunta.puntos * 0.6), "✓ Respuesta aceptable (evaluación automática limitada)."
-    
-    def _evaluar_desarrollo(self, pregunta: PreguntaExamen, respuesta: str) -> tuple[int, str]:
-        """Evalúa pregunta de desarrollo con IA"""
-        if not respuesta or len(respuesta.strip()) < 50:
-            return 0, "❌ Respuesta insuficiente. Las preguntas de desarrollo requieren análisis profundo y extenso."
+        if pregunta.tipo == 'desarrollo':
+            if pals < 60:
+                return int(pregunta.puntos * 0.4), "⚠️ Insuficiente"
+            elif pals < 120:
+                return int(pregunta.puntos * 0.7), "✓ Aceptable"
+            return pregunta.puntos, "✅ Completo"
         
-        if not self.llm:
-            # Sin IA, evaluación básica por longitud y estructura
-            palabras = len(respuesta.split())
-            if palabras < 50:
-                return pregunta.puntos // 4, "⚠️ Respuesta muy breve para una pregunta de desarrollo."
-            elif palabras < 100:
-                return pregunta.puntos // 2, "⚠️ Respuesta insuficiente. Se requiere mayor profundidad."
-            else:
-                return int(pregunta.puntos * 0.7), "✓ Respuesta con desarrollo aceptable (evaluación automática)."
-        
-        prompt = f"""Eres un profesor universitario EXIGENTE evaluando una pregunta de desarrollo. Sé CRÍTICO pero JUSTO.
-
-PREGUNTA: {pregunta.pregunta}
-
-CRITERIOS DE EVALUACIÓN ESPECÍFICOS:
-{pregunta.respuesta_correcta}
-
-RESPUESTA DEL ESTUDIANTE:
-{respuesta}
-
-PUNTOS MÁXIMOS: {pregunta.puntos}
-
-EVALUACIÓN DETALLADA - Analiza estos 5 aspectos:
-
-1. COMPRENSIÓN CONCEPTUAL ({int(pregunta.puntos * 0.25)} pts máx)
-   - ¿Demuestra entendimiento profundo de los conceptos?
-   - ¿Identifica correctamente los elementos clave?
-
-2. ANÁLISIS Y ARGUMENTACIÓN ({int(pregunta.puntos * 0.25)} pts máx)
-   - ¿Presenta argumentos lógicos y bien fundamentados?
-   - ¿Conecta ideas de manera coherente?
-
-3. PROFUNDIDAD Y EXTENSIÓN ({int(pregunta.puntos * 0.2)} pts máx)
-   - ¿Explora el tema con suficiente profundidad?
-   - ¿Proporciona ejemplos o casos específicos?
-
-4. PENSAMIENTO CRÍTICO ({int(pregunta.puntos * 0.2)} pts máx)
-   - ¿Analiza críticamente en lugar de solo describir?
-   - ¿Propone ideas originales o mejoras?
-
-5. CLARIDAD Y ESTRUCTURA ({int(pregunta.puntos * 0.1)} pts máx)
-   - ¿La respuesta está bien organizada?
-   - ¿Se expresa con claridad?
-
-IMPORTANTE: 
-- Penaliza severamente respuestas superficiales o genéricas
-- Recompensa análisis profundo y pensamiento crítico
-- El máximo solo se otorga a respuestas excepcionales
-
-Responde SOLO con JSON:
-{{
-  "puntos": <número de 0 a {pregunta.puntos}>,
-  "feedback": "Feedback detallado: (1) Lo que está bien hecho, (2) Lo que falta o necesita mejora, (3) Sugerencias específicas"
-}}"""
-        
-        try:
-            resultado = self.llm(prompt, max_tokens=600, temperature=0.2)
-            texto = resultado['choices'][0]['text'].strip()
-            
-            if '{' in texto:
-                inicio = texto.find('{')
-                fin = texto.rfind('}') + 1
-                texto = texto[inicio:fin]
-            
-            datos = json.loads(texto)
-            puntos = min(datos['puntos'], pregunta.puntos)
-            return puntos, datos['feedback']
-        except Exception as e:
-            print(f"Error en evaluación de desarrollo: {e}")
-            # Fallback con evaluación por longitud
-            palabras = len(respuesta.split())
-            if palabras < 80:
-                return int(pregunta.puntos * 0.4), "⚠️ Respuesta breve. Se espera mayor desarrollo y profundidad."
-            else:
-                return int(pregunta.puntos * 0.65), "✓ Respuesta con desarrollo (evaluación automática limitada)."
+        return 0, "No soportado"
 
 
 def guardar_examen(preguntas: List[PreguntaExamen], ruta: Path):
-    """Guarda el examen en formato JSON"""
+    """Guarda examen"""
     datos = {
         'fecha_creacion': datetime.now().isoformat(),
         'preguntas': [p.to_dict() for p in preguntas]
@@ -481,12 +662,11 @@ def guardar_examen(preguntas: List[PreguntaExamen], ruta: Path):
 
 
 def cargar_examen(ruta: Path) -> List[PreguntaExamen]:
-    """Carga un examen desde JSON"""
+    """Carga examen"""
     with open(ruta, 'r', encoding='utf-8') as f:
         datos = json.load(f)
     return [PreguntaExamen.from_dict(p) for p in datos['preguntas']]
 
 
 if __name__ == "__main__":
-    print("Módulo de generación de exámenes")
-    print("Usar desde examinator_interactivo.py")
+    print("Generador v2.0 - Reescrito desde cero")

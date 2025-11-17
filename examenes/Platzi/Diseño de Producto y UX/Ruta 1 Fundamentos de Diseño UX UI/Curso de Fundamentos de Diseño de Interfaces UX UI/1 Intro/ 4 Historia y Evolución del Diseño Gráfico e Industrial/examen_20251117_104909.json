@@ -1,0 +1,103 @@
+{
+  "id": "20251117_104909",
+  "archivo": "examen_20251117_104909.json",
+  "fecha_completado": "2025-11-17T10:49:09.792146",
+  "carpeta_ruta": "Platzi\\Diseño de Producto y UX\\Ruta 1 Fundamentos de Diseño UX UI\\Curso de Fundamentos de Diseño de Interfaces UX UI\\1 Intro\\ 4 Historia y Evolución del Diseño Gráfico e Industrial",
+  "carpeta_nombre": " 4 Historia y Evolución del Diseño Gráfico e Industrial",
+  "puntos_obtenidos": 8,
+  "puntos_totales": 26,
+  "porcentaje": 30.76923076923077,
+  "resultados": [
+    {
+      "pregunta": "¿Qué define el arte como un sustantivo, según la explicación de la clase?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Arte es una forma de autoexpresión",
+        "B) Arte busca resolver problemas prácticos",
+        "C) Arte se entiende como un concepto",
+        "D) Arte es una técnica"
+      ],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": "A",
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El diseño se trata solo de comunicar la funcionalidad de un objeto.",
+      "tipo": "verdadero_falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "Incorrecto. La respuesta correcta es: falso"
+    },
+    {
+      "pregunta": "¿Qué diferencia hay entre el arte y el diseño según la clase?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "el arte nacio para expresar sentimiento, no para una solucion. En cambio el diseño vino a resolver problemas de la vida real, no necesariamente tienen que ser bonitos",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Error en evaluación. Respuesta esperada: El arte se entiende como una cosa o un concepto, enfocado en la autoexpresión; el diseño es sustantivo y verbo, porque es un proceso para comunicar y resolver problemas"
+    },
+    {
+      "pregunta": "Explica cómo la forma moldea el contenido según los principios de la clase en relación con arte vs. diseño.",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_usuario": "no entendi esto. ",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 5,
+      "feedback": "Error en evaluación. Respuesta esperada: En la interpretación de un texto, una obra teatral, una canción o cualquier canal que permita convertir lo interno en algo visible, audible o interpretable por otros, la forma moldea el contenido y altera la percepción, los riesgos y la emoción que generas. Esto separa a la gente ordinaria de la extraordinaria: no solo manejan el contenido, sino también la forma."
+    },
+    {
+      "pregunta": "¿En qué año se centró HCI principalmente en crear sistemas que fueran fáciles de aprender y usar?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) 1980",
+        "B) 1990",
+        "C) 2000",
+        "D) 2010"
+      ],
+      "respuesta_usuario": "B",
+      "respuesta_correcta": "B",
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El diseño de producto resuelve problemas y hace que el producto sea agradable de usar para el consumidor.",
+      "tipo": "verdadero_falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 2,
+      "puntos_maximos": 2,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué destacó desde mediados de los 2000 hasta 2010 en HCI?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "no se ",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Error en evaluación. Respuesta esperada: Autoexpresión, autorreflexión y conciencia social"
+    },
+    {
+      "pregunta": "Explica cómo el diseño basado en valores tomó la delantera desde mediados de los 2000 hasta 2010, según la clase.",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_usuario": "no entendi",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 5,
+      "feedback": "Error en evaluación. Respuesta esperada: Desde mediados de los 2000 hasta 2010, el diseño basado en valores tomó la delantera involucrando a las comunidades y diseñando para un cambio sostenible. Se nos anivia pensar en el papel de la tecnología en nuestras vidas, cómo la tecnología influye en nuestra vida y en la paradoja moderna de estar conectados pero solos."
+    }
+  ],
+  "tipo": "completado"
+}

@@ -1,0 +1,5 @@
+FROM ./modelos/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf
+PARAMETER temperature 0.25
+PARAMETER top_p 0.9
+PARAMETER num_ctx 8192
+SYSTEM "Eres un experto en crear ex?menes educativos."
