@@ -2872,7 +2872,12 @@ async def cambiar_motor_ia(datos: dict):
     
     try:
         motor = "Ollama (GPU automática)" if usar_ollama else "llama-cpp-python"
-        print(f"\n🔄 Cambiando motor de IA a: {motor}")
+        print(f"\n{'='*70}")
+        print(f"🔄 CAMBIO DE MOTOR/MODELO")
+        print(f"{'='*70}")
+        print(f"Motor destino: {motor}")
+        print(f"Modelo Ollama: {modelo_ollama}")
+        print(f"GPU Layers: {n_gpu_layers}")
         
         # Liberar generador anterior
         if generador_actual:
@@ -2892,6 +2897,7 @@ async def cambiar_motor_ia(datos: dict):
             )
             print(f"✅ Motor Ollama activo - GPU automática")
             print(f"🎯 Modelo: {modelo_ollama}")
+            print(f"{'='*70}\n")
         else:
             if not modelo_gguf:
                 config = cargar_config()
@@ -2909,6 +2915,7 @@ async def cambiar_motor_ia(datos: dict):
             gpu_info = f"GPU activada ({n_gpu_layers} capas)" if n_gpu_layers > 0 else "Solo CPU (0 capas)"
             print(f"✅ Motor llama-cpp-python activo - {gpu_info}")
             print(f"📁 Modelo: {Path(modelo_gguf).name}")
+            print(f"{'='*70}\n")
         
         # Guardar configuración
         config = cargar_config()
@@ -2917,15 +2924,93 @@ async def cambiar_motor_ia(datos: dict):
         config["ajustes_avanzados"]["n_gpu_layers"] = n_gpu_layers
         guardar_config(config)
         
+        print(f"💾 Configuración guardada:")
+        print(f"   - usar_ollama: {usar_ollama}")
+        print(f"   - modelo_ollama_activo: {modelo_ollama if usar_ollama else None}")
+        print(f"   - n_gpu_layers: {n_gpu_layers}\n")
+        
         return {
             "success": True,
-            "mensaje": f"Motor cambiado a {motor}",
+            "mensaje": f"✅ {motor} - Modelo {modelo_ollama if usar_ollama else Path(modelo_gguf).name} activado correctamente",
             "usar_ollama": usar_ollama,
+            "modelo_activo": modelo_ollama if usar_ollama else Path(modelo_gguf).name if modelo_gguf else None,
             "gpu_activa": n_gpu_layers > 0 or usar_ollama
         }
     except Exception as e:
         print(f"❌ Error cambiando motor: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al cambiar motor: {str(e)}")
+
+
+@app.post("/api/motor/reparar")
+async def reparar_motor():
+    """Repara y reinicia el motor actual sin cambiar configuración"""
+    global generador_actual
+    
+    try:
+        config = cargar_config()
+        usar_ollama = config.get("usar_ollama", True)
+        modelo_ollama = config.get("modelo_ollama_activo", "qwen-local:latest")
+        n_gpu_layers = config.get("ajustes_avanzados", {}).get("n_gpu_layers", 35)
+        
+        print(f"\n{'='*70}")
+        print(f"🔧 REPARANDO MOTOR DE IA")
+        print(f"{'='*70}")
+        print(f"Configuración actual:")
+        print(f"   - Motor: {'Ollama' if usar_ollama else 'llama-cpp-python'}")
+        print(f"   - Modelo: {modelo_ollama}")
+        print(f"   - GPU Layers: {n_gpu_layers}")
+        
+        # Liberar completamente el generador anterior
+        if generador_actual:
+            print(f"🗑️  Liberando generador anterior...")
+            del generador_actual
+            generador_actual = None
+            import gc
+            gc.collect()
+            print(f"✅ Generador anterior liberado")
+        
+        # Recrear generador con la configuración actual
+        from generador_unificado import GeneradorUnificado
+        
+        if usar_ollama:
+            print(f"🔄 Recreando generador Ollama...")
+            generador_actual = GeneradorUnificado(
+                usar_ollama=True,
+                modelo_ollama=modelo_ollama,
+                n_gpu_layers=n_gpu_layers
+            )
+            print(f"✅ Motor Ollama reparado y activo")
+            print(f"🎯 Modelo: {modelo_ollama}")
+        else:
+            modelo_gguf = config.get("modelo_path")
+            if not modelo_gguf or not Path(modelo_gguf).exists():
+                raise ValueError("No hay modelo GGUF configurado")
+            
+            print(f"🔄 Recreando generador llama-cpp-python...")
+            generador_actual = GeneradorUnificado(
+                usar_ollama=False,
+                modelo_path_gguf=modelo_gguf,
+                n_gpu_layers=n_gpu_layers
+            )
+            print(f"✅ Motor llama-cpp-python reparado y activo")
+            print(f"📁 Modelo: {Path(modelo_gguf).name}")
+        
+        print(f"{'='*70}\n")
+        
+        return {
+            "success": True,
+            "mensaje": f"🔧 Motor reparado exitosamente - {modelo_ollama if usar_ollama else 'GGUF'}",
+            "motor": "Ollama" if usar_ollama else "llama-cpp-python",
+            "modelo": modelo_ollama if usar_ollama else Path(modelo_gguf).name if modelo_gguf else None
+        }
+        
+    except Exception as e:
+        print(f"❌ Error reparando motor: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al reparar motor: {str(e)}")
 
 
 @app.get("/api/motor/estado")
@@ -2971,6 +3056,7 @@ def generar_practica(datos: dict):
     
     ruta = datos.get("ruta", "")
     prompt_personalizado = datos.get("prompt", "")
+    tipo_caso = datos.get("tipo_caso", "descriptivo")  # Tipo de caso de estudio
     
     # Obtener cantidades de cada tipo de pregunta - Generales
     num_flashcards = int(datos.get("num_flashcards", 0))
@@ -3017,7 +3103,7 @@ def generar_practica(datos: dict):
     print(f"   - Cloze: {num_cloze}")
     print(f"   - Respuesta Corta: {num_respuesta_corta}")
     print(f"   - Desarrollo: {num_open_question}")
-    print(f"   - Casos de Estudio: {num_caso_estudio}")
+    print(f"   - Casos de Estudio: {num_caso_estudio} (tipo: {tipo_caso})")
     print(f"   [Reading - 6 tipos]")
     print(f"   - Reading Comprehension: {num_reading_comprehension}")
     print(f"   - Reading True/False: {num_reading_true_false}")
@@ -3106,10 +3192,17 @@ def generar_practica(datos: dict):
         else:
             contenido_para_ia = contenido_total[:8000]
 
-        # Ajustes del modelo más generosos para permitir respuestas más largas
+        # Ajustes del modelo - MÁS GENEROSOS para casos de estudio
+        # Si hay casos de estudio, necesitamos más tokens para contenido detallado
+        max_tokens_base = 4000
+        if num_caso_estudio > 0:
+            # Casos de estudio requieren mucho más texto (contexto, descripción, campos específicos)
+            max_tokens_base = 6000 + (num_caso_estudio * 1000)  # 6k base + 1k por caso adicional
+            print(f"🔍 Casos de estudio detectados: aumentando max_tokens a {max_tokens_base}")
+        
         ajustes_modelo = {
             'temperature': 0.7,
-            'max_tokens': 4000,  # Aumentado para manejar más preguntas
+            'max_tokens': max_tokens_base,
             'top_p': 0.9,
             'repeat_penalty': 1.15
         }
@@ -3118,6 +3211,7 @@ def generar_practica(datos: dict):
         print(f"📝 Generando práctica personalizada...")
         print(f"   Total: {total_preguntas} preguntas")
         print(f"   Contenido: {len(contenido_para_ia)} caracteres")
+        print(f"   Max tokens: {max_tokens_base}")
         print(f"{'='*60}\n")
 
         # Verificar que hay generador activo
@@ -3184,7 +3278,8 @@ def generar_practica(datos: dict):
                 contenido_para_ia,
                 num_preguntas=num_preguntas_dict,
                 ajustes_modelo=ajustes_modelo,
-                sin_prompt_sistema=True  # Usar el prompt del usuario directamente
+                sin_prompt_sistema=True,  # Usar el prompt del usuario directamente
+                tipo_caso=tipo_caso if num_caso_estudio > 0 else None
             )
             
             print(f"✅ Generador retornó: {type(preguntas_obj)}")
@@ -3211,7 +3306,10 @@ def generar_practica(datos: dict):
                 detail="No se pudieron generar preguntas. Intenta con menos preguntas o un documento más pequeño."
             )
 
-        print(f"✅ {len(preguntas)} preguntas generadas exitosamente\n")
+        print(f"✅ {len(preguntas)} preguntas generadas exitosamente")
+        print(f"📦 Retornando al frontend: {len(preguntas)} preguntas")
+        print(f"📋 Primera pregunta (sample): {preguntas[0] if preguntas else 'N/A'}\n")
+        
         return {"success": True, "preguntas": preguntas}
 
     except HTTPException:
@@ -3336,6 +3434,124 @@ No agregues texto fuera del JSON."""
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error en evaluación: {str(e)}")
+
+
+@app.post("/api/ollama/install-model")
+async def instalar_modelo_ollama(archivo: UploadFile = File(...), nombre_modelo: str = Form(...)):
+    """Instala un modelo GGUF en Ollama
+    
+    Args:
+        archivo: Archivo .gguf del modelo
+        nombre_modelo: Nombre para el modelo en Ollama (ej: 'mi-modelo:latest')
+    
+    Returns:
+        JSON con estado de instalación y nombre del modelo
+    """
+    try:
+        print(f"\n{'='*70}")
+        print(f"📦 INSTALANDO MODELO EN OLLAMA")
+        print(f"{'='*70}")
+        print(f"📄 Archivo: {archivo.filename}")
+        print(f"🏷️ Nombre modelo: {nombre_modelo}")
+        
+        # Validar extensión
+        if not archivo.filename.lower().endswith('.gguf'):
+            raise HTTPException(status_code=400, detail="El archivo debe ser formato .gguf")
+        
+        # Crear carpeta temporal para el modelo
+        temp_dir = Path("temp") / "modelos_ollama"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Guardar archivo temporalmente
+        temp_file = temp_dir / archivo.filename
+        print(f"💾 Guardando en: {temp_file}")
+        
+        with open(temp_file, "wb") as buffer:
+            shutil.copyfileobj(archivo.file, buffer)
+        
+        file_size_mb = temp_file.stat().st_size / (1024 * 1024)
+        print(f"✅ Archivo guardado ({file_size_mb:.1f} MB)")
+        
+        # Crear Modelfile para Ollama
+        modelfile_content = f"""FROM {temp_file.absolute()}
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.15
+PARAMETER num_ctx 4096
+"""
+        
+        modelfile_path = temp_dir / f"Modelfile_{nombre_modelo.replace(':', '_')}"
+        with open(modelfile_path, 'w', encoding='utf-8') as f:
+            f.write(modelfile_content)
+        
+        print(f"📝 Modelfile creado: {modelfile_path}")
+        
+        # Ejecutar ollama create
+        import subprocess
+        
+        cmd = f'ollama create {nombre_modelo} -f "{modelfile_path.absolute()}"'
+        print(f"🔧 Ejecutando: {cmd}")
+        
+        proceso = subprocess.Popen(
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = proceso.communicate(timeout=300)  # 5 minutos timeout
+        
+        if proceso.returncode != 0:
+            print(f"❌ Error en ollama create:")
+            print(f"STDOUT: {stdout}")
+            print(f"STDERR: {stderr}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error instalando modelo en Ollama: {stderr}"
+            )
+        
+        print(f"✅ Modelo instalado exitosamente")
+        print(f"STDOUT: {stdout}")
+        
+        # Limpiar archivos temporales (opcional)
+        try:
+            temp_file.unlink()
+            modelfile_path.unlink()
+            print(f"🧹 Archivos temporales eliminados")
+        except Exception as e:
+            print(f"⚠️ No se pudieron eliminar archivos temp: {e}")
+        
+        # Actualizar lista de modelos
+        try:
+            response_modelos = requests.get("http://localhost:11434/api/tags", timeout=5)
+            modelos_disponibles = []
+            if response_modelos.status_code == 200:
+                data = response_modelos.json()
+                modelos_disponibles = [m['name'] for m in data.get('models', [])]
+        except Exception as e:
+            print(f"⚠️ No se pudo obtener lista de modelos: {e}")
+            modelos_disponibles = [nombre_modelo]
+        
+        print(f"\n{'='*70}")
+        print(f"✅ MODELO INSTALADO: {nombre_modelo}")
+        print(f"{'='*70}\n")
+        
+        return {
+            "success": True,
+            "modelo": nombre_modelo,
+            "mensaje": f"Modelo '{nombre_modelo}' instalado exitosamente en Ollama",
+            "modelos_disponibles": modelos_disponibles
+        }
+        
+    except subprocess.TimeoutExpired:
+        print(f"❌ Timeout instalando modelo (>5 minutos)")
+        raise HTTPException(status_code=504, detail="Timeout instalando modelo. El archivo puede ser demasiado grande.")
+    except Exception as e:
+        print(f"❌ Error instalando modelo: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error instalando modelo: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -24,6 +24,11 @@ modelos/*.safetensors
 extracciones/
 resultados/
 
+# Logs detallados de prácticas
+logs_practicas_detallado/
+logs_practicas_detallado/*.log
+logs_practicas_detallado/*.json
+
 # Archivos de texto generados (excepto documentación)
 *.txt
 !requirements.txt

@@ -197,6 +197,12 @@ function App() {
   const [carpetasModalNotaRef, setCarpetasModalNotaRef] = useState([])
   const [dropdownNotaAbierto, setDropdownNotaAbierto] = useState(null) // ID de la nota con dropdown abierto
 
+  // Estados para instalador de modelos Ollama
+  const [modalInstaladorModelo, setModalInstaladorModelo] = useState(false)
+  const [archivoModeloGGUF, setArchivoModeloGGUF] = useState(null)
+  const [nombreModeloNuevo, setNombreModeloNuevo] = useState('')
+  const [instalandoModelo, setInstalandoModelo] = useState(false)
+
   // Ref para el editor de notas
   const editorRef = useRef(null)
 
@@ -3553,6 +3559,7 @@ JSON:`
   const [numVerdaderoFalso, setNumVerdaderoFalso] = useState(0);
   const [numRespuestaCorta, setNumRespuestaCorta] = useState(0);
   const [numCasoEstudio, setNumCasoEstudio] = useState(0);
+  const [tipoCasoEstudio, setTipoCasoEstudio] = useState('descriptivo'); // Tipo de caso de estudio
   
   // Reading types (6 tipos)
   const [numReadingComprehension, setNumReadingComprehension] = useState(0);
@@ -4019,6 +4026,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         body: JSON.stringify({ 
           ruta: carpetaPractica, 
           prompt: promptCompleto,
+          tipo_caso: tipoCasoEstudio, // Tipo de caso de estudio
           // Tipos generales
           num_flashcards: numFlashcards,
           num_mcq: numMCQ,
@@ -4753,6 +4761,88 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       tipo: 'info',
       texto: '📄 Abriendo diálogo de impresión (Guardar como PDF)'
     })
+  }
+
+  // Función para instalar modelo GGUF en Ollama
+  const instalarModeloOllama = async () => {
+    if (!archivoModeloGGUF) {
+      setMensaje({ tipo: 'error', texto: '⚠️ Selecciona un archivo .gguf' })
+      return
+    }
+
+    if (!nombreModeloNuevo.trim()) {
+      setMensaje({ tipo: 'error', texto: '⚠️ Ingresa un nombre para el modelo' })
+      return
+    }
+
+    setInstalandoModelo(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('archivo', archivoModeloGGUF)
+      formData.append('nombre_modelo', nombreModeloNuevo)
+
+      const response = await fetch(`${API_URL}/api/ollama/install-model`, {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || 'Error instalando modelo')
+      }
+
+      const data = await response.json()
+
+      setMensaje({
+        tipo: 'exito',
+        texto: `✅ Modelo '${nombreModeloNuevo}' instalado exitosamente`
+      })
+
+      // Actualizar lista de modelos
+      if (data.modelos_disponibles) {
+        setModelosDisponibles(data.modelos_disponibles)
+      }
+
+      // Activar automáticamente el modelo recién instalado
+      try {
+        const responseMotor = await fetch(`${API_URL}/api/motor/cambiar`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            usar_ollama: true,
+            modelo_ollama: nombreModeloNuevo,
+            n_gpu_layers: 35
+          })
+        })
+        const dataMotor = await responseMotor.json()
+        
+        if (dataMotor.success) {
+          setMensaje({tipo: 'exito', texto: `✅ Modelo ${nombreModeloNuevo} instalado y activado con GPU`})
+        } else {
+          console.warn('No se pudo activar automáticamente:', dataMotor)
+        }
+      } catch (errorActivacion) {
+        console.warn('Error al activar automáticamente:', errorActivacion)
+      }
+
+      // Cerrar modal y limpiar
+      setModalInstaladorModelo(false)
+      setArchivoModeloGGUF(null)
+      setNombreModeloNuevo('')
+
+      // Recargar configuración
+      cargarConfiguracion()
+
+    } catch (error) {
+      console.error('Error instalando modelo:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    } finally {
+      setInstalandoModelo(false)
+    }
   }
 
   return (
@@ -7117,8 +7207,111 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
                   {/* Contenido de Ollama */}
                   {pestanaModelos === 'ollama' && (
-                    <div className="pestana-contenido">
+                    <div className="pestana-contenido" style={{position: 'relative'}}>
                       <p className="subtitle">Modelos que usan GPU automáticamente</p>
+                      
+                      {/* Botones flotantes en esquina superior derecha */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        display: 'flex',
+                        gap: '8px',
+                        zIndex: 10
+                      }}>
+                        {/* Botón de reparación/reactivación */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              setLoading(true)
+                              const responseReparar = await fetch(`${API_URL}/api/motor/reparar`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'}
+                              })
+                              const dataReparar = await responseReparar.json()
+                              
+                              if (dataReparar.success) {
+                                setMensaje({tipo: 'exito', texto: dataReparar.mensaje})
+                                await cargarConfiguracion()
+                                // Recargar lista de modelos
+                                const responseModelos = await fetch(`${API_URL}/api/ollama/modelos`)
+                                const dataModelos = await responseModelos.json()
+                                if (dataModelos.success) {
+                                  setModelosOllama(dataModelos.modelos)
+                                }
+                              } else {
+                                setMensaje({tipo: 'error', texto: '❌ ' + (dataReparar.detail || dataReparar.mensaje)})
+                              }
+                            } catch (error) {
+                              setMensaje({tipo: 'error', texto: '❌ Error reparando: ' + error.message})
+                            } finally {
+                              setLoading(false)
+                            }
+                          }}
+                          title="🔧 Reparar motor de IA (reinicia el generador sin cambiar configuración)"
+                          disabled={loading}
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '20px',
+                            cursor: 'pointer',
+                            boxShadow: '0 3px 10px rgba(245, 158, 11, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.3s ease',
+                            opacity: loading ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.target.style.transform = 'scale(1.05) translateY(-2px)';
+                              e.target.style.boxShadow = '0 5px 15px rgba(245, 158, 11, 0.5)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'scale(1) translateY(0)';
+                            e.target.style.boxShadow = '0 3px 10px rgba(245, 158, 11, 0.3)';
+                          }}
+                        >
+                          🔧
+                        </button>
+
+                        {/* Botón de instalación */}
+                        <button
+                          onClick={() => setModalInstaladorModelo(true)}
+                          title="Instalar nuevo modelo GGUF"
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: '0 3px 10px rgba(102, 126, 234, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.3s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.transform = 'scale(1.05) translateY(-2px)';
+                            e.target.style.boxShadow = '0 5px 15px rgba(102, 126, 234, 0.5)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'scale(1) translateY(0)';
+                            e.target.style.boxShadow = '0 3px 10px rgba(102, 126, 234, 0.3)';
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
                       
                       <button 
                         onClick={async () => {
@@ -8383,21 +8576,423 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             <span className="pregunta-puntos">{pregunta.puntos} pts</span>
                           </div>
                           
-                          <p className="pregunta-texto">{pregunta.pregunta}</p>
+                          {/* Mostrar escenario para casos de estudio */}
+                          {pregunta.tipo === 'case_study' && (
+                            <div className="case-study-container">
+                              {/* Título del caso */}
+                              {pregunta.metadata?.titulo && (
+                                <div style={{
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  padding: '1rem 1.5rem',
+                                  borderRadius: '8px 8px 0 0',
+                                  marginBottom: '0',
+                                  color: 'white'
+                                }}>
+                                  <h3 style={{margin: 0, fontSize: '1.2rem'}}>📚 {pregunta.metadata.titulo}</h3>
+                                  {pregunta.metadata.subtipo && (
+                                    <span style={{
+                                      fontSize: '0.75rem',
+                                      background: 'rgba(255,255,255,0.2)',
+                                      padding: '3px 8px',
+                                      borderRadius: '12px',
+                                      marginTop: '8px',
+                                      display: 'inline-block'
+                                    }}>
+                                      {pregunta.metadata.subtipo.charAt(0).toUpperCase() + pregunta.metadata.subtipo.slice(1)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Escenario del Caso - NUEVO */}
+                              {pregunta.metadata?.scenario && (
+                                <div style={{
+                                  background: 'linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%)',
+                                  padding: '1.5rem',
+                                  borderRadius: pregunta.metadata?.titulo ? '0' : '8px 8px 0 0',
+                                  marginBottom: '0',
+                                  color: '#e2e8f0',
+                                  borderTop: pregunta.metadata?.titulo ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                                  borderLeft: '4px solid #3b82f6'
+                                }}>
+                                  <h4 style={{
+                                    marginTop: 0, 
+                                    marginBottom: '1rem', 
+                                    fontSize: '1.1rem',
+                                    color: '#93c5fd',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                  }}>
+                                    <span>📖</span>
+                                    <span>Escenario del Caso</span>
+                                  </h4>
+                                  <p style={{
+                                    whiteSpace: 'pre-wrap', 
+                                    lineHeight: '1.8', 
+                                    margin: 0,
+                                    fontSize: '1rem',
+                                    textAlign: 'justify'
+                                  }}>{pregunta.metadata.scenario}</p>
+                                </div>
+                              )}
+                              
+                              {/* Contexto */}
+                              {pregunta.metadata?.contexto && (
+                                <div style={{
+                                  background: 'linear-gradient(135deg, #2c192eff 0%, #42062eff 100%)',
+                                  padding: '1.5rem',
+                                  borderRadius: pregunta.metadata?.titulo ? '0' : '8px 8px 0 0',
+                                  marginBottom: '0',
+                                  color: 'white',
+                                  borderTop: pregunta.metadata?.titulo ? '1px solid rgba(255,255,255,0.1)' : 'none'
+                                }}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem'}}>🎯 Contexto</h4>
+                                  <p style={{whiteSpace: 'pre-wrap', lineHeight: '1.6', margin: 0}}>{pregunta.metadata.contexto}</p>
+                                </div>
+                              )}
+                              
+                              {/* Descripción */}
+                              {pregunta.metadata?.descripcion && (
+                                <div style={{
+                                  padding: '1.5rem',
+                                  background: 'rgba(39, 16, 41, 0.3)',
+                                  marginBottom: '0',
+                                  color: '#cbd5e0',
+                                  borderTop: '1px solid rgba(255,255,255,0.05)'
+                                }}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem', color: '#f5576c'}}>📋 Descripción</h4>
+                                  <p style={{whiteSpace: 'pre-wrap', lineHeight: '1.6', margin: 0}}>{pregunta.metadata.descripcion}</p>
+                                </div>
+                              )}
+                              
+                              {/* Campos específicos por tipo de caso */}
+                              
+                              {/* Caso Descriptivo - Puntos clave */}
+                              {pregunta.metadata?.puntos_clave && Array.isArray(pregunta.metadata.puntos_clave) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🔑 Puntos Clave</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.puntos_clave.map((punto, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{punto}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Analítico - Áreas de análisis */}
+                              {pregunta.metadata?.areas_analisis && Array.isArray(pregunta.metadata.areas_analisis) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🔬 Áreas de Análisis</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.areas_analisis.map((area, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{area}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Resolución - Restricciones y criterios */}
+                              {pregunta.metadata?.restricciones && Array.isArray(pregunta.metadata.restricciones) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>⚠️ Restricciones</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.restricciones.map((rest, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{rest}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.criterios_evaluacion && Array.isArray(pregunta.metadata.criterios_evaluacion) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>📊 Criterios de Evaluación</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.criterios_evaluacion.map((crit, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{crit}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Decisión - Opciones y criterios */}
+                              {pregunta.metadata?.opciones_disponibles && Array.isArray(pregunta.metadata.opciones_disponibles) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🎯 Opciones Disponibles</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.opciones_disponibles.map((opcion, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.5rem'}}>{opcion}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.criterios_decision && Array.isArray(pregunta.metadata.criterios_decision) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>⚖️ Criterios de Decisión</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.criterios_decision.map((crit, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{crit}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Comparativo - Elementos a comparar */}
+                              {pregunta.metadata?.elementos_comparar && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '0.9rem', color: '#a0aec0'}}>🔄 Elementos a Comparar</h4>
+                                  {Object.entries(pregunta.metadata.elementos_comparar).map(([key, value], idx) => (
+                                    <div key={idx} style={{marginBottom: '0.75rem'}}>
+                                      <strong style={{color: '#667eea'}}>{value.nombre || key}:</strong>
+                                      {value.caracteristicas && Array.isArray(value.caracteristicas) && (
+                                        <ul style={{margin: '0.25rem 0 0 0', paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                          {value.caracteristicas.map((car, cidx) => (
+                                            <li key={cidx}>{car}</li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.criterios_comparacion && Array.isArray(pregunta.metadata.criterios_comparacion) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>📊 Criterios de Comparación</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.criterios_comparacion.map((crit, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{crit}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Predictivo - Datos y factores */}
+                              {pregunta.metadata?.datos_actuales && Array.isArray(pregunta.metadata.datos_actuales) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>📈 Datos Actuales</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.datos_actuales.map((dato, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{dato}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.factores_considerar && Array.isArray(pregunta.metadata.factores_considerar) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🎲 Factores a Considerar</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.factores_considerar.map((factor, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{factor}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Simulación - Variables dinámicas */}
+                              {pregunta.metadata?.variables_dinamicas && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '0.9rem', color: '#a0aec0'}}>🎮 Variables Dinámicas</h4>
+                                  {Object.entries(pregunta.metadata.variables_dinamicas).map(([varName, varData], idx) => (
+                                    <div key={idx} style={{marginBottom: '0.5rem', color: '#cbd5e0'}}>
+                                      <strong style={{color: '#667eea'}}>{varName}:</strong>
+                                      {varData.valor_inicial && ` Inicial: ${varData.valor_inicial}`}
+                                      {varData.rango && ` (Rango: ${varData.rango})`}
+                                      {varData.opciones && ` (Opciones: ${varData.opciones.join(', ')})`}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.decisiones_tomar && Array.isArray(pregunta.metadata.decisiones_tomar) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🎯 Decisiones a Tomar</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.decisiones_tomar.map((dec, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{dec}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Inverso - Resultado y pistas */}
+                              {pregunta.metadata?.resultado_final && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>🎯 Resultado Final</h4>
+                                  <p style={{margin: 0, color: '#cbd5e0'}}>{pregunta.metadata.resultado_final}</p>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.pistas && Array.isArray(pregunta.metadata.pistas) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>💡 Pistas</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.pistas.map((pista, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{pista}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.pasos_reconstruir && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <p style={{margin: 0, color: '#a0aec0'}}>
+                                    🔢 Pasos a reconstruir: <strong style={{color: '#667eea'}}>{pregunta.metadata.pasos_reconstruir}</strong>
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Caso Fallo - Señales de alerta y consecuencias */}
+                              {pregunta.metadata?.señales_alerta && Array.isArray(pregunta.metadata.señales_alerta) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>🚨 Señales de Alerta Ignoradas</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.señales_alerta.map((señal, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{señal}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.consecuencias && Array.isArray(pregunta.metadata.consecuencias) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>💥 Consecuencias</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.consecuencias.map((cons, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{cons}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Creativo - Criterios de creatividad */}
+                              {pregunta.metadata?.criterios_creatividad && Array.isArray(pregunta.metadata.criterios_creatividad) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>✨ Criterios de Creatividad</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.criterios_creatividad.map((crit, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{crit}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Ético - Stakeholders y dilema */}
+                              {pregunta.metadata?.stakeholders && Array.isArray(pregunta.metadata.stakeholders) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>👥 Partes Afectadas</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.stakeholders.map((stake, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{stake}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.dilema && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>⚖️ Dilema Ético</h4>
+                                  <p style={{margin: 0, color: '#cbd5e0'}}>{pregunta.metadata.dilema}</p>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.consideraciones_eticas && Array.isArray(pregunta.metadata.consideraciones_eticas) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🧭 Consideraciones Éticas</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.consideraciones_eticas.map((cons, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{cons}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Caso Técnico - Métricas y limitaciones */}
+                              {pregunta.metadata?.metricas_actuales && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '0.9rem', color: '#a0aec0'}}>📊 Métricas Actuales</h4>
+                                  {Object.entries(pregunta.metadata.metricas_actuales).map(([metrica, valor], idx) => (
+                                    <div key={idx} style={{marginBottom: '0.5rem', color: '#cbd5e0'}}>
+                                      <strong style={{color: '#667eea'}}>{metrica}:</strong> {valor}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.limitaciones_tecnicas && Array.isArray(pregunta.metadata.limitaciones_tecnicas) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(245, 87, 108, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#f5576c'}}>⚠️ Limitaciones Técnicas</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.limitaciones_tecnicas.map((lim, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{lim}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {pregunta.metadata?.objetivos_optimizacion && Array.isArray(pregunta.metadata.objetivos_optimizacion) && (
+                                <div style={{padding: '1rem 1.5rem', background: 'rgba(102, 126, 234, 0.1)', borderTop: '1px solid rgba(255,255,255,0.05)'}}>
+                                  <h4 style={{marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem', color: '#a0aec0'}}>🎯 Objetivos de Optimización</h4>
+                                  <ul style={{margin: 0, paddingLeft: '1.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.objetivos_optimizacion.map((obj, idx) => (
+                                      <li key={idx} style={{marginBottom: '0.25rem'}}>{obj}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Pregunta principal del caso */}
+                              <div style={{
+                                padding: '1.5rem',
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                borderRadius: '0 0 8px 8px',
+                                marginTop: '0',
+                                color: 'white',
+                                borderTop: '2px solid rgba(255,255,255,0.2)'
+                              }}>
+                                <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem'}}>❓ Pregunta</h4>
+                                <p style={{margin: 0, fontSize: '1.05rem', fontWeight: '500'}}>{pregunta.pregunta}</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Para otros tipos, mostrar pregunta normal */}
+                          {pregunta.tipo !== 'case_study' && (
+                            <p className="pregunta-texto">{pregunta.pregunta}</p>
+                          )}
+                          
+                          {/* Descripción adicional para casos de estudio (legacy - por si el modelo no usa la nueva estructura) */}
+                          {pregunta.tipo === 'case_study' && pregunta.metadata?.description && !pregunta.metadata?.descripcion && (
+                            <div className="case-study-description" style={{
+                              padding: '1rem',
+                              background: 'rgba(39, 16, 41, 0.1)',
+                              borderLeft: '3px solid #f5576c',
+                              borderRadius: '4px',
+                              marginTop: '0.5rem',
+                              marginBottom: '1rem'
+                            }}>
+                              <strong style={{color: '#f5576c'}}>💡 Consideraciones:</strong>
+                              <p style={{margin: '0.5rem 0 0 0', color: '#cbd5e0'}}>{pregunta.metadata.description}</p>
+                            </div>
+                          )}
                           
                           {/* Respuesta según tipo */}
                           
                           {/* Flashcard */}
                           {pregunta.tipo === 'flashcard' && (
                             <div className="respuesta-flashcard">
-                              <div className="flashcard-front" style={{
-                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                padding: '1.5rem',
-                                borderRadius: '8px',
-                                color: 'white',
-                                marginBottom: '1rem'
+                              {/* El front de la flashcard ya está en pregunta.pregunta, no duplicar */}
+                              <div className="flashcard-instrucciones" style={{
+                                padding: '0.75rem',
+                                background: 'rgba(102, 126, 234, 0.1)',
+                                borderRadius: '6px',
+                                marginBottom: '1rem',
+                                fontSize: '0.9rem',
+                                color: '#a0aec0'
                               }}>
-                                <strong>💭 {pregunta.metadata?.data?.front || pregunta.pregunta}</strong>
+                                💡 Lee la pregunta arriba y escribe tu respuesta basándote en los conceptos clave.
                               </div>
                               
                               {/* Pista opcional */}
@@ -8765,8 +9360,14 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </div>
 
                     <div className="examen-acciones">
-                      <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
-                        Cerrar
+                      <button onClick={() => {
+                        setViendoExamen(null)
+                        setExamenActivo(null)
+                        setPreguntasExamen([])
+                        setRespuestasUsuario({})
+                        setExamenCompletado(false)
+                      }} className="btn-close-resultado">
+                        Cerrar Práctica
                       </button>
                     </div>
                   </>
@@ -8846,8 +9447,14 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 </div>
 
                 <div className="examen-acciones">
-                  <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
-                    Cerrar
+                  <button onClick={() => {
+                    setViendoExamen(null)
+                    setExamenActivo(null)
+                    setPreguntasExamen([])
+                    setRespuestasUsuario({})
+                    setExamenCompletado(false)
+                  }} className="btn-close-resultado">
+                    Cerrar Práctica
                   </button>
                 </div>
               </div>
@@ -9036,6 +9643,36 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         onChange={(e) => setNumCasoEstudio(Math.max(0, Math.min(5, parseInt(e.target.value) || 0)))}
                         className="input-number"
                       />
+                    </div>
+                    <div className="config-control" style={{marginTop: '10px'}}>
+                      <label htmlFor="tipo-caso">Tipo de Caso:</label>
+                      <select 
+                        id="tipo-caso"
+                        value={tipoCasoEstudio}
+                        onChange={(e) => setTipoCasoEstudio(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #ccc',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          width: '100%',
+                          marginTop: '5px'
+                        }}
+                      >
+                        <option value="descriptivo">1. Descriptivo - Describe qué pasó</option>
+                        <option value="analitico">2. Analítico - Causas, relaciones y consecuencias</option>
+                        <option value="resolucion">3. Resolución de Problemas - Apaga el incendio</option>
+                        <option value="decision">4. Toma de Decisiones - Elige y justifica</option>
+                        <option value="comparativo">5. Comparativo - Compara alternativas</option>
+                        <option value="predictivo">6. Predictivo - Proyecta el futuro</option>
+                        <option value="simulacion">7. Simulación - Mundo con variables dinámicas</option>
+                        <option value="inverso">8. Inverso - Reconstruye el proceso</option>
+                        <option value="fallo">9. Fallo/Desastre - Qué salió mal</option>
+                        <option value="creativo">10. Creativo - Innovación sin respuesta única</option>
+                        <option value="etico">11. Ético - Negocio vs Moral</option>
+                        <option value="tecnico">12. Técnico-Operativo - Optimiza el sistema</option>
+                      </select>
                     </div>
                   </div>
                 </details>
@@ -11279,6 +11916,142 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   </div>
                   <p className="hint">Procesando archivos en bloques pequeños para mejor calidad...</p>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+
+        {/* Modal Instalador de Modelos */}
+        {modalInstaladorModelo && (
+          <div className="modal-overlay" onClick={() => !instalandoModelo && setModalInstaladorModelo(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+              <div className="modal-header">
+                <h2>📦 Instalar Modelo GGUF en Ollama</h2>
+                <button 
+                  className="btn-close" 
+                  onClick={() => !instalandoModelo && setModalInstaladorModelo(false)}
+                  disabled={instalandoModelo}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="modal-body">
+                <div style={{ marginBottom: '20px', padding: '15px', background: '#f0f9ff', borderRadius: '8px', border: '1px solid #0284c7' }}>
+                  <p style={{ margin: 0, color: '#0c4a6e', lineHeight: '1.6' }}>
+                    💡 <strong>¿Cómo funciona?</strong><br/>
+                    Selecciona un archivo .gguf de un modelo de IA y se instalará automáticamente en Ollama para que puedas usarlo en Examinator.
+                  </p>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="archivo-modelo">
+                    <strong>📂 Seleccionar Archivo GGUF:</strong>
+                  </label>
+                  <input
+                    id="archivo-modelo"
+                    type="file"
+                    accept=".gguf"
+                    onChange={(e) => {
+                      const file = e.target.files[0]
+                      setArchivoModeloGGUF(file)
+                      // Sugerir nombre del modelo basado en el archivo
+                      if (file) {
+                        const nombreBase = file.name.replace('.gguf', '').replace(/_/g, '-')
+                        setNombreModeloNuevo(nombreBase + ':latest')
+                      }
+                    }}
+                    disabled={instalandoModelo}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      border: '2px dashed #667eea',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: '#f8f9fa'
+                    }}
+                  />
+                  {archivoModeloGGUF && (
+                    <div style={{ marginTop: '10px', padding: '10px', background: '#e7f3ff', borderRadius: '6px' }}>
+                      <small>
+                        ✅ <strong>{archivoModeloGGUF.name}</strong><br/>
+                        📊 Tamaño: {(archivoModeloGGUF.size / (1024 * 1024)).toFixed(2)} MB
+                      </small>
+                    </div>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="nombre-modelo">
+                    <strong>🏷️ Nombre del Modelo en Ollama:</strong>
+                  </label>
+                  <input
+                    id="nombre-modelo"
+                    type="text"
+                    value={nombreModeloNuevo}
+                    onChange={(e) => setNombreModeloNuevo(e.target.value)}
+                    placeholder="mi-modelo:latest"
+                    disabled={instalandoModelo}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      border: '1px solid #ddd',
+                      borderRadius: '6px',
+                      fontSize: '14px'
+                    }}
+                  />
+                  <small style={{ color: '#666', display: 'block', marginTop: '5px' }}>
+                    Ejemplo: llama3-spanish:latest, qwen2.5-coder:14b, mistral-7b:Q4_K_M
+                  </small>
+                </div>
+
+                {instalandoModelo && (
+                  <div style={{
+                    padding: '15px',
+                    background: '#fff3cd',
+                    borderRadius: '8px',
+                    border: '1px solid #ffc107',
+                    marginTop: '15px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div className="spinner" style={{
+                        width: '20px',
+                        height: '20px',
+                        border: '3px solid #f3f3f3',
+                        borderTop: '3px solid #ffc107',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ color: '#856404' }}>
+                        <strong>Instalando modelo...</strong><br/>
+                        Esto puede tomar varios minutos dependiendo del tamaño del archivo.
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  className="btn-secondary" 
+                  onClick={() => setModalInstaladorModelo(false)}
+                  disabled={instalandoModelo}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  className="btn-primary" 
+                  onClick={instalarModeloOllama}
+                  disabled={!archivoModeloGGUF || !nombreModeloNuevo.trim() || instalandoModelo}
+                  style={{
+                    opacity: (!archivoModeloGGUF || !nombreModeloNuevo.trim() || instalandoModelo) ? 0.5 : 1,
+                    cursor: (!archivoModeloGGUF || !nombreModeloNuevo.trim() || instalandoModelo) ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {instalandoModelo ? '⏳ Instalando...' : '🚀 Instalar Modelo'}
+                </button>
               </div>
             </div>
           </div>
