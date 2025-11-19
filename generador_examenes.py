@@ -13,7 +13,7 @@ class PreguntaExamen:
     """Representa una pregunta de examen"""
     
     def __init__(self, tipo: str, pregunta: str, opciones: List[str] = None, 
-                 respuesta_correcta: str = "", puntos: int = 1):
+                 respuesta_correcta: str = "", puntos: int = 1, metadata: dict = None):
         self.tipo = tipo
         self.pregunta = pregunta
         self.opciones = opciones or []
@@ -21,6 +21,7 @@ class PreguntaExamen:
         self.puntos = puntos
         self.respuesta_usuario = None
         self.puntos_obtenidos = 0
+        self.metadata = metadata or {}  # Para almacenar estructura compleja (reading/writing types)
     
     def to_dict(self):
         return {
@@ -28,17 +29,91 @@ class PreguntaExamen:
             'pregunta': self.pregunta,
             'opciones': self.opciones,
             'respuesta_correcta': self.respuesta_correcta,
-            'puntos': self.puntos
+            'puntos': self.puntos,
+            'metadata': self.metadata
         }
     
     @classmethod
     def from_dict(cls, data):
+        # Aceptar tanto 'tipo' (español) como 'type' (inglés)
+        tipo = data.get('tipo') or data.get('type', 'multiple')
+        
+        # Para flashcards con estructura anidada (data.front, solution.answer)
+        if tipo == 'flashcard' and 'data' in data and 'solution' in data:
+            pregunta = data['data'].get('front', '')
+            respuesta_correcta = data['solution'].get('answer', '')
+            explicacion = data['solution'].get('explanation', '')
+            metadata = dict(data)
+        else:
+            # Intentar múltiples campos para la pregunta
+            pregunta = (
+                data.get('pregunta') or 
+                data.get('question') or 
+                data.get('statement') or  # Para true/false
+                data.get('front') or  # Para flashcards antiguas
+                data.get('text_with_gaps') or  # Para cloze
+                data.get('scenario') or  # Para case_study
+                data.get('prompt') or  # Para writing types
+                data.get('text') or  # Para reading types
+                data.get('original') or  # Para writing_paraphrase
+                data.get('text_with_errors') or  # Para writing_correction
+                data.get('input_sentence') or  # Para writing_transformation
+                data.get('description_prompt') or  # Para writing_picture_description
+                ''
+            )
+            
+            # Para respuesta correcta, intentar varios campos
+            respuesta_correcta = (
+                data.get('respuesta_correcta') or 
+                data.get('correct_answer') or 
+                data.get('answer') or
+                data.get('back') or  # Para flashcards antiguas
+                data.get('answers') or  # Para cloze
+                data.get('expected_answer') or
+                data.get('expected_output') or
+                data.get('correct_text') or
+                data.get('correct_sentence') or
+                data.get('correct_order') or
+                data.get('correct_mapping')
+            )
+            
+            explicacion = data.get('explicacion') or data.get('explanation') or ''
+            metadata = dict(data)
+        
+        opciones = data.get('opciones') or data.get('options', [])
+        
+        # Para respuesta correcta, intentar varios campos
+        respuesta_correcta = (
+            data.get('respuesta_correcta') or 
+            data.get('correct_answer') or 
+            data.get('answer') or 
+            data.get('back') or  # Para flashcards
+            data.get('answers') or  # Para cloze (puede ser array)
+            data.get('expected_answer') or  # Para open_question
+            data.get('expected_output') or  # Para writing_transformation
+            data.get('correct_text') or  # Para writing_correction
+            data.get('correct_sentence') or  # Para writing_sentence_builder
+            data.get('correct_order') or  # Para reading_sequence
+            data.get('correct_mapping') or  # Para reading_matching
+            ''
+        )
+        
+        # Si respuesta_correcta es una lista, convertirla a string
+        if isinstance(respuesta_correcta, list):
+            respuesta_correcta = ', '.join(str(x) for x in respuesta_correcta)
+        elif isinstance(respuesta_correcta, bool):
+            respuesta_correcta = 'verdadero' if respuesta_correcta else 'falso'
+        
+        # Metadata: guardar todo el dict original
+        metadata = dict(data)
+        
         return cls(
-            tipo=data['tipo'],
-            pregunta=data['pregunta'],
-            opciones=data.get('opciones', []),
-            respuesta_correcta=data.get('respuesta_correcta', ''),
-            puntos=data.get('puntos', 1)
+            tipo=tipo,
+            pregunta=pregunta,
+            opciones=opciones,
+            respuesta_correcta=respuesta_correcta,
+            puntos=data.get('puntos', 1),
+            metadata=metadata
         )
 
 

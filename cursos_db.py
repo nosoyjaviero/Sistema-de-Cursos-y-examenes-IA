@@ -67,6 +67,32 @@ class CursosDatabase:
         
         return documentos
     
+    def listar_documentos_recursivo(self, ruta_relativa: str = "") -> List[dict]:
+        """Lista todos los documentos .txt en una ruta y todas sus subcarpetas"""
+        ruta_completa = self.base_path / ruta_relativa
+        
+        if not ruta_completa.exists():
+            return []
+        
+        documentos = []
+        # Buscar recursivamente todos los .txt
+        for archivo in ruta_completa.rglob("*.txt"):
+            # Excluir carpetas especiales
+            if any(parte in ["resultados", "examenes_progreso", "temp", "logs"] for parte in archivo.parts):
+                continue
+            
+            stat = archivo.stat()
+            documentos.append({
+                "nombre": archivo.stem,
+                "nombre_completo": archivo.name,
+                "ruta": str(archivo.relative_to(self.base_path)),
+                "ruta_completa": str(archivo),
+                "tamaño_kb": round(stat.st_size / 1024, 2),
+                "fecha_modificacion": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            })
+        
+        return documentos
+    
     def crear_carpeta(self, ruta_relativa: str, nombre: str) -> dict:
         """Crea una nueva carpeta"""
         ruta_completa = self.base_path / ruta_relativa / nombre

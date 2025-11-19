@@ -1,0 +1,38 @@
+{
+  "id": "20251117_125651",
+  "archivo": "examen_20251117_125651.json",
+  "fecha_completado": "2025-11-17T12:56:51.512969",
+  "carpeta_ruta": "Platzi\\Diseño de Producto y UX\\Ruta 1 Fundamentos de Diseño UX UI\\Curso de Fundamentos de Diseño de Interfaces UX UI\\1 Intro\\ 4 Historia y Evolución del Diseño Gráfico e Industrial",
+  "carpeta_nombre": " 4 Historia y Evolución del Diseño Gráfico e Industrial",
+  "puntos_obtenidos": 5,
+  "puntos_totales": 5,
+  "porcentaje": 100.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué se define como una cosa o un concepto en el arte, y no en el diseño?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Estética",
+        "B) Durabilidad",
+        "C) Innovación",
+        "D) Autoexpresión"
+      ],
+      "respuesta_usuario": "D",
+      "respuesta_correcta": "D",
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El diseño es un verbo, no un sustantivo.",
+      "tipo": "verdadero_falso",
+      "opciones": [],
+      "respuesta_usuario": "falso",
+      "respuesta_correcta": null,
+      "puntos": 2,
+      "puntos_maximos": 2,
+      "feedback": "¡Correcto!"
+    }
+  ],
+  "tipo": "completado"
+}

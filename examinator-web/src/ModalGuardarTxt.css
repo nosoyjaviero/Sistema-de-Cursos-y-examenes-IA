@@ -1,0 +1,151 @@
+/* Estilos adicionales para Modal Guardar TXT */
+/* IMPORTANTE: Todos los selectores tienen prefijo .modal-guardar-txt para evitar conflictos */
+
+.modal-guardar-txt {
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-guardar-txt .info-guardado {
+  background: rgba(100, 108, 255, 0.1);
+  border: 1px solid rgba(100, 108, 255, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.modal-guardar-txt .info-guardado p {
+  margin: 0;
+  color: #fff;
+}
+
+.modal-guardar-txt .form-group {
+  margin-bottom: 1.5rem;
+}
+
+.modal-guardar-txt .form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.modal-guardar-txt .form-input {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1rem;
+  transition: all 0.3s;
+}
+
+.modal-guardar-txt .form-input:focus {
+  outline: none;
+  border-color: #646cff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.modal-guardar-txt .breadcrumb-navegacion {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 8px;
+}
+
+.modal-guardar-txt .btn-back {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-size: 0.9rem;
+}
+
+.modal-guardar-txt .btn-back:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.modal-guardar-txt .ruta-actual {
+  color: #ff9800;
+  font-weight: 500;
+}
+
+.modal-guardar-txt .carpetas-selector {
+  max-height: 300px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.modal-guardar-txt .carpeta-opcion {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 0.5rem;
+  width: 100%;
+  text-align: left;
+}
+
+.modal-guardar-txt .carpeta-opcion:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #646cff;
+}
+
+.modal-guardar-txt .carpeta-opcion.seleccionada {
+  background: rgba(100, 108, 255, 0.2);
+  border-color: #646cff;
+}
+
+.modal-guardar-txt .carpeta-opcion .carpeta-icon {
+  font-size: 1.2rem;
+}
+
+.modal-guardar-txt .carpeta-info {
+  margin-left: auto;
+  color: #999;
+  font-size: 0.85rem;
+}
+
+.modal-guardar-txt .no-carpetas {
+  text-align: center;
+  padding: 2rem;
+  color: #999;
+  font-style: italic;
+}
+
+.modal-guardar-txt .ruta-seleccionada {
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  color: #4caf50;
+  font-size: 0.9rem;
+}
+
+.modal-guardar-txt .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}

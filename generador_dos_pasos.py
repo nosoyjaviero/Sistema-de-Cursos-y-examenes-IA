@@ -21,6 +21,7 @@ class PreguntaExamen:
     respuesta_correcta: str = None
     puntos: int = 3
     explicacion: str = ""
+    metadata: dict = None  # Para almacenar estructura compleja (reading/writing types)
 
     def to_dict(self):
         data = {
@@ -38,14 +39,73 @@ class PreguntaExamen:
     
     @classmethod
     def from_dict(cls, data: dict):
-        """Crea una instancia de PreguntaExamen desde un diccionario"""
+        """Crea una instancia de PreguntaExamen desde un diccionario
+        Acepta campos en español e inglés"""
+        # Aceptar tanto 'tipo' (español) como 'type' (inglés)
+        tipo = data.get('tipo') or data.get('type', 'multiple')
+        
+        # Para flashcards con estructura anidada (data.front, solution.answer)
+        if tipo == 'flashcard' and 'data' in data and 'solution' in data:
+            pregunta = data['data'].get('front', '')
+            respuesta_correcta = data['solution'].get('answer', '')
+            explicacion = data['solution'].get('explanation', '')
+            # Guardar metadata completa para evaluación posterior
+            metadata = dict(data)
+        else:
+            # Aceptar tanto 'pregunta' como 'question', 'statement', 'front', 'text_with_gaps', 'prompt'
+            pregunta = (
+                data.get('pregunta') or 
+                data.get('question') or 
+                data.get('statement') or  # Para true/false
+                data.get('front') or  # Para flashcards antiguas
+                data.get('text_with_gaps') or  # Para cloze
+                data.get('scenario') or  # Para case_study
+                data.get('prompt') or  # Para writing types
+                data.get('text') or  # Para reading types
+                data.get('original') or  # Para writing_paraphrase
+                data.get('text_with_errors') or  # Para writing_correction
+                data.get('input_sentence') or  # Para writing_transformation
+                data.get('description_prompt') or  # Para writing_picture_description
+                ''
+            )
+            
+            # Respuesta correcta - intentar múltiples campos
+            respuesta_correcta = (
+                data.get('respuesta_correcta') or 
+                data.get('correct_answer') or 
+                data.get('answer') or
+                data.get('back') or  # Para flashcards antiguas
+                data.get('answers') or  # Para cloze (puede ser array)
+                data.get('expected_answer') or  # Para open_question
+                data.get('expected_output') or  # Para writing_transformation
+                data.get('correct_text') or  # Para writing_correction
+                data.get('correct_sentence') or  # Para writing_sentence_builder
+                data.get('correct_order') or  # Para reading_sequence
+                data.get('correct_mapping')  # Para reading_matching
+            )
+            
+            # Explicación
+            explicacion = (
+                data.get('explicacion') or 
+                data.get('explanation') or 
+                data.get('hint') or  # Para cloze
+                ''
+            )
+            
+            # Metadata: guardar todo el dict original para tipos complejos
+            metadata = dict(data)  # Copia completa del dict original
+        
+        # Opciones
+        opciones = data.get('opciones') or data.get('options')
+        
         return cls(
-            tipo=data.get('tipo', 'multiple'),
-            pregunta=data.get('pregunta', ''),
-            opciones=data.get('opciones'),
-            respuesta_correcta=data.get('respuesta_correcta'),
+            tipo=tipo,
+            pregunta=pregunta,
+            opciones=opciones,
+            respuesta_correcta=respuesta_correcta,
             puntos=data.get('puntos', 3),
-            explicacion=data.get('explicacion', '')
+            explicacion=explicacion,
+            metadata=metadata
         )
 
 
@@ -139,9 +199,9 @@ class GeneradorDosPasos:
         with open(log_file, 'a', encoding='utf-8') as f:
             f.write(contenido + "\n")
     
-    def paso1_generar_preguntas_naturales(self, contenido: str, num_preguntas: Dict[str, int], 
+    def paso1_generar_preguntas_naturales(self, contenido: str, num_preguntas: Dict[str, int],
                                           ajustes_modelo: dict = None, archivos: list = None,
-                                          log_file: Path = None) -> str:
+                                          log_file: Path = None, sin_prompt_sistema: bool = False) -> str:
         """
         PASO 1: Genera preguntas en lenguaje natural, sin formato JSON.
         El modelo se enfoca solo en hacer buenas preguntas.
@@ -185,7 +245,13 @@ class GeneradorDosPasos:
         total_texto = ", ".join(total_preguntas_texto)
         total_numero = sum([total_multiple, total_vf, total_corta, total_desarrollo])
         
-        user_msg = f"""Crea {total_numero} preguntas de examen ({total_texto}) sobre este contenido:
+        # Si sin_prompt_sistema=True, el usuario controla TODO el prompt
+        if sin_prompt_sistema:
+            # Usar el contenido directamente, ya incluye el prompt del usuario
+            user_msg = contenido_limitado
+            print(f"🎯 MODO PROMPT PERSONALIZADO: Usando prompt del usuario directamente")
+        else:
+            user_msg = f"""Crea {total_numero} preguntas de examen ({total_texto}) sobre este contenido:
 
 {contenido_limitado}
 
@@ -194,7 +260,8 @@ GENERA EXACTAMENTE {total_numero} PREGUNTAS EN TOTAL.
 FORMATO (usa números 1, 2, 3, etc para cada pregunta):
 """
         
-        if total_multiple > 0:
+        # Solo agregar formato si NO es prompt personalizado
+        if not sin_prompt_sistema and total_multiple > 0:
             user_msg += f"""
 OPCIÓN MÚLTIPLE (primeras {total_multiple} preguntas):
 1. [Pregunta sobre el tema]
@@ -206,7 +273,7 @@ OPCIÓN MÚLTIPLE (primeras {total_multiple} preguntas):
 
 """
         
-        if total_vf > 0:
+        if not sin_prompt_sistema and total_vf > 0:
             user_msg += f"""
 VERDADERO/FALSO (siguientes {total_vf} preguntas):
 {total_multiple + 1}. [Afirmación sobre el tema]
@@ -214,7 +281,7 @@ VERDADERO/FALSO (siguientes {total_vf} preguntas):
 
 """
         
-        if total_corta > 0:
+        if not sin_prompt_sistema and total_corta > 0:
             inicio = total_multiple + total_vf + 1
             user_msg += f"""
 RESPUESTA CORTA (siguientes {total_corta} preguntas):
@@ -223,7 +290,7 @@ RESPUESTA CORTA (siguientes {total_corta} preguntas):
 
 """
         
-        if total_desarrollo > 0:
+        if not sin_prompt_sistema and total_desarrollo > 0:
             inicio = total_multiple + total_vf + total_corta + 1
             user_msg += f"""
 DESARROLLO (últimas {total_desarrollo} preguntas):
@@ -232,7 +299,8 @@ DESARROLLO (últimas {total_desarrollo} preguntas):
 
 """
         
-        user_msg += f"""
+        if not sin_prompt_sistema:
+            user_msg += f"""
 IMPORTANTE:
 - Genera TODAS las {total_numero} preguntas
 - Numera cada pregunta consecutivamente (1, 2, 3...)
@@ -463,7 +531,65 @@ Reglas:
             if log_file:
                 self._escribir_log(log_file, f"\n❌ ERROR extrayendo preguntas: {e}")
         
-        return preguntas
+        # FILTRAR PREGUNTAS POR TIPO Y CANTIDAD SOLICITADA
+        preguntas_filtradas = []
+        contador_por_tipo = {}
+        
+        # Mapeo de tipos nuevos a tipos del sistema
+        mapeo_tipos = {
+            'flashcard': 'flashcard',
+            'mcq': 'mcq', 
+            'true_false': 'true_false',
+            'verdadero_falso': 'true_false',  # Compatibilidad
+            'cloze': 'cloze',
+            'short_answer': 'short_answer',
+            'respuesta_corta': 'short_answer',  # Compatibilidad
+            'open_question': 'open_question',
+            'desarrollo': 'open_question',  # Compatibilidad
+            'case_study': 'case_study',
+            'caso_estudio': 'case_study',  # Compatibilidad
+            'reading_comprehension': 'reading_comprehension',
+            'reading_true_false': 'reading_true_false',
+            'reading_cloze': 'reading_cloze',
+            'reading_skill': 'reading_skill',
+            'reading_matching': 'reading_matching',
+            'reading_sequence': 'reading_sequence',
+            'writing_short': 'writing_short',
+            'writing_paraphrase': 'writing_paraphrase',
+            'writing_correction': 'writing_correction',
+            'writing_transformation': 'writing_transformation',
+            'writing_essay': 'writing_essay',
+            'writing_sentence_builder': 'writing_sentence_builder',
+            'writing_picture_description': 'writing_picture_description',
+            'writing_email': 'writing_email',
+            # Tipos antiguos
+            'multiple': 'mcq',
+            'corta': 'short_answer'
+        }
+        
+        for pregunta in preguntas:
+            tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
+            cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
+            
+            if cantidad_solicitada > 0:
+                if tipo_normalizado not in contador_por_tipo:
+                    contador_por_tipo[tipo_normalizado] = 0
+                
+                if contador_por_tipo[tipo_normalizado] < cantidad_solicitada:
+                    preguntas_filtradas.append(pregunta)
+                    contador_por_tipo[tipo_normalizado] += 1
+        
+        if log_file:
+            self._escribir_log(log_file, f"\n🔍 FILTRADO DE PREGUNTAS:")
+            self._escribir_log(log_file, f"   Solicitadas: {num_preguntas}")
+            self._escribir_log(log_file, f"   Generadas: {len(preguntas)}")
+            self._escribir_log(log_file, f"   Filtradas: {len(preguntas_filtradas)}")
+            self._escribir_log(log_file, f"   Por tipo: {contador_por_tipo}")
+        
+        print(f"🔍 Filtrado: {len(preguntas)} generadas → {len(preguntas_filtradas)} solicitadas")
+        print(f"   Por tipo: {contador_por_tipo}")
+        
+        return preguntas_filtradas
     
     def _parsear_manual(self, texto: str, num_preguntas: Dict[str, int], log_file: Path = None) -> List[PreguntaExamen]:
         """Fallback: parsea el texto manualmente si el JSON falla"""
@@ -657,9 +783,11 @@ Reglas:
     
     def generar_examen(self, contenido: str, num_preguntas: Dict[str, int], 
                       ajustes_modelo: dict = None, callback_progreso=None,
-                      archivos: list = None, session_id: str = None) -> List[PreguntaExamen]:
+                      archivos: list = None, session_id: str = None,
+                      sin_prompt_sistema: bool = False) -> List[PreguntaExamen]:
         """
         Método principal: Genera examen usando el proceso de DOS PASOS
+        sin_prompt_sistema: Si es True, usa el contenido directamente sin agregar instrucciones
         """
         # Crear archivo de log para esta sesión
         log_file = self._crear_log_archivo(session_id)
@@ -670,6 +798,7 @@ Reglas:
         self._escribir_log(log_file, "="*80)
         self._escribir_log(log_file, f"Session ID: {session_id or 'N/A'}")
         self._escribir_log(log_file, f"Inicio: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self._escribir_log(log_file, f"Prompt personalizado: {sin_prompt_sistema}")
         self._escribir_log(log_file, "="*80 + "\n")
         
         if callback_progreso:
@@ -680,7 +809,7 @@ Reglas:
             callback_progreso(20, "PASO 1: Generando preguntas...")
         
         texto_preguntas = self.paso1_generar_preguntas_naturales(
-            contenido, num_preguntas, ajustes_modelo, archivos, log_file
+            contenido, num_preguntas, ajustes_modelo, archivos, log_file, sin_prompt_sistema
         )
         
         if not texto_preguntas:

@@ -1,0 +1,19 @@
+{
+  "id": "chat_1763428000",
+  "nombre": "Chat 17/11/2025",
+  "fecha": "2025-11-18 08:52:49",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "Que dia es hoy?",
+      "hora": "19:06",
+      "busqueda_web": true
+    },
+    {
+      "tipo": "asistente",
+      "texto": " No agregues nada más.\n1. QUE DIA ES HOY: Acordes y Letra para Guitarra, Piano y Ukulele\n2. Que dia es hoy – centroamericanto.net\n3. que dia es hoy – Revolturas\n\nPara obtener el día exacto de hoy, te recomendaría consultar una fuente confiable como las redes sociales oficiales de gobierno o sitios web de tiempo locales. Las fuentes proporcionadas mencionan acordes para canciones y no información relevante sobre el día actual.",
+      "hora": "19:06"
+    }
+  ],
+  "carpeta": "Tonteras"
+}

@@ -1,0 +1,18 @@
+{
+  "id": "chat_1763416274",
+  "nombre": "messiasa",
+  "fecha": "2025-11-17 15:51:14",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "funcionas?",
+      "hora": "15:51"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "❌ Error al generar respuesta: Model path does not exist: modelos\\DeepSeek-R1-0528-Qwen3-8B-Q6_K.gguf",
+      "hora": "15:51"
+    }
+  ],
+  "carpeta": ""
+}

@@ -124,11 +124,73 @@ def inicializar_modelo():
         print("💡 Puedes configurar el modelo desde la interfaz web\n")
 
 
+# Función para verificar y arrancar Ollama
+def verificar_y_arrancar_ollama():
+    """Verifica si Ollama está corriendo y lo arranca si no lo está"""
+    import subprocess
+    import platform
+    
+    try:
+        # Verificar si Ollama responde
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code == 200:
+            print("✅ Ollama ya está corriendo")
+            return True
+    except:
+        print("⚠️ Ollama no está corriendo, iniciando...")
+        
+    try:
+        # Arrancar Ollama en segundo plano
+        if platform.system() == "Windows":
+            subprocess.Popen(
+                ["ollama", "serve"],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        
+        # Esperar a que Ollama arranque
+        import time
+        for i in range(10):
+            time.sleep(1)
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=1)
+                if response.status_code == 200:
+                    print("✅ Ollama iniciado correctamente")
+                    return True
+            except:
+                continue
+        
+        print("⚠️ Ollama no pudo iniciarse automáticamente")
+        return False
+    except Exception as e:
+        print(f"❌ Error al iniciar Ollama: {e}")
+        return False
+
+
 # Inicializar modelo al arrancar
 @app.on_event("startup")
 async def startup_event():
     """Se ejecuta cuando arranca el servidor"""
+    print("\n" + "="*60)
+    print("🚀 INICIANDO EXAMINATOR API SERVER")
+    print("="*60)
+    
+    # Verificar y arrancar Ollama automáticamente
+    verificar_y_arrancar_ollama()
+    
+    # Inicializar modelo
     inicializar_modelo()
+    
+    print("="*60)
+    print("✅ Servidor listo en http://localhost:8000")
+    print("="*60 + "\n")
 
 
 @app.get("/api/prompt-template")
@@ -441,63 +503,171 @@ async def actualizar_config(config: dict):
     return {"message": "Configuración actualizada", "success": True}
 
 
+@app.get("/api/diagnostico/ollama")
+async def diagnostico_ollama():
+    """Verifica el estado de Ollama y devuelve información de diagnóstico"""
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code == 200:
+            modelos = response.json()
+            return {
+                "estado": "ok",
+                "corriendo": True,
+                "mensaje": "Ollama está funcionando correctamente",
+                "modelos_disponibles": len(modelos.get("models", [])),
+                "puerto": 11434
+            }
+        else:
+            return {
+                "estado": "error",
+                "corriendo": False,
+                "mensaje": f"Ollama responde pero con error (código {response.status_code})",
+                "puerto": 11434
+            }
+    except requests.exceptions.ConnectionError:
+        return {
+            "estado": "error",
+            "corriendo": False,
+            "mensaje": "Ollama no está corriendo. Usa el botón 'Reparar' para iniciarlo.",
+            "puerto": 11434
+        }
+    except Exception as e:
+        return {
+            "estado": "error",
+            "corriendo": False,
+            "mensaje": f"Error al verificar Ollama: {str(e)}",
+            "puerto": 11434
+        }
+
+
+@app.post("/api/diagnostico/reparar-ollama")
+async def reparar_ollama():
+    """Intenta reparar Ollama arrancándolo automáticamente"""
+    import subprocess
+    import platform
+    import time
+    
+    # Primero verificar si ya está corriendo
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "mensaje": "✅ Ollama ya está funcionando correctamente",
+                "accion": "ninguna"
+            }
+    except:
+        pass
+    
+    # Intentar arrancar Ollama
+    try:
+        print("\n🔧 Intentando reparar Ollama...")
+        
+        if platform.system() == "Windows":
+            subprocess.Popen(
+                ["ollama", "serve"],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            subprocess.Popen(
+                ["ollama", "serve"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        
+        # Esperar a que Ollama arranque (máximo 15 segundos)
+        for i in range(15):
+            time.sleep(1)
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=1)
+                if response.status_code == 200:
+                    print("✅ Ollama reparado exitosamente")
+                    return {
+                        "success": True,
+                        "mensaje": "✅ Ollama iniciado correctamente. El chatbot ya está disponible.",
+                        "accion": "iniciado",
+                        "tiempo_arranque": f"{i+1} segundos"
+                    }
+            except:
+                continue
+        
+        # Si llegamos aquí, no arrancó
+        return {
+            "success": False,
+            "mensaje": "⚠️ Ollama no pudo iniciarse automáticamente. Intenta manualmente: ollama serve",
+            "accion": "fallido"
+        }
+        
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "mensaje": "❌ Ollama no está instalado en el sistema. Descárgalo de https://ollama.ai",
+            "accion": "no_instalado"
+        }
+    except Exception as e:
+        print(f"❌ Error al reparar Ollama: {e}")
+        return {
+            "success": False,
+            "mensaje": f"❌ Error al iniciar Ollama: {str(e)}",
+            "accion": "error"
+        }
+
+
 @app.post("/api/chat")
 async def chat_con_modelo(data: dict):
-    """Endpoint para chatear con el modelo"""
+    """Endpoint para chatear con el modelo (soporta Ollama y GGUF con fallback automático)"""
     global generador_actual
     
     mensaje = data.get("mensaje", "").strip()
     if not mensaje:
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
     
-    # Verificar si hay modelo cargado
-    config = cargar_config()
-    if not config.get("modelo_path"):
-        return {"respuesta": "❌ No hay modelo configurado. Ve a Configuración para seleccionar uno."}
+    print(f"\n{'='*70}")
+    print(f"💬 CHAT REQUEST RECIBIDA")
+    print(f"{'='*70}")
+    print(f"📝 Mensaje: {mensaje[:100]}...")
     
-    # Inicializar generador si no existe
+    # Verificar si hay modelo cargado
     if generador_actual is None:
+        print("❌ generador_actual es None")
+        return {"respuesta": "❌ No hay modelo inicializado. Ve a Configuración para seleccionar uno."}
+    
+    print(f"✅ Generador actual existe")
+    print(f"🔧 Tipo configurado: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
+    
+    # Si está configurado para Ollama, intentar usarlo con fallback a GGUF
+    usar_ollama_exitoso = False
+    if generador_actual.usar_ollama:
         try:
-            generador_actual = GeneradorDosPasos(modelo_path=config["modelo_path"])
+            # Verificar si Ollama está disponible
+            import requests
+            response = requests.get("http://localhost:11434/api/tags", timeout=2)
+            if response.status_code == 200:
+                usar_ollama_exitoso = True
+                print("✅ Ollama disponible - usando Ollama")
+            else:
+                print(f"⚠️ Ollama no responde (status {response.status_code}) - fallback a GGUF")
         except Exception as e:
-            return {"respuesta": f"❌ Error al cargar el modelo: {str(e)}"}
+            print(f"⚠️ Ollama no disponible ({str(e)}) - fallback a GGUF")
+    
+    # Si no usa Ollama o falló, verificar GGUF
+    if not usar_ollama_exitoso:
+        if generador_actual.llm is None:
+            return {"respuesta": "❌ Ollama no está disponible y no hay modelo GGUF cargado. Por favor:\n\n1. Inicia Ollama con: ollama serve\n2. O carga un modelo GGUF desde Configuración"}
+        print(f"✅ LLM GGUF cargado correctamente - usando fallback")
     
     try:
         # Obtener ajustes avanzados del frontend
         ajustes = data.get("ajustes", {})
-        n_ctx = ajustes.get("n_ctx", 4096)
         temperature = ajustes.get("temperature", 0.7)
         max_tokens = ajustes.get("max_tokens", 768)
         
-        # Mostrar configuración en consola
         print(f"\n{'='*60}")
         print(f"💬 Solicitud de chat")
-        print(f"⚙️ Configuración avanzada:")
-        print(f"   • Contexto (n_ctx): {n_ctx} tokens")
-        print(f"   • Temperatura: {temperature}")
-        print(f"   • Tokens máximos: {max_tokens}")
+        print(f"⚙️ Temperatura: {temperature} | Max tokens: {max_tokens}")
         print(f"{'='*60}\n")
-        
-        # Usar el modelo para generar respuesta
-        from llama_cpp import Llama
-        
-        # Obtener n_gpu_layers de config
-        ajustes = config.get("ajustes_avanzados", {})
-        gpu_layers = ajustes.get('n_gpu_layers', 35)
-        
-        # Crear instancia del modelo si no existe o si cambió n_ctx
-        if not hasattr(generador_actual, 'llm') or generador_actual.llm is None or \
-           (hasattr(generador_actual, '_n_ctx') and generador_actual._n_ctx != n_ctx):
-            print(f"🔄 Recargando modelo con n_ctx={n_ctx}...")
-            generador_actual.llm = Llama(
-                model_path=config["modelo_path"],
-                n_ctx=n_ctx,
-                n_threads=6,
-                n_gpu_layers=gpu_layers,
-                verbose=False
-            )
-            generador_actual._n_ctx = n_ctx
-            print("✅ Modelo cargado con nueva configuración")
         
         # Preparar el contexto si existe
         contexto = data.get("contexto", None)
@@ -510,64 +680,207 @@ async def chat_con_modelo(data: dict):
             try:
                 print(f"🌐 Realizando búsqueda web para: {mensaje}")
                 resultado_busqueda = buscar_y_resumir(mensaje, max_resultados=3)
-                print(f"✓ Búsqueda completada: {resultado_busqueda.get('exito', False)}")
-                print(f"📊 Número de resultados: {resultado_busqueda.get('num_resultados', 0)}")
-                print(f"📝 Resultados: {len(resultado_busqueda.get('resultados', []))} encontrados")
                 
                 if resultado_busqueda.get('exito', False) and resultado_busqueda.get('resultados'):
                     contexto_web = resultado_busqueda['resumen']
-                    print(f"📄 Longitud del contexto web: {len(contexto_web)} caracteres")
-                    print(f"📄 Primeros 200 caracteres del contexto: {contexto_web[:200]}...")
-                    
-                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder. NO inventes información ni uses conocimiento previo. Cita las fuentes cuando sea relevante."
-                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:
-
-{contexto_web}
-
----
-
-PREGUNTA DEL USUARIO: {mensaje}
-
-INSTRUCCIONES: Responde la pregunta usando SOLO la información de búsqueda web proporcionada arriba. Sé específico y menciona los datos encontrados."""
-                    print(f"✅ Mensaje completo preparado, enviando al modelo...")
+                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder."
+                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la información de búsqueda web proporcionada."""
                 else:
-                    print(f"⚠️ No se encontraron resultados de búsqueda")
-                    print(f"⚠️ Detalle del resultado: {resultado_busqueda}")
-                    return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema. Por favor, intenta reformular tu pregunta o busca directamente en un navegador."}
+                    return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema."}
             except Exception as e:
                 print(f"❌ Error en búsqueda web: {e}")
-                import traceback
-                traceback.print_exc()
-                return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}. Por favor, intenta nuevamente."}
+                return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}"}
         
         # Si hay contexto de archivo
         elif contexto:
-            # Limitar el contexto a un tamaño manejable (primeros 4000 caracteres)
             contexto_limitado = contexto[:4000] if len(contexto) > 4000 else contexto
             system_prompt = "Eres un asistente que analiza documentos. Responde basándote ÚNICAMENTE en el contenido del documento proporcionado."
-            mensaje_completo = f"""DOCUMENTO:
-
----
-{contexto_limitado}
----
-
-PREGUNTA: {mensaje}
-
-INSTRUCCIONES: Responde usando SOLO la información del documento."""
+            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la información del documento."""
         
-        # Construir historial de mensajes para el modelo
+        # Construir historial de mensajes
         historial = data.get("historial", [])
         messages = [{"role": "system", "content": system_prompt}]
         
-        # Agregar historial previo (también en búsquedas web para mantener contexto)
+        print(f"\n{'='*70}")
+        print(f"📥 HISTORIAL RECIBIDO DEL FRONTEND")
+        print(f"{'='*70}")
+        print(f"📊 Total mensajes recibidos: {len(historial)}")
+        
+        # Agregar historial previo (IMPORTANTE: no incluir el último mensaje porque ya viene en 'mensaje')
         if historial:
-            # Aumentar a últimos 20 mensajes (~10 intercambios) con contexto de 4096 tokens
-            historial_reciente = historial[-20:]
+            # Tomar más mensajes del historial para mejor contexto
+            historial_reciente = historial[-20:]  # Últimos 20 mensajes (10 intercambios)
+            if buscar_web:
+                historial_reciente = historial[-12:]  # 6 intercambios para búsqueda web
+            elif contexto:
+                historial_reciente = historial[-8:]  # 4 intercambios con contexto
             
-            # En búsquedas web, solo incluir últimos 6 mensajes para dejar espacio al contenido web
+            print(f"📌 Mensajes a procesar: {len(historial_reciente)} (filtrados de {len(historial)} totales)")
+            print(f"\n🔍 CONSTRUYENDO CONTEXTO PARA EL MODELO:")
+            print(f"1. [SYSTEM] {system_prompt[:80]}...")
+            
+            # Filtrar solo hasta el penúltimo mensaje (el último es el actual)
+            for i, msg in enumerate(historial_reciente[:-1]):
+                tipo = msg.get('tipo', 'unknown')
+                texto = msg.get('texto', '')
+                preview = texto[:100] if len(texto) > 100 else texto
+                
+                if tipo == 'usuario':
+                    messages.append({"role": "user", "content": texto})
+                    print(f"{len(messages)}. [USER] {preview}...")
+                elif tipo == 'asistente':
+                    messages.append({"role": "assistant", "content": texto})
+                    print(f"{len(messages)}. [ASSISTANT] {preview}...")
+        
+        # Agregar mensaje actual
+        messages.append({"role": "user", "content": mensaje_completo})
+        print(f"{len(messages)}. [USER - ACTUAL] {mensaje_completo[:100]}...")
+        
+        print(f"\n📨 TOTAL MENSAJES ENVIADOS AL MODELO: {len(messages)}")
+        print(f"   └─ 1 system + {len(messages)-2} historial + 1 actual")
+        print(f"{'='*70}\n")
+        
+        # Generar respuesta usando GeneradorUnificado con fallback
+        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
+        print(f"🔧 Usando {'Ollama' if usar_ollama_exitoso else 'GGUF/GPU (fallback)'}")
+        
+        if usar_ollama_exitoso:
+            # Usar Ollama API de chat con historial completo
+            respuesta_texto = generador_actual._generar_ollama_chat(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+        else:
+            # Usar GGUF/llama-cpp (GPU o CPU)
+            respuesta = generador_actual.llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=ajustes.get('top_p', 0.9),
+                repeat_penalty=ajustes.get('repeat_penalty', 1.15),
+                stop=["\n\nHuman:", "\n\nUser:", "</s>"]
+            )
+            respuesta_texto = respuesta['choices'][0]['message']['content'].strip()
+        
+        if not respuesta_texto:
+            respuesta_texto = "Lo siento, no pude generar una respuesta. Intenta de nuevo."
+        
+        print(f"✅ Respuesta generada: {len(respuesta_texto)} caracteres")
+        print(f"📝 Preview: {respuesta_texto[:100]}...\n")
+        
+        return {"respuesta": respuesta_texto}
+        
+    except Exception as e:
+        print(f"❌ Error en chat: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando respuesta: {str(e)}")
+
+
+@app.post("/api/guardar-nota-txt")
+async def guardar_nota_txt(datos: dict):
+    """Guarda una nota como archivo TXT en la carpeta especificada"""
+    try:
+        carpeta = datos.get("carpeta", "")
+        nombre_archivo = datos.get("nombreArchivo", "nota.txt")
+        contenido = datos.get("contenido", "")
+        
+        # Construir ruta completa
+        if carpeta:
+            ruta_completa = cursos_db.base_path / carpeta / nombre_archivo
+        else:
+            ruta_completa = cursos_db.base_path / nombre_archivo
+        
+        # Crear carpeta si no existe
+        ruta_completa.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Guardar archivo
+        with open(ruta_completa, 'w', encoding='utf-8') as f:
+            f.write(contenido)
+        
+        return {"success": True, "message": f"Nota guardada en {ruta_completa}"}
+    except Exception as e:
+        print(f"❌ Error guardando nota: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/chat_anterior")
+async def chat_con_modelo(data: dict):
+    """Endpoint para chatear con el modelo (soporta Ollama y GGUF)"""
+    global generador_actual
+    
+    mensaje = data.get("mensaje", "").strip()
+    if not mensaje:
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
+    
+    print(f"\n{'='*70}")
+    print(f"💬 CHAT REQUEST RECIBIDA")
+    print(f"{'='*70}")
+    print(f"📝 Mensaje: {mensaje[:100]}...")
+    
+    # Verificar si hay modelo cargado
+    if generador_actual is None:
+        print("❌ generador_actual es None")
+        return {"respuesta": "❌ No hay modelo inicializado. Ve a Configuración para seleccionar uno."}
+    
+    print(f"✅ Generador actual existe")
+    print(f"🔧 Tipo: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
+    
+    if not generador_actual.usar_ollama:
+        if generador_actual.llm is None:
+            print("❌ generador_actual.llm es None (GGUF no cargado)")
+            return {"respuesta": "❌ Modelo GGUF no está cargado. Ve a Configuración y carga un modelo."}
+        print(f"✅ LLM cargado correctamente")
+    
+    try:
+        # Obtener ajustes avanzados del frontend
+        ajustes = data.get("ajustes", {})
+        temperature = ajustes.get("temperature", 0.7)
+        max_tokens = ajustes.get("max_tokens", 768)
+        
+        print(f"\n{'='*60}")
+        print(f"💬 Solicitud de chat")
+        print(f"⚙️ Temperatura: {temperature} | Max tokens: {max_tokens}")
+        print(f"{'='*60}\n")
+        
+        # Preparar el contexto si existe
+        contexto = data.get("contexto", None)
+        buscar_web = data.get("buscar_web", False)
+        mensaje_completo = mensaje
+        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español."
+        
+        # Si se solicita búsqueda web
+        if buscar_web:
+            try:
+                print(f"🌐 Realizando búsqueda web para: {mensaje}")
+                resultado_busqueda = buscar_y_resumir(mensaje, max_resultados=3)
+                
+                if resultado_busqueda.get('exito', False) and resultado_busqueda.get('resultados'):
+                    contexto_web = resultado_busqueda['resumen']
+                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder."
+                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la información de búsqueda web proporcionada."""
+                else:
+                    return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema."}
+            except Exception as e:
+                print(f"❌ Error en búsqueda web: {e}")
+                return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}"}
+        
+        # Si hay contexto de archivo
+        elif contexto:
+            contexto_limitado = contexto[:4000] if len(contexto) > 4000 else contexto
+            system_prompt = "Eres un asistente que analiza documentos. Responde basándote ÚNICAMENTE en el contenido del documento proporcionado."
+            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la información del documento."""
+        
+        # Construir historial de mensajes
+        historial = data.get("historial", [])
+        messages = [{"role": "system", "content": system_prompt}]
+        
+        # Agregar historial previo
+        if historial:
+            historial_reciente = historial[-10:]  # Últimos 10 mensajes
             if buscar_web:
                 historial_reciente = historial[-6:]
-            # Con documentos, reducir a 4 mensajes para priorizar el documento
             elif contexto:
                 historial_reciente = historial[-4:]
             
@@ -580,24 +893,42 @@ INSTRUCCIONES: Responde usando SOLO la información del documento."""
         # Agregar mensaje actual
         messages.append({"role": "user", "content": mensaje_completo})
         
-        # Generar respuesta con configuración personalizada
-        top_p = ajustes.get('top_p', 0.9)
-        repeat_penalty = ajustes.get('repeat_penalty', 1.15)
+        # Generar respuesta usando GeneradorUnificado (soporta Ollama y GGUF)
+        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
+        print(f"🔧 Usando {'Ollama' if generador_actual.usar_ollama else 'GGUF/GPU'}")
         
-        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}, top_p={top_p}, repeat_penalty={repeat_penalty}")
-        respuesta = generador_actual.llm.create_chat_completion(
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            repeat_penalty=repeat_penalty
-        )
+        if generador_actual.usar_ollama:
+            # Usar Ollama para chat
+            respuesta_texto = generador_actual._generar_ollama(
+                prompt=mensaje_completo,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+        else:
+            # Usar GGUF/llama-cpp (GPU o CPU)
+            if generador_actual.llm is None:
+                return {"respuesta": "❌ Modelo GGUF no está cargado. Ve a Configuración y carga un modelo."}
+            
+            respuesta = generador_actual.llm.create_chat_completion(
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=ajustes.get('top_p', 0.9),
+                repeat_penalty=ajustes.get('repeat_penalty', 1.15),
+                stop=["\n\nHuman:", "\n\nUser:", "</s>"]
+            )
+            respuesta_texto = respuesta['choices'][0]['message']['content'].strip()
         
-        texto_respuesta = respuesta['choices'][0]['message']['content']
-        print(f"✅ Respuesta generada: {len(texto_respuesta)} caracteres\n")
-        return {"respuesta": texto_respuesta}
+        if not respuesta_texto:
+            respuesta_texto = "Lo siento, no pude generar una respuesta. Intenta de nuevo."
+        
+        print(f"✅ Respuesta generada: {len(respuesta_texto)} caracteres")
+        print(f"📝 Preview: {respuesta_texto[:100]}...\n")
+        return {"respuesta": respuesta_texto}
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"respuesta": f"❌ Error al generar respuesta: {str(e)}"}
 
 
@@ -881,6 +1212,101 @@ async def renombrar_documento(data: dict):
 
 
 @app.get("/api/arbol")
+async def obtener_arbol():
+    """Obtiene el árbol completo de carpetas"""
+    try:
+        return cursos_db.obtener_arbol()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/carpetas/archivos-recursivos")
+async def obtener_archivos_recursivos(ruta: str = ""):
+    """Obtiene todos los archivos .txt recursivamente de una carpeta y sus subcarpetas"""
+    try:
+        print(f"\n{'='*70}")
+        print(f"📂 OBTENER ARCHIVOS RECURSIVOS")
+        print(f"{'='*70}")
+        print(f"📁 Ruta: {ruta}")
+        
+        archivos = cursos_db.listar_documentos_recursivo(ruta)
+        print(f"📚 Archivos encontrados: {len(archivos)}")
+        
+        return {
+            "archivos": archivos,
+            "total": len(archivos)
+        }
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generar_examen_bloque")
+async def generar_examen_bloque(datos: dict):
+    """Genera preguntas para un bloque de archivos"""
+    print(f"\n{'='*70}")
+    print(f"📝 GENERAR EXAMEN POR BLOQUE")
+    print(f"{'='*70}")
+    
+    archivos = datos.get("archivos", [])
+    config = datos.get("config", {})
+    
+    num_multiple = config.get("num_multiple", 2)
+    num_corta = config.get("num_corta", 1)
+    num_vf = config.get("num_vf", 1)
+    num_desarrollo = config.get("num_desarrollo", 1)
+    
+    print(f"📚 Archivos en bloque: {len(archivos)}")
+    print(f"📊 Config: M={num_multiple}, C={num_corta}, VF={num_vf}, D={num_desarrollo}")
+    
+    if not archivos:
+        raise HTTPException(status_code=400, detail="No se especificaron archivos")
+    
+    if generador_actual is None:
+        raise HTTPException(status_code=500, detail="Modelo no inicializado")
+    
+    try:
+        # Leer contenido de todos los archivos del bloque
+        contenido_total = ""
+        for ruta_archivo in archivos:
+            try:
+                contenido = cursos_db.obtener_contenido_documento(ruta_archivo)
+                if contenido:
+                    nombre_archivo = Path(ruta_archivo).stem
+                    contenido_total += f"\n\n=== {nombre_archivo} ===\n{contenido}\n"
+                    print(f"  ✅ Leído: {nombre_archivo} ({len(contenido)} chars)")
+            except Exception as e:
+                print(f"  ⚠️  Error leyendo {ruta_archivo}: {e}")
+        
+        if not contenido_total:
+            raise HTTPException(status_code=404, detail="No se pudo leer el contenido de los archivos")
+        
+        print(f"📄 Contenido total: {len(contenido_total)} caracteres")
+        
+        # Generar preguntas
+        num_preguntas = {
+            'multiple': num_multiple,
+            'corta': num_corta,
+            'verdadero-falso': num_vf,
+            'desarrollo': num_desarrollo
+        }
+        
+        print(f"🤖 Generando preguntas...")
+        preguntas = generador_actual.generar_examen(contenido_total, num_preguntas)
+        print(f"✅ {len(preguntas)} preguntas generadas")
+        
+        return {
+            "preguntas": [p.dict() for p in preguntas],
+            "total": len(preguntas)
+        }
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error generando examen: {str(e)}")
+
+
+@app.get("/api/arbol_antiguo")
 async def obtener_arbol(ruta: str = "", profundidad: int = 3):
     """Obtiene el árbol completo de carpetas y documentos"""
     try:
@@ -1214,7 +1640,9 @@ async def evaluar_examen(datos: dict):
 
             # Validar que cada respuesta sea una cadena válida
             for key, value in respuestas.items():
-                if not isinstance(value, str):
+                if value is None:
+                    respuestas[key] = ""
+                elif not isinstance(value, str):
                     raise HTTPException(status_code=400, detail=f"La respuesta para la pregunta {key} debe ser una cadena de texto.")
 
             # Continuar con la lógica existente
@@ -1225,6 +1653,10 @@ async def evaluar_examen(datos: dict):
             for i, pregunta_dict in enumerate(preguntas_data):
                 pregunta = PreguntaExamen.from_dict(pregunta_dict)
                 respuesta_usuario = respuestas.get(str(i), "")
+                if respuesta_usuario is None:
+                    respuesta_usuario = ""
+                elif not isinstance(respuesta_usuario, str):
+                    respuesta_usuario = str(respuesta_usuario)
 
                 # Evaluar respuesta
                 resultado_eval = generador_unificado.evaluar_respuesta(pregunta, respuesta_usuario)
@@ -1239,7 +1671,7 @@ async def evaluar_examen(datos: dict):
                     "tipo": pregunta.tipo,
                     "opciones": pregunta.opciones if pregunta.tipo == 'multiple' else [],
                     "respuesta_usuario": respuesta_usuario,
-                    "respuesta_correcta": pregunta.respuesta_correcta if pregunta.tipo == 'multiple' else None,
+                    "respuesta_correcta": pregunta.respuesta_correcta,
                     "puntos": puntos,
                     "puntos_maximos": pregunta.puntos,
                     "feedback": feedback
@@ -2029,6 +2461,247 @@ async def eliminar_chat(chat_id: str):
 
 
 # ========================================
+# ENDPOINTS DE ARCHIVOS PARA CHATBOT
+# ========================================
+
+@app.get("/api/archivos/recientes")
+async def obtener_archivos_recientes(limite: int = 20):
+    """Obtiene los archivos más recientes de todas las categorías"""
+    archivos_recientes = []
+    
+    categorias = [
+        {"nombre": "notas", "base": "notas", "extensiones": [".html", ".txt", ".md"]},
+        {"nombre": "examenes", "base": "examenes", "extensiones": [".json"]},
+        {"nombre": "practicas", "base": "temp_examenes", "extensiones": [".json"]},
+        {"nombre": "cursos", "base": "extracciones", "extensiones": [".txt", ".pdf", ".docx"]}
+    ]
+    
+    for categoria in categorias:
+        base_path = Path(categoria["base"])
+        if not base_path.exists():
+            continue
+        
+        # Buscar archivos recursivamente
+        for ext in categoria["extensiones"]:
+            for archivo in base_path.rglob(f"*{ext}"):
+                try:
+                    stat = archivo.stat()
+                    ruta_relativa = str(archivo.relative_to(base_path))
+                    
+                    archivos_recientes.append({
+                        "nombre": archivo.name,
+                        "ruta": ruta_relativa,
+                        "ruta_completa": str(archivo),
+                        "tipo": categoria["nombre"],
+                        "tamaño": stat.st_size,
+                        "modificado": stat.st_mtime,
+                        "extension": archivo.suffix
+                    })
+                except Exception as e:
+                    continue
+    
+    # Ordenar por fecha de modificación (más reciente primero)
+    archivos_recientes.sort(key=lambda x: x["modificado"], reverse=True)
+    
+    return {
+        "archivos": archivos_recientes[:limite],
+        "total": len(archivos_recientes)
+    }
+
+
+@app.get("/api/archivos/explorar")
+async def explorar_archivos(tipo: str = "notas", ruta: str = ""):
+    """Explora archivos de una categoría específica"""
+    
+    # Mapeo de tipos a rutas base
+    tipo_a_base = {
+        "notas": "notas",
+        "examenes": "examenes",
+        "practicas": "temp_examenes",
+        "cursos": "extracciones"
+    }
+    
+    if tipo not in tipo_a_base:
+        raise HTTPException(status_code=400, detail="Tipo de archivo no válido")
+    
+    base_path = Path(tipo_a_base[tipo])
+    base_path.mkdir(exist_ok=True)
+    
+    # Construir ruta completa
+    if ruta:
+        ruta_completa = base_path / ruta
+    else:
+        ruta_completa = base_path
+    
+    if not ruta_completa.exists():
+        raise HTTPException(status_code=404, detail="Ruta no encontrada")
+    
+    carpetas = []
+    archivos = []
+    
+    for item in ruta_completa.iterdir():
+        try:
+            stat = item.stat()
+            
+            if item.is_dir():
+                # Contar archivos en la carpeta
+                num_archivos = sum(1 for _ in item.rglob("*") if _.is_file())
+                carpetas.append({
+                    "nombre": item.name,
+                    "ruta": str(item.relative_to(base_path)),
+                    "num_archivos": num_archivos
+                })
+            else:
+                archivos.append({
+                    "nombre": item.name,
+                    "ruta": str(item.relative_to(base_path)),
+                    "ruta_completa": str(item),
+                    "tipo": tipo,
+                    "tamaño": stat.st_size,
+                    "modificado": stat.st_mtime,
+                    "extension": item.suffix
+                })
+        except Exception as e:
+            continue
+    
+    # Ordenar
+    carpetas.sort(key=lambda x: x["nombre"])
+    archivos.sort(key=lambda x: x["modificado"], reverse=True)
+    
+    return {
+        "carpetas": carpetas,
+        "archivos": archivos,
+        "ruta_actual": ruta
+    }
+
+
+@app.post("/api/archivos/leer-contenido")
+async def leer_contenido_archivo(data: dict):
+    """Lee el contenido de un archivo para usarlo como contexto en el chat"""
+    ruta = data.get("ruta", "")
+    
+    if not ruta:
+        raise HTTPException(status_code=400, detail="Ruta de archivo no proporcionada")
+    
+    archivo_path = Path(ruta)
+    
+    if not archivo_path.exists():
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    
+    try:
+        # Leer según el tipo de archivo
+        if archivo_path.suffix in [".txt", ".md"]:
+            with open(archivo_path, 'r', encoding='utf-8') as f:
+                contenido = f.read()
+        elif archivo_path.suffix == ".html":
+            with open(archivo_path, 'r', encoding='utf-8') as f:
+                contenido_html = f.read()
+                # Extraer solo el texto del HTML
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(contenido_html, 'html.parser')
+                contenido = soup.get_text(separator='\n', strip=True)
+        elif archivo_path.suffix == ".json":
+            with open(archivo_path, 'r', encoding='utf-8') as f:
+                data_json = json.load(f)
+                # Formatear JSON legible
+                contenido = json.dumps(data_json, indent=2, ensure_ascii=False)
+        elif archivo_path.suffix == ".pdf":
+            # Usar la función obtener_texto que ya existe
+            contenido = obtener_texto(str(archivo_path))
+        else:
+            raise HTTPException(status_code=400, detail="Tipo de archivo no soportado")
+        
+        # Limitar tamaño del contenido (max 50KB)
+        if len(contenido) > 50000:
+            contenido = contenido[:50000] + "\n\n... (contenido truncado)"
+        
+        return {
+            "contenido": contenido,
+            "nombre": archivo_path.name,
+            "tamaño": len(contenido),
+            "extension": archivo_path.suffix
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al leer archivo: {str(e)}")
+
+
+@app.get("/api/cursos/carpetas")
+async def listar_carpetas_cursos(ruta: str = ""):
+    """Lista carpetas en el directorio de cursos para guardar archivos TXT"""
+    try:
+        base_cursos = Path("extracciones")
+        base_cursos.mkdir(exist_ok=True)
+        
+        if ruta:
+            ruta_completa = base_cursos / ruta
+        else:
+            ruta_completa = base_cursos
+        
+        if not ruta_completa.exists():
+            raise HTTPException(status_code=404, detail="Ruta no encontrada")
+        
+        carpetas = []
+        for item in ruta_completa.iterdir():
+            if item.is_dir():
+                # Contar archivos en la carpeta
+                num_archivos = sum(1 for _ in item.rglob("*") if _.is_file())
+                carpetas.append({
+                    "nombre": item.name,
+                    "ruta": str(item.relative_to(base_cursos)),
+                    "num_archivos": num_archivos
+                })
+        
+        carpetas.sort(key=lambda x: x["nombre"])
+        
+        return {
+            "carpetas": carpetas,
+            "ruta_actual": ruta
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar carpetas: {str(e)}")
+
+
+@app.post("/api/cursos/guardar-txt")
+async def guardar_txt_en_cursos(data: dict):
+    """Guarda un archivo TXT en la carpeta de cursos especificada"""
+    try:
+        carpeta = data.get("carpeta", "")
+        nombre_archivo = data.get("nombreArchivo", "")
+        contenido = data.get("contenido", "")
+        
+        if not nombre_archivo:
+            raise HTTPException(status_code=400, detail="Nombre de archivo requerido")
+        
+        # Asegurar extensión .txt
+        if not nombre_archivo.endswith('.txt'):
+            nombre_archivo += '.txt'
+        
+        base_cursos = Path("extracciones")
+        base_cursos.mkdir(exist_ok=True)
+        
+        # Construir ruta completa
+        if carpeta:
+            ruta_completa = base_cursos / carpeta / nombre_archivo
+        else:
+            ruta_completa = base_cursos / nombre_archivo
+        
+        # Crear carpeta si no existe
+        ruta_completa.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Guardar archivo
+        with open(ruta_completa, 'w', encoding='utf-8') as f:
+            f.write(contenido)
+        
+        return {
+            "success": True,
+            "message": f"Archivo guardado exitosamente",
+            "ruta": str(ruta_completa.relative_to(base_cursos))
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al guardar archivo: {str(e)}")
+
+
+# ========================================
 # ENDPOINTS DE OLLAMA Y GPU
 # ========================================
 
@@ -2289,11 +2962,389 @@ async def obtener_estado_motor():
         }
 
 
+@app.post("/api/generar_practica")
+def generar_practica(datos: dict):
+    """Genera una práctica basada en archivos o carpetas con prompt personalizado"""
+    print(f"\n{'='*70}")
+    print(f"📝 GENERACIÓN DE PRÁCTICA REQUEST")
+    print(f"{'='*70}")
+    
+    ruta = datos.get("ruta", "")
+    prompt_personalizado = datos.get("prompt", "")
+    
+    # Obtener cantidades de cada tipo de pregunta - Generales
+    num_flashcards = int(datos.get("num_flashcards", 0))
+    num_mcq = int(datos.get("num_mcq", 0))
+    num_verdadero_falso = int(datos.get("num_verdadero_falso", 0))
+    num_cloze = int(datos.get("num_cloze", 0))
+    num_respuesta_corta = int(datos.get("num_respuesta_corta", 0))
+    num_open_question = int(datos.get("num_open_question", 0))
+    num_caso_estudio = int(datos.get("num_caso_estudio", 0))
+    
+    # Reading types (6 tipos)
+    num_reading_comprehension = int(datos.get("num_reading_comprehension", 0))
+    num_reading_true_false = int(datos.get("num_reading_true_false", 0))
+    num_reading_cloze = int(datos.get("num_reading_cloze", 0))
+    num_reading_skill = int(datos.get("num_reading_skill", 0))
+    num_reading_matching = int(datos.get("num_reading_matching", 0))
+    num_reading_sequence = int(datos.get("num_reading_sequence", 0))
+    
+    # Writing types (8 tipos)
+    num_writing_short = int(datos.get("num_writing_short", 0))
+    num_writing_paraphrase = int(datos.get("num_writing_paraphrase", 0))
+    num_writing_correction = int(datos.get("num_writing_correction", 0))
+    num_writing_transformation = int(datos.get("num_writing_transformation", 0))
+    num_writing_essay = int(datos.get("num_writing_essay", 0))
+    num_writing_sentence_builder = int(datos.get("num_writing_sentence_builder", 0))
+    num_writing_picture_description = int(datos.get("num_writing_picture_description", 0))
+    num_writing_email = int(datos.get("num_writing_email", 0))
+    
+    total_preguntas = (num_flashcards + num_mcq + num_verdadero_falso + num_cloze + 
+                      num_respuesta_corta + num_open_question + num_caso_estudio +
+                      num_reading_comprehension + num_reading_true_false + num_reading_cloze +
+                      num_reading_skill + num_reading_matching + num_reading_sequence +
+                      num_writing_short + num_writing_paraphrase + num_writing_correction +
+                      num_writing_transformation + num_writing_essay + num_writing_sentence_builder +
+                      num_writing_picture_description + num_writing_email)
+
+    print(f"📁 Ruta recibida: {ruta}")
+    print(f"✍️ Prompt: {prompt_personalizado[:50] if prompt_personalizado else 'Sin prompt'}...")
+    print(f"📊 Preguntas solicitadas: Total={total_preguntas}")
+    print(f"   [Generales]")
+    print(f"   - Flashcards: {num_flashcards}")
+    print(f"   - MCQ: {num_mcq}")
+    print(f"   - V/F: {num_verdadero_falso}")
+    print(f"   - Cloze: {num_cloze}")
+    print(f"   - Respuesta Corta: {num_respuesta_corta}")
+    print(f"   - Desarrollo: {num_open_question}")
+    print(f"   - Casos de Estudio: {num_caso_estudio}")
+    print(f"   [Reading - 6 tipos]")
+    print(f"   - Reading Comprehension: {num_reading_comprehension}")
+    print(f"   - Reading True/False: {num_reading_true_false}")
+    print(f"   - Reading Cloze: {num_reading_cloze}")
+    print(f"   - Reading Skill: {num_reading_skill}")
+    print(f"   - Reading Matching: {num_reading_matching}")
+    print(f"   - Reading Sequence: {num_reading_sequence}")
+    print(f"   [Writing - 8 tipos]")
+    print(f"   - Writing Short: {num_writing_short}")
+    print(f"   - Writing Paraphrase: {num_writing_paraphrase}")
+    print(f"   - Writing Correction: {num_writing_correction}")
+    print(f"   - Writing Transformation: {num_writing_transformation}")
+    print(f"   - Writing Essay: {num_writing_essay}")
+    print(f"   - Writing Sentence Builder: {num_writing_sentence_builder}")
+    print(f"   - Writing Picture Description: {num_writing_picture_description}")
+    print(f"   - Writing Email: {num_writing_email}")
+    
+    if not ruta:
+        raise HTTPException(status_code=400, detail="La ruta es requerida")
+    
+    if total_preguntas == 0:
+        raise HTTPException(status_code=400, detail="Debes seleccionar al menos un tipo de pregunta")
+
+    try:
+        # Verificar si es un archivo o carpeta
+        ruta_completa = cursos_db.base_path / ruta
+        print(f"🔍 Ruta completa construida: {ruta_completa}")
+        print(f"📂 Existe la ruta: {ruta_completa.exists()}")
+        
+        if not ruta_completa.exists():
+            print(f"❌ ERROR: La ruta no existe: {ruta_completa}")
+            raise HTTPException(status_code=404, detail=f"La ruta no existe: {ruta}")
+        
+        es_archivo = ruta_completa.is_file()
+        print(f"📄 Es archivo: {es_archivo}")
+        print(f"📁 Es carpeta: {ruta_completa.is_dir()}")
+        
+        contenido_total = ""
+        
+        if es_archivo:
+            # Es un archivo individual
+            print(f"📄 Procesando archivo individual: {ruta_completa.name}")
+            resultado = cursos_db.obtener_contenido_documento(ruta)
+            contenido_total = resultado.get('contenido', '') if isinstance(resultado, dict) else str(resultado)
+            if not contenido_total:
+                print(f"❌ ERROR: No se pudo leer el contenido del documento")
+                raise HTTPException(status_code=404, detail="No se pudo leer el contenido del documento")
+            print(f"✅ Contenido leído: {len(contenido_total)} caracteres")
+        else:
+            # Es una carpeta, leer todos sus documentos recursivamente
+            print(f"📁 Procesando carpeta: {ruta}")
+            documentos = cursos_db.listar_documentos_recursivo(ruta)
+            print(f"🔍 Documentos encontrados: {len(documentos)}")
+            
+            if not documentos:
+                print(f"❌ ERROR: No se encontraron documentos en la carpeta")
+                raise HTTPException(status_code=404, detail=f"No se encontraron documentos en la carpeta '{ruta}' ni sus subcarpetas")
+
+            print(f"📚 Procesando {min(len(documentos), 20)} documentos...")
+            for doc in documentos[:20]:  # Limitar a 20 documentos para no sobrecargar
+                try:
+                    resultado_doc = cursos_db.obtener_contenido_documento(doc["ruta"])
+                    contenido_doc = resultado_doc.get('contenido', '') if isinstance(resultado_doc, dict) else str(resultado_doc)
+                    if contenido_doc:
+                        contenido_total += f"\n=== {doc['nombre']} ===\n{contenido_doc}\n"
+                        print(f"  ✅ Leído: {doc['nombre']} ({len(contenido_doc)} chars)")
+                except Exception as e:
+                    print(f"  ⚠️  Error leyendo {doc['ruta']}: {e}")
+
+            if not contenido_total:
+                print(f"❌ ERROR: No se pudo leer el contenido de ningún documento")
+                raise HTTPException(status_code=404, detail="No se pudo leer el contenido de los documentos")
+            
+            print(f"✅ Contenido total: {len(contenido_total)} caracteres")
+
+        # Generar preguntas usando el generador actual
+        if generador_actual is None:
+            raise HTTPException(status_code=500, detail="Modelo no inicializado")
+
+        # El prompt ya viene completo desde el frontend con las especificaciones
+        contenido_para_ia = prompt_personalizado if prompt_personalizado else contenido_total
+        
+        # Si hay prompt personalizado, agregar el contenido
+        if prompt_personalizado:
+            contenido_para_ia = f"{prompt_personalizado}\n\nCONTENIDO:\n{contenido_total[:8000]}"
+        else:
+            contenido_para_ia = contenido_total[:8000]
+
+        # Ajustes del modelo más generosos para permitir respuestas más largas
+        ajustes_modelo = {
+            'temperature': 0.7,
+            'max_tokens': 4000,  # Aumentado para manejar más preguntas
+            'top_p': 0.9,
+            'repeat_penalty': 1.15
+        }
+
+        print(f"\n{'='*60}")
+        print(f"📝 Generando práctica personalizada...")
+        print(f"   Total: {total_preguntas} preguntas")
+        print(f"   Contenido: {len(contenido_para_ia)} caracteres")
+        print(f"{'='*60}\n")
+
+        # Verificar que hay generador activo
+        if generador_actual is None:
+            raise HTTPException(status_code=500, detail="No hay modelo activo. Ve a Configuración.")
+
+        # Generar usando el método del generador con sin_prompt_sistema=True
+        # para que use el prompt del usuario tal cual
+        try:
+            # Construir diccionario de cantidades por tipo
+            num_preguntas_dict = {}
+            
+            # Tipos generales
+            if num_flashcards > 0:
+                num_preguntas_dict['flashcard'] = num_flashcards
+            if num_mcq > 0:
+                num_preguntas_dict['mcq'] = num_mcq
+            if num_verdadero_falso > 0:
+                num_preguntas_dict['true_false'] = num_verdadero_falso
+            if num_cloze > 0:
+                num_preguntas_dict['cloze'] = num_cloze
+            if num_respuesta_corta > 0:
+                num_preguntas_dict['short_answer'] = num_respuesta_corta
+            if num_open_question > 0:
+                num_preguntas_dict['open_question'] = num_open_question
+            if num_caso_estudio > 0:
+                num_preguntas_dict['case_study'] = num_caso_estudio
+            
+            # Reading types
+            if num_reading_comprehension > 0:
+                num_preguntas_dict['reading_comprehension'] = num_reading_comprehension
+            if num_reading_true_false > 0:
+                num_preguntas_dict['reading_true_false'] = num_reading_true_false
+            if num_reading_cloze > 0:
+                num_preguntas_dict['reading_cloze'] = num_reading_cloze
+            if num_reading_skill > 0:
+                num_preguntas_dict['reading_skill'] = num_reading_skill
+            if num_reading_matching > 0:
+                num_preguntas_dict['reading_matching'] = num_reading_matching
+            if num_reading_sequence > 0:
+                num_preguntas_dict['reading_sequence'] = num_reading_sequence
+            
+            # Writing types
+            if num_writing_short > 0:
+                num_preguntas_dict['writing_short'] = num_writing_short
+            if num_writing_paraphrase > 0:
+                num_preguntas_dict['writing_paraphrase'] = num_writing_paraphrase
+            if num_writing_correction > 0:
+                num_preguntas_dict['writing_correction'] = num_writing_correction
+            if num_writing_transformation > 0:
+                num_preguntas_dict['writing_transformation'] = num_writing_transformation
+            if num_writing_essay > 0:
+                num_preguntas_dict['writing_essay'] = num_writing_essay
+            if num_writing_sentence_builder > 0:
+                num_preguntas_dict['writing_sentence_builder'] = num_writing_sentence_builder
+            if num_writing_picture_description > 0:
+                num_preguntas_dict['writing_picture_description'] = num_writing_picture_description
+            if num_writing_email > 0:
+                num_preguntas_dict['writing_email'] = num_writing_email
+            
+            print(f"📦 Diccionario de tipos enviado al generador: {num_preguntas_dict}")
+            
+            preguntas_obj = generador_actual.generar_examen(
+                contenido_para_ia,
+                num_preguntas=num_preguntas_dict,
+                ajustes_modelo=ajustes_modelo,
+                sin_prompt_sistema=True  # Usar el prompt del usuario directamente
+            )
+            
+            print(f"✅ Generador retornó: {type(preguntas_obj)}")
+            print(f"✅ Número de preguntas: {len(preguntas_obj) if preguntas_obj else 0}")
+            
+        except Exception as gen_error:
+            print(f"❌ Error en generar_examen: {gen_error}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Error generando preguntas: {str(gen_error)}")
+
+        # Convertir a dict para JSON
+        if isinstance(preguntas_obj, list):
+            preguntas = [p.to_dict() if hasattr(p, 'to_dict') else p for p in preguntas_obj]
+        else:
+            preguntas = []
+
+        if not preguntas:
+            print(f"⚠️  ADVERTENCIA: No se generaron preguntas")
+            print(f"   Esto puede deberse a que el modelo no generó un JSON válido")
+            print(f"   Intenta con menos preguntas o un contenido más corto")
+            raise HTTPException(
+                status_code=500, 
+                detail="No se pudieron generar preguntas. Intenta con menos preguntas o un documento más pequeño."
+            )
+
+        print(f"✅ {len(preguntas)} preguntas generadas exitosamente\n")
+        return {"success": True, "preguntas": preguntas}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error generando práctica: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
+
+
+@app.post("/api/evaluate_flashcard")
+def evaluate_flashcard(datos: dict):
+    """Evalúa la respuesta del usuario para una flashcard usando IA"""
+    print(f"\n{'='*70}")
+    print(f"🎯 EVALUACIÓN DE FLASHCARD")
+    print(f"{'='*70}")
+    
+    try:
+        flashcard_data = datos.get("flashcard", {})
+        user_answer = datos.get("user_answer", "").strip()
+        
+        if not flashcard_data:
+            raise HTTPException(status_code=400, detail="Falta la información de la flashcard")
+        
+        if not user_answer:
+            return {
+                "score": 0,
+                "verdict": "incorrect",
+                "covered_key_points": [],
+                "missing_key_points": flashcard_data.get('solution', {}).get('key_points', []),
+                "feedback": "No proporcionaste una respuesta. Intenta responder basándote en el concepto presentado."
+            }
+        
+        # Extraer información de la flashcard
+        front = flashcard_data.get('data', {}).get('front', '')
+        solution = flashcard_data.get('solution', {})
+        correct_answer = solution.get('answer', '')
+        key_points = solution.get('key_points', [])
+        explanation = solution.get('explanation', '')
+        
+        print(f"📝 Pregunta: {front[:60]}...")
+        print(f"✅ Respuesta correcta: {correct_answer[:60]}...")
+        print(f"🎯 Key points: {key_points}")
+        print(f"👤 Respuesta usuario: {user_answer[:60]}...")
+        
+        # Construir prompt para Ollama
+        prompt = f"""Eres un evaluador de respuestas de estudiantes.
+
+CONTEXTO:
+Pregunta (front): {front}
+Respuesta correcta de referencia: {correct_answer}
+Ideas clave que debe cubrir (key_points): {', '.join(key_points)}
+Explicación del concepto: {explanation}
+
+RESPUESTA DEL ESTUDIANTE:
+{user_answer}
+
+TU TAREA:
+1. Compara la respuesta del estudiante con la respuesta correcta y los key_points.
+2. Decide un score numérico entre 0 y 100.
+3. Indica si la respuesta es:
+   - "correct": cubre la mayoría de los puntos importantes y no tiene errores graves
+   - "partially_correct": cubre algunos puntos importantes pero omite otros o tiene errores
+   - "incorrect": no refleja la idea principal o es muy pobre
+4. Indica qué key_points fueron cubiertos y cuáles faltan.
+5. Da un feedback breve al estudiante.
+
+FORMATO DE SALIDA:
+Devuelve EXCLUSIVAMENTE un objeto JSON (sin texto adicional):
+{{
+  "score": 85,
+  "verdict": "correct",
+  "covered_key_points": ["punto que sí mencionó"],
+  "missing_key_points": ["punto que faltó"],
+  "feedback": "Texto breve dirigido al estudiante explicando qué entendió bien y qué le falta"
+}}
+
+No agregues texto fuera del JSON."""
+
+        if generador_actual is None:
+            raise HTTPException(status_code=500, detail="No hay modelo activo")
+        
+        print(f"\n🤖 Enviando a IA para evaluación...")
+        
+        # Usar el modelo para evaluar
+        respuesta = generador_actual.llm(
+            prompt,
+            max_tokens=1000,
+            temperature=0.3,  # Baja temperatura para evaluación consistente
+            top_p=0.9,
+            repeat_penalty=1.1
+        )
+        
+        respuesta_texto = respuesta['choices'][0]['text'].strip()
+        
+        print(f"📄 Respuesta IA: {respuesta_texto[:200]}...")
+        
+        # Extraer JSON
+        json_inicio = respuesta_texto.find('{')
+        json_fin = respuesta_texto.rfind('}') + 1
+        
+        if json_inicio >= 0 and json_fin > json_inicio:
+            json_str = respuesta_texto[json_inicio:json_fin]
+            resultado = json.loads(json_str)
+            
+            print(f"✅ Evaluación completada:")
+            print(f"   Score: {resultado.get('score')}")
+            print(f"   Verdict: {resultado.get('verdict')}")
+            print(f"   Cubiertos: {resultado.get('covered_key_points')}")
+            print(f"   Faltantes: {resultado.get('missing_key_points')}")
+            
+            return resultado
+        else:
+            raise Exception("No se pudo extraer JSON de la respuesta")
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Error parseando JSON: {e}")
+        raise HTTPException(status_code=500, detail="Error parseando respuesta de IA")
+    except Exception as e:
+        print(f"❌ Error evaluando flashcard: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error en evaluación: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Iniciando servidor API de Examinator...")
     print("📍 URL: http://localhost:8000")
     print("📚 Docs: http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
 
 

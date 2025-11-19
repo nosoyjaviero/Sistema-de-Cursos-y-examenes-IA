@@ -135,6 +135,35 @@ def realizar_examen_interactivo(preguntas: List[PreguntaExamen], generador: Gene
     return resultados, puntos_obtenidos, puntos_totales
 
 
+def generar_practica_interactiva():
+    """Permite seleccionar una carpeta y generar una práctica"""
+    ruta = input("Ingrese la ruta de la carpeta para generar la práctica: ").strip()
+
+    if not ruta:
+        print("La ruta no puede estar vacía.")
+        return
+
+    # Llamar al backend para generar la práctica
+    try:
+        import requests
+        url = "http://localhost:8000/api/generar_practica"
+        response = requests.post(url, json={"ruta": ruta})
+
+        if response.status_code == 200:
+            data = response.json()
+            preguntas = data.get("preguntas", [])
+
+            if preguntas:
+                print("\nPráctica generada con éxito. Iniciando...")
+                realizar_examen_interactivo(preguntas, generador=None)  # Ajustar generador si es necesario
+            else:
+                print("No se generaron preguntas para la práctica.")
+        else:
+            print(f"Error al generar la práctica: {response.json().get('detail', 'Error desconocido')}")
+    except Exception as e:
+        print(f"Error al conectar con el servidor: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Sistema interactivo de exámenes con IA"
@@ -174,8 +203,17 @@ def main():
         "--cargar-examen",
         help="Cargar un examen previamente generado desde JSON"
     )
+    parser.add_argument(
+        "--practica",
+        action="store_true",
+        help="Generar una práctica desde una carpeta"
+    )
     
     args = parser.parse_args()
+    
+    if args.practica:
+        generar_practica_interactiva()
+        return 0
     
     # Leer documento
     documento_path = Path(args.documento)

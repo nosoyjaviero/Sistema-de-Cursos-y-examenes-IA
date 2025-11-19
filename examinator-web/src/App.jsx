@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import './App.css'
+import React, { useState, useEffect, useRef } from 'react';
+import './App.css';
+import './ModalGuardarTxt.css';
 
 function App() {
   const [selectedMenu, setSelectedMenu] = useState('inicio')
@@ -26,6 +27,7 @@ function App() {
   const [cargandoConfig, setCargandoConfig] = useState(false)
   const [modelosParaDescargar, setModelosParaDescargar] = useState([])
   const [mostrarDescarga, setMostrarDescarga] = useState(false)
+  const [mostrarModelos, setMostrarModelos] = useState(true)
   const [mensajesChat, setMensajesChat] = useState([])
   const [inputChat, setInputChat] = useState('')
   const [cargandoChat, setCargandoChat] = useState(false)
@@ -47,9 +49,28 @@ function App() {
   
   // Estados para exámenes
   const [examenActivo, setExamenActivo] = useState(null)
+  const [menuDropdownAbierto, setMenuDropdownAbierto] = useState(false)
+  
+  // Estados para marcado de carpetas y generación masiva
+  const [modalSeleccionArchivos, setModalSeleccionArchivos] = useState(false)
+  const [archivosEncontrados, setArchivosEncontrados] = useState([])
+  const [archivosExcluidos, setArchivosExcluidos] = useState([])
+  const [tipoCarpeta, setTipoCarpeta] = useState('') // 'curso', 'capitulo', 'clase', 'leccion'
+  const [carpetasMarcadas, setCarpetasMarcadas] = useState({}) // {ruta: {tipo, fecha}}
+  const [configExamenCarpeta, setConfigExamenCarpeta] = useState({
+    num_multiple: 10,
+    num_corta: 5,
+    num_vf: 5,
+    num_desarrollo: 3
+  })
+  const [generandoExamenPorBloques, setGenerandoExamenPorBloques] = useState(false)
+  const [bloqueActual, setBloqueActual] = useState(0)
+  const [totalBloques, setTotalBloques] = useState(0)
+  
   const [preguntasExamen, setPreguntasExamen] = useState([])
   const [respuestasUsuario, setRespuestasUsuario] = useState({})
   const [resultadoExamen, setResultadoExamen] = useState(null)
+  const [examenCompletado, setExamenCompletado] = useState(false)
   const [carpetaExamen, setCarpetaExamen] = useState(null)
   const [generandoExamen, setGenerandoExamen] = useState(false)
   const [abortController, setAbortController] = useState(null)
@@ -58,9 +79,9 @@ function App() {
   const [sessionIdGeneracion, setSessionIdGeneracion] = useState(null)
   const [modalExamenAbierto, setModalExamenAbierto] = useState(false)
   const [configExamen, setConfigExamen] = useState({
-    num_multiple: 8,
-    num_corta: 5,
-    num_desarrollo: 3
+    num_multiple: 0,
+    num_corta: 0,
+    num_desarrollo: 0
   })
   const [examenesGuardados, setExamenesGuardados] = useState({
     completados: [],
@@ -115,6 +136,70 @@ function App() {
   const [chatsHistorialModal, setChatsHistorialModal] = useState([])
   const [loadingHistorialModal, setLoadingHistorialModal] = useState(false)
 
+  // Estados para el sistema de notas
+  const [notasGuardadas, setNotasGuardadas] = useState([])
+  const [editorNotaAbierto, setEditorNotaAbierto] = useState(false)
+  const [notaActual, setNotaActual] = useState(null)
+  const [tituloNota, setTituloNota] = useState('')
+  const [contenidoNota, setContenidoNota] = useState('')
+  const [carpetaNota, setCarpetaNota] = useState('')
+  const [modoSoloLectura, setModoSoloLectura] = useState(false)
+  const [modalCarpetasNotaAbierto, setModalCarpetasNotaAbierto] = useState(false)
+  const [menuContextual, setMenuContextual] = useState({ visible: false, x: 0, y: 0 })
+  const [rangoSeleccionado, setRangoSeleccionado] = useState(null)
+  const [arrastandoMenu, setArrastandoMenu] = useState({ activo: false, offsetX: 0, offsetY: 0 })
+  const [submenuActivo, setSubmenuActivo] = useState(null) // 'tipografias', 'enlaces', null
+  const [rutaNotasActual, setRutaNotasActual] = useState('')
+  const [carpetasNotas, setCarpetasNotas] = useState([])
+  const [modalHipervinculos, setModalHipervinculos] = useState(false)
+  const [textoSeleccionado, setTextoSeleccionado] = useState('')
+  const [urlHipervinculo, setUrlHipervinculo] = useState('')
+  const [tipoHipervinculo, setTipoHipervinculo] = useState('url') // 'url' o 'nota'
+  const [notaReferenciaId, setNotaReferenciaId] = useState(null)
+
+  // Estados para navegación de carpetas de prácticas
+  const [rutaPracticasActual, setRutaPracticasActual] = useState('')
+  const [carpetasPracticas, setCarpetasPracticas] = useState([])
+  const [modalMoverPractica, setModalMoverPractica] = useState(false)
+  const [practicaAMover, setPracticaAMover] = useState(null)
+  const [rutaCarpetasChat, setRutaCarpetasChat] = useState('')
+  const [practicas, setPracticas] = useState([])
+
+  // Estados para diagnóstico de Ollama
+  const [diagnosticoOllama, setDiagnosticoOllama] = useState(null)
+  const [reparandoOllama, setReparandoOllama] = useState(false)
+
+  // Estados para sistema de archivos del chatbot
+  const [mostrarExploradorChat, setMostrarExploradorChat] = useState(false)
+  const [archivosRecientes, setArchivosRecientes] = useState([])
+  const [archivosContextoChat, setArchivosContextoChat] = useState([])
+  const [rutaExploradorChat, setRutaExploradorChat] = useState('')
+  const [carpetasExploradorChat, setCarpetasExploradorChat] = useState([])
+  const [tipoExploradorChat, setTipoExploradorChat] = useState('notas') // 'notas', 'examenes', 'practicas', 'cursos'
+  const [cargandoArchivos, setCargandoArchivos] = useState(false)
+
+  // Estados para guardar chat/consulta como TXT
+  const [modalGuardarTxt, setModalGuardarTxt] = useState(false)
+  const [tipoGuardadoTxt, setTipoGuardadoTxt] = useState('chat') // 'chat' o 'consulta'
+  const [consultaAGuardar, setConsultaAGuardar] = useState(null)
+  const [nombreArchivoTxt, setNombreArchivoTxt] = useState('')
+  const [rutaGuardadoTxt, setRutaGuardadoTxt] = useState('')
+  const [carpetasCursos, setCarpetasCursos] = useState([])
+
+  // Estados para tipografías personalizadas
+  const [tipografiasPersonalizadas, setTipografiasPersonalizadas] = useState([])
+  const [modalTipografias, setModalTipografias] = useState(false)
+  const [tipografiaActual, setTipografiaActual] = useState('Arial, sans-serif')
+
+  // Estados para modal de selección de nota de referencia
+  const [modalSeleccionarNotaRef, setModalSeleccionarNotaRef] = useState(false)
+  const [rutaModalNotaRef, setRutaModalNotaRef] = useState('')
+  const [carpetasModalNotaRef, setCarpetasModalNotaRef] = useState([])
+  const [dropdownNotaAbierto, setDropdownNotaAbierto] = useState(null) // ID de la nota con dropdown abierto
+
+  // Ref para el editor de notas
+  const editorRef = useRef(null)
+
   // Detectar automáticamente la URL del API
   // Si accedes desde otra IP (móvil/tablet), usa esa IP para el backend
   // Si accedes desde localhost, usa localhost
@@ -150,6 +235,420 @@ function App() {
       cargarCarpetasExamenes()
     }
   }, [selectedMenu])
+
+  // Cargar prácticas desde localStorage al iniciar y cuando cambia el menú
+  useEffect(() => {
+    const practicasGuardadas = localStorage.getItem('practicas');
+    if (practicasGuardadas) {
+      setPracticas(JSON.parse(practicasGuardadas));
+    }
+  }, [selectedMenu]);
+
+  // Verificar estado de Ollama cuando se abre el chat
+  useEffect(() => {
+    if (selectedMenu === 'chat') {
+      verificarEstadoOllama()
+      cargarArchivosRecientes()
+    }
+  }, [selectedMenu])
+
+  // Cargar carpetas de prácticas al cambiar a esa pestaña
+  useEffect(() => {
+    if (selectedMenu === 'practicas') {
+      cargarCarpetasPracticas(rutaPracticasActual)
+    }
+  }, [selectedMenu])
+
+  // Cargar tipografías personalizadas desde localStorage
+  useEffect(() => {
+    const tipografiasGuardadas = localStorage.getItem('tipografiasPersonalizadas');
+    if (tipografiasGuardadas) {
+      try {
+        const tipografias = JSON.parse(tipografiasGuardadas);
+        tipografias.forEach(tipografia => {
+          // Recrear @font-face para cada tipografía guardada
+          const fontFace = `
+            @font-face {
+              font-family: '${tipografia.nombre}';
+              src: url('${tipografia.data}');
+              font-weight: normal;
+              font-style: normal;
+            }
+          `;
+          const style = document.createElement('style');
+          style.textContent = fontFace;
+          style.id = tipografia.id;
+          document.head.appendChild(style);
+        });
+        setTipografiasPersonalizadas(tipografias);
+      } catch (error) {
+        console.error('Error cargando tipografías:', error);
+      }
+    }
+  }, []);
+
+  // Event listener para clicks en enlaces de referencia a notas
+  useEffect(() => {
+    const handleNotaClick = (e) => {
+      const link = e.target.closest('a[data-nota-id]');
+      if (link) {
+        e.preventDefault();
+        const notaId = parseInt(link.getAttribute('data-nota-id'));
+        const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]');
+        const nota = notasActuales.find(n => n.id === notaId);
+        if (nota) {
+          // Actualizar el estado de notas guardadas primero
+          setNotasGuardadas(notasActuales);
+          setSelectedMenu('notas');
+          // Navegar a la carpeta de la nota
+          if (nota.carpeta) {
+            setRutaNotasActual(nota.carpeta);
+            cargarCarpetasNotas(nota.carpeta);
+          } else {
+            setRutaNotasActual('');
+            cargarCarpetasNotas('');
+          }
+          // Abrir la nota después de un breve delay para que cargue la vista
+          setTimeout(() => {
+            setNotaActual(nota);
+            setTituloNota(nota.titulo);
+            setContenidoNota(nota.contenido);
+            setCarpetaNota(nota.carpeta || '');
+            setModoSoloLectura(true);
+            setEditorNotaAbierto(true);
+          }, 250);
+        }
+      }
+    };
+    document.addEventListener('click', handleNotaClick);
+    return () => document.removeEventListener('click', handleNotaClick);
+  }, []);
+
+  // Cerrar dropdowns de notas al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.dropdown-nota')) {
+        setDropdownNotaAbierto(null);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Actualizar contenido del editor cuando se abre una nota
+  useEffect(() => {
+    if (editorRef.current && editorNotaAbierto) {
+      editorRef.current.innerHTML = contenidoNota;
+      // Asegurar dirección LTR
+      editorRef.current.setAttribute('dir', 'ltr');
+      editorRef.current.style.direction = 'ltr';
+      editorRef.current.style.textAlign = 'left';
+      
+      // Sistema completo de edición de imágenes
+      window.imagenSeleccionada = null;
+      window.modoEdicion = null; // 'resize', 'move', 'crop'
+      window.datosInicio = {};
+      
+      window.mostrarControlesImagen = function(img) {
+        if (modoSoloLectura) return;
+        
+        // Remover controles anteriores
+        document.querySelectorAll('.controles-imagen').forEach(c => c.remove());
+        document.querySelectorAll('.imagen-editable.seleccionada').forEach(i => i.classList.remove('seleccionada'));
+        
+        img.classList.add('seleccionada');
+        window.imagenSeleccionada = img;
+        
+        // Crear controles avanzados con etiquetas visibles
+        const controles = document.createElement('div');
+        controles.className = 'controles-imagen';
+        
+        // Crear barra de arrastre para los controles
+        const barraArrastre = document.createElement('div');
+        barraArrastre.style.cssText = `
+          background: rgba(100, 108, 255, 0.3);
+          padding: 0.3rem;
+          margin-bottom: 0.5rem;
+          border-radius: 6px;
+          cursor: move;
+          text-align: center;
+          font-size: 0.7rem;
+          color: rgba(255,255,255,0.7);
+          user-select: none;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `;
+        
+        // Contenedor izquierdo (espaciador)
+        const espaciadorIzq = document.createElement('span');
+        espaciadorIzq.style.opacity = '0';
+        espaciadorIzq.textContent = '✕';
+        
+        // Indicador central de arrastre
+        const indicadorArrastre = document.createElement('span');
+        indicadorArrastre.textContent = '⋮⋮⋮';
+        
+        // Botón de cerrar
+        const btnCerrar = document.createElement('button');
+        btnCerrar.textContent = '✕';
+        btnCerrar.style.cssText = `
+          background: transparent;
+          border: none;
+          color: rgba(255,255,255,0.8);
+          cursor: pointer;
+          font-size: 1rem;
+          padding: 0 0.3rem;
+          line-height: 1;
+        `;
+        btnCerrar.title = 'Cerrar controles';
+        btnCerrar.onclick = (e) => {
+          e.stopPropagation();
+          controles.remove();
+          img.classList.remove('seleccionada');
+          window.imagenSeleccionada = null;
+        };
+        
+        barraArrastre.appendChild(espaciadorIzq);
+        barraArrastre.appendChild(indicadorArrastre);
+        barraArrastre.appendChild(btnCerrar);
+        
+        let arrastrando = false;
+        let offsetX = 0;
+        let offsetY = 0;
+        
+        indicadorArrastre.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          arrastrando = true;
+          const rect = controles.getBoundingClientRect();
+          offsetX = e.clientX - rect.left;
+          offsetY = e.clientY - rect.top;
+          controles.style.position = 'fixed';
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+          if (arrastrando) {
+            controles.style.left = (e.clientX - offsetX) + 'px';
+            controles.style.top = (e.clientY - offsetY) + 'px';
+            controles.style.transform = 'none';
+          }
+        });
+        
+        document.addEventListener('mouseup', () => {
+          if (arrastrando) {
+            arrastrando = false;
+          }
+        });
+        
+        controles.appendChild(barraArrastre);
+        
+        const contenidoControles = document.createElement('div');
+        contenidoControles.innerHTML = `
+          <div class="control-seccion">
+            <div class="control-titulo">Tamaño</div>
+            <div class="control-grupo">
+              <button class="control-btn" onclick="window.ajustarImagen('pequeña')">Pequeña</button>
+              <button class="control-btn" onclick="window.ajustarImagen('mediana')">Mediana</button>
+              <button class="control-btn" onclick="window.ajustarImagen('grande')">Grande</button>
+              <button class="control-btn" onclick="window.ajustarImagen('completa')">Completa</button>
+            </div>
+          </div>
+          <div class="control-separador"></div>
+          <div class="control-seccion">
+            <div class="control-titulo">Posición</div>
+            <div class="control-grupo">
+              <button class="control-btn" onclick="window.cambiarZIndex('delante')">Al Frente</button>
+              <button class="control-btn" onclick="window.cambiarZIndex('detras')">Atrás</button>
+            </div>
+          </div>
+          <div class="control-separador"></div>
+          <div class="control-seccion">
+            <div class="control-titulo">Transparencia</div>
+            <div class="control-grupo">
+              <button class="control-btn" onclick="window.cambiarOpacidad(-0.2)">➖</button>
+              <button class="control-btn" onclick="window.cambiarOpacidad(0.2)">➕</button>
+            </div>
+          </div>
+          <div class="control-separador"></div>
+          <div class="control-grupo">
+            <button class="control-btn control-recortar" onclick="window.iniciarRecorte()">✂️ Recortar</button>
+            <button class="control-btn control-eliminar" onclick="window.eliminarImagen()">🗑️ Eliminar</button>
+          </div>
+        `;
+        
+        controles.appendChild(contenidoControles);
+        img.parentElement.appendChild(controles);
+        
+        // Agregar manejadores de redimensionado
+        agregarManejadoresResize(img);
+      };
+      
+      function agregarManejadoresResize(img) {
+        // Remover manejadores anteriores
+        document.querySelectorAll('.resize-handle').forEach(h => h.remove());
+        
+        const contenedor = img.parentElement;
+        const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+        
+        handles.forEach(pos => {
+          const handle = document.createElement('div');
+          handle.className = `resize-handle resize-${pos}`;
+          handle.dataset.position = pos;
+          
+          handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            window.modoEdicion = 'resize';
+            window.datosInicio = {
+              x: e.clientX,
+              y: e.clientY,
+              width: img.offsetWidth,
+              height: img.offsetHeight,
+              position: pos
+            };
+            
+            document.body.style.cursor = getComputedStyle(handle).cursor;
+          });
+          
+          contenedor.appendChild(handle);
+        });
+      }
+      
+      // Event listeners para mouse
+      const mouseMoveHandler = (e) => {
+        if (!window.imagenSeleccionada || !window.modoEdicion) return;
+        
+        if (window.modoEdicion === 'resize') {
+          const deltaX = e.clientX - window.datosInicio.x;
+          const deltaY = e.clientY - window.datosInicio.y;
+          const pos = window.datosInicio.position;
+          
+          let newWidth = window.datosInicio.width;
+          let newHeight = window.datosInicio.height;
+          
+          // Calcular nuevo tamaño según la posición del handle
+          if (pos.includes('e')) newWidth = window.datosInicio.width + deltaX;
+          if (pos.includes('w')) newWidth = window.datosInicio.width - deltaX;
+          if (pos.includes('s')) newHeight = window.datosInicio.height + deltaY;
+          if (pos.includes('n')) newHeight = window.datosInicio.height - deltaY;
+          
+          // Mantener proporción si es esquina
+          if (pos.length === 2) {
+            const ratio = window.datosInicio.width / window.datosInicio.height;
+            newHeight = newWidth / ratio;
+          }
+          
+          // Límites mínimos
+          newWidth = Math.max(50, Math.min(1200, newWidth));
+          newHeight = Math.max(50, Math.min(1200, newHeight));
+          
+          window.imagenSeleccionada.style.width = newWidth + 'px';
+          window.imagenSeleccionada.style.height = newHeight + 'px';
+        }
+        
+        if (window.modoEdicion === 'move') {
+          const deltaX = e.clientX - window.datosInicio.x;
+          const deltaY = e.clientY - window.datosInicio.y;
+          
+          window.imagenSeleccionada.parentElement.style.left = (window.datosInicio.left + deltaX) + 'px';
+          window.imagenSeleccionada.parentElement.style.top = (window.datosInicio.top + deltaY) + 'px';
+        }
+      };
+      
+      const mouseUpHandler = () => {
+        window.modoEdicion = null;
+        document.body.style.cursor = 'default';
+      };
+      
+      document.addEventListener('mousemove', mouseMoveHandler);
+      document.addEventListener('mouseup', mouseUpHandler);
+      
+      // Funciones globales
+      window.ajustarImagen = function(tamaño) {
+        if (!window.imagenSeleccionada) return;
+        const anchos = { pequeña: 200, mediana: 400, grande: 600, completa: '100%' };
+        window.imagenSeleccionada.style.width = typeof anchos[tamaño] === 'number' ? anchos[tamaño] + 'px' : anchos[tamaño];
+        window.imagenSeleccionada.style.height = 'auto';
+      };
+      
+      window.cambiarZIndex = function(direccion) {
+        if (!window.imagenSeleccionada) return;
+        const contenedor = window.imagenSeleccionada.parentElement;
+        contenedor.style.position = 'relative';
+        contenedor.style.zIndex = direccion === 'delante' ? '100' : '-1';
+      };
+      
+      window.cambiarOpacidad = function(delta) {
+        if (!window.imagenSeleccionada) return;
+        const opacidadActual = parseFloat(window.imagenSeleccionada.style.opacity || '1');
+        const nuevaOpacidad = Math.max(0.1, Math.min(1, opacidadActual + delta));
+        window.imagenSeleccionada.style.opacity = nuevaOpacidad;
+      };
+      
+      window.iniciarRecorte = function() {
+        if (!window.imagenSeleccionada) return;
+        
+        const porcentaje = prompt('¿Qué porcentaje deseas recortar de cada lado?\nEjemplo: 10 (recorta 10% de cada lado)\n0-50:', '10');
+        
+        if (porcentaje === null) return;
+        
+        const pct = Math.max(0, Math.min(50, parseFloat(porcentaje) || 10));
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = window.imagenSeleccionada;
+        
+        // Crear imagen temporal para cargar
+        const tempImg = new Image();
+        tempImg.onload = function() {
+          const cropPct = pct / 100;
+          const cropX = tempImg.width * cropPct;
+          const cropY = tempImg.height * cropPct;
+          const cropWidth = tempImg.width * (1 - cropPct * 2);
+          const cropHeight = tempImg.height * (1 - cropPct * 2);
+          
+          canvas.width = cropWidth;
+          canvas.height = cropHeight;
+          
+          ctx.drawImage(tempImg, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+          
+          img.src = canvas.toDataURL();
+          img.style.width = 'auto';
+          img.style.height = 'auto';
+          
+          alert('✂️ Imagen recortada exitosamente');
+        };
+        tempImg.src = img.src;
+      };
+      
+      
+      window.eliminarImagen = function() {
+        if (!window.imagenSeleccionada || !confirm('¿Eliminar esta imagen?')) return;
+        window.imagenSeleccionada.parentElement.remove();
+        window.imagenSeleccionada = null;
+      };
+      
+      // Click fuera para deseleccionar
+      const clickHandler = (e) => {
+        if (!e.target.closest('.imagen-contenedor') && !e.target.closest('.controles-imagen')) {
+          document.querySelectorAll('.controles-imagen').forEach(c => c.remove());
+          document.querySelectorAll('.resize-handle').forEach(h => h.remove());
+          document.querySelectorAll('.imagen-editable.seleccionada').forEach(i => i.classList.remove('seleccionada'));
+          window.imagenSeleccionada = null;
+        }
+      };
+      
+      document.addEventListener('click', clickHandler);
+      
+      return () => {
+        document.removeEventListener('click', clickHandler);
+        document.removeEventListener('mousemove', mouseMoveHandler);
+        document.removeEventListener('mouseup', mouseUpHandler);
+      };
+    }
+  }, [editorNotaAbierto, modoSoloLectura])
 
   // Cargar prompt del sistema al inicio (solo una vez)
   useEffect(() => {
@@ -290,6 +789,215 @@ function App() {
     }
   }
 
+  // ========== SISTEMA DE MARCADO DE CARPETAS Y GENERACIÓN MASIVA ==========
+  
+  // Cargar carpetas marcadas desde localStorage
+  useEffect(() => {
+    const marcadas = localStorage.getItem('carpetasMarcadas');
+    if (marcadas) {
+      setCarpetasMarcadas(JSON.parse(marcadas));
+    }
+  }, []);
+  
+  // Marcar carpeta con un tipo específico
+  const marcarCarpeta = (ruta, tipo) => {
+    const nuevasMarcadas = {
+      ...carpetasMarcadas,
+      [ruta]: {
+        tipo,
+        fecha: new Date().toISOString()
+      }
+    };
+    setCarpetasMarcadas(nuevasMarcadas);
+    localStorage.setItem('carpetasMarcadas', JSON.stringify(nuevasMarcadas));
+    setMensaje({
+      tipo: 'success',
+      texto: `✅ Carpeta marcada como ${tipo.toUpperCase()}`
+    });
+  };
+  
+  // Obtener todos los archivos recursivamente de una carpeta
+  const obtenerArchivosRecursivos = async (ruta) => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas/archivos-recursivos?ruta=${encodeURIComponent(ruta)}`);
+      const data = await response.json();
+      return data.archivos || [];
+    } catch (error) {
+      console.error('Error obteniendo archivos:', error);
+      return [];
+    }
+  };
+  
+  // Abrir modal de selección de archivos para generar examen
+  const abrirGenerarExamenCarpeta = async (ruta, tipo) => {
+    setMenuDropdownAbierto(false);
+    setGenerandoExamen(true);
+    setMensaje({
+      tipo: 'info',
+      texto: '🔍 Buscando archivos en todas las subcarpetas...'
+    });
+    
+    // Obtener todos los archivos recursivamente
+    const archivos = await obtenerArchivosRecursivos(ruta);
+    
+    if (archivos.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ No se encontraron archivos en esta carpeta'
+      });
+      setGenerandoExamen(false);
+      return;
+    }
+    
+    setArchivosEncontrados(archivos);
+    setArchivosExcluidos([]);
+    setTipoCarpeta(tipo);
+    setCarpetaExamen(ruta);
+    setModalSeleccionArchivos(true);
+    setGenerandoExamen(false);
+    
+    setMensaje({
+      tipo: 'success',
+      texto: `✅ Se encontraron ${archivos.length} archivos`
+    });
+  };
+  
+  // Generar examen por bloques
+  const generarExamenPorBloques = async () => {
+    setModalSeleccionArchivos(false);
+    setGenerandoExamenPorBloques(true);
+    setProgresoGeneracion(0);
+    
+    // Filtrar archivos no excluidos
+    const archivosIncluidos = archivosEncontrados.filter(
+      archivo => !archivosExcluidos.includes(archivo.ruta)
+    );
+    
+    if (archivosIncluidos.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Debes seleccionar al menos un archivo'
+      });
+      setGenerandoExamenPorBloques(false);
+      return;
+    }
+    
+    try {
+      // Dividir en bloques de 5 archivos
+      const tamañoBloque = 5;
+      const bloques = [];
+      for (let i = 0; i < archivosIncluidos.length; i += tamañoBloque) {
+        bloques.push(archivosIncluidos.slice(i, i + tamañoBloque));
+      }
+      
+      setTotalBloques(bloques.length);
+      const todasLasPreguntas = [];
+      
+      // Procesar cada bloque
+      for (let i = 0; i < bloques.length; i++) {
+        setBloqueActual(i + 1);
+        setMensajeProgreso(`Procesando bloque ${i + 1} de ${bloques.length}...`);
+        setProgresoGeneracion(Math.round(((i + 1) / bloques.length) * 100));
+        
+        const bloque = bloques[i];
+        
+        // Llamar al endpoint para generar preguntas de este bloque
+        const response = await fetch(`${API_URL}/api/generar_examen_bloque`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            archivos: bloque.map(a => a.ruta),
+            config: configExamenCarpeta
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Error en bloque ${i + 1}`);
+        }
+        
+        const data = await response.json();
+        if (data.preguntas) {
+          todasLasPreguntas.push(...data.preguntas);
+        }
+      }
+      
+      // Seleccionar las mejores preguntas
+      setMensajeProgreso('Seleccionando las mejores preguntas...');
+      const totalDeseado = configExamenCarpeta.num_multiple + 
+                          configExamenCarpeta.num_corta + 
+                          configExamenCarpeta.num_vf + 
+                          configExamenCarpeta.num_desarrollo;
+      
+      const preguntasSeleccionadas = seleccionarMejoresPreguntas(todasLasPreguntas, totalDeseado, configExamenCarpeta);
+      
+      setPreguntasExamen(preguntasSeleccionadas);
+      setRespuestasUsuario({});
+      setExamenCompletado(false);
+      setModalExamenAbierto(true);
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Examen generado con ${preguntasSeleccionadas.length} preguntas`
+      });
+      
+    } catch (error) {
+      console.error('Error generando examen:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      });
+    } finally {
+      setGenerandoExamenPorBloques(false);
+      setBloqueActual(0);
+      setTotalBloques(0);
+      setProgresoGeneracion(0);
+    }
+  };
+  
+  // Seleccionar las mejores preguntas (diversidad y relevancia)
+  const seleccionarMejoresPreguntas = (preguntas, total, config) => {
+    const seleccionadas = [];
+    
+    // Separar por tipo
+    const porTipo = {
+      'multiple': preguntas.filter(p => p.tipo === 'multiple'),
+      'corta': preguntas.filter(p => p.tipo === 'corta'),
+      'verdadero-falso': preguntas.filter(p => p.tipo === 'verdadero-falso'),
+      'desarrollo': preguntas.filter(p => p.tipo === 'desarrollo')
+    };
+    
+    // Seleccionar aleatoriamente de cada tipo
+    if (config.num_multiple > 0) {
+      seleccionadas.push(...seleccionarAleatorias(porTipo['multiple'], config.num_multiple));
+    }
+    if (config.num_corta > 0) {
+      seleccionadas.push(...seleccionarAleatorias(porTipo['corta'], config.num_corta));
+    }
+    if (config.num_vf > 0) {
+      seleccionadas.push(...seleccionarAleatorias(porTipo['verdadero-falso'], config.num_vf));
+    }
+    if (config.num_desarrollo > 0) {
+      seleccionadas.push(...seleccionarAleatorias(porTipo['desarrollo'], config.num_desarrollo));
+    }
+    
+    return seleccionadas;
+  };
+  
+  // Seleccionar N elementos aleatorios de un array
+  const seleccionarAleatorias = (array, n) => {
+    const copia = [...array];
+    const resultado = [];
+    const cantidad = Math.min(n, copia.length);
+    
+    for (let i = 0; i < cantidad; i++) {
+      const indice = Math.floor(Math.random() * copia.length);
+      resultado.push(copia[indice]);
+      copia.splice(indice, 1);
+    }
+    
+    return resultado;
+  };
+
   // Eliminar carpeta de exámenes
   const eliminarCarpetaExamenes = async (ruta, nombre) => {
     const confirmMsg = `¿Eliminar la carpeta de exámenes "${nombre}"?\n\nSe eliminarán TODOS los exámenes dentro (completados y en progreso).`
@@ -340,6 +1048,18 @@ function App() {
 
       const data = await response.json()
       if (data.success) {
+        // Si era un examen en progreso, limpiar también el temporal
+        if (tipo === 'progreso') {
+          await limpiarExamenLocal()
+          // Si es el examen activo, cerrarlo
+          if (examenActivo) {
+            setExamenActivo(false)
+            setModalExamenAbierto(false)
+            setPreguntasExamen([])
+            setRespuestasUsuario({})
+          }
+        }
+        
         setMensaje({
           tipo: 'success',
           texto: '✅ Examen eliminado'
@@ -615,6 +1335,10 @@ function App() {
       mensajeUsuario.busqueda_web = true
     }
     
+    // Construir historial ANTES de agregar el mensaje actual al estado
+    // Esto asegura que el backend reciba el contexto completo
+    const historialCompleto = [...mensajesChat, mensajeUsuario]
+    
     setMensajesChat(prev => [...prev, mensajeUsuario])
 
     // Crear AbortController para poder cancelar la petición
@@ -623,16 +1347,42 @@ function App() {
 
     setCargandoChat(true)
     try {
-      console.log('⚙️ Configuración avanzada:', ajustesAvanzados)
+      console.log('\n' + '='.repeat(70))
+      console.log('💬 ENVIANDO MENSAJE AL BACKEND')
+      console.log('='.repeat(70))
+      console.log('📝 Mensaje actual:', mensaje)
+      console.log('📜 Total mensajes en historial:', historialCompleto.length)
+      console.log('⚙️ Configuración:', ajustesAvanzados)
+      console.log('\n🔍 DETALLE COMPLETO DEL HISTORIAL:')
+      historialCompleto.forEach((msg, idx) => {
+        const preview = msg.texto?.substring(0, 80) || ''
+        console.log(`  ${idx + 1}. [${msg.tipo.toUpperCase()}] ${preview}${msg.texto?.length > 80 ? '...' : ''}`)
+      })
+      console.log('='.repeat(70) + '\n')
+      
+      // Combinar contexto de archivo único + archivos adjuntos
+      let contextoFinal = contenidoContexto || null
+      
+      if (archivosContextoChat.length > 0) {
+        const contextosArchivos = archivosContextoChat.map(archivo => 
+          `[Archivo: ${archivo.nombre}]\n${archivo.contenido}\n[Fin de ${archivo.nombre}]\n`
+        ).join('\n\n')
+        
+        if (contextoFinal) {
+          contextoFinal = contextoFinal + '\n\n' + contextosArchivos
+        } else {
+          contextoFinal = contextosArchivos
+        }
+      }
       
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           mensaje,
-          contexto: contenidoContexto || null,
+          contexto: contextoFinal,
           buscar_web: busquedaWebActiva,
-          historial: mensajesChat,  // Enviar historial completo para mantener contexto
+          historial: historialCompleto,  // Enviar historial COMPLETO incluyendo mensaje actual
           ajustes: ajustesAvanzados  // Enviar configuración avanzada
         }),
         signal: controller.signal
@@ -640,10 +1390,30 @@ function App() {
 
       const data = await response.json()
       
+      // Validar que data no sea null
+      if (!data || typeof data !== 'object') {
+        throw new Error('El servidor no respondió correctamente.');
+      }
+      
+      if (!data.respuesta) {
+        throw new Error('El modelo no generó una respuesta. Verifica la configuración.');
+      }
+      
+      // Si la respuesta contiene un mensaje de error sobre modelos, mostrarlo directamente
+      if (data.respuesta.includes('❌')) {
+        const nuevaRespuesta = {
+          tipo: 'asistente',
+          texto: data.respuesta,
+          hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+        }
+        setMensajesChat(prev => [...prev, nuevaRespuesta])
+        return
+      }
+      
       // Agregar respuesta del asistente
       const nuevaRespuesta = {
         tipo: 'asistente',
-        texto: data.respuesta || 'Error al obtener respuesta',
+        texto: data.respuesta,
         hora: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
       }
       setMensajesChat(prev => {
@@ -920,22 +1690,41 @@ function App() {
 
   // Eliminar chat desde modal
   const eliminarChatModal = async (chatId, nombreChat) => {
-    if (!confirm(`¿Eliminar el chat "${nombreChat}"?`)) return
+    console.log('🗑️ Intentando eliminar chat:', chatId, nombreChat)
+    
+    if (!confirm(`¿Eliminar el chat "${nombreChat}"?`)) {
+      console.log('❌ Usuario canceló eliminación')
+      return
+    }
 
     try {
-      const response = await fetch(`${API_URL}/api/chats/${chatId}`, {
+      const url = `${API_URL}/api/chats/${chatId}`
+      console.log('📤 DELETE request a:', url)
+      
+      const response = await fetch(url, {
         method: 'DELETE'
       })
 
+      console.log('📥 Response status:', response.status)
       const data = await response.json()
+      console.log('📥 Response data:', data)
+      
       if (data.success) {
         setMensaje({
           tipo: 'success',
           texto: `✅ Chat eliminado`
         })
+        console.log('✅ Recargando contenido del modal...')
         cargarContenidoHistorialModal(rutaHistorialModal)
+      } else {
+        console.error('⚠️ Respuesta no exitosa:', data)
+        setMensaje({
+          tipo: 'error',
+          texto: `⚠️ ${data.message || 'Error desconocido'}`
+        })
       }
     } catch (error) {
+      console.error('❌ Error eliminando chat:', error)
       setMensaje({
         tipo: 'error',
         texto: `❌ Error: ${error.message}`
@@ -1142,6 +1931,349 @@ function App() {
     setNombreChatNuevo('')
   }
 
+  // ===== FUNCIONES PARA DIAGNÓSTICO Y REPARACIÓN DE OLLAMA =====
+  
+  const verificarEstadoOllama = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/diagnostico/ollama`)
+      const data = await response.json()
+      setDiagnosticoOllama(data)
+      return data
+    } catch (error) {
+      console.error('Error verificando Ollama:', error)
+      setDiagnosticoOllama({
+        estado: 'error',
+        corriendo: false,
+        mensaje: 'No se pudo conectar con el servidor'
+      })
+      return null
+    }
+  }
+
+  const repararOllama = async () => {
+    setReparandoOllama(true)
+    try {
+      const response = await fetch(`${API_URL}/api/diagnostico/reparar-ollama`, {
+        method: 'POST'
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: data.mensaje
+        })
+        // Verificar estado después de reparar
+        await verificarEstadoOllama()
+      } else {
+        setMensaje({
+          tipo: 'error',
+          texto: data.mensaje
+        })
+      }
+      
+      return data
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al reparar: ${error.message}`
+      })
+      return null
+    } finally {
+      setReparandoOllama(false)
+    }
+  }
+
+  // ===== FUNCIONES PARA SISTEMA DE ARCHIVOS DEL CHATBOT =====
+  
+  // Cargar archivos recientes
+  const cargarArchivosRecientes = async () => {
+    setCargandoArchivos(true)
+    try {
+      const response = await fetch(`${API_URL}/api/archivos/recientes?limite=30`)
+      const data = await response.json()
+      setArchivosRecientes(data.archivos || [])
+    } catch (error) {
+      console.error('Error al cargar archivos recientes:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar archivos recientes'
+      })
+    } finally {
+      setCargandoArchivos(false)
+    }
+  }
+
+  // Explorar carpeta de archivos
+  const explorarCarpetaChat = async (tipo, ruta = '') => {
+    setCargandoArchivos(true)
+    try {
+      const response = await fetch(`${API_URL}/api/archivos/explorar?tipo=${tipo}&ruta=${encodeURIComponent(ruta)}`)
+      const data = await response.json()
+      setCarpetasExploradorChat(data.carpetas || [])
+      setRutaExploradorChat(data.ruta_actual || '')
+      
+      // Actualizar lista de archivos recientes con los de la carpeta actual
+      setArchivosRecientes(data.archivos || [])
+    } catch (error) {
+      console.error('Error al explorar carpeta:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al explorar carpeta'
+      })
+    } finally {
+      setCargandoArchivos(false)
+    }
+  }
+
+  // Adjuntar archivo al contexto del chat
+  const adjuntarArchivoContexto = async (archivo) => {
+    try {
+      const response = await fetch(`${API_URL}/api/archivos/leer-contenido`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta: archivo.ruta_completa })
+      })
+      
+      const data = await response.json()
+      
+      // Agregar a la lista de archivos del contexto
+      const nuevoArchivo = {
+        ...archivo,
+        contenido: data.contenido,
+        vista_previa: data.contenido.substring(0, 200) + (data.contenido.length > 200 ? '...' : '')
+      }
+      
+      // Evitar duplicados
+      const yaExiste = archivosContextoChat.some(a => a.ruta_completa === archivo.ruta_completa)
+      if (!yaExiste) {
+        setArchivosContextoChat(prev => [...prev, nuevoArchivo])
+        setMensaje({
+          tipo: 'success',
+          texto: `📎 Archivo "${archivo.nombre}" adjuntado al contexto`
+        })
+      } else {
+        setMensaje({
+          tipo: 'info',
+          texto: 'Este archivo ya está en el contexto'
+        })
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al leer archivo: ${error.message}`
+      })
+    }
+  }
+
+  // Quitar archivo del contexto
+  const quitarArchivoContexto = (rutaCompleta) => {
+    setArchivosContextoChat(prev => prev.filter(a => a.ruta_completa !== rutaCompleta))
+    setMensaje({
+      tipo: 'info',
+      texto: '📎 Archivo removido del contexto'
+    })
+  }
+
+  // Limpiar todos los archivos del contexto
+  const limpiarContextoArchivos = () => {
+    setArchivosContextoChat([])
+    setMensaje({
+      tipo: 'info',
+      texto: '🗑️ Contexto limpiado'
+    })
+  }
+
+  // ===== FUNCIONES PARA GUARDAR CHAT/CONSULTA COMO TXT =====
+
+  // Cargar carpetas de cursos para guardar TXT
+  const cargarCarpetasCursos = async (ruta = '') => {
+    console.log('📂 Cargando carpetas, ruta:', ruta)
+    try {
+      const url = `${API_URL}/api/cursos/carpetas?ruta=${encodeURIComponent(ruta)}`
+      console.log('🌐 URL:', url)
+      const response = await fetch(url)
+      const data = await response.json()
+      console.log('📥 Carpetas recibidas:', data)
+      console.log('📊 Número de carpetas:', data.carpetas?.length || 0)
+      setCarpetasCursos(data.carpetas || [])
+      setRutaGuardadoTxt(ruta)
+    } catch (error) {
+      console.error('❌ Error cargando carpetas:', error)
+    }
+  }
+
+  // Abrir modal para guardar chat completo como TXT
+  const abrirGuardarChatTxt = () => {
+    if (mensajesChat.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '⚠️ No hay mensajes para guardar'
+      })
+      return
+    }
+
+    setTipoGuardadoTxt('chat')
+    setConsultaAGuardar(null)
+    const nombreDefault = nombreChatNuevo || `Chat_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}`
+    setNombreArchivoTxt(nombreDefault)
+    setRutaGuardadoTxt('')
+    cargarCarpetasCursos('')
+    setModalGuardarTxt(true)
+  }
+
+  // Abrir modal para guardar consulta específica como TXT
+  const abrirGuardarConsultaTxt = (indexUsuario) => {
+    console.log('🔍 Intentando guardar consulta, índice:', indexUsuario)
+    console.log('📝 Total mensajes:', mensajesChat.length)
+    
+    // Buscar el mensaje del usuario y su respuesta
+    const mensajeUsuario = mensajesChat[indexUsuario]
+    const mensajeAsistente = mensajesChat[indexUsuario + 1]
+
+    console.log('👤 Mensaje usuario:', mensajeUsuario)
+    console.log('🤖 Mensaje asistente:', mensajeAsistente)
+
+    if (!mensajeUsuario || !mensajeAsistente) {
+      console.error('❌ Faltan mensajes')
+      setMensaje({
+        tipo: 'error',
+        texto: '⚠️ No se pudo encontrar la consulta completa'
+      })
+      return
+    }
+
+    console.log('✅ Abriendo modal de guardado')
+    setTipoGuardadoTxt('consulta')
+    setConsultaAGuardar({ pregunta: mensajeUsuario, respuesta: mensajeAsistente })
+    setNombreArchivoTxt(`Consulta_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}`)
+    setRutaGuardadoTxt('')
+    setCarpetasCursos([])
+    cargarCarpetasCursos('') // Inicia en raíz de extracciones
+    setModalGuardarTxt(true)
+  }
+
+  // Abrir modal para guardar SOLO la respuesta del asistente (sin pregunta)
+  const abrirGuardarRespuestaTxt = (indexRespuesta) => {
+    console.log('🔍 Guardando solo respuesta, índice:', indexRespuesta)
+    
+    const mensajeAsistente = mensajesChat[indexRespuesta]
+
+    if (!mensajeAsistente || mensajeAsistente.tipo !== 'asistente') {
+      console.error('❌ No es una respuesta válida')
+      setMensaje({
+        tipo: 'error',
+        texto: '⚠️ No se pudo encontrar la respuesta'
+      })
+      return
+    }
+
+    console.log('✅ Abriendo modal de guardado (solo respuesta)')
+    setTipoGuardadoTxt('respuesta') // Nuevo tipo
+    setConsultaAGuardar({ respuesta: mensajeAsistente }) // Solo la respuesta
+    setNombreArchivoTxt(`Respuesta_${new Date().toLocaleDateString('es-ES').replace(/\//g, '-')}`)
+    setRutaGuardadoTxt('')
+    setCarpetasCursos([])
+    cargarCarpetasCursos('')
+    setModalGuardarTxt(true)
+  }
+
+  // Guardar como TXT
+  const guardarComoTxt = async () => {
+    console.log('💾 Iniciando guardado TXT')
+    console.log('📝 Nombre archivo:', nombreArchivoTxt)
+    console.log('📁 Ruta:', rutaGuardadoTxt)
+    console.log('📋 Tipo:', tipoGuardadoTxt)
+    
+    if (!nombreArchivoTxt.trim()) {
+      setMensaje({
+        tipo: 'error',
+        texto: '⚠️ Debes especificar un nombre para el archivo'
+      })
+      return
+    }
+
+    try {
+      let contenido = ''
+
+      if (tipoGuardadoTxt === 'chat') {
+        // Generar contenido del chat completo
+        contenido = `=================================================\n`
+        contenido += `CHAT - ${nombreChatNuevo || 'Sin título'}\n`
+        contenido += `Fecha: ${new Date().toLocaleString('es-ES')}\n`
+        contenido += `Total mensajes: ${mensajesChat.length}\n`
+        contenido += `=================================================\n\n`
+
+        mensajesChat.forEach((msg, idx) => {
+          const tipo = msg.tipo === 'usuario' ? '👤 USUARIO' : '🤖 ASISTENTE'
+          contenido += `${'-'.repeat(50)}\n`
+          contenido += `${tipo} - ${msg.hora}\n`
+          contenido += `${'-'.repeat(50)}\n`
+          contenido += `${msg.texto}\n\n`
+        })
+      } else if (tipoGuardadoTxt === 'consulta') {
+        console.log('📄 Generando contenido de consulta completa...')
+        console.log('🔍 Consulta a guardar:', consultaAGuardar)
+        
+        // Generar contenido de consulta específica (pregunta + respuesta)
+        contenido = `=================================================\n`
+        contenido += `CONSULTA GUARDADA\n`
+        contenido += `Fecha: ${new Date().toLocaleString('es-ES')}\n`
+        contenido += `=================================================\n\n`
+        contenido += `👤 PREGUNTA:\n`
+        contenido += `${'-'.repeat(50)}\n`
+        contenido += `${consultaAGuardar.pregunta.texto}\n\n`
+        contenido += `🤖 RESPUESTA:\n`
+        contenido += `${'-'.repeat(50)}\n`
+        contenido += `${consultaAGuardar.respuesta.texto}\n`
+      } else if (tipoGuardadoTxt === 'respuesta') {
+        console.log('📄 Generando contenido de solo respuesta...')
+        console.log('🔍 Respuesta a guardar:', consultaAGuardar)
+        
+        // Generar contenido SOLO de la respuesta (sin pregunta)
+        contenido = `=================================================\n`
+        contenido += `RESPUESTA DEL ASISTENTE\n`
+        contenido += `Fecha: ${new Date().toLocaleString('es-ES')}\n`
+        contenido += `=================================================\n\n`
+        contenido += `${consultaAGuardar.respuesta.texto}\n`
+      }
+
+      console.log('📤 Enviando al servidor...')
+      console.log('📦 Datos:', { carpeta: rutaGuardadoTxt, nombreArchivo: nombreArchivoTxt })
+
+      // Guardar en el servidor
+      const response = await fetch(`${API_URL}/api/cursos/guardar-txt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: rutaGuardadoTxt,
+          nombreArchivo: nombreArchivoTxt.endsWith('.txt') ? nombreArchivoTxt : `${nombreArchivoTxt}.txt`,
+          contenido: contenido
+        })
+      })
+
+      const data = await response.json()
+      console.log('📥 Respuesta del servidor:', data)
+
+      if (data.success) {
+        console.log('✅ Guardado exitoso!')
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ ${tipoGuardadoTxt === 'chat' ? 'Chat' : 'Consulta'} guardado en ${data.ruta || 'cursos'}`
+        })
+        setModalGuardarTxt(false)
+      } else {
+        throw new Error(data.message || 'Error al guardar')
+      }
+    } catch (error) {
+      console.error('❌ Error al guardar:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      })
+    }
+  }
+
   // ===== FUNCIONES PARA CARPETAS DE CHATS =====
   
   // Cargar carpetas de chats
@@ -1261,6 +2393,15 @@ function App() {
     if (selectedMenu === 'chat') {
       cargarHistorialChats()
       cargarCarpetasChats()
+      // Cargar modelos Ollama disponibles
+      fetch(`${API_URL}/api/ollama/modelos`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.modelos) {
+            setModelosOllama(data.modelos)
+          }
+        })
+        .catch(err => console.error('Error cargando modelos Ollama:', err))
     }
   }, [selectedMenu])
 
@@ -2006,8 +3147,15 @@ JSON:`
       const response = await fetch(`${API_URL}/api/examenes/cargar-temporal`)
       const data = await response.json()
       
-      if (data.success && data.examen) {
+      if (data.success && data.examen && data.examen.preguntas && data.examen.preguntas.length > 0) {
         const examen = data.examen
+        // Validar que el examen tenga datos válidos
+        if (!examen.carpeta || !examen.carpeta.nombre) {
+          console.log('❌ Examen temporal inválido, limpiando...')
+          await limpiarExamenLocal()
+          return false
+        }
+        
         setPreguntasExamen(examen.preguntas)
         setRespuestasUsuario(examen.respuestas || {})
         setCarpetaExamen(examen.carpeta)
@@ -2018,6 +3166,11 @@ JSON:`
           texto: '📋 Examen recuperado desde última sesión'
         })
         return true
+      } else {
+        // No hay examen o está vacío, limpiar por seguridad
+        if (data.examen) {
+          await limpiarExamenLocal()
+        }
       }
     } catch (error) {
       console.log('No hay examen temporal para cargar')
@@ -2174,9 +3327,35 @@ JSON:`
       
       const data = await response.json()
       
+      console.log('📊 Datos recibidos del backend:', data);
+      console.log('📝 Resultados:', data.resultados);
+      
       if (data.success || data.resultados) {
         limpiarExamenLocal() // Limpiar guardado local
         setResultadoExamen(data)
+        setExamenCompletado(true)
+        
+        console.log('✅ ResultadoExamen guardado:', data);
+        
+        // Guardar progreso de práctica si viene de una práctica
+        const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+        const practicaIndex = practicas.findIndex(p => 
+          p.preguntas.length === preguntasExamen.length &&
+          !p.completada
+        );
+        
+        if (practicaIndex !== -1) {
+          practicas[practicaIndex].respuestas = respuestasUsuario;
+          practicas[practicaIndex].completada = true;
+          practicas[practicaIndex].resultado = {
+            puntos_obtenidos: data.puntos_obtenidos,
+            puntos_totales: data.puntos_totales,
+            porcentaje: data.porcentaje
+          };
+          localStorage.setItem('practicas', JSON.stringify(practicas));
+          setPracticas(practicas); // Actualizar estado
+        }
+        
         setMensaje({
           tipo: 'success',
           texto: `✅ Examen calificado: ${data.puntos_obtenidos}/${data.puntos_totales} puntos (${data.porcentaje.toFixed(1)}%)`
@@ -2294,6 +3473,22 @@ JSON:`
   
   // Cerrar examen
   const cerrarExamen = () => {
+    // Guardar progreso de práctica si no está completada
+    if (!examenCompletado && preguntasExamen.length > 0) {
+      const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+      const practicaIndex = practicas.findIndex(p => 
+        p.preguntas.length === preguntasExamen.length &&
+        JSON.stringify(p.preguntas) === JSON.stringify(preguntasExamen)
+      );
+      
+      if (practicaIndex !== -1) {
+        // Actualizar respuestas parciales
+        practicas[practicaIndex].respuestas = respuestasUsuario;
+        localStorage.setItem('practicas', JSON.stringify(practicas));
+        console.log('✅ Progreso guardado automáticamente');
+      }
+    }
+    
     detenerReconocimientoVoz() // Detener reconocimiento de voz
     setModalExamenAbierto(false)
     setExamenActivo(null)
@@ -2308,6 +3503,1256 @@ JSON:`
     detenerReconocimientoVoz() // Detener reconocimiento de voz
     setRespuestasUsuario({})
     setResultadoExamen(null)
+  }
+
+  // Nueva función para generar práctica
+  const generarPractica = async (ruta) => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/api/generar_practica`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ruta }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPreguntasExamen(data.preguntas || []);
+        setMensaje('Práctica generada con éxito.');
+        setModalExamenAbierto(true);
+      } else {
+        const errorData = await response.json();
+        setMensaje(`Error: ${errorData.detail || 'No se pudo generar la práctica.'}`);
+      }
+    } catch (error) {
+      setMensaje('Error al conectar con el servidor.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const abrirGenerarPractica = () => {
+    const ruta = prompt('Ingrese la ruta de la carpeta para generar la práctica:')
+    if (ruta) {
+      generarPractica(ruta)
+    }
+  }
+
+  const [modalPracticaAbierto, setModalPracticaAbierto] = useState(false);
+  const [promptPractica, setPromptPractica] = useState('');
+  const [carpetaPractica, setCarpetaPractica] = useState(null);
+  const [tipoPractica, setTipoPractica] = useState('carpeta'); // 'carpeta' o 'documento'
+  
+  // Configuración de tipos de práctica - Generales
+  const [numFlashcards, setNumFlashcards] = useState(0);
+  const [numMCQ, setNumMCQ] = useState(0);
+  const [numCloze, setNumCloze] = useState(0);
+  const [numOpenQuestion, setNumOpenQuestion] = useState(0);
+  const [numVerdaderoFalso, setNumVerdaderoFalso] = useState(0);
+  const [numRespuestaCorta, setNumRespuestaCorta] = useState(0);
+  const [numCasoEstudio, setNumCasoEstudio] = useState(0);
+  
+  // Reading types (6 tipos)
+  const [numReadingComprehension, setNumReadingComprehension] = useState(0);
+  const [numReadingTrueFalse, setNumReadingTrueFalse] = useState(0);
+  const [numReadingCloze, setNumReadingCloze] = useState(0);
+  const [numReadingSkill, setNumReadingSkill] = useState(0);
+  const [numReadingMatching, setNumReadingMatching] = useState(0);
+  const [numReadingSequence, setNumReadingSequence] = useState(0);
+  
+  // Writing types (8 tipos)
+  const [numWritingShort, setNumWritingShort] = useState(0);
+  const [numWritingParaphrase, setNumWritingParaphrase] = useState(0);
+  const [numWritingCorrection, setNumWritingCorrection] = useState(0);
+  const [numWritingTransformation, setNumWritingTransformation] = useState(0);
+  const [numWritingEssay, setNumWritingEssay] = useState(0);
+  const [numWritingSentenceBuilder, setNumWritingSentenceBuilder] = useState(0);
+  const [numWritingPictureDescription, setNumWritingPictureDescription] = useState(0);
+  const [numWritingEmail, setNumWritingEmail] = useState(0);
+
+  const abrirModalPractica = (ruta, tipo = 'carpeta') => {
+    setCarpetaPractica(ruta);
+    setTipoPractica(tipo);
+    setPromptPractica(''); 
+    setModalPracticaAbierto(true);
+  };
+
+  const confirmarGenerarPractica = async () => {
+    setModalPracticaAbierto(false);
+    if (!carpetaPractica) return;
+    
+    const totalPreguntas = numFlashcards + numMCQ + numVerdaderoFalso + numCloze + numRespuestaCorta + numOpenQuestion + numCasoEstudio +
+                          numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence +
+                          numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + 
+                          numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail;
+    if (totalPreguntas === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Debes seleccionar al menos un tipo de pregunta'
+      });
+      return;
+    }
+    
+    setLoading(true);
+    setMensaje({
+      tipo: 'info',
+      texto: `⏳ Generando ${totalPreguntas} preguntas de práctica...`
+    });
+    
+    try {
+      // Construir el prompt con las especificaciones JSON para cada tipo
+      let promptCompleto = `Genera una práctica educativa basada en el contenido proporcionado.\n\n`;
+      
+      if (promptPractica.trim()) {
+        promptCompleto += `INSTRUCCIONES PERSONALIZADAS:\n${promptPractica}\n\n`;
+      }
+      
+      promptCompleto += `TIPOS DE PREGUNTAS A GENERAR:\n\n`;
+      
+      if (numFlashcards > 0) {
+        promptCompleto += `**${numFlashcards} Flashcards** - Formato JSON con evaluación:
+{
+  "type": "flashcard",
+  "difficulty": 1,
+  "tags": ["concepto1", "tema2"],
+  "data": {
+    "front": "Pregunta o concepto a recordar (texto claro)",
+    "hint": "Pista opcional (deja vacío \"\" si no es necesaria)"
+  },
+  "solution": {
+    "answer": "Respuesta correcta en una frase clara",
+    "key_points": ["Punto clave 1 que debe mencionar", "Punto clave 2", "Punto clave 3"],
+    "explanation": "Explicación pedagógica del concepto (2-3 oraciones)"
+  }
+}
+
+IMPORTANTE para Flashcards:
+- difficulty debe ser número: 1 (fácil), 2 (medio), 3 (difícil)
+- key_points es CRUCIAL: lista de 2-5 ideas que una buena respuesta debe incluir
+- answer debe ser la respuesta modelo concisa
+- explanation debe ayudar a comprender el concepto
+\n\n`;
+      }
+      
+      if (numMCQ > 0) {
+        promptCompleto += `**${numMCQ} Preguntas de Opción Múltiple (MCQ)** - Formato JSON:
+{
+  "type": "mcq",
+  "difficulty": "easy|medium|hard",
+  "tags": ["concepto1"],
+  "question": "Pregunta clara",
+  "description": "Contexto o información adicional para la pregunta (opcional)",
+  "options": ["Opción A", "Opción B", "Opción C", "Opción D"],
+  "correct_indices": [0, 2],
+  "explanation": "Por qué estas opciones son correctas y las otras no"
+}\n\n`;
+      }
+      
+      if (numVerdaderoFalso > 0) {
+        promptCompleto += `**${numVerdaderoFalso} Verdadero/Falso** - Formato JSON:
+{
+  "type": "true_false",
+  "difficulty": "easy|medium|hard",
+  "tags": ["concepto1"],
+  "statement": "Afirmación clara y específica",
+  "description": "Contexto adicional sobre la afirmación (opcional)",
+  "correct_answer": true,
+  "explanation": "Explicación detallada de por qué es verdadera o falsa"
+}\n\n`;
+      }
+      
+      if (numCloze > 0) {
+        promptCompleto += `**${numCloze} Cloze Test (Relleno de huecos)** - Formato JSON:
+{
+  "type": "cloze",
+  "difficulty": "easy|medium|hard",
+  "tags": ["concepto1"],
+  "description": "Contexto o instrucción (opcional)",
+  "text_with_gaps": "El {{}} es fundamental porque {{}}",
+  "answers": ["concepto clave", "explicación breve"],
+  "hint": "Pista opcional"
+}\n\n`;
+      }
+      
+      if (numRespuestaCorta > 0) {
+        promptCompleto += `**${numRespuestaCorta} Respuesta Corta** - Formato JSON:
+{
+  "type": "short_answer",
+  "difficulty": "easy|medium|hard",
+  "tags": ["concepto1"],
+  "question": "Pregunta que requiere respuesta breve (1-3 frases)",
+  "description": "Contexto o aclaración adicional (opcional)",
+  "expected_answer": "Respuesta modelo concisa",
+  "keywords": ["palabra1", "palabra2", "concepto3"],
+  "explanation": "Explicación ampliada de la respuesta"
+}\n\n`;
+      }
+      
+      if (numOpenQuestion > 0) {
+        promptCompleto += `**${numOpenQuestion} Preguntas Abiertas de Desarrollo** - Formato JSON:
+{
+  "type": "open_question",
+  "difficulty": "easy|medium|hard",
+  "tags": ["concepto1"],
+  "question": "Pregunta que requiere explicación detallada",
+  "description": "Contexto o instrucciones específicas (opcional)",
+  "expected_answer": "Respuesta modelo completa y estructurada",
+  "key_points": ["Punto 1 para evaluar", "Punto 2 para evaluar", "Punto 3 para evaluar"]
+}\n\n`;
+      }
+      
+      if (numCasoEstudio > 0) {
+        promptCompleto += `**${numCasoEstudio} Casos de Estudio** - Formato JSON:
+{
+  "type": "case_study",
+  "difficulty": "medium|hard",
+  "tags": ["aplicación", "análisis"],
+  "scenario": "Descripción detallada de la situación o caso práctico (2-4 párrafos)",
+  "question": "¿Qué harías en esta situación? ¿Cómo lo resolverías? ¿Qué enfoque usarías?",
+  "description": "Instrucciones específicas o aspectos a considerar",
+  "expected_approach": "Enfoque o metodología esperada",
+  "key_considerations": ["Aspecto clave 1", "Aspecto clave 2", "Aspecto clave 3"],
+  "sample_answer": "Ejemplo de respuesta bien estructurada"
+}\n\n`;
+      }
+      
+      // ========== READING TYPES (6 tipos) ==========
+      
+      if (numReadingComprehension > 0) {
+        promptCompleto += `**${numReadingComprehension} Reading Comprehension** - Formato JSON:
+{
+  "type": "reading_comprehension",
+  "difficulty": "easy|medium|hard",
+  "tags": ["reading", "comprehension"],
+  "text": "Texto en inglés de 100-200 palabras sobre un tema específico",
+  "questions": [
+    {
+      "type": "mcq",
+      "question": "What is the main idea of the text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_indices": [1],
+      "explanation": "Explanation of why this is correct"
+    },
+    {
+      "type": "true_false",
+      "statement": "The author argues that...",
+      "correct_answer": true,
+      "explanation": "Evidence from the text"
+    },
+    {
+      "type": "short_answer",
+      "question": "According to the text, what is...?",
+      "expected_answer": "Brief answer based on text",
+      "keywords": ["key", "terms"]
+    }
+  ]
+}\n\n`;
+      }
+      
+      if (numReadingTrueFalse > 0) {
+        promptCompleto += `**${numReadingTrueFalse} Reading True/False with Justification** - Formato JSON:
+{
+  "type": "reading_true_false",
+  "difficulty": "easy|medium|hard",
+  "tags": ["reading", "critical_thinking"],
+  "text": "Texto en inglés de 100-150 palabras",
+  "statements": [
+    {
+      "claim": "The main character is a doctor.",
+      "answer": false,
+      "explanation_expected": "He is a student, as mentioned in paragraph 2.",
+      "keywords": ["student", "mentioned"]
+    },
+    {
+      "claim": "The story takes place in London.",
+      "answer": true,
+      "explanation_expected": "The text explicitly states London in line 3.",
+      "keywords": ["London", "line 3"]
+    }
+  ]
+}\n\n`;
+      }
+      
+      if (numReadingCloze > 0) {
+        promptCompleto += `**${numReadingCloze} Reading Cloze (Fill in the gaps)** - Formato JSON:
+{
+  "type": "reading_cloze",
+  "difficulty": "easy|medium|hard",
+  "tags": ["reading", "vocabulary", "grammar"],
+  "text_with_gaps": "The company ______ to expand last year. They ______ several new offices across Europe.",
+  "answers": ["decided", "opened"],
+  "hint": "Use past simple tense",
+  "context": "Short text about business expansion (opcional)"
+}\n\n`;
+      }
+      
+      if (numReadingSkill > 0) {
+        promptCompleto += `**${numReadingSkill} Reading Skill (Main Idea/Details/Inference)** - Formato JSON:
+{
+  "type": "reading_skill",
+  "skill": "inference|main_idea|detail|purpose|tone",
+  "difficulty": "medium|hard",
+  "tags": ["reading", "analysis"],
+  "text": "Texto en inglés de 150-250 palabras",
+  "question": "What can be inferred from paragraph 2 about the author's opinion?",
+  "expected_keywords": ["because", "implies", "suggests", "indicates"],
+  "expected_answer": "The author implies that technology has changed communication patterns.",
+  "explanation": "Evidence: paragraph 2 states '...', which suggests..."
+}\n\n`;
+      }
+      
+      if (numReadingMatching > 0) {
+        promptCompleto += `**${numReadingMatching} Reading Matching (Match sentences to paragraphs)** - Formato JSON:
+{
+  "type": "reading_matching",
+  "difficulty": "medium|hard",
+  "tags": ["reading", "comprehension"],
+  "text_paragraphs": [
+    "Paragraph 1 content about topic A...",
+    "Paragraph 2 content about topic B...",
+    "Paragraph 3 content about topic C..."
+  ],
+  "sentences": [
+    "This paragraph describes the historical context.",
+    "The author argues for immediate action here.",
+    "This section provides statistical evidence."
+  ],
+  "correct_mapping": [0, 2, 1],
+  "explanation": "Sentence 1 matches paragraph 1 because..., sentence 2 matches paragraph 3..."
+}\n\n`;
+      }
+      
+      if (numReadingSequence > 0) {
+        promptCompleto += `**${numReadingSequence} Reading Sequence (Order events)** - Formato JSON:
+{
+  "type": "reading_sequence",
+  "difficulty": "easy|medium",
+  "tags": ["reading", "narrative"],
+  "shuffled_text": [
+    "Event A: The team celebrated their victory.",
+    "Event B: They trained for six months.",
+    "Event C: The final match began at noon."
+  ],
+  "correct_order": [1, 2, 0],
+  "explanation": "The logical sequence is B (training) → C (match) → A (celebration)",
+  "context": "Brief introduction to the narrative (opcional)"
+}\n\n`;
+      }
+      
+      // ========== WRITING TYPES (8 tipos) ==========
+      
+      if (numWritingShort > 0) {
+        promptCompleto += `**${numWritingShort} Writing Short Answer** - Formato JSON:
+{
+  "type": "writing_short",
+  "difficulty": "easy|medium|hard",
+  "tags": ["writing", "explanation"],
+  "prompt": "Explain why the Earth has seasons.",
+  "expected_keywords": ["tilt", "sunlight", "axis", "orbit"],
+  "max_words": 50,
+  "min_words": 30,
+  "expected_answer": "The Earth has seasons because its axis is tilted. This tilt causes different amounts of sunlight to reach different parts of Earth as it orbits the Sun.",
+  "evaluation_criteria": ["keyword presence", "grammatical accuracy", "coherence"]
+}\n\n`;
+      }
+      
+      if (numWritingParaphrase > 0) {
+        promptCompleto += `**${numWritingParaphrase} Writing Paraphrase** - Formato JSON:
+{
+  "type": "writing_paraphrase",
+  "difficulty": "medium|hard",
+  "tags": ["writing", "paraphrasing"],
+  "original": "Global warming is affecting weather patterns around the world.",
+  "expected_features": ["preserve meaning", "different structure", "synonyms"],
+  "sample_paraphrase": "Climate change is influencing meteorological systems across the globe.",
+  "forbidden_words": ["global", "warming"],
+  "evaluation_criteria": ["meaning preserved", "structure changed", "vocabulary varied"]
+}\n\n`;
+      }
+      
+      if (numWritingCorrection > 0) {
+        promptCompleto += `**${numWritingCorrection} Writing Error Correction** - Formato JSON:
+{
+  "type": "writing_correction",
+  "difficulty": "easy|medium|hard",
+  "tags": ["writing", "grammar"],
+  "text_with_errors": "She don't likes apples. Yesterday, she go to the market and buy some oranges.",
+  "correct_text": "She doesn't like apples. Yesterday, she went to the market and bought some oranges.",
+  "error_types": ["subject-verb agreement", "verb tense"],
+  "num_errors": 4,
+  "hint": "Check verb forms and tenses"
+}\n\n`;
+      }
+      
+      if (numWritingTransformation > 0) {
+        promptCompleto += `**${numWritingTransformation} Writing Transformation** - Formato JSON:
+{
+  "type": "writing_transformation",
+  "difficulty": "medium|hard",
+  "tags": ["writing", "grammar"],
+  "prompt": "Rewrite the sentence in the past simple.",
+  "input_sentence": "She goes to school every day.",
+  "expected_output": "She went to school.",
+  "transformation_type": "tense_change|voice_change|form_change|negative|question",
+  "hint": "Remember irregular verb forms",
+  "alternative_answers": ["She went to school yesterday."]
+}\n\n`;
+      }
+      
+      if (numWritingEssay > 0) {
+        promptCompleto += `**${numWritingEssay} Writing Mini-Essay** - Formato JSON:
+{
+  "type": "writing_essay",
+  "difficulty": "medium|hard",
+  "tags": ["writing", "composition"],
+  "prompt": "Write 120-150 words about the impact of social media on modern communication.",
+  "expected_structure": ["introduction", "body", "conclusion"],
+  "keywords": ["communication", "influence", "behavior", "technology"],
+  "min_words": 120,
+  "max_words": 150,
+  "sample_answer": "Social media has fundamentally transformed how we communicate...",
+  "evaluation_criteria": ["structure", "coherence", "vocabulary range", "grammar", "task completion"]
+}\n\n`;
+      }
+      
+      if (numWritingSentenceBuilder > 0) {
+        promptCompleto += `**${numWritingSentenceBuilder} Writing Sentence Builder** - Formato JSON:
+{
+  "type": "writing_sentence_builder",
+  "difficulty": "easy|medium",
+  "tags": ["writing", "structure"],
+  "blocks": ["Although", "he was tired", "he finished the project", "on time"],
+  "correct_sentence": "Although he was tired, he finished the project on time.",
+  "alternative_orders": ["He finished the project on time although he was tired."],
+  "hint": "Start with a subordinating conjunction",
+  "grammar_focus": "complex sentences with subordinate clauses"
+}\n\n`;
+      }
+      
+      if (numWritingPictureDescription > 0) {
+        promptCompleto += `**${numWritingPictureDescription} Writing Picture Description** - Formato JSON:
+{
+  "type": "writing_picture_description",
+  "difficulty": "medium",
+  "tags": ["writing", "description"],
+  "description_prompt": "Imagine a photo showing a busy street market in an Asian city. Describe what you see in 80-100 words.",
+  "expected_elements": ["people", "activities", "environment", "atmosphere"],
+  "required_vocabulary": ["crowd", "vendors", "stalls", "colorful"],
+  "min_words": 80,
+  "max_words": 100,
+  "sample_answer": "The photograph captures a vibrant street market bustling with activity...",
+  "evaluation_criteria": ["descriptive language", "present continuous usage", "vocabulary range"]
+}\n\n`;
+      }
+      
+      if (numWritingEmail > 0) {
+        promptCompleto += `**${numWritingEmail} Writing Email/Message** - Formato JSON:
+{
+  "type": "writing_email",
+  "difficulty": "medium",
+  "tags": ["writing", "formal_informal"],
+  "prompt": "Write a short email (60-80 words) requesting information about a product you want to buy.",
+  "email_type": "formal|informal",
+  "expected_sections": ["greeting", "purpose", "specific_request", "closing"],
+  "required_elements": ["polite language", "clear purpose", "contact information"],
+  "min_words": 60,
+  "max_words": 80,
+  "sample_answer": "Dear Sir/Madam,\\n\\nI am writing to inquire about...",
+  "evaluation_criteria": ["format", "tone", "clarity", "politeness"]
+}\n\n`;
+      }
+      
+      promptCompleto += `\n\nFORMATO DE RESPUESTA REQUERIDO:
+Debes responder ÚNICAMENTE con un objeto JSON con esta estructura exacta:
+
+{
+  "questions": [
+    {objeto pregunta 1},
+    {objeto pregunta 2},
+    ...
+  ]
+}
+
+REGLAS CRÍTICAS:
+- NO incluyas texto explicativo antes o después del JSON
+- El array "questions" debe contener TODAS las preguntas solicitadas
+- Cada pregunta debe usar EXACTAMENTE el "type" especificado arriba
+- ${numFlashcards > 0 && totalPreguntas === numFlashcards ? 'SOLO genera flashcards (type: "flashcard"), NO generes MCQ ni otros tipos' : ''}
+- ${numMCQ > 0 && totalPreguntas === numMCQ ? 'SOLO genera MCQ (type: "mcq"), NO generes flashcards ni otros tipos' : ''}
+- Varía la dificultad entre easy, medium y hard (para flashcards usa números 1, 2, 3)
+- Usa tags descriptivos para clasificación
+- Las explicaciones deben ser claras y educativas
+- En MCQ puede haber 1 o más respuestas correctas (usa correct_indices como array)
+- Incluye "description" cuando el contexto adicional ayude
+- Los casos de estudio deben ser realistas y aplicados
+
+EJEMPLO DE ESTRUCTURA CORRECTA:
+{
+  "questions": [
+    {
+      "type": "mcq",
+      "difficulty": "easy",
+      "tags": ["concepto1"],
+      "question": "¿Qué es...?",
+      "options": ["A", "B", "C", "D"],
+      "correct_indices": [0],
+      "explanation": "La respuesta A es correcta porque..."
+    },
+    {
+      "type": "true_false",
+      "difficulty": "medium",
+      "tags": ["concepto2"],
+      "statement": "Afirmación para evaluar",
+      "correct_answer": true,
+      "explanation": "Es verdadera porque..."
+    }
+  ]
+}
+
+Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
+
+      const response = await fetch(`${API_URL}/api/generar_practica`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ruta: carpetaPractica, 
+          prompt: promptCompleto,
+          // Tipos generales
+          num_flashcards: numFlashcards,
+          num_mcq: numMCQ,
+          num_verdadero_falso: numVerdaderoFalso,
+          num_cloze: numCloze,
+          num_respuesta_corta: numRespuestaCorta,
+          num_open_question: numOpenQuestion,
+          num_caso_estudio: numCasoEstudio,
+          // Reading types
+          num_reading_comprehension: numReadingComprehension,
+          num_reading_true_false: numReadingTrueFalse,
+          num_reading_cloze: numReadingCloze,
+          num_reading_skill: numReadingSkill,
+          num_reading_matching: numReadingMatching,
+          num_reading_sequence: numReadingSequence,
+          // Writing types
+          num_writing_short: numWritingShort,
+          num_writing_paraphrase: numWritingParaphrase,
+          num_writing_correction: numWritingCorrection,
+          num_writing_transformation: numWritingTransformation,
+          num_writing_essay: numWritingEssay,
+          num_writing_sentence_builder: numWritingSentenceBuilder,
+          num_writing_picture_description: numWritingPictureDescription,
+          num_writing_email: numWritingEmail
+        }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        console.log('🎯 Práctica generada - Total preguntas:', data.preguntas?.length);
+        data.preguntas?.forEach((p, i) => {
+          console.log(`  Pregunta ${i+1}: tipo="${p.tipo}", tiene metadata:`, !!p.metadata);
+        });
+        
+        // Guardar práctica generada
+        const practicaId = `practica_${Date.now()}`;
+        
+        // Extraer carpeta de la ruta
+        let carpetaPracticaGuardar = '';
+        if (tipoPractica === 'carpeta') {
+          carpetaPracticaGuardar = carpetaPractica;
+        } else {
+          // Es un documento, extraer la carpeta padre
+          const partes = carpetaPractica.split('\\');
+          partes.pop(); // Quitar el nombre del archivo
+          carpetaPracticaGuardar = partes.join('\\');
+        }
+        
+        const nuevaPractica = {
+          id: practicaId,
+          ruta: carpetaPractica,
+          carpeta: carpetaPracticaGuardar,
+          tipo: tipoPractica,
+          prompt: promptPractica,
+          preguntas: data.preguntas || [],
+          respuestas: {},
+          fecha: new Date().toISOString(),
+          completada: false,
+          stats: {
+            flashcards: numFlashcards,
+            mcq: numMCQ,
+            verdadero_falso: numVerdaderoFalso,
+            cloze: numCloze,
+            respuesta_corta: numRespuestaCorta,
+            open_question: numOpenQuestion,
+            caso_estudio: numCasoEstudio,
+            // Reading
+            reading_comprehension: numReadingComprehension,
+            reading_true_false: numReadingTrueFalse,
+            reading_cloze: numReadingCloze,
+            reading_skill: numReadingSkill,
+            reading_matching: numReadingMatching,
+            reading_sequence: numReadingSequence,
+            // Writing
+            writing_short: numWritingShort,
+            writing_paraphrase: numWritingParaphrase,
+            writing_correction: numWritingCorrection,
+            writing_transformation: numWritingTransformation,
+            writing_essay: numWritingEssay,
+            writing_sentence_builder: numWritingSentenceBuilder,
+            writing_picture_description: numWritingPictureDescription,
+            writing_email: numWritingEmail
+          }
+        };
+        
+        // Guardar en localStorage
+        const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+        practicas.push(nuevaPractica);
+        localStorage.setItem('practicas', JSON.stringify(practicas));
+        setPracticas(practicas); // Actualizar estado para forzar re-render
+        
+        setPreguntasExamen(data.preguntas || []);
+        setRespuestasUsuario({});
+        setExamenCompletado(false);
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Práctica generada: ${totalPreguntas} preguntas`
+        });
+        setModalExamenAbierto(true);
+      } else {
+        const errorData = await response.json();
+        setMensaje({
+          tipo: 'error',
+          texto: `❌ Error: ${errorData.detail || 'No se pudo generar la práctica'}`
+        });
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al conectar con el servidor'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================
+  // FUNCIONES DEL SISTEMA DE NOTAS
+  // ============================================
+
+  // Cargar notas al iniciar
+  useEffect(() => {
+    const notasGuardadas = localStorage.getItem('notas')
+    if (notasGuardadas) {
+      setNotasGuardadas(JSON.parse(notasGuardadas))
+    }
+  }, [])
+
+  // Cargar carpetas cuando cambia la ruta de notas
+  useEffect(() => {
+    if (selectedMenu === 'notas') {
+      cargarCarpetasNotas(rutaNotasActual)
+    }
+  }, [selectedMenu, rutaNotasActual])
+
+  // Manejar clics en enlaces de notas dentro del editor
+  useEffect(() => {
+    const handleNotaClick = (e) => {
+      const target = e.target;
+      if (target.tagName === 'A' && target.hasAttribute('data-nota-id')) {
+        e.preventDefault();
+        const notaId = parseInt(target.getAttribute('data-nota-id'));
+        const nota = notasGuardadas.find(n => n.id === notaId);
+        if (nota) {
+          abrirNota(nota);
+        } else {
+          alert('⚠️ La nota referenciada no existe o fue eliminada');
+        }
+      }
+      
+      // Cerrar dropdowns al hacer click fuera
+      if (!target.closest('.dropdown-nota')) {
+        document.querySelectorAll('.dropdown-menu-nota.show').forEach(menu => {
+          menu.classList.remove('show');
+        });
+      }
+    };
+    
+    document.addEventListener('click', handleNotaClick);
+    return () => document.removeEventListener('click', handleNotaClick);
+  }, [notasGuardadas])
+
+  const cerrarEditorNota = () => {
+    if (contenidoNota.trim() || tituloNota.trim()) {
+      if (confirm('¿Cerrar sin guardar? Se perderán los cambios no guardados.')) {
+        setEditorNotaAbierto(false)
+        // Limpiar estados
+        setTituloNota('')
+        setContenidoNota('')
+        setNotaActual(null)
+        setMenuContextual({ visible: false, x: 0, y: 0 })
+      }
+    } else {
+      setEditorNotaAbierto(false)
+      setMenuContextual({ visible: false, x: 0, y: 0 })
+    }
+  }
+  
+  const restaurarSeleccion = () => {
+    if (rangoSeleccionado) {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(rangoSeleccionado);
+    } else if (editorRef.current) {
+      // Si no hay selección guardada, crear una al final del editor
+      editorRef.current.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editorRef.current);
+      range.collapse(false); // Colapsar al final
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  }
+  
+  const cerrarMenuContextual = () => {
+    setTimeout(() => {
+      setMenuContextual({ visible: false, x: 0, y: 0 });
+      setRangoSeleccionado(null);
+    }, 100);
+  }
+
+  // Funciones para arrastrar menú contextual
+  const iniciarArrastreMenu = (e) => {
+    if (e.button !== 0) return; // Solo botón izquierdo
+    setArrastandoMenu({
+      activo: true,
+      offsetX: e.clientX - menuContextual.x,
+      offsetY: e.clientY - menuContextual.y
+    });
+  };
+
+  const arrastrarMenu = (e) => {
+    if (arrastandoMenu.activo) {
+      setMenuContextual({
+        ...menuContextual,
+        x: e.clientX - arrastandoMenu.offsetX,
+        y: e.clientY - arrastandoMenu.offsetY
+      });
+    }
+  };
+
+  const finalizarArrastreMenu = () => {
+    setArrastandoMenu({ activo: false, offsetX: 0, offsetY: 0 });
+  };
+
+  // Agregar listeners globales para arrastre
+  useEffect(() => {
+    if (arrastandoMenu.activo) {
+      document.addEventListener('mousemove', arrastrarMenu);
+      document.addEventListener('mouseup', finalizarArrastreMenu);
+      return () => {
+        document.removeEventListener('mousemove', arrastrarMenu);
+        document.removeEventListener('mouseup', finalizarArrastreMenu);
+      };
+    }
+  }, [arrastandoMenu]);
+
+  // Funciones para tipografías personalizadas
+  const cargarTipografiaPersonalizada = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const nombreFuente = prompt('Nombre para esta tipografía:', file.name.replace(/\.(ttf|otf|woff|woff2)$/i, ''));
+    if (!nombreFuente) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const fontData = event.target.result;
+      const fontId = 'font_' + Date.now();
+      
+      // Crear @font-face dinámicamente
+      const fontFace = `
+        @font-face {
+          font-family: '${nombreFuente}';
+          src: url('${fontData}');
+          font-weight: normal;
+          font-style: normal;
+        }
+      `;
+      
+      // Agregar al head
+      const style = document.createElement('style');
+      style.textContent = fontFace;
+      style.id = fontId;
+      document.head.appendChild(style);
+      
+      // Guardar referencia
+      const nuevaTipografia = {
+        id: fontId,
+        nombre: nombreFuente,
+        familia: nombreFuente,
+        data: fontData
+      };
+      
+      const nuevasTipografias = [...tipografiasPersonalizadas, nuevaTipografia];
+      setTipografiasPersonalizadas(nuevasTipografias);
+      
+      // Guardar en localStorage
+      localStorage.setItem('tipografiasPersonalizadas', JSON.stringify(nuevasTipografias));
+      
+      alert(`✅ Tipografía "${nombreFuente}" instalada correctamente`);
+    };
+    
+    reader.readAsDataURL(file);
+  };
+  
+  const aplicarTipografia = (familia) => {
+    if (editorRef.current) {
+      editorRef.current.focus();
+      document.execCommand('fontName', false, familia);
+      setTipografiaActual(familia);
+    }
+  };
+  
+  const eliminarTipografia = (id) => {
+    if (confirm('¿Eliminar esta tipografía personalizada?')) {
+      // Remover del DOM
+      const style = document.getElementById(id);
+      if (style) style.remove();
+      
+      // Actualizar estado
+      const nuevasTipografias = tipografiasPersonalizadas.filter(t => t.id !== id);
+      setTipografiasPersonalizadas(nuevasTipografias);
+      localStorage.setItem('tipografiasPersonalizadas', JSON.stringify(nuevasTipografias));
+    }
+  };
+
+  // Función para insertar enlace a nota desde menú contextual
+  const insertarEnlaceNota = (notaId) => {
+    const notaRef = notasGuardadas.find(n => n.id === notaId);
+    if (!notaRef) return;
+    
+    restaurarSeleccion();
+    const link = `<a href="#nota-${notaId}" data-nota-id="${notaId}" style="color: #22c55e; text-decoration: underline; padding: 0; margin: 0; cursor: pointer;" title="Referencia a: ${notaRef.titulo}">📝 ${notaRef.titulo}</a>`;
+    document.execCommand('insertHTML', false, link);
+    setContenidoNota(editorRef.current.innerHTML);
+    setSubmenuActivo(null);
+  };
+
+  // Función para insertar enlace URL desde menú contextual
+  const insertarEnlaceURL = () => {
+    const url = prompt('🔗 URL:');
+    if (url) {
+      restaurarSeleccion();
+      document.execCommand('createLink', false, url);
+      setContenidoNota(editorRef.current.innerHTML);
+    }
+    setSubmenuActivo(null);
+  };
+
+  // Funciones para modal de selección de nota de referencia
+  const abrirModalSeleccionarNotaRef = () => {
+    guardarSeleccion();
+    setSubmenuActivo(null);
+    setModalSeleccionarNotaRef(true);
+    setRutaModalNotaRef('');
+    cargarCarpetasModalNotaRef('');
+  };
+
+  const cargarCarpetasModalNotaRef = async (ruta = '') => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`);
+      const data = await response.json();
+      setCarpetasModalNotaRef(data.carpetas || []);
+      setRutaModalNotaRef(ruta);
+    } catch (error) {
+      console.error('Error cargando carpetas:', error);
+      setCarpetasModalNotaRef([]);
+    }
+  };
+
+  const seleccionarNotaReferencia = (notaId) => {
+    const notaRef = notasGuardadas.find(n => n.id === notaId);
+    if (!notaRef) return;
+    
+    restaurarSeleccion();
+    const link = `<a href="#nota-${notaId}" data-nota-id="${notaId}" style="color: #22c55e; text-decoration: underline; padding: 0; margin: 0; cursor: pointer;" title="Referencia a: ${notaRef.titulo}">📝 ${notaRef.titulo}</a>`;
+    document.execCommand('insertHTML', false, link);
+    setContenidoNota(editorRef.current.innerHTML);
+    setModalSeleccionarNotaRef(false);
+  };
+
+  const insertarHipervinculo = () => {
+    if (!editorRef.current) return;
+    
+    editorRef.current.focus();
+    
+    if (tipoHipervinculo === 'url' && urlHipervinculo) {
+      // Insertar enlace externo que se abre en nueva ventana
+      const link = `<a href="${urlHipervinculo}" target="_blank" rel="noopener noreferrer" style="color: #646cff; text-decoration: underline; padding: 0; margin: 0;">${textoSeleccionado}</a>`;
+      document.execCommand('insertHTML', false, link);
+      setContenidoNota(editorRef.current.innerHTML);
+    } else if (tipoHipervinculo === 'nota' && notaReferenciaId) {
+      // Insertar referencia a nota con atributo especial
+      const notaRef = notasGuardadas.find(n => n.id === notaReferenciaId);
+      if (notaRef) {
+        const link = `<a href="#nota-${notaReferenciaId}" data-nota-id="${notaReferenciaId}" style="color: #22c55e; text-decoration: underline; padding: 0; margin: 0; cursor: pointer;" title="Referencia a: ${notaRef.titulo}">${textoSeleccionado} 📝</a>`;
+        document.execCommand('insertHTML', false, link);
+        setContenidoNota(editorRef.current.innerHTML);
+      }
+    }
+    setModalHipervinculos(false);
+  }
+
+  // Funciones para carpetas de prácticas
+  const cargarCarpetasPracticas = async (ruta = '') => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`);
+      const data = await response.json();
+      if (data.carpetas) {
+        setCarpetasPracticas(data.carpetas);
+        setRutaPracticasActual(ruta);
+      }
+    } catch (error) {
+      console.error('Error cargando carpetas de prácticas:', error);
+    }
+  };
+
+  const moverPractica = (practicaId, nuevaRuta) => {
+    const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+    const index = practicas.findIndex(p => p.id === practicaId);
+    if (index !== -1) {
+      practicas[index].carpeta = nuevaRuta;
+      localStorage.setItem('practicas', JSON.stringify(practicas));
+      setPracticas(practicas); // Actualizar estado
+      setMensaje({
+        tipo: 'success',
+        texto: '✅ Práctica movida correctamente'
+      });
+    }
+  };
+
+  const crearNuevaNota = () => {
+    setNotaActual(null)
+    setTituloNota('')
+    setContenidoNota('')
+    setCarpetaNota(rutaNotasActual) // Usar carpeta actual de notas
+    setModoSoloLectura(false)
+    setEditorNotaAbierto(true)
+  }
+
+  const convertirDocumentoANota = async (documento) => {
+    try {
+      console.log('📝 Convirtiendo documento a nota:', documento)
+      
+      // Cargar el contenido del documento usando el endpoint correcto
+      const url = `${API_URL}/api/documentos/contenido?ruta=${encodeURIComponent(documento.ruta)}`
+      console.log('📡 Llamando a:', url)
+      
+      const response = await fetch(url)
+      
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('📥 Datos recibidos:', data)
+      
+      if (!data.contenido) {
+        throw new Error('No se pudo obtener el contenido del documento')
+      }
+      
+      // Convertir el contenido a formato HTML para las notas
+      // Preservar formato: párrafos, saltos de línea, etc.
+      let contenidoHTML = data.contenido
+        .split('\n')
+        .map(linea => {
+          if (linea.trim() === '') {
+            return '<br>' // Línea vacía
+          }
+          // Detectar títulos (líneas que parecen encabezados)
+          if (linea.match(/^#+\s/) || linea.match(/^[A-ZÁÉÍÓÚÑ\s]+:$/)) {
+            return `<h3>${linea.replace(/^#+\s/, '')}</h3>`
+          }
+          // Detectar listas
+          if (linea.match(/^[\-\*\•]\s/)) {
+            return `<li>${linea.replace(/^[\-\*\•]\s/, '')}</li>`
+          }
+          if (linea.match(/^\d+\.\s/)) {
+            return `<li>${linea.replace(/^\d+\.\s/, '')}</li>`
+          }
+          return `<p>${linea}</p>`
+        })
+        .join('')
+      
+      // Envolver listas en ul/ol
+      contenidoHTML = contenidoHTML.replace(/(<li>.*?<\/li>)+/g, (match) => {
+        return `<ul>${match}</ul>`
+      })
+      
+      // Crear nueva nota con el contenido del documento
+      const nombreNota = documento.nombre.replace(/\.(txt|pdf)$/i, '') // Quitar extensión
+      const notaNueva = {
+        id: Date.now(),
+        titulo: nombreNota,
+        contenido: contenidoHTML,
+        carpeta: rutaNotasActual || '', // Usar carpeta actual de notas
+        fecha: new Date().toISOString(),
+        fechaModificacion: new Date().toISOString()
+      }
+
+      console.log('💾 Guardando nota:', notaNueva)
+
+      const notasActualizadas = [...notasGuardadas, notaNueva]
+      setNotasGuardadas(notasActualizadas)
+      localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ "${nombreNota}" convertido a nota exitosamente`
+      })
+      
+      setMenuAbierto(null)
+      
+      // Opcional: abrir la nota recién creada
+      setTimeout(() => {
+        abrirNota(notaNueva)
+      }, 500)
+      
+    } catch (error) {
+      console.error('❌ Error al convertir documento a nota:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al convertir: ${error.message}`
+      })
+    }
+  }
+
+  const abrirNota = (nota) => {
+    setNotaActual(nota)
+    setTituloNota(nota.titulo)
+    setContenidoNota(nota.contenido)
+    setCarpetaNota(nota.carpeta || '')
+    setModoSoloLectura(true) // Modo solo lectura
+    setEditorNotaAbierto(true)
+  }
+
+  const editarNota = (nota) => {
+    setNotaActual(nota)
+    setTituloNota(nota.titulo)
+    setContenidoNota(nota.contenido)
+    setCarpetaNota(nota.carpeta || '')
+    setModoSoloLectura(false) // Modo edición
+    setEditorNotaAbierto(true)
+  }
+
+  const guardarNota = () => {
+    if (!tituloNota.trim()) {
+      alert('⚠️ Debes escribir un título para la nota')
+      return
+    }
+
+    const notaNueva = {
+      id: notaActual?.id || Date.now(),
+      titulo: tituloNota,
+      contenido: contenidoNota,
+      carpeta: carpetaNota,
+      fecha: notaActual?.fecha || new Date().toISOString(),
+      fechaModificacion: new Date().toISOString()
+    }
+
+    let notasActualizadas
+    if (notaActual) {
+      // Editar nota existente
+      notasActualizadas = notasGuardadas.map(n => n.id === notaActual.id ? notaNueva : n)
+    } else {
+      // Crear nota nueva
+      notasActualizadas = [...notasGuardadas, notaNueva]
+    }
+
+    setNotasGuardadas(notasActualizadas)
+    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    
+    setMensaje({
+      tipo: 'success',
+      texto: notaActual ? '✅ Nota actualizada' : '✅ Nota creada'
+    })
+    
+    setEditorNotaAbierto(false)
+  }
+
+  const eliminarNota = (idNota) => {
+    if (!confirm('¿Estás seguro de eliminar esta nota?')) return
+    
+    const notasActualizadas = notasGuardadas.filter(n => n.id !== idNota)
+    setNotasGuardadas(notasActualizadas)
+    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    
+    setMensaje({
+      tipo: 'success',
+      texto: '🗑️ Nota eliminada'
+    })
+  }
+
+  const exportarNotaTXT = (nota) => {
+    // Extraer texto plano del HTML
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = nota.contenido
+    const textoPlano = tempDiv.textContent || tempDiv.innerText
+    
+    const contenidoTxt = `${nota.titulo}\n${'='.repeat(nota.titulo.length)}\n\n${textoPlano}`
+    const blob = new Blob([contenidoTxt], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${nota.titulo.replace(/[^a-z0-9]/gi, '_')}.txt`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    setMensaje({
+      tipo: 'success',
+      texto: '📄 Nota exportada como TXT'
+    })
+  }
+
+  const leerNotaVozAlta = (texto) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(texto)
+      utterance.lang = 'es-ES'
+      utterance.rate = 0.9
+      window.speechSynthesis.speak(utterance)
+      
+      setMensaje({
+        tipo: 'info',
+        texto: '🔊 Reproduciendo nota...'
+      })
+    } else {
+      alert('❌ Tu navegador no soporta síntesis de voz')
+    }
+  }
+
+  const cargarCarpetasNotas = async (ruta = '') => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
+      const data = await response.json()
+      setCarpetasNotas(data.carpetas || [])
+      setRutaNotasActual(ruta)
+    } catch (error) {
+      console.error('Error cargando carpetas:', error)
+    }
+  }
+
+  const seleccionarCarpetaNota = (carpeta) => {
+    setCarpetaNota(carpeta)
+    setModalCarpetasNotaAbierto(false)
+  }
+
+  const moverNota = async (idNota, nuevaCarpeta) => {
+    const notasActualizadas = notasGuardadas.map(n => 
+      n.id === idNota ? { ...n, carpeta: nuevaCarpeta } : n
+    )
+    setNotasGuardadas(notasActualizadas)
+    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    
+    setMensaje({
+      tipo: 'success',
+      texto: '✅ Nota movida a ' + (nuevaCarpeta || 'Raíz')
+    })
+  }
+
+  const exportarNotaTXTCarpeta = async (nota) => {
+    try {
+      // Extraer texto plano del HTML
+      const tempDiv = document.createElement('div')
+      tempDiv.innerHTML = nota.contenido
+      const textoPlano = tempDiv.textContent || tempDiv.innerText
+      
+      const contenidoTxt = `${nota.titulo}\n${'='.repeat(nota.titulo.length)}\n\n${textoPlano}`
+      
+      // Enviar al backend para guardar en la carpeta real
+      const response = await fetch(`${API_URL}/api/guardar-nota-txt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: nota.carpeta || '',
+          nombreArchivo: `${nota.titulo.replace(/[^a-z0-9]/gi, '_')}.txt`,
+          contenido: contenidoTxt
+        })
+      })
+      
+      if (response.ok) {
+        setMensaje({
+          tipo: 'success',
+          texto: '📄 Nota guardada como TXT en la carpeta'
+        })
+      } else {
+        throw new Error('Error al guardar')
+      }
+    } catch (error) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al guardar TXT'
+      })
+    }
+  }
+
+  const exportarNotaPDF = (nota) => {
+    // Crear un iframe oculto con el contenido
+    const iframe = document.createElement('iframe')
+    iframe.style.display = 'none'
+    document.body.appendChild(iframe)
+    
+    const iframeDoc = iframe.contentWindow.document
+    iframeDoc.open()
+    iframeDoc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>${nota.titulo}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              max-width: 800px;
+              margin: 40px auto;
+              padding: 20px;
+              line-height: 1.6;
+            }
+            h1 {
+              color: #333;
+              border-bottom: 2px solid #646cff;
+              padding-bottom: 10px;
+            }
+            img {
+              max-width: 100%;
+              height: auto;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${nota.titulo}</h1>
+          ${nota.contenido}
+        </body>
+      </html>
+    `)
+    iframeDoc.close()
+    
+    // Esperar a que cargue y luego imprimir
+    setTimeout(() => {
+      iframe.contentWindow.print()
+      setTimeout(() => {
+        document.body.removeChild(iframe)
+      }, 1000)
+    }, 500)
+    
+    setMensaje({
+      tipo: 'info',
+      texto: '📄 Abriendo diálogo de impresión (Guardar como PDF)'
+    })
   }
 
   return (
@@ -2331,6 +4776,13 @@ JSON:`
       <aside className={`sidebar ${menuMovilAbierto ? 'open' : ''}`}>
         <div className="sidebar-header">
           <h2>📝 Examinator</h2>
+          <button 
+            className="btn-close-sidebar"
+            onClick={() => setMenuMovilAbierto(false)}
+            aria-label="Cerrar menú"
+          >
+            ✕
+          </button>
         </div>
         <nav className="sidebar-nav">
           <button 
@@ -2363,6 +4815,26 @@ JSON:`
           >
             <span className="icon">✨</span>
             <span>Examenes</span>
+          </button>
+          <button 
+            className={`nav-item ${selectedMenu === 'practicas' ? 'active' : ''}`}
+            onClick={() => { 
+              setSelectedMenu('practicas'); 
+              setMenuMovilAbierto(false); 
+            }}
+          >
+            <span className="icon">🧑‍💻</span>
+            <span>Prácticas</span>
+          </button>
+          <button 
+            className={`nav-item ${selectedMenu === 'notas' ? 'active' : ''}`}
+            onClick={() => { 
+              setSelectedMenu('notas'); 
+              setMenuMovilAbierto(false); 
+            }}
+          >
+            <span className="icon">📓</span>
+            <span>Notas</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'historial' ? 'active' : ''}`}
@@ -2486,19 +4958,107 @@ JSON:`
             <div className="carpetas-header">
               <h1>📁 {rutaActual ? rutaActual.split('\\').pop() || 'Mis Cursos' : 'Mis Cursos'} 🎓</h1>
               <div className="carpetas-actions">
-                <button onClick={crearCarpeta} className="btn-primary">
-                  ➕ Nueva Carpeta
-                </button>
-                <label className="btn-secondary">
-                  {loading ? '⏳' : `📤 Subir PDF ${rutaActual ? 'aquí' : ''}`}
-                  <input 
-                    type="file" 
-                    accept=".pdf" 
-                    onChange={handleFileUpload}
-                    disabled={loading}
-                    style={{display: 'none'}}
-                  />
-                </label>
+                {/* Menú dropdown con 3 puntos */}
+                <div className="dropdown-menu-container">
+                  <button 
+                    className="btn-menu-dropdown" 
+                    onClick={() => setMenuDropdownAbierto(!menuDropdownAbierto)}
+                    title="Más opciones"
+                  >
+                    ⋮
+                  </button>
+                  {menuDropdownAbierto && !modalSeleccionArchivos && (
+                    <>
+                      <div 
+                        className="dropdown-overlay" 
+                        onClick={() => setMenuDropdownAbierto(false)}
+                      />
+                      <div className="dropdown-menu-content">
+                        <button 
+                          onClick={() => {
+                            crearCarpeta();
+                            setMenuDropdownAbierto(false);
+                          }}
+                          className="dropdown-item"
+                        >
+                          📁 Nueva Carpeta
+                        </button>
+                        
+                        <label className="dropdown-item">
+                          📤 Subir PDF aquí
+                          <input 
+                            type="file" 
+                            accept=".pdf" 
+                            onChange={(e) => {
+                              handleFileUpload(e);
+                              setMenuDropdownAbierto(false);
+                            }}
+                            disabled={loading}
+                            style={{display: 'none'}}
+                          />
+                        </label>
+                        
+                        <button 
+                          onClick={() => {
+                            crearNuevaNota();
+                            setMenuDropdownAbierto(false);
+                          }}
+                          className="dropdown-item"
+                        >
+                          📝 Crear Nota Aquí
+                        </button>
+                        
+                        {rutaActual && (
+                          <>
+                            <div className="dropdown-divider" />
+                            
+                            <div className="dropdown-section-title">🎯 Generar Examen por Carpeta</div>
+                            
+                            <button 
+                              onClick={() => {
+                                marcarCarpeta(rutaActual, 'curso');
+                                abrirGenerarExamenCarpeta(rutaActual, 'curso');
+                              }}
+                              className="dropdown-item dropdown-item-highlight"
+                            >
+                              🎓 Marcar como CURSO y Generar Examen
+                            </button>
+                            
+                            <button 
+                              onClick={() => {
+                                marcarCarpeta(rutaActual, 'capitulo');
+                                abrirGenerarExamenCarpeta(rutaActual, 'capitulo');
+                              }}
+                              className="dropdown-item dropdown-item-highlight"
+                            >
+                              📚 Marcar como CAPÍTULO y Generar Examen
+                            </button>
+                            
+                            <button 
+                              onClick={() => {
+                                marcarCarpeta(rutaActual, 'clase');
+                                abrirGenerarExamenCarpeta(rutaActual, 'clase');
+                              }}
+                              className="dropdown-item dropdown-item-highlight"
+                            >
+                              📖 Marcar como CLASE y Generar Examen
+                            </button>
+                            
+                            <button 
+                              onClick={() => {
+                                marcarCarpeta(rutaActual, 'leccion');
+                                abrirGenerarExamenCarpeta(rutaActual, 'leccion');
+                              }}
+                              className="dropdown-item dropdown-item-highlight"
+                            >
+                              📝 Marcar como LECCIÓN y Generar Examen
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2612,6 +5172,19 @@ JSON:`
                                 }}>
                                   📝 Generar Examen
                                 </button>
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    if (carpeta.num_documentos > 0) {
+                                      abrirModalPractica(carpeta.ruta, 'carpeta');
+                                    }
+                                  }}
+                                    disabled={carpeta.num_documentos === 0}
+                                  >
+                                    {carpeta.num_documentos > 0 
+                                      ? `🧑‍💻 Generar práctica (${carpeta.num_documentos} docs)` 
+                                      : 'No disponible: sin documentos'}
+                                  </button>
                                 <button onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuAbierto(null);
@@ -2674,6 +5247,41 @@ JSON:`
                             >
                               🗑️
                             </button>
+                            <button 
+                              className="btn-menu-dots"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuAbierto(menuAbierto === `documento-${doc.ruta}` ? null : `documento-${doc.ruta}`);
+                              }}
+                              title="Más opciones"
+                            >
+                              ⋮
+                            </button>
+                            {menuAbierto === `documento-${doc.ruta}` && (
+                              <div className="dropdown-menu">
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  convertirDocumentoANota(doc);
+                                }}>
+                                  📝 Convertir a Nota
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  abrirModalPractica(doc.ruta, 'documento');
+                                }}>
+                                  🧑‍💻 Generar Práctica
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  generarExamenDesdeDocumento(doc);
+                                }}>
+                                  📝 Generar Examen
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -3110,10 +5718,561 @@ JSON:`
           </div>
         )}
 
+        {selectedMenu === 'notas' && (
+          <div className="content-section">
+            <div className="section-header">
+              <h1>📓 Mis Notas</h1>
+              <button className="btn-primary" onClick={crearNuevaNota}>
+                ➕ Nueva Nota
+              </button>
+            </div>
+
+            {/* Breadcrumb de navegación */}
+            <div className="breadcrumb">
+              <button onClick={() => setRutaNotasActual('')} className="breadcrumb-item">
+                🏠 Inicio
+              </button>
+              {rutaNotasActual && rutaNotasActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                return (
+                  <span key={idx}>
+                    <span className="breadcrumb-separator">/</span>
+                    <button onClick={() => {
+                      setRutaNotasActual(rutaParcial);
+                      cargarCarpetasNotas(rutaParcial);
+                    }} className="breadcrumb-item">
+                      {parte}
+                    </button>
+                  </span>
+                );
+              })}
+              {rutaNotasActual && (
+                <button 
+                  onClick={() => {
+                    const partes = rutaNotasActual.split('\\').filter(Boolean);
+                    partes.pop();
+                    const rutaPadre = partes.join('\\');
+                    setRutaNotasActual(rutaPadre);
+                    cargarCarpetasNotas(rutaPadre);
+                  }}
+                  className="btn-volver"
+                  style={{marginLeft: '1rem'}}
+                >
+                  ← Volver
+                </button>
+              )}
+            </div>
+
+            {/* Carpetas */}
+            {carpetasNotas.length > 0 && (
+              <div className="carpetas-grid" style={{marginBottom: '2rem'}}>
+                {carpetasNotas.map((carpeta, idx) => (
+                  <button
+                    key={idx}
+                    className="carpeta-card"
+                    onClick={() => {
+                      const nuevaRuta = rutaNotasActual 
+                        ? `${rutaNotasActual}\\${carpeta.nombre}`
+                        : carpeta.nombre;
+                      setRutaNotasActual(nuevaRuta);
+                      cargarCarpetasNotas(nuevaRuta);
+                    }}
+                  >
+                    <span className="carpeta-icon">📁</span>
+                    <span className="carpeta-nombre">{carpeta.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Notas filtradas por carpeta actual */}
+            {(() => {
+              const notasFiltradas = notasGuardadas.filter(nota => 
+                (nota.carpeta || '') === rutaNotasActual
+              );
+
+              if (notasFiltradas.length === 0 && carpetasNotas.length === 0) {
+                return (
+                  <div className="empty-state">
+                    <div className="empty-icon">📝</div>
+                    <h3>No tienes notas en esta carpeta</h3>
+                    <p>Crea tu primera nota para organizar tus apuntes y material de estudio</p>
+                    <button className="btn-primary" onClick={crearNuevaNota}>
+                      ✍️ Crear Primera Nota
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="notas-grid">
+                  {notasFiltradas.map((nota) => (
+                  <div key={nota.id} className="nota-card">
+                    <div className="nota-header">
+                      <div style={{flex: 1}}>
+                        <h3>{nota.titulo}</h3>
+                        {nota.carpeta && (
+                          <span className="nota-carpeta">📁 {nota.carpeta.split('\\').pop() || 'Raíz'}</span>
+                        )}
+                      </div>
+                      <div className="dropdown-nota">
+                        <button
+                          className="btn-nota-menu"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDropdownNotaAbierto(dropdownNotaAbierto === nota.id ? null : nota.id);
+                          }}
+                          title="Más opciones"
+                        >
+                          ⋮
+                        </button>
+                        <div className={`dropdown-menu-nota ${dropdownNotaAbierto === nota.id ? 'show' : ''}`}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              exportarNotaTXT(nota);
+                              setDropdownNotaAbierto(null);
+                            }}
+                          >
+                            📄 Descargar TXT
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              exportarNotaPDF(nota);
+                              setDropdownNotaAbierto(null);
+                            }}
+                          >
+                            📕 Exportar como PDF
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              exportarNotaTXTCarpeta(nota);
+                              setDropdownNotaAbierto(null);
+                            }}
+                          >
+                            📁 Guardar TXT en carpeta
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              eliminarNota(nota.id);
+                              setDropdownNotaAbierto(null);
+                            }}
+                            style={{color: '#ef4444', borderTop: '1px solid rgba(255, 255, 255, 0.1)'}}
+                          >
+                            🗑️ Eliminar nota
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div 
+                      className="nota-preview"
+                      dangerouslySetInnerHTML={{
+                        __html: nota.contenido.length > 200 
+                          ? nota.contenido.substring(0, 200) + '...' 
+                          : nota.contenido
+                      }}
+                    />
+                    
+                    <div className="nota-footer">
+                      <span className="nota-fecha">
+                        {new Date(nota.fechaModificacion || nota.fecha).toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                      <div className="nota-acciones">
+                        <button
+                          className="btn-nota-ver"
+                          onClick={() => abrirNota(nota)}
+                          title="Ver nota completa"
+                        >
+                          👁️ Ver
+                        </button>
+                        <button
+                          className="btn-nota-editar"
+                          onClick={() => editarNota(nota)}
+                          title="Editar nota"
+                        >
+                          ✏️ Editar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {selectedMenu === 'practicas' && (
+          <div className="content-section">
+            <div className="section-header">
+              <h1>🧑‍💻 Prácticas</h1>
+              <p className="section-subtitle">Ejercicios personalizados para reforzar tu aprendizaje</p>
+            </div>
+
+            {/* Navegación de carpetas */}
+            <div className="breadcrumb-nav">
+              <button onClick={() => {
+                setRutaPracticasActual('');
+                cargarCarpetasPracticas('');
+              }} className="breadcrumb-btn">
+                🏠 Inicio
+              </button>
+              {rutaPracticasActual && rutaPracticasActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                return (
+                  <span key={idx}>
+                    <span className="breadcrumb-separator">/</span>
+                    <button onClick={() => {
+                      setRutaPracticasActual(rutaParcial);
+                      cargarCarpetasPracticas(rutaParcial);
+                    }} className="breadcrumb-btn">
+                      {parte}
+                    </button>
+                  </span>
+                );
+              })}
+              {rutaPracticasActual && (
+                <button 
+                  onClick={() => {
+                    const partes = rutaPracticasActual.split('\\').filter(Boolean);
+                    partes.pop();
+                    const rutaPadre = partes.join('\\');
+                    setRutaPracticasActual(rutaPadre);
+                    cargarCarpetasPracticas(rutaPadre);
+                  }}
+                  className="btn-volver"
+                  style={{marginLeft: '1rem'}}
+                >
+                  ← Volver
+                </button>
+              )}
+            </div>
+
+            {/* Mostrar carpetas disponibles */}
+            {carpetasPracticas.length > 0 && (
+              <div className="carpetas-grid" style={{marginBottom: '2rem'}}>
+                {carpetasPracticas.map((carpeta, idx) => (
+                  <button
+                    key={idx}
+                    className="carpeta-card"
+                    onClick={() => {
+                      const nuevaRuta = rutaPracticasActual 
+                        ? `${rutaPracticasActual}\\${carpeta.nombre}`
+                        : carpeta.nombre;
+                      setRutaPracticasActual(nuevaRuta);
+                      cargarCarpetasPracticas(nuevaRuta);
+                    }}
+                  >
+                    <span className="carpeta-icon">📁</span>
+                    <span className="carpeta-nombre">{carpeta.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {(() => {
+              const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+              const practicasFiltradas = practicas.filter(p => (p.carpeta || '') === rutaPracticasActual);
+              
+              // Separar por completadas y sin completar
+              const sinCompletar = practicasFiltradas.filter(p => !p.completada);
+              const completadas = practicasFiltradas.filter(p => p.completada);
+              
+              if (practicas.length === 0) {
+                return (
+                  <div className="empty-state">
+                    <div className="empty-icon">📝</div>
+                    <h3>No tienes prácticas todavía</h3>
+                    <p>Ve a "Mis Cursos" y genera una práctica desde cualquier documento o carpeta</p>
+                    <button 
+                      className="btn-primary"
+                      onClick={() => {
+                        setSelectedMenu('cursos');
+                        cargarCarpeta('');
+                      }}
+                    >
+                      📚 Ir a Mis Cursos
+                    </button>
+                  </div>
+                );
+              }
+
+              if (practicasFiltradas.length === 0) {
+                return (
+                  <div className="empty-state">
+                    <div className="empty-icon">📂</div>
+                    <h3>No hay prácticas en esta carpeta</h3>
+                    <p>Las prácticas se guardan en la carpeta desde donde las generas</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div>
+                  {/* Prácticas SIN COMPLETAR */}
+                  {sinCompletar.length > 0 && (
+                    <div style={{marginBottom: '2rem'}}>
+                      <h2 style={{fontSize: '1.3rem', marginBottom: '1rem', color: '#ff9800'}}>
+                        ⏳ Prácticas sin completar ({sinCompletar.length})
+                      </h2>
+                      <div className="practicas-grid">
+                        {sinCompletar.map((practica) => (
+                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #ff9800'}}>
+                            <div className="practica-header">
+                              <div className="practica-icon">
+                                {practica.tipo === 'documento' ? '📄' : '📁'}
+                              </div>
+                              <div className="practica-info">
+                                <h3>{practica.ruta.split('/').pop()}</h3>
+                                <p className="practica-fecha">
+                                  {new Date(practica.fecha).toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {practica.prompt && (
+                              <div className="practica-prompt">
+                                <strong>Prompt:</strong> {practica.prompt}
+                              </div>
+                            )}
+
+                            {practica.carpeta && (
+                              <div className="practica-carpeta">
+                                📁 {practica.carpeta}
+                              </div>
+                            )}
+                            
+                            <div className="practica-stats">
+                              <span className="stat-badge">
+                                📝 {practica.preguntas.length} preguntas
+                              </span>
+                              <span className="stat-badge pendiente">
+                                ⏳ Pendiente
+                              </span>
+                            </div>
+                            
+                            <div className="practica-actions">
+                              <button 
+                                className="btn-primary"
+                                onClick={() => {
+                                  setPreguntasExamen(practica.preguntas);
+                                  setRespuestasUsuario(practica.respuestas || {});
+                                  setExamenCompletado(false);
+                                  setModalExamenAbierto(true);
+                                }}
+                              >
+                                ▶️ Continuar
+                              </button>
+                              <button 
+                                className="btn-secondary"
+                                onClick={() => {
+                                  setPracticaAMover(practica);
+                                  setModalMoverPractica(true);
+                                  cargarCarpetasPracticas('');
+                                }}
+                                title="Mover a otra carpeta"
+                              >
+                                📂
+                              </button>
+                              <button 
+                                className="btn-eliminar"
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar esta práctica?`)) {
+                                    const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
+                                    localStorage.setItem('practicas', JSON.stringify(nuevasPracticas));
+                                    setPracticas(nuevasPracticas); // Actualizar estado
+                                  }
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Prácticas COMPLETADAS */}
+                  {completadas.length > 0 && (
+                    <div>
+                      <h2 style={{fontSize: '1.3rem', marginBottom: '1rem', color: '#4caf50'}}>
+                        ✅ Prácticas completadas ({completadas.length})
+                      </h2>
+                      <div className="practicas-grid">
+                        {completadas.map((practica) => (
+                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #4caf50'}}>
+                            <div className="practica-header">
+                              <div className="practica-icon">
+                                {practica.tipo === 'documento' ? '📄' : '📁'}
+                              </div>
+                              <div className="practica-info">
+                                <h3>{practica.ruta.split('/').pop()}</h3>
+                                <p className="practica-fecha">
+                                  {new Date(practica.fecha).toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {practica.prompt && (
+                              <div className="practica-prompt">
+                                <strong>Prompt:</strong> {practica.prompt}
+                              </div>
+                            )}
+
+                            {practica.carpeta && (
+                              <div className="practica-carpeta">
+                                📁 {practica.carpeta}
+                              </div>
+                            )}
+                            
+                            <div className="practica-stats">
+                              <span className="stat-badge">
+                                📝 {practica.preguntas.length} preguntas
+                              </span>
+                              <span className="stat-badge completada">
+                                ✅ Completada
+                              </span>
+                            </div>
+                            
+                            <div className="practica-actions">
+                              <button 
+                                className="btn-primary"
+                                onClick={() => {
+                                  setPreguntasExamen(practica.preguntas);
+                                  setRespuestasUsuario(practica.respuestas || {});
+                                  setExamenCompletado(true);
+                                  setModalExamenAbierto(true);
+                                }}
+                              >
+                                👁️ Ver Resultados
+                              </button>
+                              <button 
+                                className="btn-secondary"
+                                onClick={() => {
+                                  setPracticaAMover(practica);
+                                  setModalMoverPractica(true);
+                                  cargarCarpetasPracticas('');
+                                }}
+                                title="Mover a otra carpeta"
+                              >
+                                📂
+                              </button>
+                              <button 
+                                className="btn-eliminar"
+                                onClick={() => {
+                                  if (confirm(`¿Eliminar esta práctica?`)) {
+                                    const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
+                                    localStorage.setItem('practicas', JSON.stringify(nuevasPracticas));
+                                    setPracticas(nuevasPracticas); // Actualizar estado
+                                  }
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {selectedMenu === 'chat' && (
           <div className="chat-section">
             <div className="chat-header">
               <div className="chat-header-actions">
+                {/* Botón de diagnóstico Ollama */}
+                <button 
+                  className={`btn-chat-action btn-diagnostico ${diagnosticoOllama?.corriendo ? 'ok' : 'error'}`}
+                  onClick={verificarEstadoOllama}
+                  title={diagnosticoOllama?.mensaje || 'Verificar estado de Ollama'}
+                  style={{
+                    backgroundColor: diagnosticoOllama?.corriendo ? '#4caf50' : '#ff9800',
+                    color: 'white'
+                  }}
+                >
+                  {diagnosticoOllama?.corriendo ? '✅ Ollama' : '⚠️ Ollama'}
+                </button>
+                
+                {/* Botón de reparación (solo si Ollama no está corriendo) */}
+                {diagnosticoOllama && !diagnosticoOllama.corriendo && (
+                  <button 
+                    className="btn-chat-action btn-reparar"
+                    onClick={repararOllama}
+                    disabled={reparandoOllama}
+                    title="Reparar Ollama iniciándolo automáticamente"
+                    style={{
+                      backgroundColor: '#2196f3',
+                      color: 'white'
+                    }}
+                  >
+                    {reparandoOllama ? '🔄 Reparando...' : '🔧 Reparar'}
+                  </button>
+                )}
+
+                {modelosOllama.length > 0 && (
+                  <div className="selector-modelo-chat">
+                    <label className="label-selector">🤖</label>
+                    <select 
+                      value={configuracion?.modelo_ollama || ''}
+                      onChange={async (e) => {
+                        const nuevoModelo = e.target.value;
+                        try {
+                          const response = await fetch(`${API_URL}/api/ollama/cambiar-modelo`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ modelo: nuevoModelo })
+                          });
+                          if (response.ok) {
+                            setMensaje({
+                              tipo: 'success',
+                              texto: `✅ Modelo cambiado a ${nuevoModelo}`
+                            });
+                            cargarConfiguracion();
+                          }
+                        } catch (error) {
+                          setMensaje({
+                            tipo: 'error',
+                            texto: '❌ Error cambiando modelo'
+                          });
+                        }
+                      }}
+                      className="select-modelo-chat"
+                    >
+                      {modelosOllama.map(modelo => (
+                        <option key={modelo.nombre} value={modelo.nombre}>
+                          {modelo.nombre} ({modelo.tamaño_gb}GB)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <button 
                   className="btn-chat-action"
                   onClick={abrirModalHistorial}
@@ -3128,8 +6287,48 @@ JSON:`
                 >
                   ➕ Nuevo
                 </button>
+                <button 
+                  className="btn-chat-action"
+                  onClick={() => setMostrarExploradorChat(!mostrarExploradorChat)}
+                  title="Explorador de archivos"
+                  style={{
+                    backgroundColor: mostrarExploradorChat ? '#646cff' : 'rgba(100, 108, 255, 0.1)',
+                    borderColor: mostrarExploradorChat ? '#646cff' : 'rgba(100, 108, 255, 0.3)'
+                  }}
+                >
+                  📎 Archivos {archivosContextoChat.length > 0 && `(${archivosContextoChat.length})`}
+                </button>
+                {rutaActual && (
+                  <button 
+                    className="btn-chat-action"
+                    onClick={() => {
+                      setSelectedMenu('cursos');
+                      cargarCarpeta(rutaActual);
+                    }}
+                    title={`Ir a: ${rutaActual || 'Raíz de Mis Cursos'}`}
+                    style={{
+                      backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                      borderColor: 'rgba(255, 152, 0, 0.5)',
+                      color: '#ff9800'
+                    }}
+                  >
+                    📂 {rutaActual ? rutaActual.split('/').pop() || 'Cursos' : 'Cursos'}
+                  </button>
+                )}
                 {mensajesChat.length > 0 && (
                   <>
+                    <button 
+                      className="btn-chat-action btn-save-txt"
+                      onClick={abrirGuardarChatTxt}
+                      title="Guardar chat completo como TXT"
+                      style={{
+                        backgroundColor: 'rgba(76, 175, 80, 0.2)',
+                        borderColor: 'rgba(76, 175, 80, 0.5)',
+                        color: '#4caf50'
+                      }}
+                    >
+                      💾 Guardar TXT
+                    </button>
                     <button 
                       className="btn-chat-action btn-move"
                       onClick={() => setMostrarModalCarpetas(true)}
@@ -3149,6 +6348,183 @@ JSON:`
             {nombreChatNuevo && (
               <div className="chat-nombre-actual">
                 💬 {nombreChatNuevo} • Guardado automático
+              </div>
+            )}
+
+            {/* Panel del Explorador de Archivos */}
+            {mostrarExploradorChat && (
+              <div className="explorador-archivos-chat">
+                <div className="explorador-header">
+                  <h3>📎 Adjuntar Archivos al Contexto</h3>
+                  <button 
+                    className="btn-close-explorador"
+                    onClick={() => setMostrarExploradorChat(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Tabs para cambiar entre tipos de archivos */}
+                <div className="explorador-tabs">
+                  <button
+                    className={`explorador-tab ${tipoExploradorChat === 'recientes' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('recientes')
+                      cargarArchivosRecientes()
+                    }}
+                  >
+                    🕒 Recientes
+                  </button>
+                  <button
+                    className={`explorador-tab ${tipoExploradorChat === 'notas' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('notas')
+                      explorarCarpetaChat('notas', '')
+                    }}
+                  >
+                    📝 Notas
+                  </button>
+                  <button
+                    className={`explorador-tab ${tipoExploradorChat === 'examenes' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('examenes')
+                      explorarCarpetaChat('examenes', '')
+                    }}
+                  >
+                    📋 Exámenes
+                  </button>
+                  <button
+                    className={`explorador-tab ${tipoExploradorChat === 'practicas' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('practicas')
+                      explorarCarpetaChat('practicas', '')
+                    }}
+                  >
+                    ✍️ Prácticas
+                  </button>
+                  <button
+                    className={`explorador-tab ${tipoExploradorChat === 'cursos' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('cursos')
+                      explorarCarpetaChat('cursos', '')
+                    }}
+                  >
+                    📚 Cursos
+                  </button>
+                </div>
+
+                {/* Navegación de carpetas */}
+                {tipoExploradorChat !== 'recientes' && rutaExploradorChat && (
+                  <div className="explorador-breadcrumb">
+                    <button
+                      className="btn-breadcrumb"
+                      onClick={() => {
+                        const rutaPadre = rutaExploradorChat.split('/').slice(0, -1).join('/')
+                        explorarCarpetaChat(tipoExploradorChat, rutaPadre)
+                      }}
+                    >
+                      ⬅️ Volver
+                    </button>
+                    <span className="breadcrumb-path">📁 {rutaExploradorChat || 'Raíz'}</span>
+                  </div>
+                )}
+
+                {/* Lista de carpetas (si no es recientes) */}
+                {tipoExploradorChat !== 'recientes' && carpetasExploradorChat.length > 0 && (
+                  <div className="explorador-carpetas">
+                    <h4>📁 Carpetas</h4>
+                    <div className="carpetas-list">
+                      {carpetasExploradorChat.map((carpeta, idx) => (
+                        <button
+                          key={idx}
+                          className="carpeta-item"
+                          onClick={() => explorarCarpetaChat(tipoExploradorChat, carpeta.ruta)}
+                        >
+                          <span className="carpeta-icon">📁</span>
+                          <span className="carpeta-nombre">{carpeta.nombre}</span>
+                          <span className="carpeta-count">({carpeta.num_archivos} archivos)</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de archivos */}
+                <div className="explorador-archivos">
+                  <h4>📄 Archivos {tipoExploradorChat === 'recientes' && '(Últimos 30)'}</h4>
+                  {cargandoArchivos ? (
+                    <div className="loading-archivos">🔄 Cargando...</div>
+                  ) : archivosRecientes.length === 0 ? (
+                    <div className="no-archivos">No hay archivos disponibles</div>
+                  ) : (
+                    <div className="archivos-list">
+                      {archivosRecientes.map((archivo, idx) => {
+                        const yaAdjuntado = archivosContextoChat.some(a => a.ruta_completa === archivo.ruta_completa)
+                        return (
+                          <div key={idx} className={`archivo-item ${yaAdjuntado ? 'adjuntado' : ''}`}>
+                            <div className="archivo-info">
+                              <span className="archivo-icon">
+                                {archivo.extension === '.pdf' ? '📕' :
+                                 archivo.extension === '.html' ? '🌐' :
+                                 archivo.extension === '.json' ? '📊' :
+                                 archivo.extension === '.txt' ? '📄' : '📝'}
+                              </span>
+                              <div className="archivo-detalles">
+                                <span className="archivo-nombre">{archivo.nombre}</span>
+                                <span className="archivo-meta">
+                                  {archivo.tipo} • {(archivo.tamaño / 1024).toFixed(1)} KB • 
+                                  {new Date(archivo.modificado * 1000).toLocaleDateString('es-ES')}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              className={`btn-adjuntar ${yaAdjuntado ? 'adjuntado' : ''}`}
+                              onClick={() => yaAdjuntado ? quitarArchivoContexto(archivo.ruta_completa) : adjuntarArchivoContexto(archivo)}
+                              title={yaAdjuntado ? 'Quitar del contexto' : 'Adjuntar al contexto'}
+                            >
+                              {yaAdjuntado ? '✓ Adjuntado' : '+ Adjuntar'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Mostrar archivos adjuntos al contexto */}
+            {archivosContextoChat.length > 0 && (
+              <div className="archivos-contexto-activos">
+                <div className="contexto-header">
+                  <span>📎 Contexto activo ({archivosContextoChat.length} archivo{archivosContextoChat.length > 1 ? 's' : ''})</span>
+                  <button
+                    className="btn-limpiar-contexto"
+                    onClick={limpiarContextoArchivos}
+                    title="Limpiar todo el contexto"
+                  >
+                    🗑️ Limpiar todo
+                  </button>
+                </div>
+                <div className="contexto-archivos-list">
+                  {archivosContextoChat.map((archivo, idx) => (
+                    <div key={idx} className="contexto-archivo-chip">
+                      <span className="chip-icon">
+                        {archivo.extension === '.pdf' ? '📕' :
+                         archivo.extension === '.html' ? '🌐' :
+                         archivo.extension === '.json' ? '📊' : '📝'}
+                      </span>
+                      <span className="chip-nombre">{archivo.nombre}</span>
+                      <button
+                        className="btn-quitar-chip"
+                        onClick={() => quitarArchivoContexto(archivo.ruta_completa)}
+                        title="Quitar del contexto"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -3252,13 +6628,79 @@ JSON:`
                                 <div className="message-footer">
                                   <div className="message-time">{msg.hora}</div>
                                   {msg.tipo === 'usuario' && !cargandoChat && (
-                                    <button 
-                                      className="btn-edit-message"
-                                      onClick={() => iniciarEdicionMensaje(idx)}
-                                      title="Editar mensaje"
-                                    >
-                                      ✏️
-                                    </button>
+                                    <>
+                                      <button 
+                                        className="btn-edit-message"
+                                        onClick={() => iniciarEdicionMensaje(idx)}
+                                        title="Editar mensaje"
+                                      >
+                                        ✏️
+                                      </button>
+                                      {/* Mostrar botón guardar si hay respuesta siguiente */}
+                                      {(() => {
+                                        const siguienteMensaje = mensajesChat[idx + 1]
+                                        const hayRespuesta = siguienteMensaje && siguienteMensaje.tipo === 'asistente'
+                                        console.log(`Mensaje ${idx}: siguiente existe=${!!siguienteMensaje}, es asistente=${hayRespuesta}`)
+                                        return hayRespuesta
+                                      })() && (
+                                        <button 
+                                          className="btn-save-consulta"
+                                          onClick={() => {
+                                            console.log('Click en botón guardar, índice:', idx)
+                                            abrirGuardarConsultaTxt(idx)
+                                          }}
+                                          title="Guardar esta consulta como TXT"
+                                          style={{
+                                            marginLeft: '0.5rem',
+                                            padding: '0.5rem 0.75rem',
+                                            background: '#4caf50',
+                                            border: '2px solid #45a049',
+                                            borderRadius: '6px',
+                                            color: '#fff',
+                                            cursor: 'pointer',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                          }}
+                                        >
+                                          💾 TXT
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                  {/* Botón guardar en mensajes del asistente */}
+                                  {msg.tipo === 'asistente' && !cargandoChat && (
+                                    (() => {
+                                      // Buscar el mensaje de usuario anterior
+                                      const mensajeAnterior = mensajesChat[idx - 1]
+                                      const hayPregunta = mensajeAnterior && mensajeAnterior.tipo === 'usuario'
+                                      console.log(`Respuesta ${idx}: anterior existe=${!!mensajeAnterior}, es usuario=${hayPregunta}`)
+                                      return hayPregunta
+                                    })() && (
+                                      <button 
+                                        className="btn-save-consulta"
+                                        onClick={() => {
+                                          // Guardar SOLO la respuesta (sin pregunta)
+                                          console.log('Click en botón guardar (solo respuesta), índice:', idx)
+                                          abrirGuardarRespuestaTxt(idx)
+                                        }}
+                                        title="Guardar solo esta respuesta como TXT (sin pregunta)"
+                                        style={{
+                                          marginLeft: '0.5rem',
+                                          padding: '0.5rem 0.75rem',
+                                          background: '#4caf50',
+                                          border: '2px solid #45a049',
+                                          borderRadius: '6px',
+                                          color: '#fff',
+                                          cursor: 'pointer',
+                                          fontSize: '0.9rem',
+                                          fontWeight: 'bold',
+                                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                        }}
+                                      >
+                                        💾 Guardar
+                                      </button>
+                                    )
                                   )}
                                 </div>
                               </>
@@ -3355,6 +6797,188 @@ JSON:`
                 </div>
               </>
             )}
+
+            {/* Modal para Guardar como TXT */}
+            {modalGuardarTxt && (
+              <div className="modal-overlay" onClick={() => setModalGuardarTxt(false)}>
+                <div className="modal-content modal-guardar-txt" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h3>💾 Guardar como TXT</h3>
+                    <button className="btn-close-modal" onClick={() => setModalGuardarTxt(false)}>✕</button>
+                  </div>
+
+                  <div className="modal-body">
+                    <div className="info-guardado">
+                      {tipoGuardadoTxt === 'chat' ? (
+                        <p>
+                          <strong>Chat completo:</strong> {mensajesChat.length} mensajes
+                        </p>
+                      ) : tipoGuardadoTxt === 'respuesta' ? (
+                        <div>
+                          <p><strong>🤖 Solo respuesta del asistente</strong></p>
+                          <div style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            marginTop: '0.5rem',
+                            fontSize: '0.9rem'
+                          }}>
+                            <div style={{color: '#999'}}>
+                              {consultaAGuardar?.respuesta.texto.substring(0, 150)}...
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p><strong>Consulta completa (pregunta + respuesta)</strong></p>
+                          <div style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            marginTop: '0.5rem',
+                            fontSize: '0.9rem'
+                          }}>
+                            <div><strong>👤 Pregunta:</strong></div>
+                            <div style={{color: '#999', marginBottom: '0.5rem'}}>
+                              {consultaAGuardar?.pregunta.texto.substring(0, 100)}...
+                            </div>
+                            <div><strong>🤖 Respuesta:</strong></div>
+                            <div style={{color: '#999'}}>
+                              {consultaAGuardar?.respuesta.texto.substring(0, 100)}...
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="form-group">
+                      <label>Nombre del archivo:</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        value={nombreArchivoTxt}
+                        onChange={(e) => setNombreArchivoTxt(e.target.value)}
+                        placeholder="Mi chat sobre programación"
+                        autoFocus
+                      />
+                      <small style={{color: '#999'}}>.txt se agregará automáticamente</small>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Carpeta de destino:</label>
+                      
+                      {/* Navegación de carpetas */}
+                      <div className="breadcrumb-navegacion">
+                        {rutaGuardadoTxt && (
+                          <button
+                            className="btn-back"
+                            onClick={() => {
+                              console.log('🔙 Ir atrás desde:', rutaGuardadoTxt)
+                              const partes = rutaGuardadoTxt.split('/').filter(p => p)
+                              const rutaPadre = partes.slice(0, -1).join('/')
+                              console.log('🔙 Nueva ruta:', rutaPadre)
+                              cargarCarpetasCursos(rutaPadre)
+                            }}
+                          >
+                            ⬅️ Atrás
+                          </button>
+                        )}
+                        <span className="ruta-actual">
+                          📁 {rutaGuardadoTxt || 'Cursos (raíz)'}
+                        </span>
+                      </div>
+
+                      {/* Botón para guardar en carpeta actual */}
+                      <div style={{marginBottom: '1rem'}}>
+                        <button
+                          className="btn-guardar-aqui"
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(76, 175, 80, 0.2)',
+                            border: '2px solid #4caf50',
+                            borderRadius: '8px',
+                            color: '#4caf50',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(76, 175, 80, 0.3)'
+                            e.target.style.transform = 'scale(1.02)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'rgba(76, 175, 80, 0.2)'
+                            e.target.style.transform = 'scale(1)'
+                          }}
+                          onClick={() => {
+                            console.log('💾 Guardar en:', rutaGuardadoTxt || '(raíz)')
+                            guardarComoTxt()
+                          }}
+                          disabled={!nombreArchivoTxt.trim()}
+                        >
+                          💾 Guardar aquí
+                        </button>
+                      </div>
+
+                      {/* Lista de subcarpetas para navegar */}
+                      {(() => {
+                        console.log('🗂️ Carpetas en estado:', carpetasCursos)
+                        console.log('📏 Longitud:', carpetasCursos.length)
+                        return carpetasCursos.length > 0
+                      })() && (
+                        <>
+                          <label style={{fontSize: '0.9rem', color: '#999', marginBottom: '0.5rem', display: 'block'}}>
+                            O navegar a subcarpetas:
+                          </label>
+                          <div className="carpetas-selector">
+                            {carpetasCursos.map((carpeta, idx) => (
+                              <button
+                                key={idx}
+                                className="carpeta-opcion"
+                                onClick={() => {
+                                  console.log('📂 Navegando a carpeta:', carpeta.ruta)
+                                  cargarCarpetasCursos(carpeta.ruta)
+                                }}
+                              >
+                                <span className="carpeta-icon">📁</span>
+                                <span>{carpeta.nombre}</span>
+                                <span className="carpeta-info">({carpeta.num_archivos} archivos)</span>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      {carpetasCursos.length === 0 && rutaGuardadoTxt && (
+                        <div className="no-carpetas" style={{fontSize: '0.9rem', color: '#666'}}>
+                          Esta carpeta no tiene subcarpetas
+                        </div>
+                      )}
+
+                      {carpetasCursos.length === 0 && !rutaGuardadoTxt && (
+                        <div className="no-carpetas" style={{fontSize: '0.9rem', color: '#999'}}>
+                          No hay carpetas de cursos. Crea carpetas en "extracciones/"
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="ruta-seleccionada">
+                      <strong>📂 Ruta de guardado:</strong> extracciones/{rutaGuardadoTxt ? rutaGuardadoTxt + '/' : ''}{nombreArchivoTxt || 'archivo'}.txt
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button 
+                      className="btn-secondary"
+                      onClick={() => setModalGuardarTxt(false)}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3367,42 +6991,6 @@ JSON:`
               <p className="loading">Cargando configuración...</p>
             ) : (
               <>
-                {/* Modelo actual */}
-                <div className="config-section">
-                  <h2>🤖 Modelo Actual</h2>
-                  {configuracion?.modelo_path ? (
-                    <div className="modelo-actual-card">
-                      <div className="modelo-actual-info">
-                        <h3>✅ Modelo configurado</h3>
-                        <p className="modelo-nombre">{configuracion.modelo_path.split('\\').pop().split('/').pop()}</p>
-                        {configuracion.modelo_cargado && (
-                          <p className="modelo-estado">
-                            {configuracion.modelo_activo ? (
-                              <span className="estado-activo">🟢 Activo en memoria</span>
-                            ) : (
-                              <span className="estado-inactivo">⚪ No cargado</span>
-                            )}
-                          </p>
-                        )}
-                        {configuracion.modelo_cargado && configuracion.modelo_cargado !== configuracion.modelo_path && (
-                          <p className="modelo-advertencia">
-                            ⚠️ El modelo en memoria es diferente al configurado. 
-                            Genera un examen para aplicar el cambio.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="modelo-actual-card sin-modelo">
-                      <div className="modelo-actual-info">
-                        <h3>⚠️ Sin modelo configurado</h3>
-                        <p>Selecciona un modelo para comenzar a generar exámenes</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Motor de IA (GPU/CPU) */}
                 <div className="config-section">
                   <h2>🎮 Modo de Ejecución</h2>
                   <p className="subtitle" style={{marginBottom: '1.5rem'}}>
@@ -3499,9 +7087,17 @@ JSON:`
                   </div>
                 </div>
 
-                {/* Modelos con pestañas */}
+                {/* Modelos con pestañas - Expandible */}
                 <div className="config-section">
-                  <h2>🤖 Gestión de Modelos</h2>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer'}} onClick={() => setMostrarModelos(!mostrarModelos)}>
+                    <h2>🤖 Gestión de Modelos</h2>
+                    <button className="btn-toggle-descarga">
+                      {mostrarModelos ? '▼ Ocultar' : '▶ Mostrar'}
+                    </button>
+                  </div>
+                  
+                  {mostrarModelos && (
+                    <>
                   
                   {/* Pestañas */}
                   <div className="pestanas-modelos">
@@ -3651,16 +7247,6 @@ JSON:`
                           <p className="empty-hint">
                             Haz clic en "Cargar Modelos" o instala modelos con: <code>ollama pull llama3.2:3b</code>
                           </p>
-                          <div style={{marginTop: '1rem', padding: '1rem', background: 'rgba(100, 108, 255, 0.1)', borderRadius: '8px'}}>
-                            <p style={{fontSize: '0.9rem', color: '#b0b0c0', margin: 0}}>
-                              <strong>Modelos recomendados:</strong>
-                            </p>
-                            <ul style={{fontSize: '0.85rem', color: '#999', marginTop: '0.5rem'}}>
-                              <li><code>ollama pull llama3.2:3b</code> - Rápido y ligero (2 GB)</li>
-                              <li><code>ollama pull qwen2.5:7b</code> - Excelente en español (4.4 GB)</li>
-                              <li><code>ollama pull llama3.1:8b</code> - Balance perfecto (4.9 GB)</li>
-                            </ul>
-                          </div>
                         </div>
                       )}
                     </div>
@@ -3670,6 +7256,92 @@ JSON:`
                   {pestanaModelos === 'gguf' && (
                     <div className="pestana-contenido">
                       <p className="subtitle">Modelos que se ejecutan en CPU</p>
+                      
+                      {/* Botón de descargar modelos movido aquí */}
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <button 
+                          onClick={() => setMostrarDescarga(!mostrarDescarga)}
+                          className="btn-toggle-descarga"
+                        >
+                          📥 {mostrarDescarga ? 'Ocultar' : 'Descargar Modelos'} ({modelosParaDescargar.length} disponibles)
+                        </button>
+                      </div>
+
+                      {mostrarDescarga && (
+                        <>
+                          <p style={{color: '#b0b0c0', marginBottom: '1.5rem', fontSize: '0.95rem'}}>
+                            Modelos optimizados para generar exámenes. Los modelos marcados con 🔒 requieren autenticación de HuggingFace.
+                          </p>
+                          <div className="modelos-descarga-grid">
+                            {modelosParaDescargar.map(modelo => (
+                              <div key={modelo.id} className={`modelo-descarga-card ${modelo.descargado ? 'descargado' : ''}`}>
+                                <div className="modelo-header">
+                                  <div>
+                                    <h3>🤖 {modelo.nombre}</h3>
+                                    {modelo.recomendado && <span className="badge-recomendado">⭐ Recomendado</span>}
+                                  </div>
+                                  <span className="modelo-badge">{modelo.tamaño_modelo}</span>
+                                </div>
+                                <div className="modelo-stats">
+                                  <div className="stat">
+                                    <span className="stat-label">Tamaño:</span>
+                                    <span className="stat-value">{modelo.tamaño_gb} GB</span>
+                                  </div>
+                                  <div className="stat">
+                                    <span className="stat-label">Velocidad:</span>
+                                    <span className="stat-value">{modelo.velocidad}</span>
+                                  </div>
+                                </div>
+                                <div className="modelo-descripcion">
+                                  <p>{modelo.descripcion}</p>
+                                </div>
+                                {modelo.descargado ? (
+                                  <div className="modelo-descargado-badge">✅ Ya descargado</div>
+                                ) : (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        setLoading(true)
+                                        setMensaje({tipo: 'info', texto: `📥 Descargando ${modelo.nombre}...`})
+                                        
+                                        const response = await fetch(`${API_URL}/api/descargar-modelo`, {
+                                          method: 'POST',
+                                          headers: {'Content-Type': 'application/json'},
+                                          body: JSON.stringify({
+                                            modelo_id: modelo.id,
+                                            url: modelo.url,
+                                            nombre: modelo.nombre
+                                          })
+                                        })
+                                        
+                                        const data = await response.json()
+                                        if (data.success) {
+                                          setMensaje({tipo: 'exito', texto: `✅ ${modelo.nombre} descargado`})
+                                          cargarModelosDisponibles()
+                                        } else {
+                                          setMensaje({tipo: 'error', texto: data.mensaje || 'Error en la descarga'})
+                                        }
+                                      } catch (error) {
+                                        setMensaje({tipo: 'error', texto: `❌ Error: ${error.message}`})
+                                      } finally {
+                                        setLoading(false)
+                                      }
+                                    }}
+                                    className="btn-descargar-modelo"
+                                    disabled={loading}
+                                  >
+                                    📥 Descargar
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                      
+                      <hr style={{margin: '2rem 0', border: 'none', borderTop: '1px solid #2a2a3e'}} />
+                      
+                      <h3 style={{marginBottom: '1rem'}}>💾 Modelos Instalados</h3>
                       
                       {modelosDisponibles.length > 0 ? (
                         <div className="modelos-grid">
@@ -3760,103 +7432,6 @@ JSON:`
                       )}
                     </div>
                   )}
-                </div>
-
-                {/* Modelos disponibles para descargar */}
-                <div className="config-section">
-                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <h2>📥 Descargar Modelos</h2>
-                    <button 
-                      onClick={() => setMostrarDescarga(!mostrarDescarga)}
-                      className="btn-toggle-descarga"
-                    >
-                      {mostrarDescarga ? '▼ Ocultar' : '▶ Mostrar'} ({modelosParaDescargar.length} disponibles)
-                    </button>
-                  </div>
-                  
-                  {mostrarDescarga && (
-                    <>
-                      <p style={{color: '#b0b0c0', marginBottom: '1.5rem'}}>
-                        Modelos optimizados para generar exámenes. Los modelos marcados con 🔒 requieren autenticación de HuggingFace.
-                      </p>
-                      <div className="modelos-descarga-grid">
-                        {modelosParaDescargar.map(modelo => (
-                          <div key={modelo.id} className={`modelo-descarga-card ${modelo.descargado ? 'descargado' : ''}`}>
-                            <div className="modelo-header">
-                              <div>
-                                <h3>🤖 {modelo.nombre}</h3>
-                                {modelo.recomendado && <span className="badge-recomendado">⭐ Recomendado</span>}
-                              </div>
-                              <span className="modelo-badge">{modelo.tamaño_modelo}</span>
-                            </div>
-
-                            <div className="modelo-stats">
-                              <div className="stat">
-                                <span className="stat-label">Tamaño:</span>
-                                <span className="stat-value">{modelo.tamaño_gb} GB</span>
-                              </div>
-                              <div className="stat">
-                                <span className="stat-label">Parámetros:</span>
-                                <span className="stat-value">{modelo.parametros}</span>
-                              </div>
-                              <div className="stat">
-                                <span className="stat-label">Velocidad:</span>
-                                <span className="stat-value">{modelo.velocidad}</span>
-                              </div>
-                              <div className="stat">
-                                <span className="stat-label">RAM necesaria:</span>
-                                <span className="stat-value">{modelo.ram_necesaria}</span>
-                              </div>
-                            </div>
-
-                            <div className="modelo-descripcion">
-                              <p><strong>Calidad:</strong> {modelo.calidad}</p>
-                              <p>{modelo.descripcion}</p>
-                            </div>
-
-                            {modelo.descargado ? (
-                              <div className="modelo-descargado-badge">
-                                ✅ Ya descargado
-                              </div>
-                            ) : (
-                              <div className="modelo-descarga-accion">
-                                {modelo.requiere_auth ? (
-                                  <div className="descarga-manual">
-                                    <p style={{fontSize: '0.9rem', color: '#ff9800', marginBottom: '0.5rem'}}>
-                                      🔒 Requiere autenticación de HuggingFace
-                                    </p>
-                                    <a 
-                                      href={modelo.url.replace('/resolve/', '/blob/')} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="btn-descargar-manual"
-                                    >
-                                      📥 Descargar desde HuggingFace
-                                    </a>
-                                    <p style={{fontSize: '0.8rem', color: '#a0a0b0', marginTop: '0.5rem'}}>
-                                      Guarda el archivo en la carpeta "modelos"
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <a 
-                                    href={modelo.url}
-                                    download={modelo.archivo}
-                                    className="btn-descargar"
-                                  >
-                                    ⬇️ Descargar ({modelo.tamaño_gb} GB)
-                                  </a>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      
-                      <div style={{marginTop: '1.5rem', padding: '1rem', background: 'rgba(100, 108, 255, 0.1)', borderRadius: '8px', borderLeft: '3px solid #646cff'}}>
-                        <p style={{color: '#b0b0c0', margin: 0, fontSize: '0.9rem'}}>
-                          💡 <strong>Tip:</strong> Después de descargar un modelo, recarga esta página para que aparezca en "Modelos Disponibles".
-                        </p>
-                      </div>
                     </>
                   )}
                 </div>
@@ -4042,7 +7617,7 @@ JSON:`
                               <ul>
                                 <li>Más variedad en las respuestas</li>
                                 <li>Puede ser menos predecible</li>
-                                <li>A veces genera ideas interesantes</li>
+                                                                                              <li>A veces genera ideas interesantes</li>
                               </ul>
                             </div>
                           </div>
@@ -4183,831 +7758,3532 @@ JSON:`
             )}
           </div>
         )}
-      </main>
 
-      {/* Modal para mover carpeta */}
-      {modalMoverAbierto && moverCarpeta && (
-        <div className="modal-overlay" onClick={cancelarMoverCarpeta}>
-          <div className="modal-content modal-mover" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📦 Mover carpeta: {moverCarpeta.nombre}</h2>
-              <button onClick={cancelarMoverCarpeta} className="btn-cerrar-modal">✕</button>
-            </div>
-            
-            <div className="modal-body">
-              <p className="modal-instrucciones">
-                Selecciona la carpeta de destino donde quieres mover "{moverCarpeta.nombre}"
-              </p>
-
-              {/* Breadcrumb de navegación en el modal */}
-              <div className="breadcrumb modal-breadcrumb">
-                <button 
-                  onClick={() => cargarCarpetasDestino('')} 
-                  className="breadcrumb-item"
-                >
-                  🏠 Raíz
-                </button>
-                {rutaDestinoSeleccionada && rutaDestinoSeleccionada.split('\\').filter(p => p).map((parte, idx, arr) => {
-                  const rutaParcial = arr.slice(0, idx + 1).join('\\')
-                  return (
-                    <span key={idx}>
-                      <span className="breadcrumb-separator">/</span>
-                      <button 
-                        onClick={() => cargarCarpetasDestino(rutaParcial)}
-                        className="breadcrumb-item"
-                      >
-                        {parte}
-                      </button>
-                    </span>
-                  )
-                })}
+        {/* Modal para mover carpeta */}
+        {modalMoverAbierto && moverCarpeta && (
+          <div className="modal-overlay" onClick={cancelarMoverCarpeta}>
+            <div className="modal-content modal-mover" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📦 Mover carpeta: {moverCarpeta.nombre}</h2>
+                <button onClick={cancelarMoverCarpeta} className="btn-cerrar-modal">✕</button>
               </div>
+              
+              <div className="modal-body">
+                <p className="modal-instrucciones">
+                  Selecciona la carpeta de destino donde quieres mover "{moverCarpeta.nombre}"
+                </p>
 
-              {/* Lista de carpetas disponibles */}
-              <div className="carpetas-destino-lista">
-                {carpetasDestino.length > 0 ? (
-                  carpetasDestino
-                    .filter(c => c.ruta !== moverCarpeta.ruta) // No mostrar la carpeta que se está moviendo
-                    .map(carpeta => (
-                      <div 
-                        key={carpeta.ruta}
-                        className="carpeta-destino-item"
-                        onClick={() => cargarCarpetasDestino(carpeta.ruta)}
-                      >
-                        <div className="carpeta-destino-icon">📁</div>
-                        <div className="carpeta-destino-info">
-                          <h4>{carpeta.nombre}</h4>
-                          <p>{carpeta.num_subcarpetas} carpetas · {carpeta.num_documentos} docs</p>
-                        </div>
-                        <div className="carpeta-destino-arrow">→</div>
-                      </div>
-                    ))
-                ) : (
-                  <div className="empty-state-modal">
-                    <p>📭 No hay subcarpetas en esta ubicación</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Botón para ir a carpeta padre */}
-              {rutaDestinoSeleccionada && (
-                <button 
-                  className="btn-carpeta-padre"
-                  onClick={() => {
-                    const partes = rutaDestinoSeleccionada.split('\\').filter(p => p);
-                    const rutaPadre = partes.slice(0, -1).join('\\');
-                    cargarCarpetasDestino(rutaPadre);
-                  }}
-                >
-                  ⬆️ Subir a carpeta padre
-                </button>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <div className="destino-actual">
-                <strong>Destino:</strong> {rutaDestinoSeleccionada || 'Raíz'}
-              </div>
-              <div className="modal-actions">
-                <button onClick={cancelarMoverCarpeta} className="btn-modal-cancelar">
-                  Cancelar
-                </button>
-                <button onClick={confirmarMoverCarpeta} className="btn-modal-confirmar">
-                  ✓ Mover aquí
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de historial de chats */}
-      {mostrarModalHistorial && (
-        <div className="modal-overlay" onClick={() => setMostrarModalHistorial(false)}>
-          <div className="modal-content modal-historial" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📚 Historial de Chats</h2>
-              <div style={{display: 'flex', gap: '0.5rem'}}>
-                <button 
-                  className="btn-crear-carpeta-modal"
-                  onClick={crearCarpetaHistorialModal}
-                  title="Crear carpeta"
-                >
-                  ➕ Nueva Carpeta
-                </button>
-                <button onClick={() => setMostrarModalHistorial(false)} className="btn-close">✕</button>
-              </div>
-            </div>
-            <div className="modal-body">
-              {/* Breadcrumbs */}
-              {rutaHistorialModal && (
-                <div className="breadcrumbs-modal">
+                {/* Breadcrumb de navegación en el modal */}
+                <div className="breadcrumb modal-breadcrumb">
                   <button 
-                    className="breadcrumb-item-modal"
-                    onClick={() => cargarContenidoHistorialModal('')}
+                    onClick={() => cargarCarpetasDestino('')} 
+                    className="breadcrumb-item"
                   >
-                    🏠 Inicio
+                    🏠 Raíz
                   </button>
-                  {rutaHistorialModal.split(/[\\\/]/).filter(p => p).map((parte, index, arr) => {
-                    const rutaParcial = arr.slice(0, index + 1).join('\\')
+                  {rutaDestinoSeleccionada && rutaDestinoSeleccionada.split('\\').filter(p => p).map((parte, idx, arr) => {
+                    const rutaParcial = arr.slice(0, idx + 1).join('\\')
                     return (
-                      <span key={index}>
-                        <span className="breadcrumb-separator"> / </span>
+                      <span key={idx}>
+                        <span className="breadcrumb-separator">/</span>
                         <button 
-                          className="breadcrumb-item-modal"
-                          onClick={() => cargarContenidoHistorialModal(rutaParcial)}
+                          onClick={() => cargarCarpetasDestino(rutaParcial)}
+                          className="breadcrumb-item"
                         >
-                          📁 {parte}
+                          {parte}
                         </button>
                       </span>
                     )
                   })}
                 </div>
-              )}
 
-              {/* Botón atrás */}
-              {rutaHistorialModal && (
-                <button 
-                  className="btn-atras-modal"
-                  onClick={navegarAtrasHistorialModal}
-                >
-                  ⬅️ Atrás
-                </button>
-              )}
-
-              {loadingHistorialModal ? (
-                <div className="loading-modal">Cargando...</div>
-              ) : (
-                <>
-                  {/* Carpetas */}
-                  {carpetasHistorialModal.length > 0 && (
-                    <div className="seccion-carpetas-modal">
-                      <h3 className="titulo-seccion-modal">📂 Carpetas</h3>
-                      <div className="carpetas-grid">
-                        {carpetasHistorialModal.map((carpeta, index) => (
-                          <div 
-                            key={index}
-                            className="carpeta-card-wrapper"
-                          >
-                            <div 
-                              className="carpeta-card"
-                              onClick={() => navegarCarpetaHistorialModal(carpeta.ruta)}
-                            >
-                              <div className="carpeta-card-icon">📁</div>
-                              <div className="carpeta-card-nombre">{carpeta.nombre}</div>
-                              <div className="carpeta-stats">
-                                <div className="carpeta-stat-item">
-                                  <span className="stat-icon">💬</span>
-                                  <span className="stat-value">{carpeta.num_chats} chat{carpeta.num_chats !== 1 ? 's' : ''}</span>
-                              </div>
-                            </div>
-                            </div>
-                            <div className="carpeta-acciones-modal">
-                              <button 
-                                className="btn-renombrar-carpeta-modal"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  renombrarCarpetaModal(carpeta.ruta, carpeta.nombre)
-                                }}
-                                title="Renombrar carpeta"
-                              >
-                                ✏️
-                              </button>
-                              <button 
-                                className="btn-eliminar-carpeta-modal"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  eliminarCarpetaModal(carpeta.ruta, carpeta.nombre)
-                                }}
-                                title="Eliminar carpeta"
-                              >
-                                🗑️
-                              </button>
-                            </div>
+                {/* Lista de carpetas disponibles */}
+                <div className="carpetas-destino-lista">
+                  {carpetasDestino.length > 0 ? (
+                    carpetasDestino
+                      .filter(c => c.ruta !== moverCarpeta.ruta) // No mostrar la carpeta que se está moviendo
+                      .map(carpeta => (
+                        <div 
+                          key={carpeta.ruta}
+                          className="carpeta-destino-item"
+                          onClick={() => cargarCarpetasDestino(carpeta.ruta)}
+                        >
+                          <div className="carpeta-destino-icon">📁</div>
+                          <div className="carpeta-destino-info">
+                            <h4>{carpeta.nombre}</h4>
+                            <p>{carpeta.num_subcarpetas} carpetas · {carpeta.num_documentos} docs</p>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                          <div className="carpeta-destino-arrow">→</div>
+                        </div>
+                      ))
+                ) : (
+                  <div className="empty-state-modal">
+                    <p>📭 No hay subcarpetas en esta ubicación</p>
+                  </div>
+                )}
+                </div>
 
-                  {/* Chats */}
-                  {chatsHistorialModal.length > 0 && (
-                    <div className="seccion-chats-modal">
-                      <h3 className="titulo-seccion-modal">💬 Chats</h3>
-                      <div className="historial-lista">
-                        {chatsHistorialModal.map(chat => (
-                          <div key={chat.id} className="historial-item">
-                            <div className="historial-info" onClick={() => cargarChatDesdeModal(chat.id)}>
-                              <div className="historial-icon">💬</div>
-                              <div className="historial-detalles">
-                                <h4>{chat.nombre}</h4>
-                                <p>{chat.num_mensajes} mensajes · {new Date(chat.fecha).toLocaleDateString()}</p>
-                              </div>
-                            </div>
-                            <div className="historial-acciones">
-                              <button 
-                                className="btn-renombrar-historial"
-                                onClick={() => renombrarChatModal(chat.id, chat.nombre)}
-                                title="Renombrar chat"
-                              >
-                                ✏️
-                              </button>
-                              <button 
-                                className="btn-eliminar-historial"
-                                onClick={() => eliminarChatModal(chat.id, chat.nombre)}
-                                title="Eliminar chat"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                {/* Botón para ir a carpeta padre */}
+                {rutaDestinoSeleccionada && (
+                  <button 
+                    className="btn-carpeta-padre"
+                    onClick={() => {
+                      const partes = rutaDestinoSeleccionada.split('\\').filter(p => p);
+                      const rutaPadre = partes.slice(0, -1).join('\\');
+                      cargarCarpetasDestino(rutaPadre);
+                    }}
+                  >
+                    ⬆️ Subir a carpeta padre
+                  </button>
+                )}
+              </div>
 
-                  {/* Estado vacío */}
-                  {carpetasHistorialModal.length === 0 && chatsHistorialModal.length === 0 && (
-                    <div className="empty-state-modal">
-                      <div className="empty-icon">📭</div>
-                      <p>No hay carpetas ni chats en esta ubicación</p>
-                      <p className="empty-hint">Crea una carpeta para organizar tus conversaciones</p>
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="modal-footer">
+                <div className="destino-actual">
+                  <strong>Destino:</strong> {rutaDestinoSeleccionada || 'Raíz'}
+                </div>
+                <div className="modal-actions">
+                  <button onClick={cancelarMoverCarpeta} className="btn-modal-cancelar">
+                    Cancelar
+                  </button>
+                  <button onClick={confirmarMoverCarpeta} className="btn-modal-confirmar">
+                    ✓ Mover aquí
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Modal para mover a carpeta */}
-      {mostrarModalCarpetas && (
-        <div className="modal-overlay" onClick={() => setMostrarModalCarpetas(false)}>
-          <div className="modal-content modal-carpetas-visual" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📁 Mover Chat a Proyecto</h2>
-              <button onClick={() => setMostrarModalCarpetas(false)} className="btn-close">✕</button>
+        {/* Modal de historial de chats */}
+        {mostrarModalHistorial && (
+          <div className="modal-overlay" onClick={() => setMostrarModalHistorial(false)}>
+            <div className="modal-content modal-historial" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📚 Historial de Chats</h2>
+                <div style={{display: 'flex', gap: '0.5rem'}}>
+                  <button 
+                    className="btn-crear-carpeta-modal"
+                    onClick={crearCarpetaHistorialModal}
+                    title="Crear carpeta"
+                  >
+                    ➕ Nueva Carpeta
+                  </button>
+                  <button onClick={() => setMostrarModalHistorial(false)} className="btn-close">✕</button>
+                </div>
+              </div>
+              <div className="modal-body">
+                {/* Breadcrumbs */}
+                {rutaHistorialModal && (
+                  <div className="breadcrumbs-modal">
+                    <button 
+                      className="breadcrumb-item-modal"
+                      onClick={() => cargarContenidoHistorialModal('')}
+                    >
+                      🏠 Inicio
+                    </button>
+                    {rutaHistorialModal.split(/[\\\/]/).filter(p => p).map((parte, index, arr) => {
+                      const rutaParcial = arr.slice(0, index + 1).join('\\')
+                      return (
+                        <span key={index}>
+                          <span className="breadcrumb-separator"> / </span>
+                          <button 
+                            className="breadcrumb-item-modal"
+                            onClick={() => cargarContenidoHistorialModal(rutaParcial)}
+                          >
+                            📁 {parte}
+                          </button>
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Botón atrás */}
+                {rutaHistorialModal && (
+                  <button 
+                    className="btn-atras-modal"
+                    onClick={navegarAtrasHistorialModal}
+                  >
+                    ⬅️ Atrás
+                  </button>
+                )}
+
+                {loadingHistorialModal ? (
+                  <div className="loading-modal">Cargando...</div>
+                ) : (
+                  <>
+                    {/* Carpetas */}
+                    {carpetasHistorialModal.length > 0 && (
+                      <div className="seccion-carpetas-modal">
+                        <h3 className="titulo-seccion-modal">📂 Carpetas</h3>
+                        <div className="carpetas-grid">
+                          {carpetasHistorialModal.map(carpeta => (
+                            <div key={carpeta.ruta} className="carpeta-card-wrapper">
+                              <div 
+                                className="carpeta-card"
+                                onClick={() => navegarCarpetaHistorialModal(carpeta.ruta)}
+                              >
+                                <div className="carpeta-card-icon">📁</div>
+                                <div className="carpeta-card-nombre">{carpeta.nombre}</div>
+                                <div className="carpeta-stats">
+                                  <div className="carpeta-stat-item">
+                                    <span className="stat-icon">💬</span>
+                                    <span className="stat-value">{carpeta.num_chats} chat{carpeta.num_chats !== 1 ? 's' : ''}</span>
+                                </div>
+                              </div>
+                              </div>
+                              <div className="carpeta-acciones-modal">
+                                <button 
+                                  className="btn-renombrar-carpeta-modal"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    renombrarCarpetaModal(carpeta.ruta, carpeta.nombre)
+                                  }}
+                                  title="Renombrar carpeta"
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  className="btn-eliminar-carpeta-modal"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    eliminarCarpetaModal(carpeta.ruta, carpeta.nombre)
+                                  }}
+                                  title="Eliminar carpeta"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Chats */}
+                    {chatsHistorialModal.length > 0 && (
+                      <div className="seccion-chats-modal">
+                        <h3 className="titulo-seccion-modal">💬 Chats</h3>
+                        <div className="historial-lista">
+                          {chatsHistorialModal.map(chat => (
+                            <div key={chat.id} className="historial-item">
+                              <div className="historial-info" onClick={() => cargarChatDesdeModal(chat.id)}>
+                                <div className="historial-icon">💬</div>
+                                <div className="historial-detalles">
+                                  <h4>{chat.nombre}</h4>
+                                  <p>{chat.num_mensajes} mensajes · {new Date(chat.fecha).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <div className="historial-acciones">
+                                <button 
+                                  className="btn-renombrar-historial"
+                                  onClick={() => renombrarChatModal(chat.id, chat.nombre)}
+                                  title="Renombrar chat"
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  className="btn-eliminar-historial"
+                                  onClick={() => eliminarChatModal(chat.id, chat.nombre)}
+                                  title="Eliminar chat"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Estado vacío */}
+                    {carpetasHistorialModal.length === 0 && chatsHistorialModal.length === 0 && (
+                      <div className="empty-state-modal">
+                        <div className="empty-icon">📭</div>
+                        <p>No hay carpetas ni chats en esta ubicación</p>
+                        <p className="empty-hint">Crea una carpeta para organizar tus conversaciones</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-            <div className="modal-body">
-              <p style={{color: '#b0b0c0', marginBottom: '1.5rem', fontSize: '0.95rem'}}>
-                Organiza tus conversaciones por proyectos o temas
-              </p>
+          </div>
+        )}
 
-              {/* Grid de carpetas */}
-              <div className="carpetas-grid">
-                {/* Opción: Sin carpeta */}
-                <div 
-                  className="carpeta-card sin-carpeta"
-                  onClick={() => moverChatACarpeta('')}
-                >
-                  <div className="carpeta-card-icon">💬</div>
-                  <div className="carpeta-card-content">
-                    <h4>Sin Proyecto</h4>
-                    <p>Mover a la raíz</p>
+        {/* Modal para mover a carpeta */}
+        {mostrarModalCarpetas && (
+          <div className="modal-overlay" onClick={() => setMostrarModalCarpetas(false)}>
+            <div className="modal-content modal-carpetas-visual" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📁 Mover Chat a Proyecto</h2>
+                <button onClick={() => setMostrarModalCarpetas(false)} className="btn-close">✕</button>
+              </div>
+              <div className="modal-body">
+                <p style={{color: '#b0b0c0', marginBottom: '1rem', fontSize: '0.95rem'}}>
+                  Organiza tus conversaciones por proyectos o temas
+                </p>
+
+                {/* Breadcrumb navigation */}
+                <div className="breadcrumb-nav" style={{marginBottom: '1rem'}}>
+                  <button onClick={async () => {
+                    setRutaCarpetasChat('');
+                    const resp = await fetch(`${API_URL}/api/chats/carpetas?ruta=`);
+                    const data = await resp.json();
+                    setCarpetasChats(data.carpetas || []);
+                  }} className="breadcrumb-btn">
+                    🏠 Inicio
+                  </button>
+                  {rutaCarpetasChat && rutaCarpetasChat.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                    const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                    return (
+                      <span key={idx}>
+                        <span className="breadcrumb-separator">/</span>
+                        <button onClick={async () => {
+                          setRutaCarpetasChat(rutaParcial);
+                          const resp = await fetch(`${API_URL}/api/chats/carpetas?ruta=${encodeURIComponent(rutaParcial)}`);
+                          const data = await resp.json();
+                          setCarpetasChats(data.carpetas || []);
+                        }} className="breadcrumb-btn">
+                          {parte}
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Grid de carpetas */}
+                <div className="carpetas-grid">
+                  {/* Botón para mover a carpeta actual */}
+                  <div 
+                    className="carpeta-card sin-carpeta"
+                    onClick={() => moverChatACarpeta(rutaCarpetasChat)}
+                    style={{background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)', gridColumn: '1 / -1'}}
+                  >
+                    <div className="carpeta-card-icon">✅</div>
+                    <div className="carpeta-card-content">
+                      <h4>Mover Aquí</h4>
+                      <p>{rutaCarpetasChat || 'Raíz del proyecto'}</p>
+                    </div>
+                  </div>
+
+                  {/* Tarjetas de carpetas existentes - hacer click para navegar */}
+                  {carpetasChats.map((carpeta, index) => (
+                    <div 
+                      key={index}
+                      className="carpeta-card"
+                      onClick={async () => {
+                        const nombreCarpeta = typeof carpeta === 'string' ? carpeta : carpeta.nombre;
+                        const nuevaRuta = rutaCarpetasChat ? `${rutaCarpetasChat}\\${nombreCarpeta}` : nombreCarpeta;
+                        setRutaCarpetasChat(nuevaRuta);
+                        const resp = await fetch(`${API_URL}/api/chats/carpetas?ruta=${encodeURIComponent(nuevaRuta)}`);
+                        const data = await resp.json();
+                        setCarpetasChats(data.carpetas || []);
+                      }}
+                    >
+                      <div className="carpeta-card-icon">📁</div>
+                      <div className="carpeta-card-content">
+                        <h4>{typeof carpeta === 'string' ? carpeta : carpeta.nombre}</h4>
+                        {carpeta.num_chats !== undefined && (
+                          <div className="carpeta-stats">
+                            <span className="stat-item">
+                              💬 {carpeta.num_chats} {carpeta.num_chats === 1 ? 'chat' : 'chats'}
+                            </span>
+                            {carpeta.fecha_reciente && (
+                              <span className="stat-item stat-fecha">
+                                🕐 {new Date(carpeta.fecha_reciente).toLocaleDateString('es-ES', { 
+                                  day: 'numeric', 
+                                  month: 'short' 
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Tarjeta para crear nueva carpeta */}
+                  <div 
+                    className="carpeta-card crear-nueva"
+                    onClick={crearCarpetaChat}
+                  >
+                    <div className="carpeta-card-icon">➕</div>
+                    <div className="carpeta-card-content">
+                      <h4>Nuevo Proyecto</h4>
+                      <p>Crear carpeta</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Tarjetas de carpetas existentes */}
-                {carpetasChats.map((carpeta, index) => (
-                  <div 
-                    key={index}
-                    className="carpeta-card"
-                    onClick={() => moverChatACarpeta(typeof carpeta === 'string' ? carpeta : carpeta.nombre)}
-                  >
-                    <div className="carpeta-card-icon">📁</div>
-                    <div className="carpeta-card-content">
-                      <h4>{typeof carpeta === 'string' ? carpeta : carpeta.nombre}</h4>
-                      {carpeta.num_chats !== undefined && (
-                        <div className="carpeta-stats">
-                          <span className="stat-item">
-                            💬 {carpeta.num_chats} {carpeta.num_chats === 1 ? 'chat' : 'chats'}
-                          </span>
-                          {carpeta.fecha_reciente && (
-                            <span className="stat-item stat-fecha">
-                              🕐 {new Date(carpeta.fecha_reciente).toLocaleDateString('es-ES', { 
-                                day: 'numeric', 
-                                month: 'short' 
-                              })}
-                            </span>
+                {carpetasChats.length === 0 && (
+                  <div className="carpetas-empty">
+                    <p>🗂️ No tienes proyectos aún</p>
+                    <p className="hint">Crea tu primer proyecto para organizar tus chats</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Configuración de Examen */}
+        {modalConfigExamen && (
+          <div className="modal-overlay" onClick={() => setModalConfigExamen(false)}>
+            {console.log('🎨 Renderizando modal de configuración')}
+            <div className="modal-content modal-config-examen" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>⚙️ Configurar Generación de Examen</h2>
+                <button onClick={() => setModalConfigExamen(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                {/* Prompt Personalizado */}
+                <div className="config-section">
+                  <label className="config-label">
+                    💬 Instrucciones Adicionales (opcional)
+                    <span className="hint-text">Agrega instrucciones específicas que se añadirán al prompt del sistema</span>
+                  </label>
+                  <textarea
+                    className="prompt-textarea"
+                    placeholder="Ejemplo: Enfócate en conceptos prácticos, incluye ejemplos del mundo real..."
+                    value={promptPersonalizado}
+                    onChange={(e) => setPromptPersonalizado(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Prompt del Sistema */}
+                <div className="config-section">
+                  <label className="config-label">
+                    🎨 Prompt del Sistema (avanzado)
+                    <span className="hint-text">
+                      {promptSistema 
+                        ? `${promptSistema.length} caracteres cargados - Puedes editarlo libremente`
+                        : 'Esperando carga... Si no aparece, usa el botón "Cargar Predeterminado"'
+                      }
+                    </span>
+                  </label>
+                  <div className="prompt-sistema-container">
+                    <textarea
+                      className="prompt-textarea prompt-sistema"
+                      placeholder="Cargando prompt del sistema...&#10;&#10;Si no carga automáticamente, haz click en '🔄 Cargar Predeterminado'&#10;&#10;El prompt te permitirá personalizar completamente cómo la IA genera los exámenes."
+                      value={promptSistema}
+                      onChange={(e) => setPromptSistema(e.target.value)}
+                      rows={12}
+                    />
+                    <div className="prompt-sistema-info">
+                      <span className="prompt-info-text">
+                        Variables: {'{contenido}'}, {'{num_multiple}'}, {'{num_corta}'}, {'{num_desarrollo}'}
+                      </span>
+                    </div>
+                    <div className="prompt-sistema-acciones">
+                      <button 
+                        className="btn-cargar-template"
+                        onClick={cargarPromptPredeterminado}
+                      >
+                        🔄 Cargar Predeterminado
+                      </button>
+                      <button 
+                        className="btn-guardar-prompt"
+                        onClick={guardarPromptSistema}
+                        disabled={!promptSistema}
+                      >
+                        💾 Guardar Prompt
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Explorador de Carpetas */}
+                <div className="config-section">
+                  <label className="config-label">
+                    📁 Explorar Carpetas
+                    <span className="hint-text">Navega a subcarpetas para agregar más archivos</span>
+                  </label>
+                  <div className="explorador-carpetas">
+                    <div className="ruta-actual">
+                      {rutaExploracion !== carpetaConfigExamen?.ruta && (
+                        <button 
+                          className="btn-volver"
+                          onClick={volverCarpetaPadre}
+                        >
+                          ⬅️ Volver
+                        </button>
+                      )}
+                      <span className="ruta-texto">📂 {rutaExploracion || 'Raíz'}</span>
+                    </div>
+                    
+                    {carpetasExploracion.length > 0 && (
+                      <div className="subcarpetas-lista">
+                        {carpetasExploracion.map(carpeta => (
+                          <button
+                            key={carpeta.ruta}
+                            className="subcarpeta-item"
+                            onClick={() => cargarArchivosSubcarpeta(carpeta.ruta)}
+                          >
+                            📁 {carpeta.nombre}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lista de Archivos */}
+                <div className="config-section">
+                  <label className="config-label">
+                    📄 Archivos Seleccionados ({archivosSeleccionados.length}/{archivosDisponibles.length})
+                    <span className="hint-text">Marca/desmarca los archivos que quieres incluir</span>
+                  </label>
+                  <div className="archivos-lista">
+                    {archivosDisponibles.map((archivo, idx) => (
+                      <label key={idx} className="archivo-item">
+                        <input
+                          type="checkbox"
+                          checked={archivosSeleccionados.includes(archivo.ruta)}
+                          onChange={() => toggleSeleccionArchivo(archivo.ruta)}
+                        />
+                        <div className="archivo-info">
+                          <span className="archivo-nombre">📄 {archivo.nombre}</span>
+                          <span className="archivo-detalles">{archivo.tamaño_kb} KB</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Configuración de Preguntas */}
+                <div className="config-section">
+                  <label className="config-label">
+                    📋 Cantidad de Preguntas
+                  </label>
+                  <div className="config-preguntas">
+                    <div className="config-item">
+                      <label>Opción Múltiple:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={configExamen.num_multiple}
+                        onChange={(e) => setConfigExamen({...configExamen, num_multiple: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div className="config-item">
+                      <label>Respuesta Corta:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={configExamen.num_corta}
+                        onChange={(e) => setConfigExamen({...configExamen, num_corta: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                    <div className="config-item">
+                      <label>Desarrollo:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={configExamen.num_desarrollo}
+                        onChange={(e) => setConfigExamen({...configExamen, num_desarrollo: parseInt(e.target.value) || 0})}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  className="btn-cancelar"
+                  onClick={() => setModalConfigExamen(false)}
+                >
+                  ❌ Cancelar
+                </button>
+                <button 
+                  className="btn-generar"
+                  onClick={confirmarGeneracionExamen}
+                  disabled={archivosSeleccionados.length === 0}
+                >
+                  ✨ Generar Examen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Examen */}
+        {modalExamenAbierto && (
+          <div className="modal-overlay" onClick={cerrarExamen}>
+            <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                  <button onClick={() => setModalExamenAbierto(false)} className="btn-volver" style={{padding: '0.5rem 1rem'}}>
+                    ← Volver
+                  </button>
+                  <h2>📝 Examen - {carpetaExamen?.nombre}</h2>
+                </div>
+                <button onClick={cerrarExamen} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body examen-body">
+                {!resultadoExamen ? (
+                  <>
+                    {/* Formulario de Examen */}
+                    <div className="examen-info">
+                      <p>Total de preguntas: <strong>{preguntasExamen.length}</strong></p>
+                      <p>Puntos totales: <strong>{preguntasExamen.reduce((sum, p) => sum + p.puntos, 0)}</strong></p>
+                    </div>
+
+                    <div className="preguntas-lista">
+                      {preguntasExamen.map((pregunta, index) => {
+                        // Log para depuración
+                        if (index === 0) {
+                          console.log('🔍 Renderizando pregunta 1:', {
+                            tipo: pregunta.tipo,
+                            pregunta: pregunta.pregunta?.substring(0, 50),
+                            metadata: pregunta.metadata
+                          });
+                        }
+                        
+                        return (
+                        <div key={index} className="pregunta-card">
+                          <div className="pregunta-header">
+                            <span className="pregunta-numero">Pregunta {index + 1}</span>
+                            <span className="pregunta-tipo">{
+                              pregunta.tipo === 'multiple' ? '📋 Selección' : 
+                              pregunta.tipo === 'mcq' ? '✅ Opción Múltiple' :
+                              pregunta.tipo === 'flashcard' ? '🃏 Flashcard' :
+                              pregunta.tipo === 'verdadero_falso' ? '✓✗ Verdadero/Falso' :
+                              pregunta.tipo === 'true_false' ? '✓✗ Verdadero/Falso' :
+                              pregunta.tipo === 'cloze' ? '📝 Relleno de Huecos' :
+                              pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : 
+                              pregunta.tipo === 'short_answer' ? '✍️ Respuesta Corta' :
+                              pregunta.tipo === 'open_question' ? '📖 Explicación Detallada' :
+                              pregunta.tipo === 'case_study' ? '💼 Caso de Estudio' :
+                              // Reading types
+                              pregunta.tipo === 'reading_comprehension' ? '📖 Reading Comprehension' :
+                              pregunta.tipo === 'reading_true_false' ? '✓✗ Reading True/False' :
+                              pregunta.tipo === 'reading_cloze' ? '📝 Reading Cloze' :
+                              pregunta.tipo === 'reading_skill' ? '🎯 Reading Skill' :
+                              pregunta.tipo === 'reading_matching' ? '🔗 Reading Matching' :
+                              pregunta.tipo === 'reading_sequence' ? '🔢 Reading Sequence' :
+                              // Writing types
+                              pregunta.tipo === 'writing_short' ? '✍️ Writing Short' :
+                              pregunta.tipo === 'writing_paraphrase' ? '🔄 Writing Paraphrase' :
+                              pregunta.tipo === 'writing_correction' ? '🔧 Writing Correction' :
+                              pregunta.tipo === 'writing_transformation' ? '🎭 Writing Transformation' :
+                              pregunta.tipo === 'writing_essay' ? '📄 Writing Essay' :
+                              pregunta.tipo === 'writing_sentence_builder' ? '🧩 Sentence Builder' :
+                              pregunta.tipo === 'writing_picture_description' ? '🖼️ Picture Description' :
+                              pregunta.tipo === 'writing_email' ? '📧 Writing Email' :
+                              '📖 Desarrollo'
+                            }</span>
+                            <span className="pregunta-puntos">{pregunta.puntos} pts</span>
+                          </div>
+                          
+                          <p className="pregunta-texto">{pregunta.pregunta}</p>
+                          
+                          {/* Respuesta según tipo */}
+                          
+                          {/* Flashcard */}
+                          {pregunta.tipo === 'flashcard' && (
+                            <div className="respuesta-flashcard">
+                              <div className="flashcard-front" style={{
+                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                padding: '1.5rem',
+                                borderRadius: '8px',
+                                color: 'white',
+                                marginBottom: '1rem'
+                              }}>
+                                <strong>💭 {pregunta.metadata?.data?.front || pregunta.pregunta}</strong>
+                              </div>
+                              
+                              {/* Pista opcional */}
+                              {pregunta.metadata?.data?.hint && (
+                                <details style={{
+                                  marginTop: '0.5rem', 
+                                  padding: '0.75rem', 
+                                  background: 'rgba(100, 126, 234, 0.1)', 
+                                  borderRadius: '6px',
+                                  border: '1px solid rgba(100, 126, 234, 0.3)'
+                                }}>
+                                  <summary style={{cursor: 'pointer', color: '#a0aec0', fontSize: '0.9rem'}}>
+                                    💡 Ver pista
+                                  </summary>
+                                  <p style={{marginTop: '0.5rem', color: '#cbd5e0'}}>
+                                    {pregunta.metadata.data.hint}
+                                  </p>
+                                </details>
+                              )}
+                              
+                              {/* Área de respuesta del usuario */}
+                              <textarea
+                                className="respuesta-desarrollo"
+                                placeholder="Escribe tu respuesta aquí..."
+                                value={respuestasUsuario[index] || ''}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                rows="4"
+                                style={{marginTop: '1rem'}}
+                              />
+                              
+                              {/* Botón de evaluación con IA */}
+                              {!examenCompletado && respuestasUsuario[index]?.trim() && (
+                                <button
+                                  onClick={async () => {
+                                    if (!pregunta.metadata?.solution) {
+                                      alert('Esta flashcard no tiene información de evaluación');
+                                      return;
+                                    }
+                                    
+                                    setLoading(true);
+                                    try {
+                                      const response = await fetch('http://localhost:8000/api/evaluate_flashcard', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          flashcard: pregunta.metadata,
+                                          user_answer: respuestasUsuario[index]
+                                        })
+                                      });
+                                      
+                                      if (response.ok) {
+                                        const resultado = await response.json();
+                                        
+                                        // Guardar resultado en estado temporal
+                                        setRespuestasUsuario(prev => ({
+                                          ...prev,
+                                          [`eval_${index}`]: resultado
+                                        }));
+                                      } else {
+                                        alert('Error al evaluar respuesta');
+                                      }
+                                    } catch (error) {
+                                      console.error('Error:', error);
+                                      alert('Error de conexión');
+                                    } finally {
+                                      setLoading(false);
+                                    }
+                                  }}
+                                  style={{
+                                    marginTop: '0.5rem',
+                                    padding: '0.5rem 1rem',
+                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontWeight: '500'
+                                  }}
+                                >
+                                  🎯 Evaluar mi respuesta
+                                </button>
+                              )}
+                              
+                              {/* Mostrar feedback de evaluación */}
+                              {respuestasUsuario[`eval_${index}`] && (
+                                <div style={{
+                                  marginTop: '1rem',
+                                  padding: '1rem',
+                                  background: respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '#d4edda' :
+                                             respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '#fff3cd' : '#f8d7da',
+                                  border: '1px solid ' + (respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '#c3e6cb' :
+                                                          respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '#ffeaa7' : '#f5c6cb'),
+                                  borderRadius: '8px'
+                                }}>
+                                  <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem'}}>
+                                    <div style={{fontSize: '2rem'}}>
+                                      {respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '✅' :
+                                       respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '⚠️' : '❌'}
+                                    </div>
+                                    <div>
+                                      <strong style={{fontSize: '1.2rem'}}>
+                                        Puntuación: {respuestasUsuario[`eval_${index}`].score}/100
+                                      </strong>
+                                      <div style={{fontSize: '0.9rem', color: '#666', marginTop: '0.25rem'}}>
+                                        {respuestasUsuario[`eval_${index}`].verdict === 'correct' ? 'Correcto' :
+                                         respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? 'Parcialmente correcto' : 'Incorrecto'}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div style={{marginTop: '0.75rem'}}>
+                                    <strong>📝 Feedback:</strong>
+                                    <p style={{marginTop: '0.25rem', color: '#555'}}>
+                                      {respuestasUsuario[`eval_${index}`].feedback}
+                                    </p>
+                                  </div>
+                                  
+                                  {respuestasUsuario[`eval_${index}`].covered_key_points?.length > 0 && (
+                                    <div style={{marginTop: '0.75rem'}}>
+                                      <strong style={{color: '#28a745'}}>✅ Puntos cubiertos:</strong>
+                                      <ul style={{marginTop: '0.25rem', marginLeft: '1.5rem'}}>
+                                        {respuestasUsuario[`eval_${index}`].covered_key_points.map((punto, i) => (
+                                          <li key={i} style={{color: '#555'}}>{punto}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  {respuestasUsuario[`eval_${index}`].missing_key_points?.length > 0 && (
+                                    <div style={{marginTop: '0.75rem'}}>
+                                      <strong style={{color: '#dc3545'}}>❌ Puntos faltantes:</strong>
+                                      <ul style={{marginTop: '0.25rem', marginLeft: '1.5rem'}}>
+                                        {respuestasUsuario[`eval_${index}`].missing_key_points.map((punto, i) => (
+                                          <li key={i} style={{color: '#555'}}>{punto}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  <details style={{marginTop: '0.75rem'}}>
+                                    <summary style={{cursor: 'pointer', color: '#007bff', fontWeight: 'bold'}}>
+                                      📖 Ver respuesta completa y explicación
+                                    </summary>
+                                    <div style={{marginTop: '0.5rem', padding: '0.75rem', background: 'white', borderRadius: '4px'}}>
+                                      <div>
+                                        <strong>Respuesta modelo:</strong>
+                                        <p style={{marginTop: '0.25rem', color: '#555'}}>
+                                          {pregunta.metadata?.solution?.answer}
+                                        </p>
+                                      </div>
+                                      {pregunta.metadata?.solution?.explanation && (
+                                        <div style={{marginTop: '0.75rem'}}>
+                                          <strong>Explicación:</strong>
+                                          <p style={{marginTop: '0.25rem', color: '#555'}}>
+                                            {pregunta.metadata.solution.explanation}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* MCQ - Opción Múltiple */}
+                          {(pregunta.tipo === 'multiple' || pregunta.tipo === 'mcq') && (
+                            <div className="opciones-multiple">
+                              {pregunta.opciones && pregunta.opciones.length > 0 ? (
+                                pregunta.opciones.map((opcion, i) => (
+                                  <label key={i} className="opcion-radio">
+                                    <input
+                                      type="radio"
+                                      name={`pregunta-${index}`}
+                                      value={opcion.charAt(0)}
+                                      checked={respuestasUsuario[index] === opcion.charAt(0)}
+                                      onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                    />
+                                    <span>{opcion}</span>
+                                  </label>
+                                ))
+                              ) : (
+                                <div className="opciones-no-disponibles">
+                                  ⚠️ Las opciones no están disponibles para este examen. 
+                                  Solo puedes reintentar exámenes generados recientemente.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Verdadero/Falso */}
+                          {(pregunta.tipo === 'verdadero_falso' || pregunta.tipo === 'true_false') && (
+                            <div className="opciones-verdadero-falso">
+                              <label className="opcion-vf">
+                                <input
+                                  type="radio"
+                                  name={`pregunta-${index}`}
+                                  value="verdadero"
+                                  checked={respuestasUsuario[index] === 'verdadero' || respuestasUsuario[index] === 'true'}
+                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                />
+                                <span className="texto-vf verdadero">✓ Verdadero</span>
+                              </label>
+                              <label className="opcion-vf">
+                                <input
+                                  type="radio"
+                                  name={`pregunta-${index}`}
+                                  value="falso"
+                                  checked={respuestasUsuario[index] === 'falso' || respuestasUsuario[index] === 'false'}
+                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                />
+                                <span className="texto-vf falso">✗ Falso</span>
+                              </label>
+                            </div>
+                          )}
+                          
+                          {/* Cloze Test - Relleno de huecos */}
+                          {pregunta.tipo === 'cloze' && (
+                            <div className="respuesta-cloze">
+                              <p className="cloze-text">{pregunta.pregunta}</p>
+                              <textarea
+                                className="respuesta-corta"
+                                placeholder="Completa los espacios en blanco (separa respuestas con comas)..."
+                                value={respuestasUsuario[index] || ''}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                rows={3}
+                              />
+                            </div>
+                          )}
+                          
+                          {/* Respuesta Corta */}
+                          {(pregunta.tipo === 'corta' || pregunta.tipo === 'short_answer') && (
+                            <div className="respuesta-con-voz">
+                              <textarea
+                                className="respuesta-corta"
+                                placeholder="Escribe tu respuesta aquí (2-3 líneas)..."
+                                value={respuestasUsuario[index] || ''}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                rows={3}
+                              />
+                              <button
+                                type="button"
+                                className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
+                                onClick={() => alternarEscuchaVoz(index)}
+                                title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
+                              >
+                                {escuchandoPregunta === index ? '🔴' : '🎤'}
+                              </button>
+                              {escuchandoPregunta === index && transcripcionTemp && (
+                                <div className="transcripcion-temp">
+                                  Escuchando: "{transcripcionTemp}"
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Desarrollo / Open Question / Case Study */}
+                          {(pregunta.tipo === 'desarrollo' || pregunta.tipo === 'open_question' || pregunta.tipo === 'case_study') && (
+                            <div className="respuesta-con-voz">
+                              <textarea
+                                className="respuesta-desarrollo"
+                                placeholder="Desarrolla tu respuesta completa aquí..."
+                                value={respuestasUsuario[index] || ''}
+                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                rows="8"
+                              />
+                              <button
+                                type="button"
+                                className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
+                                onClick={() => alternarEscuchaVoz(index)}
+                                title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
+                              >
+                                {escuchandoPregunta === index ? '🔴' : '🎤'}
+                              </button>
+                              {escuchandoPregunta === index && transcripcionTemp && (
+                                <div className="transcripcion-temp">
+                                  Escuchando: "{transcripcionTemp}"
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
+                      );
+                      })}
                     </div>
-                  </div>
-                ))}
 
-                {/* Tarjeta para crear nueva carpeta */}
-                <div 
-                  className="carpeta-card crear-nueva"
-                  onClick={crearCarpetaChat}
-                >
-                  <div className="carpeta-card-icon">➕</div>
-                  <div className="carpeta-card-content">
-                    <h4>Nuevo Proyecto</h4>
-                    <p>Crear carpeta</p>
-                  </div>
-                </div>
+                    <div className="examen-info-guardado">
+                      <p className="info-autosave">💾 Tus respuestas se guardan automáticamente en archivo local</p>
+                      <p className="info-hint">Sobrevive al reinicio de PC. Para guardar en el servidor, haz clic en "Pausar"</p>
+                    </div>
+
+                    <div className="examen-acciones">
+                      <button onClick={enviarExamen} className="btn-enviar-examen" disabled={generandoExamen}>
+                        {generandoExamen ? '⏳ Calificando...' : '✅ Enviar Examen'}
+
+                      </button>
+                      <button onClick={pausarExamen} className="btn-pausar-examen">
+                        ⏸️ Pausar
+                      </button>
+                      <button onClick={cerrarExamen} className="btn-cancelar">
+                        Cancelar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Resultados del Examen */}
+                    <div className="resultado-header">
+                      <div className="resultado-puntuacion">
+                        <h3>Calificación: {resultadoExamen.puntos_obtenidos} / {resultadoExamen.puntos_totales}</h3>
+                        <div className="resultado-porcentaje" style={{
+                          color: resultadoExamen.porcentaje >= 70 ? '#22c55e' : resultadoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                        }}>
+                          {resultadoExamen.porcentaje.toFixed(1)}%
+                        </div>
+                      </div>
+                      
+                      <div className="resultado-estado">
+                        {resultadoExamen.porcentaje >= 70 ? (
+                          <span className="estado-aprobado">✅ APROBADO</span>
+                        ) : resultadoExamen.porcentaje >= 50 ? (
+                          <span className="estado-regular">⚠️ REGULAR</span>
+                        ) : (
+                          <span className="estado-reprobado">❌ REPROBADO</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="resultados-detalle">
+                      {resultadoExamen.resultados.map((resultado, index) => (
+                        <div key={index} className="resultado-pregunta">
+                          <div className="resultado-pregunta-header">
+                            <span className="pregunta-numero">Pregunta {index + 1}</span>
+                            <span className="resultado-puntos" style={{
+                              color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                     resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                            }}>
+                              {resultado.puntos} / {resultado.puntos_maximos} pts
+                            </span>
+                          </div>
+                          
+                          <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
+                          
+                          <div className="resultado-respuesta">
+                            <strong>Tu respuesta:</strong>
+                            <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                          </div>
+                          
+                          {resultado.respuesta_correcta && (
+                            <div className="resultado-respuesta-correcta">
+                              <strong>Respuesta correcta:</strong>
+                              <p>{resultado.respuesta_correcta}</p>
+                            </div>
+                          )}
+                          
+                          <div className="resultado-feedback" style={{
+                            borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                            resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                          }}>
+                            <strong>Retroalimentación:</strong>
+                            <p>{resultado.feedback}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="examen-acciones">
+                      <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
+                        Cerrar
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
-
-              {carpetasChats.length === 0 && (
-                <div className="carpetas-empty">
-                  <p>🗂️ No tienes proyectos aún</p>
-                  <p className="hint">Crea tu primer proyecto para organizar tus chats</p>
-                </div>
-              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Modal de Configuración de Examen */}
-      {modalConfigExamen && (
-        <div className="modal-overlay" onClick={() => setModalConfigExamen(false)}>
-          {console.log('🎨 Renderizando modal de configuración')}
-          <div className="modal-content modal-config-examen" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>⚙️ Configurar Generación de Examen</h2>
-              <button onClick={() => setModalConfigExamen(false)} className="btn-close">✕</button>
-            </div>
-            
-            <div className="modal-body">
-              {/* Prompt Personalizado */}
-              <div className="config-section">
-                <label className="config-label">
-                  💬 Instrucciones Adicionales (opcional)
-                  <span className="hint-text">Agrega instrucciones específicas que se añadirán al prompt del sistema</span>
-                </label>
-                <textarea
-                  className="prompt-textarea"
-                  placeholder="Ejemplo: Enfócate en conceptos prácticos, incluye ejemplos del mundo real..."
-                  value={promptPersonalizado}
-                  onChange={(e) => setPromptPersonalizado(e.target.value)}
-                  rows={3}
-                />
+        {/* Modal para Ver Resultado de Examen Completado */}
+        {viendoExamen && (
+          <div className="modal-overlay" onClick={() => setViendoExamen(null)}>
+            <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📊 Resultado - {viendoExamen.carpeta_nombre}</h2>
+                <button onClick={() => setViendoExamen(null)} className="btn-close">✕</button>
               </div>
-
-              {/* Prompt del Sistema */}
-              <div className="config-section">
-                <label className="config-label">
-                  🎨 Prompt del Sistema (avanzado)
-                  <span className="hint-text">
-                    {promptSistema 
-                      ? `${promptSistema.length} caracteres cargados - Puedes editarlo libremente`
-                      : 'Esperando carga... Si no aparece, usa el botón "Cargar Predeterminado"'
-                    }
-                  </span>
-                </label>
-                <div className="prompt-sistema-container">
-                  <textarea
-                    className="prompt-textarea prompt-sistema"
-                    placeholder="Cargando prompt del sistema...&#10;&#10;Si no carga automáticamente, haz click en '🔄 Cargar Predeterminado'&#10;&#10;El prompt te permitirá personalizar completamente cómo la IA genera los exámenes."
-                    value={promptSistema}
-                    onChange={(e) => setPromptSistema(e.target.value)}
-                    rows={12}
-                  />
-                  <div className="prompt-sistema-info">
-                    <span className="prompt-info-text">
-                      Variables: {'{contenido}'}, {'{num_multiple}'}, {'{num_corta}'}, {'{num_desarrollo}'}
-                    </span>
+              
+              <div className="modal-body examen-body">
+                <div className="resultado-header">
+                  <div className="resultado-puntuacion">
+                    <h3>Calificación: {viendoExamen.puntos_obtenidos} / {viendoExamen.puntos_totales}</h3>
+                    <div className="resultado-porcentaje" style={{
+                      color: viendoExamen.porcentaje >= 70 ? '#22c55e' : viendoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                    }}>
+                      {viendoExamen.porcentaje.toFixed(1)}%
+                    </div>
                   </div>
-                  <div className="prompt-sistema-acciones">
-                    <button 
-                      className="btn-cargar-template"
-                      onClick={cargarPromptPredeterminado}
-                    >
-                      🔄 Cargar Predeterminado
-                    </button>
-                    <button 
-                      className="btn-guardar-prompt"
-                      onClick={guardarPromptSistema}
-                      disabled={!promptSistema}
-                    >
-                      💾 Guardar Prompt
-                    </button>
+                  
+                  <div className="resultado-estado">
+                    {viendoExamen.porcentaje >= 70 ? (
+                      <span className="estado-aprobado">✅ APROBADO</span>
+                    ) : viendoExamen.porcentaje >= 50 ? (
+                      <span className="estado-regular">⚠️ REGULAR</span>
+                    ) : (
+                      <span className="estado-reprobado">❌ REPROBADO</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="resultados-detalle">
+                  {viendoExamen.resultados.map((resultado, index) => (
+                    <div key={index} className="resultado-pregunta">
+                      <div className="resultado-pregunta-header">
+                        <span className="pregunta-numero">Pregunta {index + 1}</span>
+                        <span className="resultado-puntos" style={{
+                          color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                 resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                        }}>
+                          {resultado.puntos} / {resultado.puntos_maximos} pts
+                        </span>
+                      </div>
+                      
+                      <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
+                      
+                      <div className="resultado-respuesta">
+                        <strong>Tu respuesta:</strong>
+                        <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                      </div>
+                      
+                      {resultado.respuesta_correcta && (
+                        <div className="resultado-respuesta-correcta">
+                          <strong>Respuesta correcta:</strong>
+                          <p>{resultado.respuesta_correcta}</p>
+                        </div>
+                      )}
+                      
+                      <div className="resultado-feedback" style={{
+                        borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
+                                        resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
+                      }}>
+                        <strong>Retroalimentación:</strong>
+                        <p>{resultado.feedback}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="examen-acciones">
+                  <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para configurar práctica personalizada */}
+        {modalPracticaAbierto && (
+          <div className="modal-overlay" onClick={() => setModalPracticaAbierto(false)}>
+            <div className="modal-content modal-config-practica" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>🧑‍💻 Configurar Práctica Personalizada</h2>
+                <button onClick={() => setModalPracticaAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                {/* Flashcards */}
+                <details className="practice-type-section" open>
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">🃏</span>
+                    <span className="practice-title">Flashcards Inteligentes</span>
+                    <span className="practice-count">{numFlashcards}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Pregunta en un lado, respuesta + explicación en el otro. Ideal para memorización.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={numFlashcards}
+                        onChange={(e) => setNumFlashcards(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Preguntas de opción múltiple */}
+                <details className="practice-type-section" open>
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">✅</span>
+                    <span className="practice-title">Opción Múltiple (MCQ)</span>
+                    <span className="practice-count">{numMCQ}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Pregunta con 3-5 opciones. Una o varias correctas. Incluye explicación de la respuesta.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={numMCQ}
+                        onChange={(e) => setNumMCQ(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Verdadero/Falso */}
+                <details className="practice-type-section" open>
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">✓✗</span>
+                    <span className="practice-title">Verdadero o Falso</span>
+                    <span className="practice-count">{numVerdaderoFalso}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Afirmación que debe evaluarse como verdadera o falsa. Incluye explicación detallada.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={numVerdaderoFalso}
+                        onChange={(e) => setNumVerdaderoFalso(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Relleno de huecos */}
+                <details className="practice-type-section">
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">📝</span>
+                    <span className="practice-title">Relleno de Huecos (Cloze)</span>
+                    <span className="practice-count">{numCloze}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Texto con espacios en blanco. Completa las palabras faltantes. Perfecto para definiciones y conceptos.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="15"
+                        value={numCloze}
+                        onChange={(e) => setNumCloze(Math.max(0, Math.min(15, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Respuesta Corta */}
+                <details className="practice-type-section">
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">✍️</span>
+                    <span className="practice-title">Respuesta Corta</span>
+                    <span className="practice-count">{numRespuestaCorta}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Pregunta que requiere respuesta breve (1-3 frases). Evaluación por palabras clave.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="15"
+                        value={numRespuestaCorta}
+                        onChange={(e) => setNumRespuestaCorta(Math.max(0, Math.min(15, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Preguntas abiertas */}
+                <details className="practice-type-section">
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">📖</span>
+                    <span className="practice-title">Explicación Detallada</span>
+                    <span className="practice-count">{numOpenQuestion}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Pregunta de desarrollo que requiere explicación completa. El modelo evalúa según puntos clave.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={numOpenQuestion}
+                        onChange={(e) => setNumOpenQuestion(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* Casos de Estudio */}
+                <details className="practice-type-section">
+                  <summary className="practice-type-header">
+                    <span className="practice-icon">💼</span>
+                    <span className="practice-title">Casos de Estudio</span>
+                    <span className="practice-count">{numCasoEstudio}</span>
+                  </summary>
+                  <div className="practice-type-content">
+                    <p className="practice-description">
+                      Situación práctica con descripción detallada. Presenta un escenario y pregunta qué harías o cómo lo resolverías.
+                    </p>
+                    <div className="config-control">
+                      <label>Cantidad:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5"
+                        value={numCasoEstudio}
+                        onChange={(e) => setNumCasoEstudio(Math.max(0, Math.min(5, parseInt(e.target.value) || 0)))}
+                        className="input-number"
+                      />
+                    </div>
+                  </div>
+                </details>
+
+                {/* ========== PRÁCTICAS DE INGLÉS ========== */}
+                <details className="practice-type-section" style={{borderLeft: '4px solid #4A90E2'}}>
+                  <summary className="practice-type-header" style={{background: '#667eea', color: 'white'}}>
+                    <span className="practice-icon">🇬🇧</span>
+                    <span className="practice-title">Prácticas de Inglés (Reading + Writing)</span>
+                    <span className="practice-count">
+                      {numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail}
+                    </span>
+                  </summary>
+                  <div className="practice-type-content">
+                    
+                    {/* Reading Comprehension */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">📖</span>
+                        <span className="practice-title">Reading Comprehension</span>
+                        <span className="practice-count">{numReadingComprehension}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Texto en inglés (100-200 palabras) + 3-5 preguntas (MCQ, V/F, respuesta corta).
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingComprehension}
+                            onChange={(e) => setNumReadingComprehension(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Reading True/False */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">✓✗</span>
+                        <span className="practice-title">Reading True/False + Justification</span>
+                        <span className="practice-count">{numReadingTrueFalse}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Texto + afirmaciones. Usuario debe responder verdadero/falso y justificar con evidencia del texto.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingTrueFalse}
+                            onChange={(e) => setNumReadingTrueFalse(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Reading Cloze */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">📝</span>
+                        <span className="practice-title">Reading Cloze (Fill Gaps)</span>
+                        <span className="practice-count">{numReadingCloze}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Texto con huecos. Evalúa vocabulario y gramática en contexto.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingCloze}
+                            onChange={(e) => setNumReadingCloze(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Reading Skill */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🎯</span>
+                        <span className="practice-title">Reading Skills (Main Idea/Inference)</span>
+                        <span className="practice-count">{numReadingSkill}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Evalúa habilidades específicas: idea principal, detalles, inferencia, propósito, tono.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingSkill}
+                            onChange={(e) => setNumReadingSkill(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Reading Matching */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🔗</span>
+                        <span className="practice-title">Reading Matching</span>
+                        <span className="practice-count">{numReadingMatching}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Relacionar oraciones con párrafos del texto. Evalúa comprensión detallada.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingMatching}
+                            onChange={(e) => setNumReadingMatching(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Reading Sequence */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🔢</span>
+                        <span className="practice-title">Reading Sequence</span>
+                        <span className="practice-count">{numReadingSequence}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Ordenar eventos/párrafos en secuencia lógica. Ideal para narrativas.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numReadingSequence}
+                            onChange={(e) => setNumReadingSequence(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Short Answer */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">✍️</span>
+                        <span className="practice-title">Writing Short Answer</span>
+                        <span className="practice-count">{numWritingShort}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Respuesta breve (30-50 palabras). Evalúa keywords, gramática, coherencia.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingShort}
+                            onChange={(e) => setNumWritingShort(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Paraphrase */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🔄</span>
+                        <span className="practice-title">Writing Paraphrase</span>
+                        <span className="practice-count">{numWritingParaphrase}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Reformular texto preservando significado. Evalúa vocabulario y estructura.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingParaphrase}
+                            onChange={(e) => setNumWritingParaphrase(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Correction */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🔧</span>
+                        <span className="practice-title">Writing Error Correction</span>
+                        <span className="practice-count">{numWritingCorrection}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Corregir texto con errores gramaticales. Identifica tipo y cantidad de errores.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingCorrection}
+                            onChange={(e) => setNumWritingCorrection(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Transformation */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🎭</span>
+                        <span className="practice-title">Writing Transformation</span>
+                        <span className="practice-count">{numWritingTransformation}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Transformar oraciones (tiempo verbal, voz, negativa/pregunta). Gramática aplicada.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingTransformation}
+                            onChange={(e) => setNumWritingTransformation(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Essay */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">📄</span>
+                        <span className="practice-title">Writing Mini-Essay</span>
+                        <span className="practice-count">{numWritingEssay}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Ensayo breve (120-150 palabras). Evalúa estructura, coherencia, vocabulario, gramática.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="5"
+                            value={numWritingEssay}
+                            onChange={(e) => setNumWritingEssay(Math.max(0, Math.min(5, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Sentence Builder */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🧩</span>
+                        <span className="practice-title">Writing Sentence Builder</span>
+                        <span className="practice-count">{numWritingSentenceBuilder}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Armar oraciones con bloques dados. Evalúa estructura y sintaxis.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingSentenceBuilder}
+                            onChange={(e) => setNumWritingSentenceBuilder(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Picture Description */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">🖼️</span>
+                        <span className="practice-title">Writing Picture Description</span>
+                        <span className="practice-count">{numWritingPictureDescription}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Describir escena imaginada (80-100 palabras). Evalúa lenguaje descriptivo y vocabulario.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingPictureDescription}
+                            onChange={(e) => setNumWritingPictureDescription(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    {/* Writing Email */}
+                    <details className="practice-type-section">
+                      <summary className="practice-type-header">
+                        <span className="practice-icon">📧</span>
+                        <span className="practice-title">Writing Email/Message</span>
+                        <span className="practice-count">{numWritingEmail}</span>
+                      </summary>
+                      <div className="practice-type-content">
+                        <p className="practice-description">
+                          Email formal/informal (60-80 palabras). Evalúa formato, tono, claridad, cortesía.
+                        </p>
+                        <div className="config-control">
+                          <label>Cantidad:</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={numWritingEmail}
+                            onChange={(e) => setNumWritingEmail(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+                            className="input-number"
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                  </div>
+                </details>
+
+                {/* Prompt personalizado */}
+                <div className="config-section" style={{marginTop: '1.5rem'}}>
+                  <label className="config-label">
+                    <span className="label-icon">✨</span>
+                    <span>Prompt personalizado (opcional)</span>
+                  </label>
+                  <textarea
+                    value={promptPractica}
+                    onChange={(e) => setPromptPractica(e.target.value)}
+                    rows={4}
+                    className="textarea-prompt"
+                    placeholder="Ejemplo: Enfócate en conceptos prácticos, incluye ejemplos de código, usa un nivel intermedio..."
+                  />
+                  <p className="config-hint">Personaliza el enfoque y dificultad de las preguntas</p>
+                </div>
+
+                {/* Resumen */}
+                <div className="config-info">
+                  <div className="info-icon">ℹ️</div>
+                  <div className="info-content">
+                    <p><strong>Total:</strong> {numFlashcards + numMCQ + numVerdaderoFalso + numCloze + numRespuestaCorta + numOpenQuestion + numCasoEstudio + numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail} preguntas</p>
+                    <p><strong>Fuente:</strong> {tipoPractica === 'documento' ? 'Documento' : 'Carpeta + subcarpetas'}</p>
+                    <p><strong>Carpeta:</strong> {carpetaPractica || 'Raíz'}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Explorador de Carpetas */}
-              <div className="config-section">
-                <label className="config-label">
-                  📁 Explorar Carpetas
-                  <span className="hint-text">Navega a subcarpetas para agregar más archivos</span>
-                </label>
-                <div className="explorador-carpetas">
-                  <div className="ruta-actual">
-                    {rutaExploracion !== carpetaConfigExamen?.ruta && (
-                      <button 
-                        className="btn-volver"
-                        onClick={volverCarpetaPadre}
-                      >
-                        ⬅️ Volver
-                      </button>
-                    )}
-                    <span className="ruta-texto">📂 {rutaExploracion || 'Raíz'}</span>
+              <div className="modal-footer">
+                <button 
+                  onClick={() => setModalPracticaAbierto(false)} 
+                  className="btn-cancelar"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmarGenerarPractica} 
+                  className="btn-primary"
+                  disabled={numFlashcards + numMCQ + numVerdaderoFalso + numCloze + numRespuestaCorta + numOpenQuestion + numCasoEstudio + numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail === 0}
+                >
+                  🚀 Generar Práctica
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal del Editor de Notas con HTML Editor */}
+        {editorNotaAbierto && (
+          <div 
+            className="modal-overlay modal-fullscreen" 
+            onClick={cerrarEditorNota}
+          >
+            <div 
+              className="modal-content modal-editor-nota modal-editor-fullscreen" 
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-header">
+                <h2>📝 {modoSoloLectura ? 'Ver Nota' : (notaActual ? 'Editar Nota' : 'Nueva Nota')}</h2>
+                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                  {modoSoloLectura && (
+                    <button 
+                      onClick={() => setModoSoloLectura(false)} 
+                      className="btn-primary"
+                      style={{padding: '0.5rem 1rem'}}
+                    >
+                      ✏️ Editar
+                    </button>
+                  )}
+                  <button onClick={cerrarEditorNota} className="btn-close">✕</button>
+                </div>
+              </div>
+              
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="label-icon">✍️</span>
+                    <span>Título</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={tituloNota}
+                    onChange={(e) => setTituloNota(e.target.value)}
+                    placeholder="Título de la nota..."
+                    className="input-nota-titulo"
+                    readOnly={modoSoloLectura}
+                    style={modoSoloLectura ? {backgroundColor: '#f5f5f5', cursor: 'not-allowed'} : {}}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="label-icon">📁</span>
+                    <span>Carpeta</span>
+                  </label>
+                  <div style={{display: 'flex', gap: '0.5rem'}}>
+                    <input
+                      type="text"
+                      value={carpetaNota || 'Raíz'}
+                      readOnly
+                      placeholder="Carpeta de destino"
+                      className="input-nota-carpeta"
+                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed', flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalCarpetasNotaAbierto(true)
+                        cargarCarpetasNotas('')
+                      }}
+                      className="btn-primary"
+                      style={{whiteSpace: 'nowrap'}}
+                    >
+                      📂 Seleccionar
+                    </button>
                   </div>
+                  <div className="nota-hint">
+                    💡 La nota se guardará en: {carpetaNota || 'Raíz'}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="label-icon">📄</span>
+                    <span>Contenido</span>
+                  </label>
                   
-                  {carpetasExploracion.length > 0 && (
-                    <div className="subcarpetas-lista">
-                      {carpetasExploracion.map((carpeta, idx) => (
-                        <button
-                          key={idx}
-                          className="subcarpeta-item"
-                          onClick={() => cargarArchivosSubcarpeta(carpeta.ruta)}
+                  {!modoSoloLectura && (
+                  <div className="editor-toolbar">
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('bold', false, null);
+                    }} title="Negrita">
+                      <strong>B</strong>
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('italic', false, null);
+                    }} title="Cursiva">
+                      <em>I</em>
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('underline', false, null);
+                    }} title="Subrayado">
+                      <u>U</u>
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('strikeThrough', false, null);
+                    }} title="Tachado">
+                      <s>S</s>
+                    </button>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('formatBlock', false, 'p');
+                    }} title="Párrafo normal">
+                      P
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('formatBlock', false, 'h1');
+                    }} title="Título 1">
+                      H1
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('formatBlock', false, 'h2');
+                    }} title="Título 2">
+                      H2
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('formatBlock', false, 'h3');
+                    }} title="Título 3">
+                      H3
+                    </button>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <label className="btn-toolbar" title="Color de texto" style={{cursor: 'pointer', display: 'inline-flex', alignItems: 'center'}}>
+                      🎨 Color
+                      <input
+                        type="color"
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editorRef.current?.focus();
+                          const color = e.target.value;
+                          document.execCommand('styleWithCSS', false, true);
+                          document.execCommand('foreColor', false, color);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                      />
+                    </label>
+                    <label className="btn-toolbar" title="Color de fondo" style={{cursor: 'pointer', display: 'inline-flex', alignItems: 'center'}}>
+                      🖍️ Fondo
+                      <input
+                        type="color"
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          editorRef.current?.focus();
+                          const color = e.target.value;
+                          document.execCommand('styleWithCSS', false, true);
+                          document.execCommand('backColor', false, color);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                      />
+                    </label>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <button 
+                      type="button" 
+                      className="btn-toolbar" 
+                      onClick={() => setModalTipografias(true)}
+                      title="Administrar tipografías"
+                    >
+                      🔤 Fuentes
+                    </button>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('insertUnorderedList', false, null);
+                    }} title="Lista con viñetas">
+                      • Lista
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('insertOrderedList', false, null);
+                    }} title="Lista numerada">
+                      1. Numerada
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('indent', false, null);
+                    }} title="Aumentar sangría">
+                      ➡️ Sangría
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('outdent', false, null);
+                    }} title="Reducir sangría">
+                      ⬅️ Reducir
+                    </button>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      const selection = window.getSelection();
+                      const selectedText = selection.toString();
+                      if (selectedText) {
+                        setTextoSeleccionado(selectedText);
+                        setModalHipervinculos(true);
+                        setTipoHipervinculo('url');
+                        setUrlHipervinculo('');
+                        setNotaReferenciaId(null);
+                      } else {
+                        alert('⚠️ Selecciona texto primero para convertirlo en enlace');
+                      }
+                    }} title="Insertar enlace">
+                      🔗 Link
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      document.execCommand('unlink', false, null);
+                    }} title="Quitar enlace">
+                      🔗❌ Quitar Link
+                    </button>
+                    <label className="btn-toolbar" title="Insertar imagen" style={{cursor: 'pointer', display: 'inline-flex', alignItems: 'center'}}>
+                      🖼️ Imagen
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          const file = e.target.files[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              if (editorRef.current) {
+                                // Asegurar foco en el editor
+                                editorRef.current.focus();
+                                
+                                const imgId = 'img_' + Date.now();
+                                const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: block; max-width: 100%;" draggable="true">
+                                  <img 
+                                    id="${imgId}"
+                                    src="${event.target.result}" 
+                                    class="imagen-editable" 
+                                    style="max-width: 100%; width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: block; cursor: move;" 
+                                    alt="Imagen insertada" 
+                                    draggable="false"
+                                  />
+                                </div><p><br></p>`;
+                                
+                                // Insertar en posición del cursor
+                                document.execCommand('insertHTML', false, imgHtml);
+                                setContenidoNota(editorRef.current.innerHTML);
+                                
+                                // Agregar eventos después de insertar
+                                setTimeout(() => {
+                                  const img = document.getElementById(imgId);
+                                  if (img) {
+                                    // Click para seleccionar
+                                    img.addEventListener('click', function(e) {
+                                      e.stopPropagation();
+                                      window.mostrarControlesImagen(this);
+                                    });
+                                    
+                                    // Sistema de arrastre simple y efectivo
+                                    const contenedor = img.parentElement;
+                                    contenedor.draggable = true;
+                                    
+                                    contenedor.addEventListener('dragstart', function(e) {
+                                      e.dataTransfer.effectAllowed = 'move';
+                                      e.dataTransfer.setData('text/html', this.outerHTML);
+                                      this.classList.add('arrastrando');
+                                      
+                                      // Guardar referencia para eliminar después
+                                      window.elementoArrastrado = this;
+                                    });
+                                    
+                                    contenedor.addEventListener('dragend', function(e) {
+                                      this.classList.remove('arrastrando');
+                                      window.elementoArrastrado = null;
+                                    });
+                                  }
+                                }, 100);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                          e.target.value = ''; // Reset input
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                      />
+                    </label>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('justifyLeft', false, null);
+                    }} title="Alinear izquierda">
+                      ⬅ Izquierda
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('justifyCenter', false, null);
+                    }} title="Centrar">
+                      ↔ Centro
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('justifyRight', false, null);
+                    }} title="Alinear derecha">
+                      ➡ Derecha
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('justifyFull', false, null);
+                    }} title="Justificar">
+                      ⬌ Justificar
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      document.execCommand('removeFormat', false, null);
+                    }} title="Limpiar formato">
+                      🧹 Limpiar
+                    </button>
+                  </div>
+                  )}
+                  
+                  <div
+                    ref={editorRef}
+                    contentEditable={!modoSoloLectura}
+                    dir="ltr"
+                    className="editor-html-simple"
+                    onInput={(e) => {
+                      if (!modoSoloLectura) {
+                        setContenidoNota(e.currentTarget.innerHTML);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      // Forzar dirección LTR al escribir
+                      if (e.currentTarget) {
+                        e.currentTarget.setAttribute('dir', 'ltr');
+                        e.currentTarget.style.direction = 'ltr';
+                        e.currentTarget.style.textAlign = 'left';
+                      }
+                    }}
+                    onMouseUp={(e) => {
+                      if (modoSoloLectura) return;
+                      const selection = window.getSelection();
+                      const selectedText = selection.toString();
+                      
+                      if (selectedText.length > 0) {
+                        const range = selection.getRangeAt(0);
+                        setRangoSeleccionado(range.cloneRange());
+                        
+                        const rect = range.getBoundingClientRect();
+                        setMenuContextual({
+                          visible: true,
+                          x: rect.left + (rect.width / 2),
+                          y: rect.top - 10
+                        });
+                      } else {
+                        setMenuContextual({ visible: false, x: 0, y: 0 });
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      e.currentTarget.classList.add('drag-over');
+                    }}
+                    onDragLeave={(e) => {
+                      e.currentTarget.classList.remove('drag-over');
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('drag-over');
+                      
+                      // Si estamos moviendo una imagen existente
+                      if (window.elementoArrastrado) {
+                        // Obtener posición del cursor
+                        const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                        
+                        if (range && editorRef.current.contains(range.startContainer)) {
+                          // Eliminar elemento del lugar original
+                          const elemento = window.elementoArrastrado.cloneNode(true);
+                          window.elementoArrastrado.remove();
+                          
+                          // Insertar en nueva posición
+                          range.insertNode(elemento);
+                          
+                          // Actualizar contenido
+                          setContenidoNota(editorRef.current.innerHTML);
+                          
+                          // Reconfigurar eventos
+                          setTimeout(() => {
+                            const img = elemento.querySelector('img');
+                            if (img) {
+                              img.addEventListener('click', function(e) {
+                                e.stopPropagation();
+                                window.mostrarControlesImagen(this);
+                              });
+                            }
+                          }, 100);
+                        }
+                      }
+                    }}
+                    suppressContentEditableWarning={true}
+                    style={{
+                      direction: 'ltr',
+                      textAlign: 'left',
+                      backgroundColor: '#ffffff',
+                      color: '#000000',
+                      writingMode: 'horizontal-tb',
+                      unicodeBidi: 'bidi-override'
+                    }}
+                  />
+                  
+                  <div className="nota-hint">
+                    💡 Editor HTML completo: selecciona texto y usa los botones para formato, colores, imágenes y más
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  onClick={cerrarEditorNota} 
+                  className="btn-cancelar"
+                >
+                  {modoSoloLectura ? 'Cerrar' : 'Cancelar'}
+                </button>
+                {!modoSoloLectura && (
+                  <button 
+                    onClick={guardarNota} 
+                    className="btn-primary"
+                  >
+                    💾 Guardar Nota
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            {/* Menú Contextual Flotante */}
+            {menuContextual.visible && !modoSoloLectura && (
+              <div 
+                className="menu-contextual-flotante"
+                style={{
+                  position: 'fixed',
+                  left: `${menuContextual.x}px`,
+                  top: `${menuContextual.y}px`,
+                  transform: 'translate(-50%, -100%)'
+                }}
+              >
+                {/* Barra de arrastre */}
+                <div 
+                  onMouseDown={iniciarArrastreMenu}
+                  style={{
+                    background: 'rgba(100, 108, 255, 0.2)',
+                    padding: '0.3rem',
+                    marginBottom: '0.3rem',
+                    borderRadius: '6px 6px 0 0',
+                    cursor: 'move',
+                    textAlign: 'center',
+                    fontSize: '0.7rem',
+                    color: 'rgba(255,255,255,0.6)',
+                    userSelect: 'none',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <span style={{opacity: 0}}>✕</span>
+                  <span>⋮⋮⋮</span>
+                  <button 
+                    onClick={cerrarMenuContextual}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'rgba(255,255,255,0.8)',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      padding: '0 0.3rem',
+                      lineHeight: '1'
+                    }}
+                    title="Cerrar"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="menu-fila">
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('bold', false, null);
+                    }}
+                    title="Negrita"
+                  >
+                    <strong>B</strong>
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('italic', false, null);
+                    }}
+                    title="Cursiva"
+                  >
+                    <em>I</em>
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('underline', false, null);
+                    }}
+                    title="Subrayado"
+                  >
+                    <u>U</u>
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('strikeThrough', false, null);
+                    }}
+                    title="Tachado"
+                  >
+                    <s>S</s>
+                  </button>
+                  
+                  <div className="separador-menu"></div>
+                  
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('formatBlock', false, 'p');
+                    }}
+                    title="Párrafo"
+                  >
+                    P
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('formatBlock', false, 'h1');
+                    }}
+                    title="Título 1"
+                  >
+                    H1
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('formatBlock', false, 'h2');
+                    }}
+                    title="Título 2"
+                  >
+                    H2
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('formatBlock', false, 'h3');
+                    }}
+                    title="Título 3"
+                  >
+                    H3
+                  </button>
+                </div>
+                
+                <div className="menu-fila">
+                  <label className="btn-menu-ctx" title="Color de texto">
+                    🎨
+                    <input
+                      type="color"
+                      onChange={(e) => {
+                        restaurarSeleccion();
+                        document.execCommand('styleWithCSS', false, true);
+                        document.execCommand('foreColor', false, e.target.value);
+                      }}
+                      style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                    />
+                  </label>
+                  <label className="btn-menu-ctx" title="Color de fondo">
+                    🖍️
+                    <input
+                      type="color"
+                      onChange={(e) => {
+                        restaurarSeleccion();
+                        document.execCommand('styleWithCSS', false, true);
+                        document.execCommand('backColor', false, e.target.value);
+                      }}
+                      style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                    />
+                  </label>
+                  
+                  <div className="separador-menu"></div>
+                  
+                  <button 
+                    className="btn-menu-ctx" 
+                    onClick={() => setSubmenuActivo(submenuActivo === 'tipografias' ? null : 'tipografias')} 
+                    title="Cambiar tipografía"
+                    style={{background: submenuActivo === 'tipografias' ? 'rgba(100, 108, 255, 0.4)' : 'rgba(100, 108, 255, 0.15)'}}
+                  >
+                    🔤
+                  </button>
+                  <button 
+                    className="btn-menu-ctx" 
+                    onClick={() => setSubmenuActivo(submenuActivo === 'enlaces' ? null : 'enlaces')} 
+                    title="Insertar enlace"
+                    style={{background: submenuActivo === 'enlaces' ? 'rgba(100, 108, 255, 0.4)' : 'rgba(100, 108, 255, 0.15)'}}
+                  >
+                    🔗
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('unlink', false, null);
+                    }}
+                    title="Quitar enlace"
+                  >
+                    🚫
+                  </button>
+                  
+                  <div className="separador-menu"></div>
+                  
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('justifyLeft', false, null);
+                    }}
+                    title="Alinear izquierda"
+                  >
+                    ⬅️
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('justifyCenter', false, null);
+                    }}
+                    title="Centrar"
+                  >
+                    ↔️
+                  </button>
+                  <button
+                    className="btn-menu-ctx"
+                    onClick={() => {
+                      restaurarSeleccion();
+                      document.execCommand('justifyRight', false, null);
+                    }}
+                    title="Alinear derecha"
+                  >
+                    ➡️
+                  </button>
+                </div>
+                
+                {/* Submenú de tipografías */}
+                {submenuActivo === 'tipografias' && (
+                  <div style={{
+                    background: 'rgba(26, 26, 46, 0.98)',
+                    border: '1px solid rgba(100, 108, 255, 0.3)',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    marginTop: '0.3rem',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
+                    <div style={{marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Sistema:</div>
+                    {['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS', 'Impact'].map(fuente => (
+                      <button
+                        key={fuente}
+                        onClick={() => { aplicarTipografia(fuente + ', sans-serif'); setSubmenuActivo(null); }}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          background: 'rgba(100, 108, 255, 0.1)',
+                          border: '1px solid rgba(100, 108, 255, 0.2)',
+                          borderRadius: '4px',
+                          color: 'white',
+                          padding: '0.5rem',
+                          marginBottom: '0.3rem',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          fontFamily: fuente,
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.3)'}
+                        onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.1)'}
+                      >
+                        {fuente}
+                      </button>
+                    ))}
+                    {tipografiasPersonalizadas.length > 0 && (
+                      <>
+                        <div style={{marginTop: '0.5rem', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Personalizadas:</div>
+                        {tipografiasPersonalizadas.map(tipo => (
+                          <button
+                            key={tipo.id}
+                            onClick={() => { aplicarTipografia(tipo.familia); setSubmenuActivo(null); }}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              background: 'rgba(34, 197, 94, 0.1)',
+                              border: '1px solid rgba(34, 197, 94, 0.2)',
+                              borderRadius: '4px',
+                              color: 'white',
+                              padding: '0.5rem',
+                              marginBottom: '0.3rem',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontFamily: tipo.familia,
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.3)'}
+                            onMouseLeave={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.1)'}
+                          >
+                            {tipo.nombre}
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+                
+                {/* Submenú de enlaces */}
+                {submenuActivo === 'enlaces' && (
+                  <div style={{
+                    background: 'rgba(26, 26, 46, 0.98)',
+                    border: '1px solid rgba(100, 108, 255, 0.3)',
+                    borderRadius: '8px',
+                    padding: '0.5rem',
+                    marginTop: '0.3rem'
+                  }}>
+                    <button
+                      onClick={insertarEnlaceURL}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        background: 'rgba(100, 108, 255, 0.2)',
+                        border: '1px solid rgba(100, 108, 255, 0.3)',
+                        borderRadius: '4px',
+                        color: 'white',
+                        padding: '0.6rem',
+                        marginBottom: '0.5rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontWeight: 'bold',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.4)'}
+                      onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.2)'}
+                    >
+                      🌐 Enlace externo (URL)
+                    </button>
+                    <button
+                      onClick={abrirModalSeleccionarNotaRef}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '4px',
+                        color: 'white',
+                        padding: '0.6rem',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontWeight: 'bold',
+                        transition: 'all 0.15s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.4)'}
+                      onMouseLeave={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.2)'}
+                    >
+                      📝 Referencia a nota...
+                    </button>
+                  </div>
+                )}
+                
+                <div className="menu-fila">
+                  <label className="btn-menu-ctx-wide" title="Insertar imagen">
+                    🖼️ Insertar Imagen
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            restaurarSeleccion();
+                            const imgId = 'img_' + Date.now();
+                            const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: block; max-width: 100%;" draggable="true">
+                              <img 
+                                id="${imgId}"
+                                src="${event.target.result}" 
+                                class="imagen-editable" 
+                                style="max-width: 100%; width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: block; cursor: move;" 
+                                alt="Imagen insertada" 
+                                draggable="false"
+                              />
+                            </div><p><br></p>`;
+                            document.execCommand('insertHTML', false, imgHtml);
+                            setContenidoNota(editorRef.current.innerHTML);
+                            
+                            setTimeout(() => {
+                              const img = document.getElementById(imgId);
+                              if (img) {
+                                img.addEventListener('click', function(e) {
+                                  e.stopPropagation();
+                                  window.mostrarControlesImagen(this);
+                                });
+                                
+                                const contenedor = img.parentElement;
+                                contenedor.draggable = true;
+                                contenedor.addEventListener('dragstart', function(e) {
+                                  e.dataTransfer.effectAllowed = 'move';
+                                  e.dataTransfer.setData('text/html', this.outerHTML);
+                                  this.classList.add('arrastrando');
+                                  window.elementoArrastrado = this;
+                                });
+                                contenedor.addEventListener('dragend', function(e) {
+                                  this.classList.remove('arrastrando');
+                                  window.elementoArrastrado = null;
+                                });
+                              }
+                            }, 100);
+                            
+                            cerrarMenuContextual();
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                        e.target.value = '';
+                      }}
+                      style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
+                    />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Menú Contextual Flotante */}
+        {menuContextual.visible && !modoSoloLectura && (
+          <div 
+            className="menu-contextual-flotante"
+            style={{
+              position: 'fixed',
+              left: `${menuContextual.x}px`,
+              top: `${menuContextual.y}px`,
+              transform: 'translate(-50%, -100%)'
+            }}
+          >
+            {/* Barra de arrastre */}
+            <div 
+              onMouseDown={iniciarArrastreMenu}
+              style={{
+                background: 'rgba(100, 108, 255, 0.2)',
+                padding: '0.3rem',
+                marginBottom: '0.3rem',
+                borderRadius: '6px 6px 0 0',
+                cursor: 'move',
+                textAlign: 'center',
+                fontSize: '0.7rem',
+                color: 'rgba(255,255,255,0.6)',
+                userSelect: 'none',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <span style={{opacity: 0}}>✕</span>
+              <span>⋮⋮⋮</span>
+              <button 
+                onClick={cerrarMenuContextual}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'rgba(255,255,255,0.8)',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  padding: '0 0.3rem',
+                  lineHeight: '1'
+                }}
+                title="Cerrar"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="menu-fila">
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('bold', false, null); }} title="Negrita">
+                <strong>B</strong>
+              </button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('italic', false, null); }} title="Cursiva">
+                <em>I</em>
+              </button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('underline', false, null); }} title="Subrayado">
+                <u>U</u>
+              </button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('strikeThrough', false, null); }} title="Tachado">
+                <s>S</s>
+              </button>
+              <div className="separador-menu"></div>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'p'); }} title="Párrafo">P</button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h1'); }} title="Título 1">H1</button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h2'); }} title="Título 2">H2</button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h3'); }} title="Título 3">H3</button>
+            </div>
+            <div className="menu-fila">
+              <label className="btn-menu-ctx" title="Color de texto">🎨<input type="color" onChange={(e) => { restaurarSeleccion(); document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, e.target.value); }} style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}} /></label>
+              <label className="btn-menu-ctx" title="Color de fondo">🖍️<input type="color" onChange={(e) => { restaurarSeleccion(); document.execCommand('styleWithCSS', false, true); document.execCommand('backColor', false, e.target.value); }} style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}} /></label>
+              <div className="separador-menu"></div>
+              <button 
+                className="btn-menu-ctx" 
+                onClick={() => setSubmenuActivo(submenuActivo === 'tipografias' ? null : 'tipografias')} 
+                title="Cambiar tipografía"
+                style={{background: submenuActivo === 'tipografias' ? 'rgba(100, 108, 255, 0.4)' : 'rgba(100, 108, 255, 0.15)'}}
+              >
+                🔤
+              </button>
+              <button 
+                className="btn-menu-ctx" 
+                onClick={() => setSubmenuActivo(submenuActivo === 'enlaces' ? null : 'enlaces')} 
+                title="Insertar enlace"
+                style={{background: submenuActivo === 'enlaces' ? 'rgba(100, 108, 255, 0.4)' : 'rgba(100, 108, 255, 0.15)'}}
+              >
+                🔗
+              </button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('unlink', false, null); }} title="Quitar enlace">🚫</button>
+              <div className="separador-menu"></div>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyLeft', false, null); }} title="Izquierda">⬅️</button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyCenter', false, null); }} title="Centro">↔️</button>
+              <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyRight', false, null); }} title="Derecha">➡️</button>
+            </div>
+            
+            {/* Submenú de tipografías */}
+            {submenuActivo === 'tipografias' && (
+              <div style={{
+                background: 'rgba(26, 26, 46, 0.98)',
+                border: '1px solid rgba(100, 108, 255, 0.3)',
+                borderRadius: '8px',
+                padding: '0.5rem',
+                marginTop: '0.3rem',
+                maxHeight: '200px',
+                overflowY: 'auto'
+              }}>
+                <div style={{marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Sistema:</div>
+                {['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS', 'Comic Sans MS', 'Impact'].map(fuente => (
+                  <button
+                    key={fuente}
+                    onClick={() => { aplicarTipografia(fuente + ', sans-serif'); setSubmenuActivo(null); }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      background: 'rgba(100, 108, 255, 0.1)',
+                      border: '1px solid rgba(100, 108, 255, 0.2)',
+                      borderRadius: '4px',
+                      color: 'white',
+                      padding: '0.5rem',
+                      marginBottom: '0.3rem',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontFamily: fuente,
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.3)'}
+                    onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.1)'}
+                  >
+                    {fuente}
+                  </button>
+                ))}
+                {tipografiasPersonalizadas.length > 0 && (
+                  <>
+                    <div style={{marginTop: '0.5rem', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Personalizadas:</div>
+                    {tipografiasPersonalizadas.map(tipo => (
+                      <button
+                        key={tipo.id}
+                        onClick={() => { aplicarTipografia(tipo.familia); setSubmenuActivo(null); }}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          background: 'rgba(34, 197, 94, 0.1)',
+                          border: '1px solid rgba(34, 197, 94, 0.2)',
+                          borderRadius: '4px',
+                          color: 'white',
+                          padding: '0.5rem',
+                          marginBottom: '0.3rem',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          fontFamily: tipo.familia,
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.3)'}
+                        onMouseLeave={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.1)'}
+                      >
+                        {tipo.nombre}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+            
+            {/* Submenú de enlaces */}
+            {submenuActivo === 'enlaces' && (
+              <div style={{
+                background: 'rgba(26, 26, 46, 0.98)',
+                border: '1px solid rgba(100, 108, 255, 0.3)',
+                borderRadius: '8px',
+                padding: '0.5rem',
+                marginTop: '0.3rem'
+              }}>
+                <button
+                  onClick={insertarEnlaceURL}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    background: 'rgba(100, 108, 255, 0.2)',
+                    border: '1px solid rgba(100, 108, 255, 0.3)',
+                    borderRadius: '4px',
+                    color: 'white',
+                    padding: '0.6rem',
+                    marginBottom: '0.5rem',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontWeight: 'bold',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.4)'}
+                  onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.2)'}
+                >
+                  🌐 Enlace externo (URL)
+                </button>
+                <button
+                  onClick={abrirModalSeleccionarNotaRef}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    background: 'rgba(34, 197, 94, 0.2)',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    borderRadius: '4px',
+                    color: 'white',
+                    padding: '0.6rem',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontWeight: 'bold',
+                    transition: 'all 0.15s'
+                  }}
+                  onMouseEnter={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.4)'}
+                  onMouseLeave={(e) => e.target.style.background = 'rgba(34, 197, 94, 0.2)'}
+                >
+                  📝 Referencia a nota...
+                </button>
+              </div>
+            )}
+            
+            <div className="menu-fila">
+              <label className="btn-menu-ctx-wide" title="Insertar imagen">
+                🖼️ Insertar Imagen
+                <input type="file" accept="image/*" onChange={(e) => { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = (event) => { restaurarSeleccion(); const imgId = 'img_' + Date.now(); const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: block;" draggable="true"><img id="${imgId}" src="${event.target.result}" class="imagen-editable" style="max-width: 100%; width: 400px; height: auto;" draggable="false" /></div><p><br></p>`; document.execCommand('insertHTML', false, imgHtml); setContenidoNota(editorRef.current.innerHTML); setTimeout(() => { const img = document.getElementById(imgId); if (img) { img.addEventListener('click', function(e) { e.stopPropagation(); window.mostrarControlesImagen(this); }); const contenedor = img.parentElement; contenedor.addEventListener('dragstart', function(e) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/html', this.outerHTML); this.classList.add('arrastrando'); window.elementoArrastrado = this; }); contenedor.addEventListener('dragend', function(e) { this.classList.remove('arrastrando'); window.elementoArrastrado = null; }); } }, 100); cerrarMenuContextual(); }; reader.readAsDataURL(file); } e.target.value = ''; }} style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}} />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Tipografías Personalizadas */}
+        {modalTipografias && (
+          <div className="modal-overlay" onClick={() => setModalTipografias(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '800px'}}>
+              <div className="modal-header">
+                <h2>🔤 Administrar Tipografías</h2>
+                <button onClick={() => setModalTipografias(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body" style={{maxHeight: '70vh', overflowY: 'auto'}}>
+                {/* Tipografías del sistema */}
+                <div style={{marginBottom: '2rem'}}>
+                  <h3 style={{color: '#646cff', marginBottom: '1rem', fontSize: '1.1rem'}}>📚 Tipografías del Sistema</h3>
+                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.8rem'}}>
+                    {['Arial, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Verdana, sans-serif', 'Trebuchet MS, sans-serif', 'Comic Sans MS, cursive', 'Impact, fantasy'].map(fuente => (
+                      <button
+                        key={fuente}
+                        onClick={() => aplicarTipografia(fuente)}
+                        className="btn-tipografia"
+                        style={{
+                          fontFamily: fuente,
+                          background: tipografiaActual === fuente ? 'rgba(100, 108, 255, 0.3)' : 'rgba(100, 108, 255, 0.1)',
+                          border: tipografiaActual === fuente ? '2px solid #646cff' : '1px solid rgba(100, 108, 255, 0.3)',
+                          padding: '0.8rem',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          color: 'white',
+                          transition: 'all 0.2s ease',
+                          textAlign: 'center'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (tipografiaActual !== fuente) {
+                            e.target.style.background = 'rgba(100, 108, 255, 0.2)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (tipografiaActual !== fuente) {
+                            e.target.style.background = 'rgba(100, 108, 255, 0.1)';
+                          }
+                        }}
+                      >
+                        {fuente.split(',')[0]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tipografías personalizadas */}
+                <div style={{marginBottom: '1.5rem'}}>
+                  <h3 style={{color: '#22c55e', marginBottom: '1rem', fontSize: '1.1rem'}}>✨ Tipografías Personalizadas</h3>
+                  {tipografiasPersonalizadas.length === 0 ? (
+                    <p style={{color: 'rgba(255,255,255,0.6)', textAlign: 'center', padding: '2rem'}}>
+                      No hay tipografías personalizadas instaladas.
+                    </p>
+                  ) : (
+                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.8rem'}}>
+                      {tipografiasPersonalizadas.map(tipo => (
+                        <div
+                          key={tipo.id}
+                          style={{
+                            background: tipografiaActual === tipo.familia ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)',
+                            border: tipografiaActual === tipo.familia ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                            borderRadius: '8px',
+                            padding: '0.8rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.5rem'
+                          }}
                         >
-                          📁 {carpeta.nombre}
-                        </button>
+                          <button
+                            onClick={() => aplicarTipografia(tipo.familia)}
+                            style={{
+                              fontFamily: tipo.familia,
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'white',
+                              cursor: 'pointer',
+                              fontSize: '1rem',
+                              textAlign: 'center',
+                              padding: '0.5rem 0'
+                            }}
+                          >
+                            {tipo.nombre}
+                          </button>
+                          <button
+                            onClick={() => eliminarTipografia(tipo.id)}
+                            style={{
+                              background: 'rgba(255, 50, 50, 0.3)',
+                              border: '1px solid rgba(255, 50, 50, 0.5)',
+                              borderRadius: '4px',
+                              color: 'white',
+                              cursor: 'pointer',
+                              padding: '0.3rem',
+                              fontSize: '0.8rem',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = 'rgba(255, 50, 50, 0.6)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'rgba(255, 50, 50, 0.3)';
+                            }}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Lista de Archivos */}
-              <div className="config-section">
-                <label className="config-label">
-                  📄 Archivos Seleccionados ({archivosSeleccionados.length}/{archivosDisponibles.length})
-                  <span className="hint-text">Marca/desmarca los archivos que quieres incluir</span>
-                </label>
-                <div className="archivos-lista">
-                  {archivosDisponibles.map((archivo, idx) => (
-                    <label key={idx} className="archivo-item">
-                      <input
-                        type="checkbox"
-                        checked={archivosSeleccionados.includes(archivo.ruta)}
-                        onChange={() => toggleSeleccionArchivo(archivo.ruta)}
-                      />
-                      <div className="archivo-info">
-                        <span className="archivo-nombre">📄 {archivo.nombre}</span>
-                        <span className="archivo-detalles">{archivo.tamaño_kb} KB</span>
-                      </div>
-                    </label>
-                  ))}
+                {/* Cargar nueva tipografía */}
+                <div style={{textAlign: 'center', padding: '1.5rem', background: 'rgba(100, 108, 255, 0.1)', borderRadius: '12px', border: '2px dashed rgba(100, 108, 255, 0.3)'}}>
+                  <label style={{cursor: 'pointer', display: 'inline-block'}}>
+                    <div style={{
+                      background: 'linear-gradient(135deg, #646cff 0%, #4338ca 100%)',
+                      color: 'white',
+                      padding: '1rem 2rem',
+                      borderRadius: '8px',
+                      fontWeight: 'bold',
+                      fontSize: '1rem',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.transform = 'scale(1.05)';
+                      e.target.style.boxShadow = '0 6px 20px rgba(100, 108, 255, 0.6)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.transform = 'scale(1)';
+                      e.target.style.boxShadow = 'none';
+                    }}
+                    >
+                      📁 Cargar Tipografía (.ttf, .otf, .woff, .woff2)
+                    </div>
+                    <input
+                      type="file"
+                      accept=".ttf,.otf,.woff,.woff2"
+                      onChange={cargarTipografiaPersonalizada}
+                      style={{display: 'none'}}
+                    />
+                  </label>
+                  <p style={{marginTop: '1rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.6)'}}>
+                    Sube archivos de fuentes en formato TTF, OTF, WOFF o WOFF2
+                  </p>
                 </div>
               </div>
-
-              {/* Configuración de Preguntas */}
-              <div className="config-section">
-                <label className="config-label">
-                  📋 Cantidad de Preguntas
-                </label>
-                <div className="config-preguntas">
-                  <div className="config-item">
-                    <label>Opción Múltiple:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={configExamen.num_multiple}
-                      onChange={(e) => setConfigExamen({...configExamen, num_multiple: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div className="config-item">
-                    <label>Respuesta Corta:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={configExamen.num_corta}
-                      onChange={(e) => setConfigExamen({...configExamen, num_corta: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                  <div className="config-item">
-                    <label>Desarrollo:</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="20"
-                      value={configExamen.num_desarrollo}
-                      onChange={(e) => setConfigExamen({...configExamen, num_desarrollo: parseInt(e.target.value) || 0})}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button 
-                className="btn-cancelar"
-                onClick={() => setModalConfigExamen(false)}
-              >
-                ❌ Cancelar
-              </button>
-              <button 
-                className="btn-generar"
-                onClick={confirmarGeneracionExamen}
-                disabled={archivosSeleccionados.length === 0}
-              >
-                ✨ Generar Examen
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Modal de Examen */}
-      {modalExamenAbierto && (
-        <div className="modal-overlay" onClick={cerrarExamen}>
-          <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📝 Examen - {carpetaExamen?.nombre}</h2>
-              <button onClick={cerrarExamen} className="btn-close">✕</button>
-            </div>
-            
-            <div className="modal-body examen-body">
-              {!resultadoExamen ? (
-                <>
-                  {/* Formulario de Examen */}
-                  <div className="examen-info">
-                    <p>Total de preguntas: <strong>{preguntasExamen.length}</strong></p>
-                    <p>Puntos totales: <strong>{preguntasExamen.reduce((sum, p) => sum + p.puntos, 0)}</strong></p>
-                  </div>
-
-                  <div className="preguntas-lista">
-                    {preguntasExamen.map((pregunta, index) => (
-                      <div key={index} className="pregunta-card">
-                        <div className="pregunta-header">
-                          <span className="pregunta-numero">Pregunta {index + 1}</span>
-                          <span className="pregunta-tipo">{
-                            pregunta.tipo === 'multiple' ? '📋 Selección' : 
-                            pregunta.tipo === 'verdadero_falso' ? '✓✗ Verdadero/Falso' :
-                            pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : 
-                            '📖 Desarrollo'
-                          }</span>
-                          <span className="pregunta-puntos">{pregunta.puntos} pts</span>
-                        </div>
-                        
-                        <p className="pregunta-texto">{pregunta.pregunta}</p>
-                        
-                        {/* Respuesta según tipo */}
-                        {pregunta.tipo === 'multiple' && (
-                          <div className="opciones-multiple">
-                            {pregunta.opciones && pregunta.opciones.length > 0 ? (
-                              pregunta.opciones.map((opcion, i) => (
-                                <label key={i} className="opcion-radio">
-                                  <input
-                                    type="radio"
-                                    name={`pregunta-${index}`}
-                                    value={opcion.charAt(0)}
-                                    checked={respuestasUsuario[index] === opcion.charAt(0)}
-                                    onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                                  />
-                                  <span>{opcion}</span>
-                                </label>
-                              ))
-                            ) : (
-                              <div className="opciones-no-disponibles">
-                                ⚠️ Las opciones no están disponibles para este examen. 
-                                Solo puedes reintentar exámenes generados recientemente.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {pregunta.tipo === 'verdadero_falso' && (
-                          <div className="opciones-verdadero-falso">
-                            <label className="opcion-vf">
-                              <input
-                                type="radio"
-                                name={`pregunta-${index}`}
-                                value="verdadero"
-                                checked={respuestasUsuario[index] === 'verdadero'}
-                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                              />
-                              <span className="texto-vf verdadero">✓ Verdadero</span>
-                            </label>
-                            <label className="opcion-vf">
-                              <input
-                                type="radio"
-                                name={`pregunta-${index}`}
-                                value="falso"
-                                checked={respuestasUsuario[index] === 'falso'}
-                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                              />
-                              <span className="texto-vf falso">✗ Falso</span>
-                            </label>
-                          </div>
-                        )}
-                        
-                        {pregunta.tipo === 'corta' && (
-                          <div className="respuesta-con-voz">
-                            <textarea
-                              className="respuesta-corta"
-                              placeholder="Escribe tu respuesta aquí (2-3 líneas)..."
-                              value={respuestasUsuario[index] || ''}
-                              onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                              rows="3"
-                            />
-                            <button
-                              type="button"
-                              className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
-                              onClick={() => alternarEscuchaVoz(index)}
-                              title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
-                            >
-                              {escuchandoPregunta === index ? '🔴' : '🎤'}
-                            </button>
-                            {escuchandoPregunta === index && transcripcionTemp && (
-                              <div className="transcripcion-temp">
-                                Escuchando: "{transcripcionTemp}"
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        
-                        {pregunta.tipo === 'desarrollo' && (
-                          <div className="respuesta-con-voz">
-                            <textarea
-                              className="respuesta-desarrollo"
-                              placeholder="Desarrolla tu respuesta completa aquí..."
-                              value={respuestasUsuario[index] || ''}
-                              onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                              rows="8"
-                            />
-                            <button
-                              type="button"
-                              className={`btn-microfono ${escuchandoPregunta === index ? 'escuchando' : ''}`}
-                              onClick={() => alternarEscuchaVoz(index)}
-                              title={escuchandoPregunta === index ? 'Detener grabación' : 'Responder con voz'}
-                            >
-                              {escuchandoPregunta === index ? '🔴' : '🎤'}
-                            </button>
-                            {escuchandoPregunta === index && transcripcionTemp && (
-                              <div className="transcripcion-temp">
-                                Escuchando: "{transcripcionTemp}"
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="examen-info-guardado">
-                    <p className="info-autosave">💾 Tus respuestas se guardan automáticamente en archivo local</p>
-                    <p className="info-hint">Sobrevive al reinicio de PC. Para guardar en el servidor, haz clic en "Pausar"</p>
-                  </div>
-
-                  <div className="examen-acciones">
-                    <button onClick={enviarExamen} className="btn-enviar-examen" disabled={generandoExamen}>
-                      {generandoExamen ? '⏳ Calificando...' : '✅ Enviar Examen'}
-                    </button>
-                    <button onClick={pausarExamen} className="btn-pausar-examen">
-                      ⏸️ Pausar
-                    </button>
-                    <button onClick={cerrarExamen} className="btn-cancelar">
-                      Cancelar
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Resultados del Examen */}
-                  <div className="resultado-header">
-                    <div className="resultado-puntuacion">
-                      <h3>Calificación: {resultadoExamen.puntos_obtenidos} / {resultadoExamen.puntos_totales}</h3>
-                      <div className="resultado-porcentaje" style={{
-                        color: resultadoExamen.porcentaje >= 70 ? '#22c55e' : resultadoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
-                      }}>
-                        {resultadoExamen.porcentaje.toFixed(1)}%
-                      </div>
-                    </div>
-                    
-                    <div className="resultado-estado">
-                      {resultadoExamen.porcentaje >= 70 ? (
-                        <span className="estado-aprobado">✅ APROBADO</span>
-                      ) : resultadoExamen.porcentaje >= 50 ? (
-                        <span className="estado-regular">⚠️ REGULAR</span>
-                      ) : (
-                        <span className="estado-reprobado">❌ REPROBADO</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="resultados-detalle">
-                    {resultadoExamen.resultados.map((resultado, index) => (
-                      <div key={index} className="resultado-pregunta">
-                        <div className="resultado-pregunta-header">
-                          <span className="pregunta-numero">Pregunta {index + 1}</span>
-                          <span className="resultado-puntos" style={{
-                            color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
-                                   resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
-                          }}>
-                            {resultado.puntos} / {resultado.puntos_maximos} pts
-                          </span>
-                        </div>
-                        
-                        <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
-                        
-                        <div className="resultado-respuesta">
-                          <strong>Tu respuesta:</strong>
-                          <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
-                        </div>
-                        
-                        <div className="resultado-feedback" style={{
-                          borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
-                                          resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
-                        }}>
-                          <strong>Retroalimentación:</strong>
-                          <p>{resultado.feedback}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="examen-acciones">
-                    <button onClick={reiniciarExamen} className="btn-reintentar">
-                      🔄 Reintentar Examen
-                    </button>
-                    <button onClick={cerrarExamen} className="btn-close-resultado">
-                      Cerrar
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal para Ver Resultado de Examen Completado */}
-      {viendoExamen && (
-        <div className="modal-overlay" onClick={() => setViendoExamen(null)}>
-          <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>📊 Resultado - {viendoExamen.carpeta_nombre}</h2>
-              <button onClick={() => setViendoExamen(null)} className="btn-close">✕</button>
-            </div>
-            
-            <div className="modal-body examen-body">
-              <div className="resultado-header">
-                <div className="resultado-puntuacion">
-                  <h3>Calificación: {viendoExamen.puntos_obtenidos} / {viendoExamen.puntos_totales}</h3>
-                  <div className="resultado-porcentaje" style={{
-                    color: viendoExamen.porcentaje >= 70 ? '#22c55e' : viendoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
-                  }}>
-                    {viendoExamen.porcentaje.toFixed(1)}%
-                  </div>
+        {/* Modal de Selección de Nota para Referencia */}
+        {modalSeleccionarNotaRef && (
+          <div className="modal-overlay" onClick={() => setModalSeleccionarNotaRef(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '700px'}}>
+              <div className="modal-header">
+                <h2>📝 Seleccionar Nota para Referencia</h2>
+                <button onClick={() => setModalSeleccionarNotaRef(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                {/* Breadcrumb de navegación */}
+                <div style={{
+                  padding: '0.8rem',
+                  background: 'rgba(100, 108, 255, 0.1)',
+                  borderRadius: '8px',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={() => cargarCarpetasModalNotaRef('')}
+                    style={{
+                      background: 'rgba(100, 108, 255, 0.2)',
+                      border: '1px solid rgba(100, 108, 255, 0.3)',
+                      borderRadius: '4px',
+                      color: 'white',
+                      padding: '0.4rem 0.8rem',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.4)'}
+                    onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.2)'}
+                  >
+                    🏠 Raíz
+                  </button>
+                  {rutaModalNotaRef && rutaModalNotaRef.split('/').filter(Boolean).map((carpeta, index, arr) => {
+                    const rutaParcial = arr.slice(0, index + 1).join('/');
+                    return (
+                      <React.Fragment key={rutaParcial}>
+                        <span style={{color: 'rgba(255,255,255,0.5)'}}>›</span>
+                        <button
+                          onClick={() => cargarCarpetasModalNotaRef(rutaParcial)}
+                          style={{
+                            background: 'rgba(100, 108, 255, 0.2)',
+                            border: '1px solid rgba(100, 108, 255, 0.3)',
+                            borderRadius: '4px',
+                            color: 'white',
+                            padding: '0.4rem 0.8rem',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.4)'}
+                          onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.2)'}
+                        >
+                          📁 {carpeta}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                  {rutaModalNotaRef && (
+                    <>
+                      <span style={{color: 'rgba(255,255,255,0.5)', marginLeft: 'auto'}}>|</span>
+                      <button
+                        onClick={() => {
+                          const partes = rutaModalNotaRef.split('/').filter(Boolean);
+                          partes.pop();
+                          const rutaPadre = partes.join('/');
+                          cargarCarpetasModalNotaRef(rutaPadre);
+                        }}
+                        style={{
+                          background: 'rgba(100, 108, 255, 0.3)',
+                          border: '1px solid rgba(100, 108, 255, 0.4)',
+                          borderRadius: '4px',
+                          color: 'white',
+                          padding: '0.4rem 0.8rem',
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          fontWeight: 'bold',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.5)'}
+                        onMouseLeave={(e) => e.target.style.background = 'rgba(100, 108, 255, 0.3)'}
+                      >
+                        ⬅️ Atrás
+                      </button>
+                    </>
+                  )}
                 </div>
-                
-                <div className="resultado-estado">
-                  {viendoExamen.porcentaje >= 70 ? (
-                    <span className="estado-aprobado">✅ APROBADO</span>
-                  ) : viendoExamen.porcentaje >= 50 ? (
-                    <span className="estado-regular">⚠️ REGULAR</span>
+
+                {/* Carpetas */}
+                {carpetasModalNotaRef.length > 0 && (
+                  <div style={{marginBottom: '1.5rem'}}>
+                    <h3 style={{color: '#646cff', marginBottom: '0.8rem', fontSize: '1rem'}}>📁 Carpetas</h3>
+                    <div style={{display: 'grid', gap: '0.5rem'}}>
+                      {carpetasModalNotaRef.map(carpeta => (
+                        <button
+                          key={carpeta}
+                          onClick={() => cargarCarpetasModalNotaRef(rutaModalNotaRef ? `${rutaModalNotaRef}/${carpeta}` : carpeta)}
+                          style={{
+                            background: 'rgba(100, 108, 255, 0.1)',
+                            border: '1px solid rgba(100, 108, 255, 0.3)',
+                            borderRadius: '8px',
+                            padding: '0.8rem 1rem',
+                            color: 'white',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '0.95rem',
+                            transition: 'all 0.2s',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background = 'rgba(100, 108, 255, 0.3)';
+                            e.target.style.transform = 'translateX(5px)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background = 'rgba(100, 108, 255, 0.1)';
+                            e.target.style.transform = 'translateX(0)';
+                          }}
+                        >
+                          📁 {carpeta}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notas en la carpeta actual */}
+                <div>
+                  <h3 style={{color: '#22c55e', marginBottom: '0.8rem', fontSize: '1rem'}}>📝 Notas</h3>
+                  {notasGuardadas.filter(n => (n.carpeta || '') === rutaModalNotaRef).length === 0 ? (
+                    <p style={{color: 'rgba(255,255,255,0.6)', textAlign: 'center', padding: '2rem'}}>
+                      No hay notas en esta carpeta
+                    </p>
                   ) : (
-                    <span className="estado-reprobado">❌ REPROBADO</span>
+                    <div style={{display: 'grid', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto'}}>
+                      {notasGuardadas
+                        .filter(n => (n.carpeta || '') === rutaModalNotaRef)
+                        .map(nota => (
+                          <button
+                            key={nota.id}
+                            onClick={() => seleccionarNotaReferencia(nota.id)}
+                            style={{
+                              background: 'rgba(34, 197, 94, 0.1)',
+                              border: '1px solid rgba(34, 197, 94, 0.3)',
+                              borderRadius: '8px',
+                              padding: '0.8rem 1rem',
+                              color: 'white',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              fontSize: '0.95rem',
+                              transition: 'all 0.2s',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.3rem'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background = 'rgba(34, 197, 94, 0.3)';
+                              e.target.style.transform = 'translateX(5px)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background = 'rgba(34, 197, 94, 0.1)';
+                              e.target.style.transform = 'translateX(0)';
+                            }}
+                          >
+                            <div style={{fontWeight: 'bold'}}>📝 {nota.titulo}</div>
+                            <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)'}}>
+                              {new Date(nota.fecha).toLocaleDateString()}
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Selección de Carpetas para Notas */}
+        {modalCarpetasNotaAbierto && (
+          <div className="modal-overlay" onClick={() => setModalCarpetasNotaAbierto(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📁 Seleccionar Carpeta para Nota</h2>
+                <button onClick={() => setModalCarpetasNotaAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="breadcrumb-nav">
+                  <button onClick={() => cargarCarpetasNotas('')} className="breadcrumb-btn">
+                    🏠 Inicio
+                  </button>
+                  {rutaNotasActual && rutaNotasActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                    const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                    return (
+                      <span key={idx}>
+                        <span className="breadcrumb-separator">/</span>
+                        <button onClick={() => cargarCarpetasNotas(rutaParcial)} className="breadcrumb-btn">
+                          {parte}
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="carpetas-lista" style={{maxHeight: '400px', overflowY: 'auto'}}>
+                  <button
+                    className="carpeta-item"
+                    onClick={() => {
+                      if (notaActual) {
+                        moverNota(notaActual.id, rutaNotasActual);
+                        setModalCarpetasNotaAbierto(false);
+                        setNotaActual(null);
+                      } else {
+                        seleccionarCarpetaNota(rutaNotasActual);
+                      }
+                    }}
+                    style={{background: 'linear-gradient(135deg, #646cff 0%, #535bf2 100%)', color: 'white', marginBottom: '1rem'}}
+                  >
+                    ✅ Seleccionar esta carpeta
+                  </button>
+
+                  {carpetasNotas.map((carpeta, idx) => (
+                    <button
+                      key={idx}
+                      className="carpeta-item"
+                      onClick={() => {
+                        const nuevaRuta = rutaNotasActual 
+                          ? `${rutaNotasActual}\\${carpeta.nombre}`
+                          : carpeta.nombre;
+                        cargarCarpetasNotas(nuevaRuta);
+                      }}
+                    >
+                      <span className="carpeta-icon">📁</span>
+                      <span>{carpeta.nombre}</span>
+                    </button>
+                  ))}
+
+                  {carpetasNotas.length === 0 && (
+                    <div className="empty-state">
+                      <p>No hay subcarpetas aquí</p>
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="resultados-detalle">
-                {viendoExamen.resultados.map((resultado, index) => (
-                  <div key={index} className="resultado-pregunta">
-                    <div className="resultado-pregunta-header">
-                      <span className="pregunta-numero">Pregunta {index + 1}</span>
-                      <span className="resultado-puntos" style={{
-                        color: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
-                               resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
-                      }}>
-                        {resultado.puntos} / {resultado.puntos_maximos} pts
-                      </span>
-                    </div>
-                    
-                    <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
-                    
-                    <div className="resultado-respuesta">
-                      <strong>Tu respuesta:</strong>
-                      <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
-                    </div>
-                    
-                    {resultado.respuesta_correcta && (
-                      <div className="resultado-respuesta-correcta">
-                        <strong>Respuesta correcta:</strong>
-                        <p>{resultado.respuesta_correcta}</p>
-                      </div>
-                    )}
-                    
-                    <div className="resultado-feedback" style={{
-                      borderLeftColor: resultado.puntos === resultado.puntos_maximos ? '#22c55e' : 
-                                      resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
-                    }}>
-                      <strong>Retroalimentación:</strong>
-                      <p>{resultado.feedback}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="examen-acciones">
-                <button onClick={() => setViendoExamen(null)} className="btn-close-resultado">
-                  Cerrar
+              <div className="modal-footer">
+                <button onClick={() => setModalCarpetasNotaAbierto(false)} className="btn-cancelar">
+                  Cancelar
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Modal de Hipervínculos con Referencias a Notas */}
+        {modalHipervinculos && (
+          <div className="modal-overlay" onClick={() => setModalHipervinculos(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>🔗 Insertar Hipervínculo</h2>
+                <button onClick={() => setModalHipervinculos(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <p style={{marginBottom: '1rem', color: '#a0a0b0'}}>
+                  Texto seleccionado: <strong>"{textoSeleccionado}"</strong>
+                </p>
+
+                <div className="config-section">
+                  <label className="config-label">
+                    <span>Tipo de enlace</span>
+                  </label>
+                  <div style={{display: 'flex', gap: '1rem', marginTop: '0.5rem'}}>
+                    <button
+                      type="button"
+                      className={tipoHipervinculo === 'url' ? 'btn-primary' : 'btn-secondary'}
+                      onClick={() => setTipoHipervinculo('url')}
+                      style={{flex: 1}}
+                    >
+                      🌐 URL Externa
+                    </button>
+                    <button
+                      type="button"
+                      className={tipoHipervinculo === 'nota' ? 'btn-primary' : 'btn-secondary'}
+                      onClick={() => setTipoHipervinculo('nota')}
+                      style={{flex: 1}}
+                    >
+                      📝 Referencia a Nota
+                    </button>
+                  </div>
+                </div>
+
+                {tipoHipervinculo === 'url' && (
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span>URL del enlace</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={urlHipervinculo}
+                      onChange={(e) => setUrlHipervinculo(e.target.value)}
+                      placeholder="https://ejemplo.com"
+                      className="input-nota-titulo"
+                      style={{marginTop: '0.5rem'}}
+                    />
+                    <p className="config-hint">El enlace se abrirá en una nueva ventana</p>
+                  </div>
+                )}
+
+                {tipoHipervinculo === 'nota' && (
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span>Selecciona una nota</span>
+                    </label>
+                    <div style={{maxHeight: '300px', overflowY: 'auto', marginTop: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem'}}>
+                      {notasGuardadas.length === 0 && (
+                        <p style={{textAlign: 'center', color: '#808090', padding: '2rem'}}>
+                          No hay notas guardadas
+                        </p>
+                      )}
+                      {notasGuardadas.map(nota => (
+                        <button
+                          key={nota.id}
+                          type="button"
+                          className={notaReferenciaId === nota.id ? 'btn-primary' : 'carpeta-item'}
+                          onClick={() => setNotaReferenciaId(nota.id)}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            marginBottom: '0.5rem',
+                            padding: '0.75rem',
+                            background: notaReferenciaId === nota.id 
+                              ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
+                              : 'rgba(255,255,255,0.05)'
+                          }}
+                        >
+                          <div style={{fontWeight: 'bold', marginBottom: '0.25rem'}}>
+                            📝 {nota.titulo}
+                          </div>
+                          <div style={{fontSize: '0.85rem', color: '#a0a0b0'}}>
+                            📁 {nota.carpeta || 'Raíz'}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="config-hint">Al hacer clic en el enlace, se abrirá la nota seleccionada</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button onClick={() => setModalHipervinculos(false)} className="btn-cancelar">
+                  Cancelar
+                </button>
+                <button 
+                  onClick={insertarHipervinculo} 
+                  className="btn-primary"
+                  disabled={tipoHipervinculo === 'url' ? !urlHipervinculo : !notaReferenciaId}
+                >
+                  🔗 Insertar Enlace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para Mover Prácticas */}
+        {modalMoverPractica && practicaAMover && (
+          <div className="modal-overlay" onClick={() => setModalMoverPractica(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📂 Mover Práctica</h2>
+                <button onClick={() => setModalMoverPractica(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <p style={{marginBottom: '1rem', color: '#a0a0b0'}}>
+                  Moviendo: <strong>{practicaAMover.ruta.split('/').pop()}</strong>
+                </p>
+
+                <div className="breadcrumb-nav">
+                  <button onClick={() => cargarCarpetasPracticas('')} className="breadcrumb-btn">
+                    🏠 Inicio
+                  </button>
+                  {rutaPracticasActual && rutaPracticasActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                    const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                    return (
+                      <span key={idx}>
+                        <span className="breadcrumb-separator">/</span>
+                        <button onClick={() => cargarCarpetasPracticas(rutaParcial)} className="breadcrumb-btn">
+                          {parte}
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                <div className="carpetas-lista" style={{maxHeight: '400px', overflowY: 'auto', marginTop: '1rem'}}>
+                  <button
+                    className="carpeta-item"
+                    onClick={() => {
+                      moverPractica(practicaAMover.id, rutaPracticasActual);
+                      setModalMoverPractica(false);
+                      setPracticaAMover(null);
+                      setSelectedMenu('practicas'); // Forzar re-render
+                    }}
+                    style={{background: 'linear-gradient(135deg, #646cff 0%, #535bf2 100%)', color: 'white', marginBottom: '1rem'}}
+                  >
+                    ✅ Mover aquí
+                  </button>
+
+                  {carpetasPracticas.map((carpeta, idx) => (
+                    <button
+                      key={idx}
+                      className="carpeta-item"
+                      onClick={() => {
+                        const nuevaRuta = rutaPracticasActual 
+                          ? `${rutaPracticasActual}\\${carpeta.nombre}`
+                          : carpeta.nombre;
+                        cargarCarpetasPracticas(nuevaRuta);
+                      }}
+                    >
+                      <span className="carpeta-icon">📁</span>
+                      <span>{carpeta.nombre}</span>
+                    </button>
+                  ))}
+
+                  {carpetasPracticas.length === 0 && (
+                    <div className="empty-state">
+                      <p>No hay subcarpetas aquí</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button onClick={() => setModalMoverPractica(false)} className="btn-cancelar">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Selección de Archivos para Examen por Carpeta */}
+        {modalSeleccionArchivos && (
+          <div className="modal-overlay" onClick={() => setModalSeleccionArchivos(false)}>
+            <div className="modal-content modal-seleccion-archivos" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📚 Generar Examen - {tipoCarpeta.toUpperCase()}</h2>
+                <button onClick={() => setModalSeleccionArchivos(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="info-carpeta">
+                  <p>📁 <strong>Carpeta:</strong> {carpetaExamen}</p>
+                  <p>📄 <strong>Archivos encontrados:</strong> {archivosEncontrados.length}</p>
+                  <p>✅ <strong>Seleccionados:</strong> {archivosEncontrados.length - archivosExcluidos.length}</p>
+                </div>
+                
+                <div className="form-group">
+                  <h3>⚙️ Configuración del Examen</h3>
+                  <div className="config-grid">
+                    <div className="config-item">
+                      <label>Opción Múltiple:</label>
+                      <input 
+                        type="number" 
+                        value={configExamenCarpeta.num_multiple}
+                        onChange={(e) => setConfigExamenCarpeta({...configExamenCarpeta, num_multiple: parseInt(e.target.value) || 0})}
+                        min="0"
+                        max="50"
+                      />
+                    </div>
+                    <div className="config-item">
+                      <label>Respuesta Corta:</label>
+                      <input 
+                        type="number" 
+                        value={configExamenCarpeta.num_corta}
+                        onChange={(e) => setConfigExamenCarpeta({...configExamenCarpeta, num_corta: parseInt(e.target.value) || 0})}
+                        min="0"
+                        max="30"
+                      />
+                    </div>
+                    <div className="config-item">
+                      <label>Verdadero/Falso:</label>
+                      <input 
+                        type="number" 
+                        value={configExamenCarpeta.num_vf}
+                        onChange={(e) => setConfigExamenCarpeta({...configExamenCarpeta, num_vf: parseInt(e.target.value) || 0})}
+                        min="0"
+                        max="20"
+                      />
+                    </div>
+                    <div className="config-item">
+                      <label>Desarrollo:</label>
+                      <input 
+                        type="number" 
+                        value={configExamenCarpeta.num_desarrollo}
+                        onChange={(e) => setConfigExamenCarpeta({...configExamenCarpeta, num_desarrollo: parseInt(e.target.value) || 0})}
+                        min="0"
+                        max="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="form-group">
+                  <h3>📂 Seleccionar Archivos a Incluir</h3>
+                  <div className="archivos-seleccion-container">
+                    <div className="archivos-acciones">
+                      <button 
+                        onClick={() => setArchivosExcluidos([])}
+                        className="btn-secondary"
+                      >
+                        ✅ Seleccionar Todos
+                      </button>
+                      <button 
+                        onClick={() => setArchivosExcluidos(archivosEncontrados.map(a => a.ruta))}
+                        className="btn-secondary"
+                      >
+                        ❌ Deseleccionar Todos
+                      </button>
+                    </div>
+                    
+                    <div className="archivos-lista">
+                      {archivosEncontrados.map((archivo) => {
+                        const excluido = archivosExcluidos.includes(archivo.ruta);
+                        return (
+                          <div 
+                            key={archivo.ruta} 
+                            className={`archivo-item ${excluido ? 'excluido' : 'incluido'}`}
+                            onClick={() => {
+                              if (excluido) {
+                                setArchivosExcluidos(archivosExcluidos.filter(r => r !== archivo.ruta));
+                              } else {
+                                setArchivosExcluidos([...archivosExcluidos, archivo.ruta]);
+                              }
+                            }}
+                          >
+                            <div className="archivo-checkbox">
+                              {excluido ? '☐' : '☑'}
+                            </div>
+                            <div className="archivo-info">
+                              <div className="archivo-nombre">{archivo.nombre}</div>
+                              <div className="archivo-ruta">{archivo.ruta}</div>
+                              <div className="archivo-tamaño">{archivo.tamaño_kb} KB</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  onClick={() => setModalSeleccionArchivos(false)} 
+                  className="btn-cancelar"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={generarExamenPorBloques} 
+                  className="btn-primary"
+                  disabled={archivosEncontrados.length - archivosExcluidos.length === 0}
+                >
+                  🚀 Generar Examen ({archivosEncontrados.length - archivosExcluidos.length} archivos)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Indicador de generación por bloques */}
+        {generandoExamenPorBloques && (
+          <div className="modal-overlay">
+            <div className="modal-content modal-progreso-bloques">
+              <div className="modal-header">
+                <h2>⚡ Generando Examen por Bloques</h2>
+              </div>
+              <div className="modal-body">
+                <div className="progreso-bloques">
+                  <div className="bloque-info">
+                    <span className="bloque-actual">{bloqueActual}</span>
+                    <span className="bloque-separador">/</span>
+                    <span className="bloque-total">{totalBloques}</span>
+                  </div>
+                  <div className="progreso-mensaje">{mensajeProgreso}</div>
+                  <div className="progreso-barra">
+                    <div className="progreso-fill" style={{width: `${progresoGeneracion}%`}}>
+                      <span className="progreso-texto">{progresoGeneracion}%</span>
+                    </div>
+                  </div>
+                  <p className="hint">Procesando archivos en bloques pequeños para mejor calidad...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   )
 }

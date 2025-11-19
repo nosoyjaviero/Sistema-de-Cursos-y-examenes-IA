@@ -15,7 +15,15 @@ class GeneradorUnificado:
                  modelo_path_gguf: str = None, n_gpu_layers: int = 35):
         self.usar_ollama = usar_ollama
         self.modelo_ollama = modelo_ollama
-        self.modelo_path_gguf = modelo_path_gguf
+        # Convertir path relativo a absoluto
+        if modelo_path_gguf:
+            from pathlib import Path
+            modelo_path = Path(modelo_path_gguf)
+            if not modelo_path.is_absolute():
+                modelo_path = Path.cwd() / modelo_path
+            self.modelo_path_gguf = str(modelo_path)
+        else:
+            self.modelo_path_gguf = None
         self.n_gpu_layers = n_gpu_layers
         self.llm = None
         
@@ -75,12 +83,19 @@ class GeneradorUnificado:
             print(f"   • Temperature: {temperature}")
             print(f"   • Max tokens: {max_tokens}")
             print(f"   • GPU: Activada automáticamente por Ollama")
+            print(f"   • Prompt length: {len(prompt)} caracteres")
             print(f"{'='*60}\n")
+            
+            # Debug: mostrar inicio del prompt
+            print(f"📝 INICIO DEL PROMPT (primeros 500 chars):")
+            print(f"{prompt[:500]}")
+            print(f"...\n")
             
             # Timeout más largo para modelos grandes como deepseek-r1
             timeout_segundos = 600  # 10 minutos
             print(f"⏱️  Timeout configurado: {timeout_segundos} segundos (10 minutos)")
-            print(f"💡 Modelos grandes pueden tardar varios minutos...\n")
+            print(f"💡 Modelos grandes pueden tardar varios minutos...")
+            print(f"🚀 Enviando request a Ollama...\n")
             
             response = requests.post(
                 "http://localhost:11434/api/generate",
@@ -97,21 +112,113 @@ class GeneradorUnificado:
                 timeout=timeout_segundos
             )
             
+            print(f"📬 Response status: {response.status_code}")
+            
             if response.status_code == 200:
                 print(f"✅ Generación completada con GPU\n")
-                respuesta_completa = response.json()['response']
+                respuesta_json = response.json()
+                respuesta_completa = respuesta_json.get('response', '')
+                
+                if not respuesta_completa:
+                    print(f"⚠️ ADVERTENCIA: Respuesta vacía")
+                    print(f"   JSON completo: {respuesta_json}")
+                    return None
                 
                 # Debug: Guardar respuesta completa
                 print(f"📝 Longitud de respuesta: {len(respuesta_completa)} caracteres")
                 print(f"📄 Primeros 500 caracteres:\n{respuesta_completa[:500]}\n")
-                print(f"📄 Últimos 500 caracteres:\n{respuesta_completa[-500:]}\n")
+                if len(respuesta_completa) > 500:
+                    print(f"📄 Últimos 500 caracteres:\n{respuesta_completa[-500:]}\n")
                 
                 return respuesta_completa
             else:
+                error_detail = response.text if response.text else "Sin detalles"
                 print(f"❌ Error Ollama {response.status_code}")
+                print(f"   Detalles: {error_detail[:500]}")
                 return None
+        except requests.exceptions.Timeout:
+            print(f"⏱️ TIMEOUT: La generación excedió {timeout_segundos} segundos")
+            print(f"   Considera usar menos preguntas o un modelo más pequeño")
+            return None
         except Exception as e:
-            print(f"❌ Error Ollama: {e}")
+            print(f"❌ Error Ollama: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _generar_ollama_chat(self, messages: list, max_tokens: int, temperature: float) -> str:
+        """Genera con Ollama usando API de chat (mantiene historial/contexto)"""
+        try:
+            print(f"\n{'='*60}")
+            print(f"💬 CHAT CON CONTEXTO - Modelo Ollama: {self.modelo_ollama}")
+            print(f"⚙️  Configuración:")
+            print(f"   • Temperature: {temperature}")
+            print(f"   • Max tokens: {max_tokens}")
+            print(f"   • Mensajes en historial: {len(messages)}")
+            print(f"   • GPU: Activada automáticamente por Ollama")
+            print(f"{'='*60}\n")
+            
+            # Debug: mostrar estructura de mensajes
+            print(f"📜 Estructura del chat:")
+            for i, msg in enumerate(messages):
+                role = msg.get('role', 'unknown')
+                content_preview = msg.get('content', '')[:100]
+                print(f"   {i+1}. {role}: {content_preview}...")
+            print()
+            
+            # Timeout más largo para modelos grandes
+            timeout_segundos = 600  # 10 minutos
+            print(f"⏱️  Timeout configurado: {timeout_segundos} segundos")
+            print(f"🚀 Enviando request a Ollama API de chat...\n")
+            
+            response = requests.post(
+                "http://localhost:11434/api/chat",
+                json={
+                    "model": self.modelo_ollama,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                        "stop": ["<|eot_id|>", "<|end_of_text|>"]
+                    }
+                },
+                timeout=timeout_segundos
+            )
+            
+            print(f"📬 Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                print(f"✅ Generación completada con GPU y contexto\n")
+                respuesta_json = response.json()
+                
+                # La API de chat devuelve el mensaje en un formato diferente
+                mensaje_respuesta = respuesta_json.get('message', {})
+                respuesta_completa = mensaje_respuesta.get('content', '')
+                
+                if not respuesta_completa:
+                    print(f"⚠️ ADVERTENCIA: Respuesta vacía")
+                    print(f"   JSON completo: {respuesta_json}")
+                    return None
+                
+                # Debug: Guardar respuesta completa
+                print(f"📝 Longitud de respuesta: {len(respuesta_completa)} caracteres")
+                print(f"📄 Primeros 300 caracteres:\n{respuesta_completa[:300]}\n")
+                
+                return respuesta_completa
+            else:
+                error_detail = response.text if response.text else "Sin detalles"
+                print(f"❌ Error Ollama {response.status_code}")
+                print(f"   Detalles: {error_detail[:500]}")
+                return None
+        except requests.exceptions.Timeout:
+            print(f"⏱️ TIMEOUT: La generación excedió {timeout_segundos} segundos")
+            print(f"   Considera reducir el historial o usar un modelo más pequeño")
+            return None
+        except Exception as e:
+            print(f"❌ Error Ollama Chat: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _generar_gguf(self, prompt: str, max_tokens: int, temperature: float, 
@@ -139,8 +246,11 @@ class GeneradorUnificado:
                       callback_progreso = None,
                       ajustes_modelo: dict = None,
                       archivos: list = None,
-                      session_id: str = None) -> List[PreguntaExamen]:
-        """Genera examen usando Ollama o GGUF"""
+                      session_id: str = None,
+                      sin_prompt_sistema: bool = False) -> List[PreguntaExamen]:
+        """Genera examen usando Ollama o GGUF
+        sin_prompt_sistema: Si es True, usa el contenido directamente sin agregar instrucciones
+        """
         
         if num_preguntas is None:
             num_preguntas = {'multiple': 6, 'verdadero_falso': 4, 'corta': 2}
@@ -156,11 +266,22 @@ class GeneradorUnificado:
         if callback_progreso:
             callback_progreso(15, "Preparando prompt...")
         
+        # Verificar que contenido_documento es un string
+        if not isinstance(contenido_documento, str):
+            print(f"❌ ERROR: contenido_documento no es string, es {type(contenido_documento)}")
+            raise TypeError(f"contenido_documento debe ser string, recibido: {type(contenido_documento)}")
+        
         # Crear prompt
         contenido_corto = contenido_documento[:8000]
         total = sum(num_preguntas.values())
         
-        prompt = self._crear_prompt(contenido_corto, num_preguntas, total)
+        if sin_prompt_sistema:
+            # Modo prompt personalizado: usar contenido directamente
+            prompt = contenido_corto
+            print(f"🎯 MODO PROMPT PERSONALIZADO: Usando prompt del usuario directamente")
+        else:
+            # Modo normal: agregar formato del sistema
+            prompt = self._crear_prompt(contenido_corto, num_preguntas, total)
         
         if callback_progreso:
             motor = "Ollama + GPU" if self.usar_ollama else "llama-cpp-python"
@@ -194,7 +315,7 @@ class GeneradorUnificado:
             callback_progreso(70, "Procesando respuesta...")
         
         # Parsear JSON
-        preguntas = self._extraer_preguntas(respuesta)
+        preguntas = self._extraer_preguntas(respuesta, num_preguntas)
         
         if callback_progreso:
             callback_progreso(100, f"¡{len(preguntas)} preguntas generadas!")
@@ -265,7 +386,7 @@ FORMATO JSON REQUERIDO:
 Genera ahora las {total} preguntas:
 """
     
-    def _extraer_preguntas(self, respuesta: str) -> List[PreguntaExamen]:
+    def _extraer_preguntas(self, respuesta: str, num_preguntas: Dict[str, int] = None) -> List[PreguntaExamen]:
         """Extrae preguntas del JSON"""
         try:
             print(f"\n{'='*60}")
@@ -305,33 +426,132 @@ Genera ahora las {total} preguntas:
                                 fin = i + 1
                                 break
                 
+                # Si no se encontró cierre balanceado, tomar hasta el final
+                if fin == inicio and inicio >= 0:
+                    print(f"⚠️ JSON sin cierre balanceado, tomando hasta el final")
+                    fin = len(respuesta)
+                
                 if fin > inicio:
                     json_str = respuesta[inicio:fin]
                     print(f"✅ JSON encontrado en posición {inicio}-{fin}")
                     print(f"📄 JSON extraído (primeros 300 chars):\n{json_str[:300]}...\n")
+                    
+                    # Limpiar JSON de errores comunes del modelo
+                    import re
+                    
+                    # 1. Eliminar comas antes de ] o }
+                    json_str = re.sub(r',(\s*[}\]])', r'\1', json_str)
+                    
+                    # 2. Si el JSON termina incompleto, intentar repararlo
+                    # Buscar campos incompletos tipo: "explanation": "
+                    json_str = re.sub(r'"\s*:\s*"[^"]*$', '": "Explicación no disponible"', json_str)
+                    
+                    # 3. Asegurar cierre de objetos y arrays
+                    # Contar llaves y corchetes abiertos
+                    count_braces = json_str.count('{') - json_str.count('}')
+                    count_brackets = json_str.count('[') - json_str.count(']')
+                    
+                    # Cerrar los que falten
+                    if count_braces > 0 or count_brackets > 0:
+                        print(f"⚠️ JSON incompleto: {count_braces} llaves, {count_brackets} corchetes sin cerrar")
+                        # Cerrar en orden inverso (primero objetos, luego arrays)
+                        json_str += '}' * count_braces
+                        json_str += ']' * count_brackets
+                        print(f"🔧 JSON reparado automáticamente")
                     
                     # Intentar parsear
                     try:
                         datos = json.loads(json_str)
                         print(f"✅ JSON parseado correctamente")
                         
-                        # Verificar estructura
-                        if 'preguntas' not in datos:
-                            print(f"❌ JSON no tiene campo 'preguntas'")
+                        # Verificar estructura - aceptar 'preguntas' o 'questions'
+                        campo_preguntas = None
+                        if 'preguntas' in datos:
+                            campo_preguntas = 'preguntas'
+                        elif 'questions' in datos:
+                            campo_preguntas = 'questions'
+                        
+                        if not campo_preguntas:
+                            print(f"❌ JSON no tiene campo 'preguntas' ni 'questions'")
                             print(f"📋 Campos encontrados: {list(datos.keys())}")
-                            return []
+                            
+                            # Si el JSON es un array directamente, usarlo
+                            if isinstance(datos, list):
+                                print(f"💡 El JSON es un array directo con {len(datos)} elementos")
+                                campo_preguntas = None
+                                lista_preguntas = datos
+                            else:
+                                return []
+                        else:
+                            lista_preguntas = datos.get(campo_preguntas, [])
                         
                         preguntas = []
-                        for i, p in enumerate(datos.get('preguntas', [])):
+                        for i, p in enumerate(lista_preguntas):
                             try:
                                 pregunta = PreguntaExamen.from_dict(p)
                                 preguntas.append(pregunta)
-                                print(f"✅ Pregunta {i+1}: {p.get('tipo', 'unknown')} - {p.get('pregunta', '')[:50]}...")
+                                tipo = p.get('tipo') or p.get('type', 'unknown')
+                                texto = p.get('pregunta') or p.get('question', '')
+                                print(f"✅ Pregunta {i+1}: {tipo} - {texto[:50]}...")
                             except Exception as e:
                                 print(f"❌ Error en pregunta {i+1}: {e}")
                                 continue
                         
                         print(f"\n✅ Total: {len(preguntas)} preguntas generadas exitosamente")
+                        
+                        # FILTRAR PREGUNTAS POR TIPO Y CANTIDAD SOLICITADA
+                        if num_preguntas and any(v > 0 for v in num_preguntas.values()):
+                            preguntas_filtradas = []
+                            contador_por_tipo = {}
+                            
+                            # Mapeo de tipos nuevos a tipos del sistema
+                            mapeo_tipos = {
+                                'flashcard': 'flashcard',
+                                'mcq': 'mcq', 
+                                'true_false': 'true_false',
+                                'verdadero_falso': 'true_false',
+                                'cloze': 'cloze',
+                                'short_answer': 'short_answer',
+                                'respuesta_corta': 'short_answer',
+                                'open_question': 'open_question',
+                                'desarrollo': 'open_question',
+                                'case_study': 'case_study',
+                                'caso_estudio': 'case_study',
+                                'reading_comprehension': 'reading_comprehension',
+                                'reading_true_false': 'reading_true_false',
+                                'reading_cloze': 'reading_cloze',
+                                'reading_skill': 'reading_skill',
+                                'reading_matching': 'reading_matching',
+                                'reading_sequence': 'reading_sequence',
+                                'writing_short': 'writing_short',
+                                'writing_paraphrase': 'writing_paraphrase',
+                                'writing_correction': 'writing_correction',
+                                'writing_transformation': 'writing_transformation',
+                                'writing_essay': 'writing_essay',
+                                'writing_sentence_builder': 'writing_sentence_builder',
+                                'writing_picture_description': 'writing_picture_description',
+                                'writing_email': 'writing_email',
+                                'multiple': 'mcq',
+                                'corta': 'short_answer'
+                            }
+                            
+                            for pregunta in preguntas:
+                                tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
+                                cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
+                                
+                                if cantidad_solicitada > 0:
+                                    if tipo_normalizado not in contador_por_tipo:
+                                        contador_por_tipo[tipo_normalizado] = 0
+                                    
+                                    if contador_por_tipo[tipo_normalizado] < cantidad_solicitada:
+                                        preguntas_filtradas.append(pregunta)
+                                        contador_por_tipo[tipo_normalizado] += 1
+                            
+                            print(f"🔍 Filtrado: {len(preguntas)} generadas → {len(preguntas_filtradas)} solicitadas")
+                            print(f"   Solicitadas: {num_preguntas}")
+                            print(f"   Filtradas por tipo: {contador_por_tipo}")
+                            return preguntas_filtradas
+                        
                         return preguntas
                         
                     except json.JSONDecodeError as e:
@@ -351,8 +571,13 @@ Genera ahora las {total} preguntas:
                     print(f"✅ JSON encontrado en markdown")
                     try:
                         datos = json.loads(json_str)
+                        # Aceptar 'preguntas' o 'questions'
+                        lista_preguntas = datos.get('preguntas') or datos.get('questions', [])
+                        if isinstance(datos, list):
+                            lista_preguntas = datos
+                        
                         preguntas = []
-                        for p in datos.get('preguntas', []):
+                        for p in lista_preguntas:
                             preguntas.append(PreguntaExamen.from_dict(p))
                         print(f"✅ {len(preguntas)} preguntas desde markdown")
                         return preguntas
@@ -389,9 +614,14 @@ Genera ahora las {total} preguntas:
             return resultado
         
         respuesta_usuario_lower = respuesta_usuario.strip().lower()
-        respuesta_correcta_lower = pregunta.respuesta_correcta.strip().lower()
+        respuesta_correcta = pregunta.respuesta_correcta
+        if respuesta_correcta is None:
+            respuesta_correcta = ""
+        elif not isinstance(respuesta_correcta, str):
+            respuesta_correcta = str(respuesta_correcta)
+        respuesta_correcta_lower = respuesta_correcta.strip().lower()
         
-        if pregunta.tipo == "multiple":
+        if pregunta.tipo == "multiple" or pregunta.tipo == "mcq":
             # Para múltiple, solo comparar la letra (A, B, C, D)
             if respuesta_usuario_lower in respuesta_correcta_lower or respuesta_correcta_lower in respuesta_usuario_lower:
                 resultado["correcta"] = True
@@ -400,7 +630,7 @@ Genera ahora las {total} preguntas:
             else:
                 resultado["feedback"] = f"Incorrecto. La respuesta correcta es: {pregunta.respuesta_correcta}"
         
-        elif pregunta.tipo == "verdadero_falso":
+        elif pregunta.tipo == "verdadero_falso" or pregunta.tipo == "true_false":
             if respuesta_usuario_lower == respuesta_correcta_lower:
                 resultado["correcta"] = True
                 resultado["puntos_obtenidos"] = pregunta.puntos
@@ -408,23 +638,45 @@ Genera ahora las {total} preguntas:
             else:
                 resultado["feedback"] = f"Incorrecto. La respuesta correcta es: {pregunta.respuesta_correcta}"
         
-        elif pregunta.tipo in ["corta", "desarrollo"]:
-            # Para respuestas cortas y desarrollo, usar IA para evaluar
-            tipo_pregunta = "desarrollo" if pregunta.tipo == "desarrollo" else "corta"
-            print(f"\n🤖 Evaluando respuesta de {tipo_pregunta} con IA...")
+        elif pregunta.tipo in ["corta", "desarrollo", "short_answer", "open_question", "case_study",
+                               "flashcard", "cloze",
+                               "reading_comprehension", "reading_true_false", "reading_cloze", 
+                               "reading_skill", "reading_matching", "reading_sequence",
+                               "writing_short", "writing_paraphrase", "writing_correction",
+                               "writing_transformation", "writing_essay", "writing_sentence_builder",
+                               "writing_picture_description", "writing_email"]:
+            # Para todos los demás tipos, usar IA para evaluar
+            print(f"\n🤖 Evaluando respuesta de tipo '{pregunta.tipo}' con IA...")
+            resultado = self._evaluar_con_ia(pregunta, respuesta_usuario)
+        
+        else:
+            # Tipo desconocido - evaluar con IA por defecto
+            print(f"\n⚠️ Tipo de pregunta desconocido: '{pregunta.tipo}' - usando evaluación con IA")
             resultado = self._evaluar_con_ia(pregunta, respuesta_usuario)
         
         return resultado
     
     def _evaluar_con_ia(self, pregunta: PreguntaExamen, respuesta_usuario: str) -> dict:
         """Evalúa una respuesta de desarrollo/corta usando IA"""
+        
+        # Extraer respuesta correcta dependiendo del tipo
+        respuesta_modelo = pregunta.respuesta_correcta
+        
+        # Si es un diccionario (flashcard), extraer el campo 'answer'
+        if isinstance(respuesta_modelo, dict):
+            respuesta_modelo = respuesta_modelo.get('answer', str(respuesta_modelo))
+        
+        # Convertir a string si no lo es
+        if not isinstance(respuesta_modelo, str):
+            respuesta_modelo = str(respuesta_modelo)
+        
         prompt = f"""Eres un profesor evaluando una respuesta de estudiante. Compara la respuesta del estudiante con la respuesta modelo y proporciona retroalimentación específica.
 
 PREGUNTA:
 {pregunta.pregunta}
 
 RESPUESTA MODELO (lo que se esperaba):
-{pregunta.respuesta_correcta}
+{respuesta_modelo}
 
 RESPUESTA DEL ESTUDIANTE:
 {respuesta_usuario}
