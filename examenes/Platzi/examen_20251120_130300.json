@@ -1,0 +1,23 @@
+{
+  "id": "20251120_130300",
+  "archivo": "examen_20251120_130300.json",
+  "fecha_completado": "2025-11-20T13:03:00.965883",
+  "carpeta_ruta": "Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 0.0,
+  "puntos_totales": 1,
+  "porcentaje": 0.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué son los principios jurídicos en el diseño?",
+      "tipo": "flashcard",
+      "opciones": [],
+      "respuesta_usuario": "rhgtrhhrt",
+      "respuesta_correcta": null,
+      "puntos": 0.0,
+      "puntos_maximos": 1,
+      "feedback": "Incompleto. Respuesta esperada: No hay respuesta modelo definida para esta pregunta"
+    }
+  ],
+  "tipo": "completado"
+}

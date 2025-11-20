@@ -1,0 +1,33 @@
+{
+  "id": "20251120_134728",
+  "archivo": "examen_20251120_134728.json",
+  "fecha_completado": "2025-11-20T13:47:28.511645",
+  "carpeta_ruta": "Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 1.0,
+  "puntos_totales": 2,
+  "porcentaje": 50.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué categoría de principios jurídicos en el diseño se enfoca en cómo los usuarios interactúan con un producto?",
+      "tipo": "flashcard",
+      "opciones": [],
+      "respuesta_usuario": "Relación y jerarquía",
+      "respuesta_correcta": null,
+      "puntos": 0.5,
+      "puntos_maximos": 1,
+      "feedback": "Excelente intento, pero parece que no dominas completamente la categoría de principios jurídicos en diseño. La relación es un concepto correcto, pero 'jerarquía' se refiere más a la estructura organizativa del diseño y no directamente a cómo los usuarios interactúan con el producto. Lo importante aquí es comprender cómo los usuarios perciben e interactúan con un producto, por lo que debes enfocarte en conceptos como usabilidad, accesibilidad o experiencia de usuario.\\n\\n✅ Conceptos que dominas: relación\\n\\n❌ Conceptos que te faltan comprender: jerarquía, interacción de los usuarios con el producto"
+    },
+    {
+      "pregunta": "¿Qué principio jurídico en el diseño sugiere que un diseño visualmente atractivo puede influir en la percepción de su usabilidad?",
+      "tipo": "flashcard",
+      "opciones": [],
+      "respuesta_usuario": "Forma e interacción",
+      "respuesta_correcta": null,
+      "puntos": 0.5,
+      "puntos_maximos": 1,
+      "feedback": "Excelente trabajo en mencionar la forma como un factor que influye en la percepción de usabilidad. Sin embargo, parece que te faltó considerar la interacción entre los usuarios y el sistema, así como identificar específicamente el principio jurídico relevante (por ejemplo, el principio de accesibilidad). Recuerda explorar conceptos relacionados con la experiencia del usuario y principios éticos en diseño.\\n\\n✅ Conceptos que dominas: Forma\\n\\n❌ Conceptos que te faltan comprender: Interacción, principio jurídico en el diseño"
+    }
+  ],
+  "tipo": "completado"
+}

@@ -44,6 +44,10 @@ class PreguntaExamen:
             respuesta_correcta = data['solution'].get('answer', '')
             explicacion = data['solution'].get('explanation', '')
             metadata = dict(data)
+            
+            # IMPORTANTE: Asegurar que respuesta_correcta está poblada para evaluación IA
+            if not respuesta_correcta:
+                respuesta_correcta = data.get('solution', {}).get('answer', '')
         else:
             # Intentar múltiples campos para la pregunta
             pregunta = (

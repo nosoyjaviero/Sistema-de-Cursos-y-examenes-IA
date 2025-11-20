@@ -1,0 +1,23 @@
+{
+  "id": "20251120_133845",
+  "archivo": "examen_20251120_133845.json",
+  "fecha_completado": "2025-11-20T13:38:45.057087",
+  "carpeta_ruta": "Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 0.5,
+  "puntos_totales": 1,
+  "porcentaje": 50.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué son los principios jurídicos en el diseño?",
+      "tipo": "flashcard",
+      "opciones": [],
+      "respuesta_usuario": "s son reglas fundamentales que guían la evaluación de usabilidad en sitios web, aplicaciones móviles y otros productos digitales. Estos principios se dividen en cuatro categorías principales.",
+      "respuesta_correcta": null,
+      "puntos": 0.5,
+      "puntos_maximos": 1,
+      "feedback": "Excelente intento al describir los principios que guían la evaluación de usabilidad. Sin embargo, parece haber una confusión entre 'reglas fundamentales' y 'principios jurídicos'. Recuerde que los principios jurídicos en diseño se refieren específicamente a las reglas que rigen el uso del derecho en el diseño de productos digitales. También es importante mencionar las cuatro categorías principales de estos principios, como la privacidad, seguridad, accesibilidad y responsabilidad.\\n\\n✅ Conceptos que dominas: reglas fundamentales, evaluación de usabilidad\\n\\n❌ Conceptos que te faltan comprender: principios jurídicos en diseño, categorías principales (4)"
+    }
+  ],
+  "tipo": "completado"
+}

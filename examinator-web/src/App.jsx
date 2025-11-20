@@ -73,6 +73,7 @@ function App() {
   const [examenCompletado, setExamenCompletado] = useState(false)
   const [carpetaExamen, setCarpetaExamen] = useState(null)
   const [esPractica, setEsPractica] = useState(false) // 🔥 Flag para distinguir prácticas de exámenes
+  const [flashcardsVolteadas, setFlashcardsVolteadas] = useState({}) // 🃏 Estado de volteo de flashcards
   const [generandoExamen, setGenerandoExamen] = useState(false)
   const [abortController, setAbortController] = useState(null)
   const [progresoGeneracion, setProgresoGeneracion] = useState(0)
@@ -3380,21 +3381,32 @@ JSON:`
         
         // Guardar progreso de práctica si viene de una práctica
         const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
-        const practicaIndex = practicas.findIndex(p => 
-          p.preguntas.length === preguntasExamen.length &&
-          !p.completada
-        );
+        
+        // Buscar práctica activa (la más reciente sin completar o con mismas preguntas)
+        const practicaIndex = practicas.findIndex(p => {
+          if (p.completada) return false;
+          // Comparar por longitud de preguntas y tiempo reciente
+          const esReciente = new Date(p.fecha).getTime() > Date.now() - 3600000; // Última hora
+          return p.preguntas.length === preguntasExamen.length && esReciente;
+        });
         
         if (practicaIndex !== -1) {
+          console.log('📝 Actualizando práctica en índice:', practicaIndex);
           practicas[practicaIndex].respuestas = respuestasUsuario;
           practicas[practicaIndex].completada = true;
+          practicas[practicaIndex].estado = 'completada'; // Agregar estado explícito
+          practicas[practicaIndex].fecha_completada = new Date().toISOString();
           practicas[practicaIndex].resultado = {
             puntos_obtenidos: data.puntos_obtenidos,
             puntos_totales: data.puntos_totales,
-            porcentaje: data.porcentaje
+            porcentaje: data.porcentaje,
+            resultados: data.resultados
           };
           localStorage.setItem('practicas', JSON.stringify(practicas));
-          setPracticas(practicas); // Actualizar estado
+          setPracticas([...practicas]); // Actualizar estado con nueva referencia para forzar re-render
+          console.log('✅ Práctica actualizada a completada');
+        } else {
+          console.log('⚠️ No se encontró práctica activa para actualizar');
         }
         
         setMensaje({
@@ -3588,6 +3600,7 @@ JSON:`
   
   // Configuración de tipos de práctica - Generales
   const [numFlashcards, setNumFlashcards] = useState(0);
+  const [tipoFlashcard, setTipoFlashcard] = useState('respuesta_corta'); // 'respuesta_corta' o 'seleccion_confusa'
   const [numMCQ, setNumMCQ] = useState(0);
   const [numCloze, setNumCloze] = useState(0);
   const [numOpenQuestion, setNumOpenQuestion] = useState(0);
@@ -3615,6 +3628,13 @@ JSON:`
   const [numWritingEmail, setNumWritingEmail] = useState(0);
 
   const abrirModalPractica = (ruta, tipo = 'carpeta') => {
+    // Limpiar estado anterior
+    setPreguntasExamen([]);
+    setRespuestasUsuario({});
+    setExamenCompletado(false);
+    setResultadoExamen(null);
+    setFlashcardsVolteadas({});
+    
     setCarpetaPractica(ruta);
     setTipoPractica(tipo);
     setPromptPractica(''); 
@@ -3622,6 +3642,13 @@ JSON:`
   };
 
   const confirmarGenerarPractica = async () => {
+    // Limpiar estados antes de generar nueva práctica
+    setPreguntasExamen([]);
+    setRespuestasUsuario({});
+    setExamenCompletado(false);
+    setResultadoExamen(null);
+    setFlashcardsVolteadas({});
+    
     setModalPracticaAbierto(false);
     if (!carpetaPractica) return;
     
@@ -3654,28 +3681,106 @@ JSON:`
       promptCompleto += `TIPOS DE PREGUNTAS A GENERAR:\n\n`;
       
       if (numFlashcards > 0) {
-        promptCompleto += `**${numFlashcards} Flashcards** - Formato JSON con evaluación:
-{
+        const tipoTexto = tipoFlashcard === 'seleccion_confusa' 
+          ? 'SELECCIÓN CONFUSA - 4 opciones donde solo 1 es correcta'
+          : 'RESPUESTA CORTA - Usuario escribe libremente';
+          
+        promptCompleto += `**${numFlashcards} Flashcards (${tipoTexto})** - Formato JSON con evaluación (ESTILO ANKI - JUEGO DE ADIVINANZAS):
+`;
+        
+        if (tipoFlashcard === 'seleccion_confusa') {
+          promptCompleto += `{
   "type": "flashcard",
+  "flashcard_type": "seleccion_confusa",
   "difficulty": 1,
   "tags": ["concepto1", "tema2"],
   "data": {
-    "front": "Pregunta o concepto a recordar (texto claro)",
-    "hint": "Pista opcional (deja vacío \"\" si no es necesaria)"
+    "front": "Pregunta desafiante tipo adivinanza",
+    "hint": "Pista inteligente que ayude sin dar la respuesta completa"
   },
+  "confusing_options": [
+    "Respuesta CORRECTA clara",
+    "Opción confusa pero incorrecta (similar a la correcta)",
+    "Otra opción confusa (concepto relacionado pero erróneo)",
+    "Opción trampa (suena bien pero es falsa)"
+  ],
   "solution": {
-    "answer": "Respuesta correcta en una frase clara",
-    "key_points": ["Punto clave 1 que debe mencionar", "Punto clave 2", "Punto clave 3"],
-    "explanation": "Explicación pedagógica del concepto (2-3 oraciones)"
+    "answer": "Respuesta CORRECTA (DEBE coincidir EXACTAMENTE con confusing_options[0])",
+    "key_points": ["Concepto clave 1", "Concepto clave 2", "Concepto clave 3"],
+    "explanation": "Explicación pedagógica detallada del concepto"
   }
 }
 
-IMPORTANTE para Flashcards:
-- difficulty debe ser número: 1 (fácil), 2 (medio), 3 (difícil)
-- key_points es CRUCIAL: lista de 2-5 ideas que una buena respuesta debe incluir
-- answer debe ser la respuesta modelo concisa
-- explanation debe ayudar a comprender el concepto
-\n\n`;
+🎯 REGLAS CRÍTICAS PARA SELECCIÓN CONFUSA:
+- confusing_options: ARRAY de exactamente 4 opciones
+- La opción [0] es la CORRECTA
+- Las opciones [1], [2], [3] son CONFUSAS pero incorrectas
+- Las opciones confusas deben ser SIMILARES para que sea difícil elegir
+- solution.answer DEBE ser idéntica a confusing_options[0]
+- hint: SIEMPRE genera una pista útil que ayude a distinguir
+
+Ejemplo completo:
+{
+  "type": "flashcard",
+  "flashcard_type": "seleccion_confusa",
+  "data": {
+    "front": "¿Qué principio de diseño sugiere que menos elementos visuales crean una mejor experiencia?",
+    "hint": "Piensa en la filosofía de 'menos es más' aplicada al diseño"
+  },
+  "confusing_options": [
+    "Minimalismo",
+    "Funcionalismo",
+    "Esencialismo",
+    "Reduccionismo"
+  ],
+  "solution": {
+    "answer": "Minimalismo",
+    "key_points": ["Simplicidad", "Reducción de elementos", "Enfoque en lo esencial"],
+    "explanation": "El minimalismo es un principio de diseño que se basa en eliminar todo lo innecesario..."
+  }
+}
+`;
+        } else {
+          promptCompleto += `{
+  "type": "flashcard",
+  "flashcard_type": "respuesta_corta",
+  "difficulty": 1,
+  "tags": ["concepto1", "tema2"],
+  "data": {
+    "front": "Pregunta desafiante que invite a pensar (NO revelar la respuesta)",
+    "hint": "Pista inteligente que ayude sin dar la respuesta completa. SIEMPRE GENERA UNA PISTA ÚTIL."
+  },
+  "solution": {
+    "answer": "Respuesta correcta clara y concisa",
+    "key_points": ["Concepto clave 1", "Concepto clave 2", "Concepto clave 3"],
+    "explanation": "Explicación pedagógica detallada del concepto (3-4 oraciones que profundicen)"
+  }
+}
+
+🎯 REGLAS CRÍTICAS PARA RESPUESTA CORTA:
+- front: Pregunta tipo adivinanza que haga pensar al usuario
+- hint: SIEMPRE genera una pista útil (palabra clave, categoría, ejemplo parcial). NUNCA dejes vacío "".
+- La pista debe dar una dirección sin revelar todo
+- answer: Respuesta modelo de 1-2 líneas máximo
+- key_points: Conceptos esenciales que debe mencionar (3-5 puntos)
+- explanation: Explicación completa con contexto adicional
+- difficulty: 1 (concepto básico), 2 (aplicación), 3 (análisis profundo)
+
+Ejemplo de buena flashcard:
+{
+  "data": {
+    "front": "¿Qué principio de diseño sugiere que menos elementos visuales crean una mejor experiencia?",
+    "hint": "Piensa en la filosofía de 'menos es más' aplicada al diseño"
+  },
+  "solution": {
+    "answer": "Minimalismo",
+    "key_points": ["Simplicidad", "Reducción de elementos", "Enfoque en lo esencial"],
+    "explanation": "El minimalismo es un principio de diseño que se basa en eliminar todo lo innecesario para mantener solo los elementos esenciales. Esto mejora la claridad, facilita el uso y crea interfaces más elegantes y efectivas."
+  }
+}
+`;
+        }
+        promptCompleto += `\n\n`;
       }
       
       if (numMCQ > 0) {
@@ -4062,6 +4167,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           ruta: carpetaPractica, 
           prompt: promptCompleto,
           tipo_caso: tipoCasoEstudio, // Tipo de caso de estudio
+          tipo_flashcard: tipoFlashcard, // 'respuesta_corta' o 'seleccion_confusa'
           // Tipos generales
           num_flashcards: numFlashcards,
           num_mcq: numMCQ,
@@ -6201,7 +6307,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 📝 {practica.preguntas.length} preguntas
                               </span>
                               <span className="stat-badge pendiente">
-                                ⏳ Pendiente
+                                {practica.completada || practica.estado === 'completada' ? '✅ Completada' : '⏳ Pendiente'}
                               </span>
                             </div>
                             
@@ -6211,11 +6317,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 onClick={() => {
                                   setPreguntasExamen(practica.preguntas);
                                   setRespuestasUsuario(practica.respuestas || {});
-                                  setExamenCompletado(false);
+                                  setExamenCompletado(practica.completada || false);
+                                  setResultadoExamen(practica.resultado || null);
                                   setModalExamenAbierto(true);
                                 }}
+                                title={practica.completada ? 'Ver Resultado' : 'Continuar práctica'}
                               >
-                                ▶️ Continuar
+                                {practica.completada ? '📊' : '▶️'}
                               </button>
                               <button 
                                 className="btn-secondary"
@@ -6237,6 +6345,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                     setPracticas(nuevasPracticas); // Actualizar estado
                                   }
                                 }}
+                                title="Eliminar práctica"
                               >
                                 🗑️
                               </button>
@@ -6272,6 +6381,45 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   })}
                                 </p>
                               </div>
+                              {/* Icono de reintentar en header */}
+                              <button
+                                className="btn-reintentar-header"
+                                onClick={() => {
+                                  // Reintentar práctica - limpiar respuestas
+                                  setPreguntasExamen(practica.preguntas);
+                                  setRespuestasUsuario({});
+                                  setExamenCompletado(false);
+                                  setResultadoExamen(null);
+                                  setFlashcardsVolteadas({});
+                                  setModalExamenAbierto(true);
+                                }}
+                                title="Reintentar práctica"
+                                style={{
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '40px',
+                                  height: '40px',
+                                  fontSize: '1.2rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  transition: 'all 0.3s ease',
+                                  boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1.1) rotate(180deg)';
+                                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.5)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.transform = 'scale(1) rotate(0deg)';
+                                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+                                }}
+                              >
+                                🔄
+                              </button>
                             </div>
                             
                             {practica.prompt && (
@@ -6302,10 +6450,27 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   setPreguntasExamen(practica.preguntas);
                                   setRespuestasUsuario(practica.respuestas || {});
                                   setExamenCompletado(true);
+                                  setResultadoExamen(practica.resultado || null);
                                   setModalExamenAbierto(true);
                                 }}
+                                title="Ver Resultados"
                               >
-                                👁️ Ver Resultados
+                                👁️
+                              </button>
+                              <button 
+                                className="btn-secondary"
+                                onClick={() => {
+                                  // Reintentar práctica - limpiar respuestas
+                                  setPreguntasExamen(practica.preguntas);
+                                  setRespuestasUsuario({});
+                                  setExamenCompletado(false);
+                                  setResultadoExamen(null);
+                                  setFlashcardsVolteadas({});
+                                  setModalExamenAbierto(true);
+                                }}
+                                title="Reintentar práctica"
+                              >
+                                🔄
                               </button>
                               <button 
                                 className="btn-secondary"
@@ -6327,6 +6492,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                     setPracticas(nuevasPracticas); // Actualizar estado
                                   }
                                 }}
+                                title="Eliminar práctica"
                               >
                                 🗑️
                               </button>
@@ -9579,182 +9745,219 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           
                           {/* Respuesta según tipo */}
                           
-                          {/* Flashcard */}
+                          {/* Flashcard con Botón Modal */}
                           {pregunta.tipo === 'flashcard' && (
-                            <div className="respuesta-flashcard">
-                              {/* El front de la flashcard ya está en pregunta.pregunta, no duplicar */}
-                              <div className="flashcard-instrucciones" style={{
-                                padding: '0.75rem',
-                                background: 'rgba(102, 126, 234, 0.1)',
-                                borderRadius: '6px',
-                                marginBottom: '1rem',
-                                fontSize: '0.9rem',
-                                color: '#a0aec0'
-                              }}>
-                                💡 Lee la pregunta arriba y escribe tu respuesta basándote en los conceptos clave.
-                              </div>
+                            <>
+                              {/* Botón para abrir flashcard */}
+                              <button
+                                onClick={() => setFlashcardsVolteadas(prev => ({...prev, [index]: true}))}
+                                className="btn-abrir-flashcard"
+                                style={{
+                                  width: '100%',
+                                  padding: '1rem',
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '12px',
+                                  fontSize: '1rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.3s ease',
+                                  marginBottom: '1.5rem'
+                                }}
+                              >
+                                💡 Pista
+                              </button>
                               
-                              {/* Pista opcional */}
-                              {pregunta.metadata?.data?.hint && (
-                                <details style={{
-                                  marginTop: '0.5rem', 
-                                  padding: '0.75rem', 
-                                  background: 'rgba(100, 126, 234, 0.1)', 
-                                  borderRadius: '6px',
-                                  border: '1px solid rgba(100, 126, 234, 0.3)'
-                                }}>
-                                  <summary style={{cursor: 'pointer', color: '#a0aec0', fontSize: '0.9rem'}}>
-                                    💡 Ver pista
-                                  </summary>
-                                  <p style={{marginTop: '0.5rem', color: '#cbd5e0'}}>
-                                    {pregunta.metadata.data.hint}
-                                  </p>
-                                </details>
-                              )}
-                              
-                              {/* Área de respuesta del usuario */}
-                              <textarea
-                                className="respuesta-desarrollo"
-                                placeholder="Escribe tu respuesta aquí..."
-                                value={respuestasUsuario[index] || ''}
-                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                                rows="4"
-                                style={{marginTop: '1rem'}}
-                              />
-                              
-                              {/* Botón de evaluación con IA */}
-                              {!examenCompletado && respuestasUsuario[index]?.trim() && (
-                                <button
-                                  onClick={async () => {
-                                    if (!pregunta.metadata?.solution) {
-                                      alert('Esta flashcard no tiene información de evaluación');
-                                      return;
-                                    }
-                                    
-                                    setLoading(true);
-                                    try {
-                                      const response = await fetch('http://localhost:8000/api/evaluate_flashcard', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({
-                                          flashcard: pregunta.metadata,
-                                          user_answer: respuestasUsuario[index]
-                                        })
-                                      });
-                                      
-                                      if (response.ok) {
-                                        const resultado = await response.json();
-                                        
-                                        // Guardar resultado en estado temporal
-                                        setRespuestasUsuario(prev => ({
-                                          ...prev,
-                                          [`eval_${index}`]: resultado
-                                        }));
-                                      } else {
-                                        alert('Error al evaluar respuesta');
-                                      }
-                                    } catch (error) {
-                                      console.error('Error:', error);
-                                      alert('Error de conexión');
-                                    } finally {
-                                      setLoading(false);
-                                    }
-                                  }}
+                              {/* Modal Flashcard */}
+                              {flashcardsVolteadas[index] && (
+                                <div 
+                                  className="flashcard-modal-overlay"
+                                  onClick={() => setFlashcardsVolteadas(prev => ({...prev, [index]: false}))}
                                   style={{
-                                    marginTop: '0.5rem',
-                                    padding: '0.5rem 1rem',
-                                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer',
-                                    fontWeight: '500'
+                                    position: 'fixed',
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    background: 'rgba(0, 0, 0, 0.75)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    zIndex: 9999
                                   }}
                                 >
-                                  🎯 Evaluar mi respuesta
-                                </button>
-                              )}
-                              
-                              {/* Mostrar feedback de evaluación */}
-                              {respuestasUsuario[`eval_${index}`] && (
-                                <div style={{
-                                  marginTop: '1rem',
-                                  padding: '1rem',
-                                  background: respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '#d4edda' :
-                                             respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '#fff3cd' : '#f8d7da',
-                                  border: '1px solid ' + (respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '#c3e6cb' :
-                                                          respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '#ffeaa7' : '#f5c6cb'),
-                                  borderRadius: '8px'
-                                }}>
-                                  <div style={{display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem'}}>
-                                    <div style={{fontSize: '2rem'}}>
-                                      {respuestasUsuario[`eval_${index}`].verdict === 'correct' ? '✅' :
-                                       respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? '⚠️' : '❌'}
-                                    </div>
-                                    <div>
-                                      <strong style={{fontSize: '1.2rem'}}>
-                                        Puntuación: {respuestasUsuario[`eval_${index}`].score}/100
-                                      </strong>
-                                      <div style={{fontSize: '0.9rem', color: '#666', marginTop: '0.25rem'}}>
-                                        {respuestasUsuario[`eval_${index}`].verdict === 'correct' ? 'Correcto' :
-                                         respuestasUsuario[`eval_${index}`].verdict === 'partially_correct' ? 'Parcialmente correcto' : 'Incorrecto'}
+                                  <div 
+                                    className="flashcard-modal-content"
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      width: '90%',
+                                      maxWidth: '500px',
+                                      maxHeight: '80vh',
+                                      overflowY: 'auto',
+                                      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                                      borderRadius: '16px',
+                                      padding: '2rem',
+                                      position: 'relative',
+                                      boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)'
+                                    }}
+                                  >
+                                    {/* Botón cerrar */}
+                                    <button
+                                      onClick={() => setFlashcardsVolteadas(prev => ({...prev, [index]: false}))}
+                                      style={{
+                                        position: 'absolute',
+                                        top: '1rem',
+                                        right: '1rem',
+                                        background: '#ef4444',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '50%',
+                                        width: '36px',
+                                        height: '36px',
+                                        fontSize: '1.2rem',
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        fontWeight: 'bold'
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                    
+                                    {/* Contenido Flashcard */}
+                                    <div style={{marginTop: '1rem'}}>
+                                      <div style={{
+                                        fontSize: '1.2rem',
+                                        fontWeight: '600',
+                                        color: '#e2e8f0',
+                                        marginBottom: '1rem',
+                                        textAlign: 'center'
+                                      }}>
+                                        🤔 {pregunta.pregunta || pregunta.metadata?.data?.front}
                                       </div>
-                                    </div>
-                                  </div>
-                                  
-                                  <div style={{marginTop: '0.75rem'}}>
-                                    <strong>📝 Feedback:</strong>
-                                    <p style={{marginTop: '0.25rem', color: '#555'}}>
-                                      {respuestasUsuario[`eval_${index}`].feedback}
-                                    </p>
-                                  </div>
-                                  
-                                  {respuestasUsuario[`eval_${index}`].covered_key_points?.length > 0 && (
-                                    <div style={{marginTop: '0.75rem'}}>
-                                      <strong style={{color: '#28a745'}}>✅ Puntos cubiertos:</strong>
-                                      <ul style={{marginTop: '0.25rem', marginLeft: '1.5rem'}}>
-                                        {respuestasUsuario[`eval_${index}`].covered_key_points.map((punto, i) => (
-                                          <li key={i} style={{color: '#555'}}>{punto}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  
-                                  {respuestasUsuario[`eval_${index}`].missing_key_points?.length > 0 && (
-                                    <div style={{marginTop: '0.75rem'}}>
-                                      <strong style={{color: '#dc3545'}}>❌ Puntos faltantes:</strong>
-                                      <ul style={{marginTop: '0.25rem', marginLeft: '1.5rem'}}>
-                                        {respuestasUsuario[`eval_${index}`].missing_key_points.map((punto, i) => (
-                                          <li key={i} style={{color: '#555'}}>{punto}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  
-                                  <details style={{marginTop: '0.75rem'}}>
-                                    <summary style={{cursor: 'pointer', color: '#007bff', fontWeight: 'bold'}}>
-                                      📖 Ver respuesta completa y explicación
-                                    </summary>
-                                    <div style={{marginTop: '0.5rem', padding: '0.75rem', background: 'white', borderRadius: '4px'}}>
-                                      <div>
-                                        <strong>Respuesta modelo:</strong>
-                                        <p style={{marginTop: '0.25rem', color: '#555'}}>
-                                          {pregunta.metadata?.solution?.answer}
-                                        </p>
-                                      </div>
-                                      {pregunta.metadata?.solution?.explanation && (
-                                        <div style={{marginTop: '0.75rem'}}>
-                                          <strong>Explicación:</strong>
-                                          <p style={{marginTop: '0.25rem', color: '#555'}}>
-                                            {pregunta.metadata.solution.explanation}
-                                          </p>
+                                      
+                                      {pregunta.metadata?.data?.hint && (
+                                        <div style={{
+                                          background: 'rgba(59, 130, 246, 0.15)',
+                                          padding: '0.75rem 1rem',
+                                          borderRadius: '8px',
+                                          fontSize: '0.9rem',
+                                          marginBottom: '1rem',
+                                          borderLeft: '4px solid #3b82f6',
+                                          color: '#93c5fd'
+                                        }}>
+                                          💡 <strong>Pista:</strong> {pregunta.metadata.data.hint}
                                         </div>
                                       )}
+                                      
+                                      {/* Dropdown con respuesta y detalles */}
+                                      <details style={{
+                                        background: 'rgba(71, 85, 105, 0.3)',
+                                        padding: '1rem',
+                                        borderRadius: '12px',
+                                        marginTop: '1rem',
+                                        border: '1px solid rgba(148, 163, 184, 0.2)'
+                                      }}>
+                                        <summary style={{
+                                          fontSize: '1.1rem',
+                                          fontWeight: '600',
+                                          color: '#60a5fa',
+                                          cursor: 'pointer',
+                                          userSelect: 'none',
+                                          listStyle: 'none',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.5rem'
+                                        }}>
+                                          <span style={{fontSize: '1.3rem'}}>▶</span> Ver Respuesta
+                                        </summary>
+                                        
+                                        <div style={{marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                                          <div style={{
+                                            fontSize: '1.3rem',
+                                            fontWeight: '700',
+                                            color: '#34d399',
+                                            marginBottom: '1rem',
+                                            textAlign: 'center'
+                                          }}>
+                                            ✅ {pregunta.metadata?.solution?.answer || pregunta.respuesta_correcta}
+                                          </div>
+                                          
+                                          {pregunta.metadata?.solution?.explanation && (
+                                            <div style={{
+                                              background: 'rgba(59, 130, 246, 0.1)',
+                                              padding: '0.75rem 1rem',
+                                              borderRadius: '8px',
+                                              fontSize: '0.9rem',
+                                              marginTop: '0.75rem',
+                                              borderLeft: '3px solid #3b82f6',
+                                              color: '#cbd5e1'
+                                            }}>
+                                              <strong style={{color: '#93c5fd'}}>📚 Explicación:</strong><br/>
+                                              {pregunta.metadata.solution.explanation}
+                                            </div>
+                                          )}
+                                          
+                                          {pregunta.metadata?.solution?.key_points && pregunta.metadata.solution.key_points.length > 0 && (
+                                            <div style={{
+                                              background: 'rgba(249, 115, 22, 0.1)',
+                                              padding: '0.75rem 1rem',
+                                              borderRadius: '8px',
+                                              fontSize: '0.9rem',
+                                              marginTop: '0.75rem',
+                                              borderLeft: '3px solid #f97316',
+                                              color: '#cbd5e1'
+                                            }}>
+                                              <strong style={{color: '#fb923c'}}>🎯 Puntos Clave:</strong>
+                                              <ul style={{marginTop: '0.5rem', paddingLeft: '1.5rem'}}>
+                                                {pregunta.metadata.solution.key_points.map((punto, i) => (
+                                                  <li key={i} style={{marginBottom: '0.3rem'}}>{punto}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </details>
                                     </div>
-                                  </details>
+                                  </div>
                                 </div>
                               )}
-                            </div>
+                              
+                              {/* Área de respuesta SEPARADA */}
+                              <div className="flashcard-answer-area">
+                                <label className="flashcard-answer-label">
+                                  📝 Tu respuesta:
+                                </label>
+                                
+                                {/* 4 OPCIONES CONFUSAS o Respuesta Corta */}
+                                {pregunta.metadata?.confusing_options && Array.isArray(pregunta.metadata.confusing_options) && pregunta.metadata.confusing_options.length === 4 ? (
+                                  <div className="opciones-confusas">
+                                    {pregunta.metadata.confusing_options.map((opcion, i) => (
+                                      <label key={i} className="opcion-confusa">
+                                        <input
+                                          type="radio"
+                                          name={`flashcard-${index}`}
+                                          value={opcion}
+                                          checked={respuestasUsuario[index] === opcion}
+                                          onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                        />
+                                        <span>{opcion}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <textarea
+                                    value={respuestasUsuario[index] || ''}
+                                    onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                    placeholder="Escribe tu respuesta aquí..."
+                                    rows={3}
+                                    className="flashcard-textarea"
+                                  />
+                                )}
+                              </div>
+                            </>
                           )}
                           
                           {/* MCQ - Opción Múltiple */}
@@ -9960,11 +10163,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
                     <div className="examen-acciones">
                       <button onClick={() => {
+                        setModalExamenAbierto(false)
                         setViendoExamen(null)
                         setExamenActivo(null)
                         setPreguntasExamen([])
                         setRespuestasUsuario({})
                         setExamenCompletado(false)
+                        setResultadoExamen(null)
                       }} className="btn-close-resultado">
                         Cerrar Práctica
                       </button>
@@ -10047,11 +10252,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
                 <div className="examen-acciones">
                   <button onClick={() => {
+                    setModalExamenAbierto(false)
                     setViendoExamen(null)
                     setExamenActivo(null)
                     setPreguntasExamen([])
                     setRespuestasUsuario({})
                     setExamenCompletado(false)
+                    setResultadoExamen(null)
                   }} className="btn-close-resultado">
                     Cerrar Práctica
                   </button>
@@ -10092,6 +10299,26 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         onChange={(e) => setNumFlashcards(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
                         className="input-number"
                       />
+                    </div>
+                    <div className="config-control" style={{marginTop: '10px'}}>
+                      <label htmlFor="tipo-flashcard">Tipo de Flashcard:</label>
+                      <select 
+                        id="tipo-flashcard"
+                        value={tipoFlashcard}
+                        onChange={(e) => setTipoFlashcard(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #ccc',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          width: '100%',
+                          marginTop: '5px'
+                        }}
+                      >
+                        <option value="respuesta_corta">📝 Respuesta Corta - Escribe la respuesta</option>
+                        <option value="seleccion_confusa">🤔 Selección Confusa - Elige entre opciones similares</option>
+                      </select>
                     </div>
                   </div>
                 </details>
