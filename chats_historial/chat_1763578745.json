@@ -1,0 +1,18 @@
+{
+  "id": "chat_1763578745",
+  "nombre": "Chat 19/11/2025",
+  "fecha": "2025-11-19 12:59:05",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "hola",
+      "hora": "12:58"
+    },
+    {
+      "tipo": "asistente",
+      "texto": " = \"Hola Mundo\"\nnumeros = [1,2,3]\n\ndef sumar():\n    a = 1\n    b = 2\n    print(a+b)\n\nsumar()\n\nprint(hola)\nprint(numeros)",
+      "hora": "12:59"
+    }
+  ],
+  "carpeta": ""
+}

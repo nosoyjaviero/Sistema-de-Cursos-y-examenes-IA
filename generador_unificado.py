@@ -264,12 +264,16 @@ class GeneradorUnificado:
             # Detectar modelos lentos y ajustar solo el timeout
             es_deepseek = 'deepseek' in self.modelo_ollama.lower()
             
+            # Determinar si se usa GPU basado en n_gpu_layers
+            usar_gpu = self.n_gpu_layers > 0
+            modo_gpu = "GPU activada" if usar_gpu else "Solo CPU"
+            
             print(f"\n{'='*60}")
-            print(f"🎮 USANDO GPU - Modelo Ollama: {self.modelo_ollama}")
+            print(f"🎮 Modelo Ollama: {self.modelo_ollama}")
             print(f"⚙️  Configuración:")
+            print(f"   • Modo: {modo_gpu}")
             print(f"   • Temperature: {temperature}")
             print(f"   • Max tokens: {max_tokens}")
-            print(f"   • GPU: Activada automáticamente por Ollama")
             print(f"   • Prompt length: {len(prompt)} caracteres")
             
             if es_deepseek:
@@ -306,17 +310,25 @@ El JSON debe comenzar con {{ y terminar con }}.
 Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
                 print(f"📝 Prompt adaptado para DeepSeek-R1 (permite razonamiento + JSON al final)\n")
             
+            # Configurar opciones según modo GPU/CPU
+            opciones = {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "stop": ["<|eot_id|>", "<|end_of_text|>", "\n\n\n"]
+            }
+            
+            # Si n_gpu_layers es 0, forzar uso de CPU
+            if not usar_gpu:
+                opciones["num_gpu"] = 0
+                print(f"🔷 Modo CPU forzado (num_gpu=0)\n")
+            
             response = requests.post(
                 "http://localhost:11434/api/generate",
                 json={
                     "model": self.modelo_ollama,
                     "prompt": prompt_final,
                     "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
-                        "stop": ["<|eot_id|>", "<|end_of_text|>", "\n\n\n"]  # Stops adicionales para DeepSeek
-                    }
+                    "options": opciones
                 },
                 timeout=timeout_segundos
             )
@@ -324,7 +336,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             print(f"📬 Response status: {response.status_code}")
             
             if response.status_code == 200:
-                print(f"✅ Generación completada con GPU\n")
+                print(f"✅ Generación completada ({modo_gpu})\n")
                 respuesta_json = response.json()
                 respuesta_completa = respuesta_json.get('response', '')
                 
@@ -358,13 +370,17 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
     def _generar_ollama_chat(self, messages: list, max_tokens: int, temperature: float) -> str:
         """Genera con Ollama usando API de chat (mantiene historial/contexto)"""
         try:
+            # Determinar si se usa GPU basado en n_gpu_layers
+            usar_gpu = self.n_gpu_layers > 0
+            modo_gpu = "GPU activada" if usar_gpu else "Solo CPU"
+            
             print(f"\n{'='*60}")
             print(f"💬 CHAT CON CONTEXTO - Modelo Ollama: {self.modelo_ollama}")
             print(f"⚙️  Configuración:")
+            print(f"   • Modo: {modo_gpu}")
             print(f"   • Temperature: {temperature}")
             print(f"   • Max tokens: {max_tokens}")
             print(f"   • Mensajes en historial: {len(messages)}")
-            print(f"   • GPU: Activada automáticamente por Ollama")
             print(f"{'='*60}\n")
             
             # Debug: mostrar estructura de mensajes
@@ -380,17 +396,25 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             print(f"⏱️  Timeout configurado: {timeout_segundos} segundos")
             print(f"🚀 Enviando request a Ollama API de chat...\n")
             
+            # Configurar opciones según modo GPU/CPU
+            opciones = {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "stop": ["<|eot_id|>", "<|end_of_text|>"]
+            }
+            
+            # Si n_gpu_layers es 0, forzar uso de CPU
+            if not usar_gpu:
+                opciones["num_gpu"] = 0
+                print(f"🔷 Modo CPU forzado (num_gpu=0)\n")
+            
             response = requests.post(
                 "http://localhost:11434/api/chat",
                 json={
                     "model": self.modelo_ollama,
                     "messages": messages,
                     "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": max_tokens,
-                        "stop": ["<|eot_id|>", "<|end_of_text|>"]
-                    }
+                    "options": opciones
                 },
                 timeout=timeout_segundos
             )
@@ -398,7 +422,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             print(f"📬 Response status: {response.status_code}")
             
             if response.status_code == 200:
-                print(f"✅ Generación completada con GPU y contexto\n")
+                print(f"✅ Generación completada ({modo_gpu} y contexto)\n")
                 respuesta_json = response.json()
                 
                 # La API de chat devuelve el mensaje en un formato diferente
@@ -579,19 +603,19 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         """Crea el prompt optimizado
         tipo_caso: Para casos de estudio, especifica el tipo (descriptivo, analitico, resolucion, etc.)
         """
-        # Construir lista detallada de tipos de preguntas
+        # Construir lista detallada de tipos de preguntas (USANDO NOMBRES NORMALIZADOS)
         tipos_detalle = []
-        if num_preguntas.get('multiple', 0) > 0:
-            tipos_detalle.append(f"{num_preguntas['multiple']} de opción múltiple (4 opciones A/B/C/D, puntos: 3)")
-        if num_preguntas.get('verdadero_falso', 0) > 0:
-            tipos_detalle.append(f"{num_preguntas['verdadero_falso']} verdadero/falso (puntos: 2)")
-        if num_preguntas.get('corta', 0) > 0:
-            tipos_detalle.append(f"{num_preguntas['corta']} de respuesta corta (puntos: 3)")
-        if num_preguntas.get('desarrollo', 0) > 0:
-            tipos_detalle.append(f"{num_preguntas['desarrollo']} de desarrollo/ensayo (puntos: 5)")
+        if num_preguntas.get('mcq', 0) > 0:
+            tipos_detalle.append(f"{num_preguntas['mcq']} de opción múltiple (4 opciones A/B/C/D, puntos: 3)")
+        if num_preguntas.get('true_false', 0) > 0:
+            tipos_detalle.append(f"{num_preguntas['true_false']} verdadero/falso (puntos: 2)")
+        if num_preguntas.get('short_answer', 0) > 0:
+            tipos_detalle.append(f"{num_preguntas['short_answer']} de respuesta corta (puntos: 3)")
+        if num_preguntas.get('open_question', 0) > 0:
+            tipos_detalle.append(f"{num_preguntas['open_question']} de desarrollo/ensayo (puntos: 5)")
         
-        # Soporte para case_study (inglés) y caso_estudio (español)
-        num_casos = num_preguntas.get('caso_estudio', 0) or num_preguntas.get('case_study', 0)
+        # Soporte para case_study
+        num_casos = num_preguntas.get('case_study', 0)
         if num_casos > 0:
             tipo_desc = f" ({tipo_caso})" if tipo_caso else ""
             tipos_detalle.append(f"{num_casos} caso(s) de estudio{tipo_desc} (puntos: 10)")
@@ -603,73 +627,212 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         if num_casos > 0 and tipo_caso:
             caso_estudio_prompt = self._obtener_prompt_caso_estudio(tipo_caso)
         
-        # Formato JSON base
+        # Formato JSON base (USANDO NOMBRES NORMALIZADOS)
         json_ejemplos = []
         
         # Agregar ejemplos según tipos solicitados
-        if num_preguntas.get('multiple', 0) > 0:
+        if num_preguntas.get('mcq', 0) > 0:
             json_ejemplos.append("""    {
-      "tipo": "multiple",
-      "pregunta": "¿Pregunta clara y específica?",
-      "opciones": ["A) opción 1", "B) opción 2", "C) opción 3", "D) opción 4"],
+      "tipo": "mcq",
+      "pregunta": "¿Pregunta clara y específica sobre el contenido?",
+      "opciones": ["A) Primera opción", "B) Segunda opción", "C) Tercera opción", "D) Cuarta opción"],
       "respuesta_correcta": "A",
       "puntos": 3
     }""")
         
-        if num_preguntas.get('verdadero_falso', 0) > 0:
+        if num_preguntas.get('true_false', 0) > 0:
             json_ejemplos.append("""    {
-      "tipo": "verdadero_falso",
-      "pregunta": "Afirmación clara",
+      "tipo": "true_false",
+      "pregunta": "Afirmación clara basada en el contenido",
       "respuesta_correcta": "verdadero",
       "puntos": 2
     }""")
         
-        if num_preguntas.get('corta', 0) > 0:
+        if num_preguntas.get('short_answer', 0) > 0:
             json_ejemplos.append("""    {
-      "tipo": "corta",
-      "pregunta": "Pregunta de respuesta corta",
-      "respuesta_correcta": "Respuesta esperada breve",
+      "tipo": "short_answer",
+      "pregunta": "Pregunta que requiere una respuesta breve y concreta",
+      "respuesta_correcta": "Respuesta esperada (2-3 oraciones)",
       "puntos": 3
     }""")
         
-        if num_preguntas.get('desarrollo', 0) > 0:
+        if num_preguntas.get('open_question', 0) > 0:
             json_ejemplos.append("""    {
-      "tipo": "desarrollo",
-      "pregunta": "Pregunta de desarrollo que requiere análisis profundo",
-      "respuesta_correcta": "Respuesta esperada detallada con conceptos clave",
+      "tipo": "open_question",
+      "pregunta": "Pregunta que requiere análisis profundo y desarrollo extenso",
+      "respuesta_correcta": "Respuesta esperada detallada con conceptos clave, explicaciones y ejemplos",
       "puntos": 5
     }""")
         
-        # Soporte para case_study (inglés) y caso_estudio (español)
+        # Soporte para case_study
         if num_casos > 0:
             json_ejemplos.append(caso_estudio_prompt)
         
         json_ejemplos_str = ",\n".join(json_ejemplos)
         
-        return f"""Eres un experto en crear exámenes educativos. Genera EXACTAMENTE {total} preguntas basadas en el siguiente contenido.
+        return f"""Eres un experto en crear exámenes educativos. Tu tarea es generar EXACTAMENTE {total} preguntas REALES basadas en el contenido proporcionado.
 
-CONTENIDO:
+CONTENIDO A EVALUAR:
 {contenido}
 
-INSTRUCCIONES CRÍTICAS:
+IMPORTANTE - DEBES GENERAR {total} PREGUNTAS COMPLETAS:
 {tipos_str}
 
-REQUISITOS:
-- Genera EXACTAMENTE {total} preguntas en total
-- NO repitas preguntas
-- Todas las preguntas deben ser DIFERENTES
-- NO inventes información que no esté en el texto
-- Responde ÚNICAMENTE con JSON válido, sin texto adicional
+⚠️ REGLAS CRÍTICAS:
+1. Genera EXACTAMENTE {total} preguntas COMPLETAS con contenido REAL
+2. NO uses placeholders como "...", "[...]", "puntos: ..."
+3. CADA pregunta debe estar COMPLETAMENTE llena con:
+   - "tipo": uno de estos valores exactos: "mcq", "true_false", "short_answer", "open_question"
+   - "pregunta": texto completo de la pregunta (mínimo 10 palabras)
+   - Para "mcq": "opciones" debe ser un array de 4 strings completos (ej: ["A) opción real 1", "B) opción real 2", "C) opción real 3", "D) opción real 4"])
+   - "respuesta_correcta": la respuesta correcta REAL (para MCQ: letra A/B/C/D, para otros: texto completo)
+   - "puntos": número entero (3 para mcq, 2 para true_false, 3 para short_answer, 5 para open_question)
+4. Todas las preguntas deben basarse en información del contenido proporcionado
+5. NO inventes información que no esté en el texto
+6. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
 
-FORMATO JSON REQUERIDO:
+FORMATO JSON VÁLIDO (con datos REALES, NO placeholders):
 {{
   "preguntas": [
-{json_ejemplos_str}
+    {{
+      "tipo": "mcq",
+      "pregunta": "¿Según el contenido, cuál es la diferencia principal entre arte y diseño?",
+      "opciones": ["A) El arte es un sustantivo y el diseño es un verbo", "B) No hay diferencia", "C) El arte es comercial", "D) El diseño no comunica"],
+      "respuesta_correcta": "A",
+      "puntos": 3
+    }},
+    {{
+      "tipo": "short_answer",
+      "pregunta": "Explica brevemente qué significa HCI según la clase",
+      "respuesta_correcta": "HCI significa Human-Computer Interaction (Interacción Humano-Computadora), que estudia cómo las personas interactúan con la tecnología",
+      "puntos": 3
+    }}
   ]
 }}
 
-Genera ahora las {total} preguntas:
-"""
+AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
+    
+    def _obtener_prompt_caso_estudio(self, tipo_caso: str) -> str:
+        """Retorna el formato JSON específico para cada tipo de caso de estudio
+        
+        IMPORTANTE: Los casos de estudio requieren MUCHO MÁS DETALLE que otros tipos de preguntas.
+        - El contexto debe tener al menos 3-5 oraciones (100-200 palabras)
+        - La descripción debe tener al menos 4-6 oraciones (150-300 palabras)
+        - Todos los arrays deben tener 4-6 elementos detallados
+        """
+    
+    def _filtrar_preguntas(self, preguntas: List[PreguntaExamen], num_preguntas: Dict[str, int]) -> List[PreguntaExamen]:
+        """Filtra preguntas por tipo y cantidad solicitada
+        
+        ESTRATEGIA DE FILTRADO:
+        1. Prioriza cumplir con las cantidades exactas por tipo
+        2. Si faltan algunos tipos, incluye extras de otros tipos hasta alcanzar el total solicitado
+        """
+        preguntas_filtradas = []
+        contador_por_tipo = {}
+        preguntas_sobrantes = []
+        
+        # Mapeo de tipos nuevos a tipos del sistema
+        mapeo_tipos = {
+            'flashcard': 'flashcard',
+            'mcq': 'mcq', 
+            'true_false': 'true_false',
+            'verdadero_falso': 'true_false',
+            'cloze': 'cloze',
+            'short_answer': 'short_answer',
+            'respuesta_corta': 'short_answer',
+            'open_question': 'open_question',
+            'desarrollo': 'open_question',
+            'case_study': 'case_study',
+            'caso_estudio': 'case_study',
+            'reading_comprehension': 'reading_comprehension',
+            'reading_true_false': 'reading_true_false',
+            'reading_cloze': 'reading_cloze',
+            'reading_skill': 'reading_skill',
+            'reading_matching': 'reading_matching',
+            'reading_sequence': 'reading_sequence',
+            'writing_short': 'writing_short',
+            'writing_paraphrase': 'writing_paraphrase',
+            'writing_correction': 'writing_correction',
+            'writing_transformation': 'writing_transformation',
+            'writing_essay': 'writing_essay',
+            'writing_sentence_builder': 'writing_sentence_builder',
+            'writing_picture_description': 'writing_picture_description',
+            'writing_email': 'writing_email',
+            'multiple': 'mcq',
+            'corta': 'short_answer'
+        }
+        
+        # FASE 1: Seleccionar preguntas según cantidades solicitadas por tipo
+        for pregunta in preguntas:
+            # DEBUG: Imprimir tipo exacto de la pregunta
+            print(f"  🔍 Pregunta tipo='{pregunta.tipo}' (repr: {repr(pregunta.tipo)})")
+            tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
+            print(f"     → Normalizado a: '{tipo_normalizado}'")
+            cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
+            print(f"     → Cantidad solicitada de '{tipo_normalizado}': {cantidad_solicitada}")
+            
+            if cantidad_solicitada > 0:
+                if tipo_normalizado not in contador_por_tipo:
+                    contador_por_tipo[tipo_normalizado] = 0
+                
+                if contador_por_tipo[tipo_normalizado] < cantidad_solicitada:
+                    preguntas_filtradas.append(pregunta)
+                    contador_por_tipo[tipo_normalizado] += 1
+                else:
+                    # Guardar extras para usar si faltan otros tipos
+                    preguntas_sobrantes.append(pregunta)
+        
+        # Calcular total esperado
+        total_esperado = sum(num_preguntas.values())
+        total_actual = len(preguntas_filtradas)
+        
+        # FASE 2: Si faltan preguntas, agregar extras hasta completar el total
+        if total_actual < total_esperado and preguntas_sobrantes:
+            faltantes = total_esperado - total_actual
+            print(f"⚠️ Faltan {faltantes} preguntas. Agregando extras de otros tipos...")
+            
+            for i, pregunta_extra in enumerate(preguntas_sobrantes):
+                if len(preguntas_filtradas) >= total_esperado:
+                    break
+                preguntas_filtradas.append(pregunta_extra)
+                tipo_norm = mapeo_tipos.get(pregunta_extra.tipo, pregunta_extra.tipo)
+                contador_por_tipo[tipo_norm] = contador_por_tipo.get(tipo_norm, 0) + 1
+                print(f"   ➕ Agregada pregunta extra #{i+1} (tipo: {tipo_norm})")
+        
+        print(f"🔍 Filtrado: {len(preguntas)} generadas → {len(preguntas_filtradas)} retornadas (esperadas: {total_esperado})")
+        print(f"   Solicitadas: {num_preguntas}")
+        print(f"   Filtradas por tipo: {contador_por_tipo}")
+        
+        # Registrar filtrado
+        self._agregar_log('filtrado', {
+            'total_generadas': len(preguntas),
+            'total_filtradas': len(preguntas_filtradas),
+            'total_esperado': total_esperado,
+            'solicitadas': num_preguntas,
+            'contador_por_tipo': contador_por_tipo
+        })
+        
+        # Verificar si faltaron preguntas
+        tipos_faltantes = []
+        for tipo, cantidad in num_preguntas.items():
+            generadas = contador_por_tipo.get(tipo, 0)
+            if generadas < cantidad:
+                tipos_faltantes.append(f"{tipo}: {generadas}/{cantidad}")
+        
+        if tipos_faltantes:
+            warning_msg = f"El modelo no generó suficientes preguntas: {', '.join(tipos_faltantes)}"
+            self._agregar_log('errores', warning_msg)
+            print(f"⚠️ ADVERTENCIA: El modelo no generó suficientes preguntas de algunos tipos:")
+            for faltante in tipos_faltantes:
+                print(f"   - {faltante}")
+            if len(preguntas_filtradas) < total_esperado:
+                print(f"   💡 Se retornaron {len(preguntas_filtradas)}/{total_esperado} preguntas")
+                print(f"   💡 Intenta regenerar la práctica o reduce la cantidad de tipos solicitados")
+            else:
+                print(f"   ✅ Se compensó con extras: {len(preguntas_filtradas)}/{total_esperado} preguntas retornadas")
+        
+        return preguntas_filtradas
     
     def _obtener_prompt_caso_estudio(self, tipo_caso: str) -> str:
         """Retorna el formato JSON específico para cada tipo de caso de estudio
@@ -912,19 +1075,50 @@ Genera ahora las {total} preguntas:
             # Intentar parsear cada JSON candidato, priorizando los más largos
             posibles_jsons.sort(key=lambda x: len(x[2]), reverse=True)
             
+            # FASE 1: Buscar JSON con array de preguntas completo
             for idx, (start, end, candidato) in enumerate(posibles_jsons):
                 print(f"  📦 Candidato {idx+1}: posición {start}-{end}, tamaño {len(candidato)} chars")
                 print(f"     Inicio: {candidato[:80]}...")
                 
-                # Verificar si contiene campos esperados de preguntas
-                if '"preguntas"' in candidato or '"questions"' in candidato or '"tipo"' in candidato or '"type"' in candidato:
-                    print(f"     ✅ Contiene campos de pregunta")
-                    json_str = candidato
-                    inicio = start
-                    fin = end
-                    break
+                # PRIORIDAD 1: JSON con "preguntas" o "questions" (array completo)
+                if '"preguntas"' in candidato or '"questions"' in candidato:
+                    # RECHAZAR si contiene placeholders COMO VALORES (no en texto de preguntas)
+                    tiene_placeholders = False
+                    if ('"puntos": ...' in candidato or 
+                        '"puntos":...' in candidato or
+                        '"opciones": [...]' in candidato or
+                        '"pregunta": "..."' in candidato or
+                        '": "..."' in candidato):
+                        print(f"     ⚠️ Contiene placeholders COMO VALORES, descartando")
+                        tiene_placeholders = True
+                    
+                    if not tiene_placeholders:
+                        print(f"     ✅ Contiene array de preguntas y NO tiene placeholders")
+                        json_str = candidato
+                        inicio = start
+                        fin = end
+                        break
                 else:
-                    print(f"     ⚠️ No contiene campos de pregunta, descartando")
+                    print(f"     ⏭️ No contiene array 'preguntas', continuando búsqueda...")
+            
+            # FASE 2: Si no encontró array completo, buscar preguntas individuales
+            if json_str is None:
+                print(f"  💡 No se encontró array completo, buscando preguntas individuales...")
+                for idx, (start, end, candidato) in enumerate(posibles_jsons):
+                    if '"tipo"' in candidato or '"type"' in candidato:
+                        tiene_placeholders = False
+                        if ('"puntos": ...' in candidato or 
+                            '"puntos":...' in candidato or
+                            '"opciones": [...]' in candidato or
+                            '"pregunta": "..."' in candidato or
+                            '": "..."' in candidato):
+                            continue
+                        
+                        print(f"     ✅ Usando pregunta individual como fallback")
+                        json_str = candidato
+                        inicio = start
+                        fin = end
+                        break
             
             if json_str is None and posibles_jsons:
                 # Si ninguno tiene campos de pregunta, tomar el más largo
@@ -1050,8 +1244,12 @@ Genera ahora las {total} preguntas:
                         }
                         
                         for pregunta in preguntas:
+                            # DEBUG: Imprimir tipo exacto de la pregunta
+                            print(f"  🔍 Pregunta tipo='{pregunta.tipo}' (repr: {repr(pregunta.tipo)})")
                             tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
+                            print(f"     → Normalizado a: '{tipo_normalizado}'")
                             cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
+                            print(f"     → Cantidad solicitada de '{tipo_normalizado}': {cantidad_solicitada}")
                             
                             if cantidad_solicitada > 0:
                                 if tipo_normalizado not in contador_por_tipo:
@@ -1111,6 +1309,63 @@ Genera ahora las {total} preguntas:
                         print(f"❌ {error_msg}")
                         print(f"📄 JSON problemático (primeros 500):\n{json_str[:500]}")
                         print(f"📄 Últimos 200 caracteres:\n{json_str[-200:]}")
+                        
+                        # INTENTO DE REPARACIÓN AGRESIVA
+                        print(f"\n🔧 Intentando reparación agresiva del JSON...")
+                        
+                        # Eliminar texto después del último } válido
+                        ultimo_cierre = json_str.rfind('}')
+                        if ultimo_cierre > 0:
+                            json_str_cortado = json_str[:ultimo_cierre + 1]
+                            
+                            # Asegurar que cierra el array de preguntas
+                            if '"preguntas"' in json_str_cortado and not json_str_cortado.strip().endswith(']}'):
+                                json_str_cortado = json_str_cortado.rstrip() + ']}'
+                            
+                            try:
+                                datos = json.loads(json_str_cortado)
+                                print(f"✅ JSON reparado exitosamente cortando al último }}")
+                                
+                                # Continuar con el procesamiento normal
+                                campo_preguntas = None
+                                if 'preguntas' in datos:
+                                    campo_preguntas = 'preguntas'
+                                elif 'questions' in datos:
+                                    campo_preguntas = 'questions'
+                                
+                                if campo_preguntas:
+                                    lista_preguntas = datos[campo_preguntas]
+                                    if isinstance(lista_preguntas, list):
+                                        # Convertir a objetos PreguntaExamen
+                                        preguntas = []
+                                        preguntas_parseadas_log = []
+                                        
+                                        for i, pregunta_dict in enumerate(lista_preguntas):
+                                            try:
+                                                pregunta_obj = PreguntaExamen.from_dict(pregunta_dict)
+                                                preguntas.append(pregunta_obj)
+                                                print(f"✅ Pregunta {i+1}: {pregunta_obj.tipo} - {pregunta_obj.pregunta[:50]}...")
+                                                preguntas_parseadas_log.append(pregunta_obj.to_dict())
+                                            except Exception as e:
+                                                error_msg = f"Error en pregunta {i+1}: {e}"
+                                                print(f"❌ {error_msg}")
+                                                self._agregar_log('errores', error_msg)
+                                                continue
+                                        
+                                        self._agregar_log('preguntas_parseadas', preguntas_parseadas_log)
+                                        print(f"\n✅ Total: {len(preguntas)} preguntas generadas exitosamente")
+                                        
+                                        # Aplicar filtrado si es necesario
+                                        if num_preguntas and any(v > 0 for v in num_preguntas.values()):
+                                            preguntas = self._filtrar_preguntas(preguntas, num_preguntas)
+                                        
+                                        resultado_final = [p.to_dict() if hasattr(p, 'to_dict') else str(p) for p in preguntas]
+                                        self._agregar_log('resultado_final', resultado_final)
+                                        self._guardar_log()
+                                        return preguntas
+                            except:
+                                pass
+                        
                         self._agregar_log('errores', error_msg)
                         self._agregar_log('json_extraido', json_str[:1000])
                         self._guardar_log()

@@ -448,22 +448,30 @@ async def obtener_config():
             config["modelo_cargado"] = generador_actual.modelo_ollama
             config["modelo_activo"] = True
             config["tipo_motor"] = "ollama"
-            config["gpu_activa"] = True
+            config["usar_ollama"] = True
+            # Para Ollama, gpu_activa depende de n_gpu_layers
+            gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 35
+            config["gpu_activa"] = gpu_layers > 0
+            print(f"📊 GET /api/config - Ollama detectado:")
+            print(f"   usar_ollama={config['usar_ollama']}, gpu_activa={config['gpu_activa']}, n_gpu_layers={gpu_layers}")
         elif hasattr(generador_actual, 'modelo_path_gguf') and generador_actual.modelo_path_gguf:
             config["modelo_cargado"] = generador_actual.modelo_path_gguf
             config["modelo_activo"] = True
             config["tipo_motor"] = "gguf"
+            config["usar_ollama"] = False
             gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 0
             config["gpu_activa"] = gpu_layers > 0
         else:
             config["modelo_cargado"] = None
             config["modelo_activo"] = False
             config["tipo_motor"] = None
+            config["usar_ollama"] = False
             config["gpu_activa"] = False
     else:
         config["modelo_cargado"] = None
         config["modelo_activo"] = False
         config["tipo_motor"] = None
+        config["usar_ollama"] = False
         config["gpu_activa"] = False
     
     return config
@@ -1283,12 +1291,12 @@ async def generar_examen_bloque(datos: dict):
         
         print(f"📄 Contenido total: {len(contenido_total)} caracteres")
         
-        # Generar preguntas
+        # Generar preguntas (claves normalizadas para coincidir con el generador)
         num_preguntas = {
-            'multiple': num_multiple,
-            'corta': num_corta,
-            'verdadero-falso': num_vf,
-            'desarrollo': num_desarrollo
+            'mcq': num_multiple,
+            'short_answer': num_corta,
+            'true_false': num_vf,
+            'open_question': num_desarrollo
         }
         
         print(f"🤖 Generando preguntas...")
@@ -1367,6 +1375,16 @@ async def actualizar_contenido_documento(data: dict):
 async def generar_examen(datos: dict):
     """Genera un examen basado en contenido de documentos"""
     global generador_actual, progreso_generacion
+    
+    # DEBUG: Imprimir datos recibidos
+    print(f"\n{'='*60}")
+    print(f"🔍 DEBUG - Datos recibidos en /api/generar-examen:")
+    print(f"   Keys: {list(datos.keys())}")
+    print(f"   num_multiple: {datos.get('num_multiple')} (tipo: {type(datos.get('num_multiple'))})")
+    print(f"   num_corta: {datos.get('num_corta')} (tipo: {type(datos.get('num_corta'))})")
+    print(f"   num_desarrollo: {datos.get('num_desarrollo')} (tipo: {type(datos.get('num_desarrollo'))})")
+    print(f"   num_verdadero_falso: {datos.get('num_verdadero_falso')} (tipo: {type(datos.get('num_verdadero_falso'))})")
+    print(f"{'='*60}\n")
     
     contenido = datos.get("contenido")
     prompt_personalizado = datos.get("prompt_personalizado", "")
@@ -1481,12 +1499,12 @@ async def generar_examen(datos: dict):
                 n_gpu_layers=gpu_layers
             )
         
-        # Generar preguntas
+        # Generar preguntas (claves normalizadas para coincidir con el generador)
         num_preguntas = {
-            'multiple': num_multiple,
-            'verdadero_falso': num_verdadero_falso,
-            'corta': num_corta,
-            'desarrollo': num_desarrollo
+            'mcq': num_multiple,
+            'true_false': num_verdadero_falso,
+            'short_answer': num_corta,
+            'open_question': num_desarrollo
         }
         
         callback_progreso(10, "Preparando generación de preguntas...")
@@ -2927,15 +2945,21 @@ async def cambiar_motor_ia(datos: dict):
         print(f"💾 Configuración guardada:")
         print(f"   - usar_ollama: {usar_ollama}")
         print(f"   - modelo_ollama_activo: {modelo_ollama if usar_ollama else None}")
-        print(f"   - n_gpu_layers: {n_gpu_layers}\n")
+        print(f"   - n_gpu_layers: {n_gpu_layers}")
+        print(f"   - gpu_activa: {n_gpu_layers > 0}\n")
         
-        return {
+        resultado = {
             "success": True,
             "mensaje": f"✅ {motor} - Modelo {modelo_ollama if usar_ollama else Path(modelo_gguf).name} activado correctamente",
             "usar_ollama": usar_ollama,
             "modelo_activo": modelo_ollama if usar_ollama else Path(modelo_gguf).name if modelo_gguf else None,
-            "gpu_activa": n_gpu_layers > 0 or usar_ollama
+            "gpu_activa": n_gpu_layers > 0
         }
+        
+        print(f"📤 Respuesta al frontend:")
+        print(f"   {resultado}\n")
+        
+        return resultado
     except Exception as e:
         print(f"❌ Error cambiando motor: {e}")
         import traceback
@@ -3053,6 +3077,15 @@ def generar_practica(datos: dict):
     print(f"\n{'='*70}")
     print(f"📝 GENERACIÓN DE PRÁCTICA REQUEST")
     print(f"{'='*70}")
+    
+    # 🔥 LIMPIAR ARCHIVO TEMPORAL DE EXÁMENES ANTES DE GENERAR PRÁCTICA
+    try:
+        archivo_temp = Path("temp_examenes/examen_en_curso.json")
+        if archivo_temp.exists():
+            archivo_temp.unlink()
+            print(f"🗑️ Archivo temporal de examen anterior eliminado")
+    except Exception as e:
+        print(f"⚠️ Error limpiando temporal: {e}")
     
     ruta = datos.get("ruta", "")
     prompt_personalizado = datos.get("prompt", "")

@@ -72,6 +72,7 @@ function App() {
   const [resultadoExamen, setResultadoExamen] = useState(null)
   const [examenCompletado, setExamenCompletado] = useState(false)
   const [carpetaExamen, setCarpetaExamen] = useState(null)
+  const [esPractica, setEsPractica] = useState(false) // 🔥 Flag para distinguir prácticas de exámenes
   const [generandoExamen, setGenerandoExamen] = useState(false)
   const [abortController, setAbortController] = useState(null)
   const [progresoGeneracion, setProgresoGeneracion] = useState(0)
@@ -79,9 +80,9 @@ function App() {
   const [sessionIdGeneracion, setSessionIdGeneracion] = useState(null)
   const [modalExamenAbierto, setModalExamenAbierto] = useState(false)
   const [configExamen, setConfigExamen] = useState({
-    num_multiple: 0,
-    num_corta: 0,
-    num_desarrollo: 0
+    num_multiple: 5,      // Default: 5 preguntas de opción múltiple
+    num_corta: 3,         // Default: 3 preguntas cortas
+    num_desarrollo: 2     // Default: 2 preguntas de desarrollo
   })
   const [examenesGuardados, setExamenesGuardados] = useState({
     completados: [],
@@ -234,6 +235,18 @@ function App() {
       return () => clearTimeout(timer)
     }
   }, [mensaje])
+
+  // Debug: Loguear cada vez que cambie la configuración
+  useEffect(() => {
+    if (configuracion) {
+      console.log('🔄 Estado de configuración actualizado:')
+      console.log('   usar_ollama:', configuracion.usar_ollama)
+      console.log('   gpu_activa:', configuracion.gpu_activa)
+      console.log('   Evaluación Ollama GPU:', configuracion?.gpu_activa && configuracion?.usar_ollama)
+      console.log('   Evaluación Ollama CPU:', !configuracion?.gpu_activa && configuracion?.usar_ollama)
+      console.log('   Evaluación GGUF CPU:', !configuracion?.usar_ollama)
+    }
+  }, [configuracion])
 
   // Recargar exámenes cuando se cambia a la pestaña "generar"
   useEffect(() => {
@@ -1210,7 +1223,21 @@ function App() {
       // Cargar configuración actual
       const configResponse = await fetch(`${API_URL}/api/config`)
       const configData = await configResponse.json()
-      console.log('Configuración cargada:', configData)
+      console.log('📥 Configuración cargada del servidor:', configData)
+      console.log('   - usar_ollama:', configData.usar_ollama)
+      console.log('   - gpu_activa:', configData.gpu_activa)
+      console.log('   - modelo_cargado:', configData.modelo_cargado)
+      console.log('   - tipo_motor:', configData.tipo_motor)
+      
+      // Verificar qué opción debería estar seleccionada
+      if (configData.usar_ollama && configData.gpu_activa) {
+        console.log('✅ Debería seleccionarse: Ollama GPU')
+      } else if (configData.usar_ollama && !configData.gpu_activa) {
+        console.log('✅ Debería seleccionarse: Ollama CPU')
+      } else if (!configData.usar_ollama) {
+        console.log('✅ Debería seleccionarse: GGUF CPU')
+      }
+      
       setConfiguracion(configData)
       setModeloSeleccionado(configData.modelo_path || null)
       
@@ -2958,6 +2985,7 @@ function App() {
       if (dataExamen.success) {
         setPreguntasExamen(dataExamen.preguntas)
         setExamenActivo(true)
+        setEsPractica(false) // 🔥 Es un EXAMEN, no práctica
         setCarpetaExamen(carpetaConfigExamen)
         setRespuestasUsuario({})
         setResultadoExamen(null)
@@ -3130,6 +3158,12 @@ JSON:`
   
   // Guardar examen en archivo local (a través del servidor)
   const guardarExamenLocal = async (respuestas = respuestasUsuario) => {
+    // 🔥 NO guardar prácticas en archivo temporal (solo exámenes)
+    if (esPractica) {
+      console.log('🚫 Práctica activa - no guardando en temporal de exámenes');
+      return;
+    }
+    
     try {
       await fetch(`${API_URL}/api/examenes/guardar-temporal`, {
         method: 'POST',
@@ -3166,6 +3200,7 @@ JSON:`
         setRespuestasUsuario(examen.respuestas || {})
         setCarpetaExamen(examen.carpeta)
         setExamenActivo(true)
+        setEsPractica(false) // 🔥 Es un EXAMEN, no práctica
         setModalExamenAbierto(true)
         setMensaje({
           tipo: 'success',
@@ -4062,6 +4097,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           console.log(`  Pregunta ${i+1}: tipo="${p.tipo}", tiene metadata:`, !!p.metadata);
         });
         
+        // 🔥 LIMPIAR ARCHIVO TEMPORAL DE EXÁMENES ANTES DE MOSTRAR PRÁCTICA
+        await limpiarExamenLocal();
+        
         // Guardar práctica generada
         const practicaId = `practica_${Date.now()}`;
         
@@ -4118,6 +4156,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         practicas.push(nuevaPractica);
         localStorage.setItem('practicas', JSON.stringify(practicas));
         setPracticas(practicas); // Actualizar estado para forzar re-render
+        
+        // 🔥 ESTABLECER CARPETA DE PRÁCTICA (no examen)
+        setCarpetaExamen({
+          nombre: carpetaPracticaGuardar.split('\\').pop() || 'Práctica',
+          ruta: carpetaPracticaGuardar,
+          tipo: 'practica'
+        });
+        
+        // 🔥 MARCAR COMO PRÁCTICA (NO examen)
+        setEsPractica(true);
+        setExamenActivo(true);
         
         setPreguntasExamen(data.preguntas || []);
         setRespuestasUsuario({});
@@ -7089,7 +7138,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
                   <div className="motor-selector">
                     <div 
-                      className={`motor-opcion ${configuracion?.gpu_activa ? 'seleccionada' : ''}`}
+                      className={`motor-opcion ${configuracion?.gpu_activa && configuracion?.usar_ollama ? 'seleccionada' : ''}`}
                       onClick={async () => {
                         try {
                           setLoading(true)
@@ -7098,14 +7147,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({
                               usar_ollama: true,
-                              modelo_ollama: configuracion?.modelo_ollama_activo || 'llama31-local',
+                              modelo_ollama: configuracion?.modelo_ollama_activo || 'qwen-local:latest',
                               n_gpu_layers: 35
                             })
                           })
                           const data = await response.json()
                           if (data.success) {
-                            setMensaje({tipo: 'exito', texto: '✅ Modo GPU activado'})
-                            cargarConfiguracion()
+                            setMensaje({tipo: 'exito', texto: '✅ Ollama GPU activado'})
+                            await new Promise(resolve => setTimeout(resolve, 100))
+                            await cargarConfiguracion()
                           }
                         } catch (error) {
                           setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
@@ -7115,15 +7165,63 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       }}
                     >
                       <div className="motor-icon">🎮</div>
-                      <h3>Modo GPU</h3>
+                      <h3>Ollama GPU</h3>
                       <div className="motor-badge motor-badge-gpu">Recomendado</div>
                       <p className="motor-descripcion">
-                        Usa tu tarjeta gráfica para procesar más rápido
+                        Ollama con aceleración de tarjeta gráfica
                       </p>
                     </div>
 
                     <div 
-                      className={`motor-opcion ${!configuracion?.gpu_activa ? 'seleccionada' : ''}`}
+                      className={`motor-opcion ${!configuracion?.gpu_activa && configuracion?.usar_ollama ? 'seleccionada' : ''}`}
+                      onClick={async () => {
+                        try {
+                          setLoading(true)
+                          console.log('🔷 Activando Ollama CPU...')
+                          console.log('Configuración actual:', configuracion)
+                          
+                          const payload = {
+                            usar_ollama: true,
+                            modelo_ollama: configuracion?.modelo_ollama_activo || 'qwen-local:latest',
+                            n_gpu_layers: 0
+                          }
+                          console.log('Enviando payload:', payload)
+                          
+                          const response = await fetch(`${API_URL}/api/motor/cambiar`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                          })
+                          const data = await response.json()
+                          console.log('Respuesta del servidor:', data)
+                          
+                          if (data.success) {
+                            setMensaje({tipo: 'exito', texto: '✅ Ollama CPU activado'})
+                            // Pequeño delay para asegurar que el backend guardó todo
+                            await new Promise(resolve => setTimeout(resolve, 100))
+                            await cargarConfiguracion()
+                            console.log('✅ Configuración recargada')
+                          } else {
+                            setMensaje({tipo: 'error', texto: '❌ Error: ' + (data.detail || data.mensaje)})
+                          }
+                        } catch (error) {
+                          console.error('Error activando Ollama CPU:', error)
+                          setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                        } finally {
+                          setLoading(false)
+                        }
+                      }}
+                    >
+                      <div className="motor-icon">🔷</div>
+                      <h3>Ollama CPU</h3>
+                      <div className="motor-badge motor-badge-ollama-cpu">Sin GPU</div>
+                      <p className="motor-descripcion">
+                        Ollama usando solo procesador (ahorra GPU)
+                      </p>
+                    </div>
+
+                    <div 
+                      className={`motor-opcion ${!configuracion?.usar_ollama ? 'seleccionada' : ''}`}
                       onClick={async () => {
                         if (!configuracion?.modelo_path) {
                           setMensaje({tipo: 'error', texto: '⚠️ Primero configura un modelo GGUF abajo'})
@@ -7142,8 +7240,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           })
                           const data = await response.json()
                           if (data.success) {
-                            setMensaje({tipo: 'exito', texto: '✅ Modo CPU activado'})
-                            cargarConfiguracion()
+                            setMensaje({tipo: 'exito', texto: '✅ GGUF CPU activado'})
+                            await new Promise(resolve => setTimeout(resolve, 100))
+                            await cargarConfiguracion()
                           }
                         } catch (error) {
                           setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
@@ -7153,24 +7252,40 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       }}
                     >
                       <div className="motor-icon">💻</div>
-                      <h3>Modo CPU</h3>
+                      <h3>GGUF CPU</h3>
                       <div className="motor-badge motor-badge-manual">Más lento</div>
                       <p className="motor-descripcion">
-                        Usa solo el procesador (no requiere GPU)
+                        Modelos GGUF locales en procesador
+                      </p>
+                    </div>
+
+                    <div 
+                      className="motor-opcion"
+                      onClick={() => {
+                        setMensaje({tipo: 'info', texto: '💡 Configura tu API Externa en la pestaña de modelos abajo'})
+                        setPestanaModelos('api')
+                        setMostrarModelos(true)
+                      }}
+                    >
+                      <div className="motor-icon">🌐</div>
+                      <h3>API Externa</h3>
+                      <div className="motor-badge motor-badge-api">Cloud</div>
+                      <p className="motor-descripcion">
+                        Conecta con ChatGPT, DeepSeek u otras APIs
                       </p>
                     </div>
                   </div>
 
                   {/* Estado actual */}
                   <div className="motor-estado-actual">
-                    {configuracion?.gpu_activa ? (
+                    {configuracion?.usar_ollama ? (
                       <div className="estado-activo">
-                        🎮 <strong>Modo activo:</strong> GPU | 
+                        {configuracion?.gpu_activa ? '🎮' : '🔷'} <strong>Modo activo:</strong> Ollama {configuracion?.gpu_activa ? 'GPU' : 'CPU'} | 
                         🤖 <strong>Modelo:</strong> {configuracion.modelo_cargado || 'N/A'}
                       </div>
                     ) : (
                       <div className="estado-activo">
-                        💻 <strong>Modo activo:</strong> CPU | 
+                        💻 <strong>Modo activo:</strong> GGUF CPU | 
                         🤖 <strong>Modelo:</strong> {configuracion.modelo_cargado ? configuracion.modelo_cargado.split('\\').pop() : 'N/A'}
                       </div>
                     )}
@@ -7198,10 +7313,22 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       🎮 Modelos Ollama (GPU)
                     </button>
                     <button 
+                      className={`pestana-btn ${pestanaModelos === 'ollama-cpu' ? 'activa' : ''}`}
+                      onClick={() => setPestanaModelos('ollama-cpu')}
+                    >
+                      💻 Modelos Ollama (CPU)
+                    </button>
+                    <button 
                       className={`pestana-btn ${pestanaModelos === 'gguf' ? 'activa' : ''}`}
                       onClick={() => setPestanaModelos('gguf')}
                     >
-                      💻 Modelos GGUF (CPU)
+                      📦 Modelos GGUF (CPU)
+                    </button>
+                    <button 
+                      className={`pestana-btn ${pestanaModelos === 'api' ? 'activa' : ''}`}
+                      onClick={() => setPestanaModelos('api')}
+                    >
+                      🌐 API Externa
                     </button>
                   </div>
 
@@ -7445,6 +7572,246 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </div>
                   )}
 
+                  {/* Contenido de Ollama CPU */}
+                  {pestanaModelos === 'ollama-cpu' && (
+                    <div className="pestana-contenido" style={{position: 'relative'}}>
+                      <p className="subtitle">Modelos Ollama que usan solo CPU (ahorra GPU)</p>
+                      
+                      {/* Botones flotantes en esquina superior derecha */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        display: 'flex',
+                        gap: '8px',
+                        zIndex: 10
+                      }}>
+                        {/* Botón de reparación/reactivación */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              setLoading(true)
+                              const responseReparar = await fetch(`${API_URL}/api/motor/reparar`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'}
+                              })
+                              const dataReparar = await responseReparar.json()
+                              
+                              if (dataReparar.success) {
+                                setMensaje({tipo: 'exito', texto: dataReparar.mensaje})
+                                await cargarConfiguracion()
+                                // Recargar lista de modelos
+                                const responseModelos = await fetch(`${API_URL}/api/ollama/modelos`)
+                                const dataModelos = await responseModelos.json()
+                                if (dataModelos.success) {
+                                  setModelosOllama(dataModelos.modelos)
+                                }
+                              } else {
+                                setMensaje({tipo: 'error', texto: '❌ ' + (dataReparar.detail || dataReparar.mensaje)})
+                              }
+                            } catch (error) {
+                              setMensaje({tipo: 'error', texto: '❌ Error reparando: ' + error.message})
+                            } finally {
+                              setLoading(false)
+                            }
+                          }}
+                          title="🔧 Reparar motor de IA (reinicia el generador sin cambiar configuración)"
+                          disabled={loading}
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '20px',
+                            cursor: 'pointer',
+                            boxShadow: '0 3px 10px rgba(245, 158, 11, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.3s ease',
+                            opacity: loading ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!loading) {
+                              e.target.style.transform = 'scale(1.05) translateY(-2px)';
+                              e.target.style.boxShadow = '0 5px 15px rgba(245, 158, 11, 0.5)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'scale(1) translateY(0)';
+                            e.target.style.boxShadow = '0 3px 10px rgba(245, 158, 11, 0.3)';
+                          }}
+                        >
+                          🔧
+                        </button>
+
+                        {/* Botón de instalación */}
+                        <button
+                          onClick={() => setModalInstaladorModelo(true)}
+                          title="Instalar nuevo modelo desde Ollama"
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '24px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            boxShadow: '0 3px 10px rgba(102, 126, 234, 0.3)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.3s ease'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.transform = 'scale(1.05) translateY(-2px)';
+                            e.target.style.boxShadow = '0 5px 15px rgba(102, 126, 234, 0.5)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.transform = 'scale(1) translateY(0)';
+                            e.target.style.boxShadow = '0 3px 10px rgba(102, 126, 234, 0.3)';
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      
+                      <button 
+                        onClick={async () => {
+                          try {
+                            setLoading(true)
+                            const response = await fetch(`${API_URL}/api/ollama/modelos`)
+                            const data = await response.json()
+                            if (data.success) {
+                              setModelosOllama(data.modelos)
+                              setMensaje({tipo: 'exito', texto: `✅ ${data.total} modelos encontrados`})
+                            } else {
+                              setMensaje({tipo: 'error', texto: '⚠️ ' + data.mensaje})
+                            }
+                          } catch (error) {
+                            setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                          } finally {
+                            setLoading(false)
+                          }
+                        }}
+                        className="btn-refrescar-ollama"
+                        disabled={loading}
+                      >
+                        🔄 Cargar Modelos de Ollama
+                      </button>
+
+                      {modelosOllama.length > 0 ? (
+                        <div className="modelos-ollama-grid">
+                          {modelosOllama.map(modelo => (
+                            <div 
+                              key={modelo.nombre}
+                              className={`modelo-ollama-card ${!configuracion?.gpu_activa && configuracion?.modelo_ollama_activo === modelo.nombre ? 'seleccionado' : ''}`}
+                            >
+                              <div className="modelo-ollama-header">
+                                <h3>🤖 {modelo.nombre}</h3>
+                                <span className="modelo-badge modelo-badge-ollama-cpu">{modelo.tipo}</span>
+                              </div>
+                              <div className="modelo-ollama-info">
+                                <div className="info-item">
+                                  <span className="info-label">Tamaño:</span>
+                                  <span className="info-value">{modelo.tamaño_gb} GB</span>
+                                </div>
+                                <div className="info-item">
+                                  <span className="info-label">Velocidad:</span>
+                                  <span className="info-value">{modelo.velocidad}</span>
+                                </div>
+                                <div className="info-item">
+                                  <span className="info-label">ID:</span>
+                                  <span className="info-value" style={{fontSize: '0.8rem'}}>{modelo.digest}</span>
+                                </div>
+                              </div>
+                              <div className="modelo-ollama-actions">
+                                <button
+                                  className="btn-activar-modelo"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    try {
+                                      setLoading(true)
+                                      const responseMotor = await fetch(`${API_URL}/api/motor/cambiar`, {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({
+                                          usar_ollama: true,
+                                          modelo_ollama: modelo.nombre,
+                                          n_gpu_layers: 0
+                                        })
+                                      })
+                                      const dataMotor = await responseMotor.json()
+                                      
+                                      if (dataMotor.success) {
+                                        setMensaje({tipo: 'exito', texto: `✅ Modelo ${modelo.nombre} activado en CPU`})
+                                        await cargarConfiguracion()
+                                      }
+                                    } catch (error) {
+                                      setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                                    } finally {
+                                      setLoading(false)
+                                    }
+                                  }}
+                                  disabled={!configuracion?.gpu_activa && configuracion?.modelo_ollama_activo === modelo.nombre}
+                                >
+                                  {!configuracion?.gpu_activa && configuracion?.modelo_ollama_activo === modelo.nombre ? '✓ Activo en CPU' : '💻 Activar en CPU'}
+                                </button>
+                                <button
+                                  className="btn-eliminar-modelo"
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    if (!window.confirm(`¿Estás seguro de eliminar el modelo "${modelo.nombre}"?\n\nEsto liberará ${modelo.tamaño_gb} GB de espacio.`)) {
+                                      return
+                                    }
+                                    try {
+                                      setLoading(true)
+                                      const response = await fetch(`${API_URL}/api/ollama/modelo/${encodeURIComponent(modelo.nombre)}`, {
+                                        method: 'DELETE'
+                                      })
+                                      const data = await response.json()
+                                      
+                                      if (data.success) {
+                                        setMensaje({tipo: 'exito', texto: data.mensaje})
+                                        // Recargar lista de modelos
+                                        const responseModelos = await fetch(`${API_URL}/api/ollama/modelos`)
+                                        const dataModelos = await responseModelos.json()
+                                        if (dataModelos.success) {
+                                          setModelosOllama(dataModelos.modelos)
+                                        }
+                                      } else {
+                                        setMensaje({tipo: 'error', texto: data.mensaje})
+                                      }
+                                    } catch (error) {
+                                      setMensaje({tipo: 'error', texto: '❌ Error: ' + error.message})
+                                    } finally {
+                                      setLoading(false)
+                                    }
+                                  }}
+                                  disabled={!configuracion?.gpu_activa && configuracion?.modelo_ollama_activo === modelo.nombre}
+                                  title={!configuracion?.gpu_activa && configuracion?.modelo_ollama_activo === modelo.nombre ? 'No puedes eliminar el modelo activo' : 'Eliminar modelo'}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">
+                          <p>📭 No hay modelos de Ollama cargados</p>
+                          <p className="empty-hint">
+                            Haz clic en "Cargar Modelos" o instala modelos con: <code>ollama pull llama3.2:3b</code>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Contenido de GGUF */}
                   {pestanaModelos === 'gguf' && (
                     <div className="pestana-contenido">
@@ -7623,6 +7990,238 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <p className="empty-hint">Descarga modelos desde la sección de abajo</p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Contenido de API Externa */}
+                  {pestanaModelos === 'api' && (
+                    <div className="pestana-contenido">
+                      <p className="subtitle">Conecta con servicios de IA en la nube</p>
+                      
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.05))',
+                        border: '2px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        marginBottom: '2rem'
+                      }}>
+                        <h3 style={{color: '#3b82f6', marginBottom: '1rem'}}>🌐 Configuración de API Externa</h3>
+                        
+                        {/* Selector de Provider */}
+                        <div style={{marginBottom: '1.5rem'}}>
+                          <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                            Proveedor de API
+                          </label>
+                          <select 
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(26, 26, 46, 0.8)',
+                              border: '2px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '1rem',
+                              cursor: 'pointer'
+                            }}
+                            defaultValue="chatgpt"
+                          >
+                            <option value="chatgpt">🤖 ChatGPT (OpenAI)</option>
+                            <option value="deepseek">🧠 DeepSeek API</option>
+                            <option value="anthropic">🎭 Claude (Anthropic)</option>
+                            <option value="custom">🔧 API Personalizada</option>
+                          </select>
+                        </div>
+
+                        {/* API Key */}
+                        <div style={{marginBottom: '1.5rem'}}>
+                          <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                            API Key 🔑
+                          </label>
+                          <input 
+                            type="password"
+                            placeholder="sk-..."
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(26, 26, 46, 0.8)',
+                              border: '2px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '1rem'
+                            }}
+                          />
+                          <p style={{color: '#808090', fontSize: '0.85rem', marginTop: '0.5rem'}}>
+                            💡 Tu clave API se almacena localmente y nunca se comparte
+                          </p>
+                        </div>
+
+                        {/* Modelo */}
+                        <div style={{marginBottom: '1.5rem'}}>
+                          <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                            Modelo a utilizar
+                          </label>
+                          <input 
+                            type="text"
+                            placeholder="gpt-4o, deepseek-chat, claude-3-5-sonnet..."
+                            defaultValue="gpt-4o"
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(26, 26, 46, 0.8)',
+                              border: '2px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '1rem'
+                            }}
+                          />
+                        </div>
+
+                        {/* Endpoint URL (opcional) */}
+                        <div style={{marginBottom: '1.5rem'}}>
+                          <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                            Endpoint URL (opcional)
+                          </label>
+                          <input 
+                            type="text"
+                            placeholder="https://api.openai.com/v1/chat/completions"
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(26, 26, 46, 0.8)',
+                              border: '2px solid rgba(59, 130, 246, 0.3)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '1rem'
+                            }}
+                          />
+                          <p style={{color: '#808090', fontSize: '0.85rem', marginTop: '0.5rem'}}>
+                            ⚙️ Deja en blanco para usar el endpoint por defecto del proveedor
+                          </p>
+                        </div>
+
+                        {/* Parámetros */}
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: '1rem',
+                          marginBottom: '1.5rem'
+                        }}>
+                          <div>
+                            <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                              Temperature
+                            </label>
+                            <input 
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              defaultValue="0.7"
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: 'rgba(26, 26, 46, 0.8)',
+                                border: '2px solid rgba(59, 130, 246, 0.3)',
+                                borderRadius: '8px',
+                                color: '#fff',
+                                fontSize: '1rem'
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: '600'}}>
+                              Max Tokens
+                            </label>
+                            <input 
+                              type="number"
+                              min="100"
+                              max="32000"
+                              step="100"
+                              defaultValue="8000"
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: 'rgba(26, 26, 46, 0.8)',
+                                border: '2px solid rgba(59, 130, 246, 0.3)',
+                                borderRadius: '8px',
+                                color: '#fff',
+                                fontSize: '1rem'
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Botones */}
+                        <div style={{display: 'flex', gap: '1rem', marginTop: '2rem'}}>
+                          <button
+                            style={{
+                              flex: 1,
+                              padding: '0.875rem 1.5rem',
+                              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                              border: 'none',
+                              borderRadius: '8px',
+                              color: 'white',
+                              fontSize: '1rem',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              opacity: 0.6,
+                              transition: 'all 0.3s ease'
+                            }}
+                            disabled
+                            title="Funcionalidad próximamente"
+                          >
+                            🔌 Probar Conexión
+                          </button>
+                          <button
+                            style={{
+                              flex: 1,
+                              padding: '0.875rem 1.5rem',
+                              background: 'linear-gradient(135deg, #10b981, #059669)',
+                              border: 'none',
+                              borderRadius: '8px',
+                              color: 'white',
+                              fontSize: '1rem',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              opacity: 0.6,
+                              transition: 'all 0.3s ease'
+                            }}
+                            disabled
+                            title="Funcionalidad próximamente"
+                          >
+                            💾 Guardar Configuración
+                          </button>
+                        </div>
+
+                        <div style={{
+                          marginTop: '1.5rem',
+                          padding: '1rem',
+                          background: 'rgba(251, 146, 60, 0.1)',
+                          border: '2px solid rgba(251, 146, 60, 0.3)',
+                          borderRadius: '8px'
+                        }}>
+                          <p style={{color: '#fb923c', fontSize: '0.9rem', margin: 0}}>
+                            ⚠️ <strong>Vista previa:</strong> Esta funcionalidad está en desarrollo. Los botones están deshabilitados temporalmente.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Información adicional */}
+                      <div style={{
+                        background: 'rgba(59, 130, 246, 0.05)',
+                        border: '1px solid rgba(59, 130, 246, 0.2)',
+                        borderRadius: '8px',
+                        padding: '1.25rem',
+                        marginTop: '1.5rem'
+                      }}>
+                        <h4 style={{color: '#3b82f6', marginBottom: '0.75rem'}}>💡 Información</h4>
+                        <ul style={{color: '#b0b0c0', fontSize: '0.9rem', lineHeight: '1.8', marginLeft: '1.5rem'}}>
+                          <li>Las APIs externas requieren conexión a internet y pueden tener costos asociados</li>
+                          <li>ChatGPT (OpenAI) ofrece modelos como GPT-4o, GPT-4 Turbo, etc.</li>
+                          <li>DeepSeek API proporciona modelos avanzados de razonamiento</li>
+                          <li>Claude (Anthropic) incluye modelos como Claude 3.5 Sonnet</li>
+                          <li>Puedes usar APIs personalizadas compatibles con OpenAI</li>
+                        </ul>
+                      </div>
                     </div>
                   )}
                     </>

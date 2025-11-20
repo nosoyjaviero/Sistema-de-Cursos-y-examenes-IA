@@ -1,0 +1,18 @@
+{
+  "id": "chat_1763578405",
+  "nombre": "Chat 19/11/2025",
+  "fecha": "2025-11-19 12:53:25",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "hola",
+      "hora": "12:53"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Lo siento, no pude generar una respuesta. Intenta de nuevo.",
+      "hora": "12:53"
+    }
+  ],
+  "carpeta": ""
+}

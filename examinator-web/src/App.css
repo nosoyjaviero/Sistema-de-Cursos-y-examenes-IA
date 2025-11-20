@@ -5306,8 +5306,18 @@
   color: white;
 }
 
+.motor-badge-ollama-cpu {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  color: white;
+}
+
 .motor-badge-manual {
   background: linear-gradient(135deg, #fb923c, #f97316);
+  color: white;
+}
+
+.motor-badge-api {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
 }
 
