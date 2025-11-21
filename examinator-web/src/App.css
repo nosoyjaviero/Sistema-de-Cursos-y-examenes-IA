@@ -3052,6 +3052,7 @@
   border-radius: 4px;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
   margin-bottom: 1.5rem;
 }
 
@@ -3243,10 +3244,6 @@
   background: linear-gradient(135deg, rgba(100, 108, 255, 0.2) 0%, rgba(100, 108, 255, 0.1) 100%);
   transform: translateY(-5px);
   box-shadow: 0 10px 30px rgba(100, 108, 255, 0.3);
-}
-
-.carpeta-card-clickable:hover {
-  /* Hover effect only on clickable area */
 }
 
 .carpeta-card:hover::before {
@@ -6094,6 +6091,7 @@
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 4;
+  line-clamp: 4;
   -webkit-box-orient: vertical;
 }
 
@@ -7673,9 +7671,6 @@
 
 @keyframes pulse {
   0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
   50% { opacity: 1; }
 }
 /* Área de respuesta FUERA de la tarjeta */

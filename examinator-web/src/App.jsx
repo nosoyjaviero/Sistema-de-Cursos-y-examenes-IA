@@ -1,6 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import './ModalGuardarTxt.css';
+import { InlineMath, BlockMath } from 'react-katex';
+import 'katex/dist/katex.min.css';
+import MathEditor from './components/MathEditor';
+import MathToolbar from './components/MathToolbar';
+import ChemEditor from './components/ChemEditor';
+import ChemToolbar from './components/ChemToolbar';
+import PhysicsEditor from './components/PhysicsEditor';
+import PhysicsToolbar from './components/PhysicsToolbar';
+import EngineeringCanvas from './components/EngineeringCanvas';
+import EngineeringToolbar from './components/EngineeringToolbar';
+import ProgrammingCanvas from './components/ProgrammingCanvas';
+import ProgrammingToolbar from './components/ProgrammingToolbar';
+import DiscreteCanvas from './components/DiscreteCanvas';
+import DiscreteToolbar from './components/DiscreteToolbar';
+import LinguisticsCanvas from './components/LinguisticsCanvas';
+import LinguisticsToolbar from './components/LinguisticsToolbar';
+import MusicCanvas from './components/MusicCanvas';
+import MusicToolbar from './components/MusicToolbar';
+import GeometryCanvas from './components/GeometryCanvas';
+import GeometryToolbar from './components/GeometryToolbar';
+import AdvancedChemistryCanvas from './components/AdvancedChemistryCanvas';
+import AdvancedChemistryToolbar from './components/AdvancedChemistryToolbar';
+import ProbabilityCanvas from './ProbabilityCanvas';
+import ProbabilityToolbar from './ProbabilityToolbar';
+import VisualModeSelector from './VisualModeSelector';
+import ArtCanvas from './components/ArtCanvas';
+import ArtToolbar from './components/ArtToolbar';
 
 function App() {
   const [selectedMenu, setSelectedMenu] = useState('inicio')
@@ -106,6 +133,12 @@ function App() {
   const [filtroTipoFlashcard, setFiltroTipoFlashcard] = useState('todas')
   const [modalNuevaFlashcard, setModalNuevaFlashcard] = useState(false)
   const [flashcardEditando, setFlashcardEditando] = useState(null)
+  const [flashcardVistaCompleta, setFlashcardVistaCompleta] = useState(null)
+  const [imagenZoom, setImagenZoom] = useState(null) // 🔍 Imagen para zoom
+  const [modalAsistenteLatex, setModalAsistenteLatex] = useState(false) // 🧠 Modal asistente LaTeX
+  const [promptLatex, setPromptLatex] = useState('') // 📝 Prompt en lenguaje natural
+  const [latexGenerado, setLatexGenerado] = useState('') // ✨ LaTeX generado
+  const [modoVisual, setModoVisual] = useState('texto') // 🎨 Modo contextual: texto, matematicas, quimica, fisica, etc.
   const [formDataFlashcard, setFormDataFlashcard] = useState({
     tipo: 'clasica',
     titulo: '',
@@ -115,7 +148,26 @@ function App() {
     explicacion: '',
     tema: '',
     carpeta: '',
-    estadoRevision: 'nueva'
+    estadoRevision: 'nueva',
+    archivos: [],
+    imagenes: [],
+    latex: false,
+    subtema: '',
+    lenguaje: 'javascript', // Para tipo Programación
+    dificultad: 'medio', // Para tipo Programación
+    patronCodigo: 'comprension', // comprension | bug | cloze | produccion
+    // Campos para Química
+    subtipoQuimica: 'estructura', // estructura | enlace | funcional | reaccion | mecanismo
+    nivelQuimica: 'basico', // basico | intermedio | avanzado
+    rama: 'organica', // organica | inorganica | fisicoquimica
+    // Campos para Física
+    subtipoFisica: 'ecuacion', // ecuacion | diagrama-fuerzas | campo | proceso | experimento
+    nivelFisica: 'basico', // basico | intermedio | avanzado
+    ramaFisica: 'mecanica', // mecanica | electromagnetismo | optica | termodinamica | cuantica
+    // Campos para Ingeniería
+    subtipoIngenieria: 'circuito', // circuito | fbd | viga | material | mecanismo
+    nivelIngenieria: 'basico', // basico | intermedio | avanzado
+    ramaIngenieria: 'electrica' // electrica | mecanica | materiales | civil
   })
 
   const [promptSistema, setPromptSistema] = useState('')
@@ -187,7 +239,119 @@ function App() {
   const [rutaCarpetasChat, setRutaCarpetasChat] = useState('')
   const [practicas, setPracticas] = useState([])
 
-  // Estados para diagnóstico de Ollama
+  // 🧠 MÓDULO ASISTENTE LaTeX INTELIGENTE
+  // Convierte lenguaje natural a LaTeX perfecto (6 niveles)
+  const asistenteLaTeX = (promptNatural) => {
+    const prompt = promptNatural.toLowerCase().trim();
+    
+    // NIVEL 1: Expresiones básicas
+    if (prompt.match(/elevado a|potencia de|a la/)) {
+      const match = prompt.match(/(\d+|[a-z])\s*(?:elevado a|a la)\s*(\d+|[a-z])/i);
+      if (match) return `${match[1]}^{${match[2]}}`;
+    }
+    
+    if (prompt.match(/\d+\s*[+\-*/]\s*\d+\s*=\s*\d+/)) {
+      return prompt.replace(/\*/g, '\\cdot ').replace(/\//g, '\\div ');
+    }
+    
+    // NIVEL 2: Fracciones y raíces
+    if (prompt.match(/fracción|dividir|sobre/)) {
+      const match = prompt.match(/(?:fracción\s+(?:de\s+)?)?(.+?)\s+(?:sobre|dividido|entre)\s+(.+)/i);
+      if (match) return `\\frac{${match[1].trim()}}{${match[2].trim()}}`;
+    }
+    
+    if (prompt.match(/raíz cuadrada/)) {
+      const match = prompt.match(/raíz cuadrada\s+(?:de\s+)?(.+)/i);
+      if (match) return `\\sqrt{${match[1].trim()}}`;
+    }
+    
+    if (prompt.match(/raíz\s+(\w+)(?:-ésima)?/)) {
+      const matchN = prompt.match(/raíz\s+(\w+)(?:-ésima)?\s+(?:de\s+)?(.+)/i);
+      if (matchN) return `\\sqrt[${matchN[1]}]{${matchN[2].trim()}}`;
+    }
+    
+    // NIVEL 3: Integrales, sumatorias y límites
+    if (prompt.match(/integral/)) {
+      const match = prompt.match(/integral\s+(?:de\s+)?(.+?)\s+(?:a|hasta)\s+(.+?)\s+(?:de\s+)?(.+)/i);
+      if (match) {
+        return `\\int_{${match[1].trim()}}^{${match[2].trim()}} ${match[3].trim()} \\, dx`;
+      }
+      const matchSimple = prompt.match(/integral\s+(?:de\s+)?(.+)/i);
+      if (matchSimple) return `\\int ${matchSimple[1].trim()} \\, dx`;
+    }
+    
+    if (prompt.match(/sumatoria|suma/)) {
+      const match = prompt.match(/(?:sumatoria|suma)\s+(?:de\s+)?(.+?)\s*=\s*(\d+)\s+(?:a|hasta)\s+(.+)/i);
+      if (match) return `\\sum_{${match[1].trim()}=${match[2]}}^{${match[3].trim()}}`;
+    }
+    
+    if (prompt.match(/límite|limite/)) {
+      const match = prompt.match(/límite\s+(?:de\s+)?(.+?)\s*→\s*(.+?)\s+(?:de\s+)?(.+)/i);
+      if (match) return `\\lim_{${match[1].trim()} \\to ${match[2].trim()}} ${match[3].trim()}`;
+    }
+    
+    // NIVEL 4: Matrices y vectores
+    if (prompt.match(/matriz\s+(?:de\s+)?(\d+)\s*x\s*(\d+)/)) {
+      const match = prompt.match(/matriz\s+(?:de\s+)?(\d+)\s*x\s*(\d+)\s+(?:con\s+)?(.+)/i);
+      if (match) {
+        const elementos = match[3].split(/[\s,]+/).filter(e => e);
+        const filas = parseInt(match[1]);
+        const cols = parseInt(match[2]);
+        let matriz = '\\begin{pmatrix}\n';
+        for (let i = 0; i < filas; i++) {
+          matriz += elementos.slice(i * cols, (i + 1) * cols).join(' & ');
+          if (i < filas - 1) matriz += ' \\\\\n';
+        }
+        matriz += '\n\\end{pmatrix}';
+        return matriz;
+      }
+    }
+    
+    if (prompt.match(/vector columna/)) {
+      const match = prompt.match(/vector columna\s+(.+)/i);
+      if (match) {
+        const elementos = match[1].split(/[\s,]+/).filter(e => e);
+        return `\\begin{pmatrix} ${elementos.join(' \\\\\\\\ ')} \\end{pmatrix}`;
+      }
+    }
+    
+    // NIVEL 5: Álgebra lineal
+    if (prompt.match(/producto punto|producto escalar/)) {
+      const match = prompt.match(/producto\s+(?:punto|escalar)\s+(?:de\s+)?(.+?)\s+(?:y|con)\s+(.+)/i);
+      if (match) return `\\vec{${match[1].trim()}} \\cdot \\vec{${match[2].trim()}}`;
+    }
+    
+    if (prompt.match(/norma/)) {
+      const match = prompt.match(/norma\s+(?:de\s+)?(.+)/i);
+      if (match) return `\\|${match[1].trim()}\\|`;
+    }
+    
+    if (prompt.match(/transpuesta/)) {
+      const match = prompt.match(/transpuesta\s+(?:de\s+)?(.+)/i);
+      if (match) return `${match[1].trim()}^T`;
+    }
+    
+    // NIVEL 6: Ecuaciones diferenciales
+    if (prompt.match(/derivada|dy\/dx/)) {
+      const match = prompt.match(/(?:derivada\s+)?d(.+?)\/d(.+?)\s*=\s*(.+)/i);
+      if (match) return `\\frac{d${match[1].trim()}}{d${match[2].trim()}} = ${match[3].trim()}`;
+      
+      const matchSimple = prompt.match(/derivada\s+(?:de\s+)?(.+)/i);
+      if (matchSimple) return `\\frac{d}{dx} ${matchSimple[1].trim()}`;
+    }
+    
+    if (prompt.match(/segunda derivada|derivada segunda/)) {
+      const match = prompt.match(/segunda\s+derivada\s+(?:de\s+)?(.+)/i);
+      if (match) return `\\frac{d^2}{dx^2} ${match[1].trim()}`;
+    }
+    
+    if (prompt.match(/taylor/)) {
+      return `f(x) = \\sum_{n=0}^{\\infty} \\frac{f^{(n)}(a)}{n!}(x-a)^n`;
+    }
+    
+    // Fallback: devolver el texto tal cual (podría ser LaTeX directo)
+    return promptNatural;
+  };  // Estados para diagnóstico de Ollama
   const [diagnosticoOllama, setDiagnosticoOllama] = useState(null)
   const [reparandoOllama, setReparandoOllama] = useState(false)
 
@@ -4901,7 +5065,48 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       explicacion: '',
       tema: '',
       carpeta: carpetaFlashcardActual?.ruta || '',
-      estadoRevision: 'nueva'
+      estadoRevision: 'nueva',
+      archivos: [],
+      imagenes: [],
+      latex: false,
+      subtema: '',
+      lenguaje: 'javascript',
+      dificultad: 'medio',
+      patronCodigo: 'comprension',
+      subtipoQuimica: 'estructura',
+      nivelQuimica: 'basico',
+      rama: 'organica',
+      subtipoFisica: 'ecuacion',
+      nivelFisica: 'basico',
+      ramaFisica: 'mecanica',
+      subtipoIngenieria: 'circuito',
+      nivelIngenieria: 'basico',
+      ramaIngenieria: 'electrica',
+      subtipoProgramacion: 'uml',
+      patronProgramacion: 'clase',
+      nivelProgramacion: 'basico',
+      subtipoDiscreta: 'logica',
+      categoriaDiscreta: 'proposicional',
+      nivelDiscreta: 'basico',
+      subtipoLinguistica: 'ipa',
+      categoriaLinguistica: 'vocales',
+      nivelLinguistica: 'basico',
+      subtipoMusica: 'pentagramas',
+      categoriaMusica: 'claves',
+      nivelMusica: 'basico',
+      subtipoGeometria: 'puntos',
+      categoriaGeometria: 'basicos',
+      nivelGeometria: 'basico',
+      subtipoQuimicaAvanzada: 'orbitales',
+      categoriaQuimicaAvanzada: 'atomicos',
+      nivelQuimicaAvanzada: 'basico',
+      subtipoProbabilidad: 'arboles',
+      categoriaProbabilidad: 'simple',
+      nivelProbabilidad: 'basico',
+      subtipoArte: 'figuras',
+      categoriaArte: 'basico',
+      estiloArtistico: 'ninguno',
+      paletaColor: 'ninguna'
     })
     setModalNuevaFlashcard(true)
   }
@@ -4919,10 +5124,51 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       respuestaCorrecta: flashcard.respuestaCorrecta,
       explicacion: flashcard.explicacion,
       tema: flashcard.tema,
+      subtema: flashcard.subtema || '',
       carpeta: carpetaFlashcardActual?.ruta || '',
       fecha: flashcard.fecha || new Date().toISOString(),
       fechaRevision: null,
-      estadoRevision: 'nueva'
+      estadoRevision: 'nueva',
+      archivos: flashcard.archivos || [],
+      imagenes: flashcard.imagenes || [],
+      latex: flashcard.latex || false,
+      lenguaje: flashcard.lenguaje || 'javascript',
+      dificultad: flashcard.dificultad || 'medio',
+      patronCodigo: flashcard.patronCodigo || 'comprension',
+      subtipoQuimica: flashcard.subtipoQuimica || 'estructura',
+      nivelQuimica: flashcard.nivelQuimica || 'basico',
+      rama: flashcard.rama || 'organica',
+      subtipoFisica: flashcard.subtipoFisica || 'ecuacion',
+      nivelFisica: flashcard.nivelFisica || 'basico',
+      ramaFisica: flashcard.ramaFisica || 'mecanica',
+      subtipoIngenieria: flashcard.subtipoIngenieria || 'circuito',
+      nivelIngenieria: flashcard.nivelIngenieria || 'basico',
+      ramaIngenieria: flashcard.ramaIngenieria || 'electrica',
+      subtipoProgramacion: flashcard.subtipoProgramacion || 'uml',
+      patronProgramacion: flashcard.patronProgramacion || 'clase',
+      nivelProgramacion: flashcard.nivelProgramacion || 'basico',
+      subtipoDiscreta: flashcard.subtipoDiscreta || 'logica',
+      categoriaDiscreta: flashcard.categoriaDiscreta || 'proposicional',
+      nivelDiscreta: flashcard.nivelDiscreta || 'basico',
+      subtipoLinguistica: flashcard.subtipoLinguistica || 'ipa',
+      categoriaLinguistica: flashcard.categoriaLinguistica || 'vocales',
+      nivelLinguistica: flashcard.nivelLinguistica || 'basico',
+      subtipoMusica: flashcard.subtipoMusica || 'pentagramas',
+      categoriaMusica: flashcard.categoriaMusica || 'claves',
+      nivelMusica: flashcard.nivelMusica || 'basico',
+      subtipoGeometria: flashcard.subtipoGeometria || 'puntos',
+      categoriaGeometria: flashcard.categoriaGeometria || 'basicos',
+      nivelGeometria: flashcard.nivelGeometria || 'basico',
+      subtipoQuimicaAvanzada: flashcard.subtipoQuimicaAvanzada || 'orbitales',
+      categoriaQuimicaAvanzada: flashcard.categoriaQuimicaAvanzada || 'atomicos',
+      nivelQuimicaAvanzada: flashcard.nivelQuimicaAvanzada || 'basico',
+      subtipoProbabilidad: flashcard.subtipoProbabilidad || 'arboles',
+      categoriaProbabilidad: flashcard.categoriaProbabilidad || 'simple',
+      nivelProbabilidad: flashcard.nivelProbabilidad || 'basico',
+      subtipoArte: flashcard.subtipoArte || 'figuras',
+      categoriaArte: flashcard.categoriaArte || 'basico',
+      estiloArtistico: flashcard.estiloArtistico || 'ninguno',
+      paletaColor: flashcard.paletaColor || 'ninguna'
     }
 
     let flashcardsActualizadas
@@ -6674,9 +6920,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           <div className="content-section">
             <div className="section-header">
               <h1>🃏 Mis Flashcards</h1>
-              <button className="btn-primary" onClick={crearNuevaFlashcard}>
-                ➕ Nueva Flashcard
-              </button>
+              {carpetaFlashcardActual && (
+                <button className="btn-primary" onClick={crearNuevaFlashcard}>
+                  ➕ Nueva Flashcard
+                </button>
+              )}
             </div>
 
             {/* Breadcrumb de navegación */}
@@ -6709,7 +6957,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 invertida: flashcards.filter(f => f.tipo === 'invertida').length,
                 jerarquia: flashcards.filter(f => f.tipo === 'jerarquia').length,
                 error: flashcards.filter(f => f.tipo === 'error').length,
-                comparacion: flashcards.filter(f => f.tipo === 'comparacion').length
+                comparacion: flashcards.filter(f => f.tipo === 'comparacion').length,
+                matematica: flashcards.filter(f => f.tipo === 'matematica').length,
+                archivo: flashcards.filter(f => f.tipo === 'archivo').length,
+                programacion: flashcards.filter(f => f.tipo === 'programacion').length,
+                quimica: flashcards.filter(f => f.tipo === 'quimica').length,
+                fisica: flashcards.filter(f => f.tipo === 'fisica').length,
+                ingenieria: flashcards.filter(f => f.tipo === 'ingenieria').length,
+                'programacion-avanzada': flashcards.filter(f => f.tipo === 'programacion-avanzada').length,
+                'logica-discreta': flashcards.filter(f => f.tipo === 'logica-discreta').length,
+                linguistica: flashcards.filter(f => f.tipo === 'linguistica').length,
+                musica: flashcards.filter(f => f.tipo === 'musica').length,
+                geometria: flashcards.filter(f => f.tipo === 'geometria').length,
+                'quimica-avanzada': flashcards.filter(f => f.tipo === 'quimica-avanzada').length,
+                probabilidad: flashcards.filter(f => f.tipo === 'probabilidad').length,
+                arte: flashcards.filter(f => f.tipo === 'arte').length
               };
 
               return (
@@ -6727,7 +6989,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     {id: 'invertida', nombre: 'Invertida', icon: '🔄'},
                     {id: 'jerarquia', nombre: 'Jerarquía', icon: '🏗️'},
                     {id: 'error', nombre: 'Error', icon: '❌'},
-                    {id: 'comparacion', nombre: 'Comparación', icon: '⚖️'}
+                    {id: 'comparacion', nombre: 'Comparación', icon: '⚖️'},
+                    {id: 'matematica', nombre: 'Matemática', icon: '🔢'},
+                    {id: 'archivo', nombre: 'Archivo', icon: '📎'},
+                    {id: 'programacion', nombre: 'Programación', icon: '</>'},
+                    {id: 'quimica', nombre: 'Química', icon: '🧪'},
+                    {id: 'fisica', nombre: 'Física', icon: '⚛️'},
+                    {id: 'ingenieria', nombre: 'Ingeniería', icon: '🔧'},
+                    {id: 'programacion-avanzada', nombre: 'Programación Avanzada', icon: '💻'},
+                    {id: 'logica-discreta', nombre: 'Lógica/Discreta', icon: '🔮'},
+                    {id: 'linguistica', nombre: 'Linguística', icon: '🗣️'},
+                    {id: 'musica', nombre: 'Música', icon: '🎼'},
+                    {id: 'geometria', nombre: 'Geometría', icon: '📐'},
+                    {id: 'quimica-avanzada', nombre: 'Química Avanzada', icon: '🧬'},
+                    {id: 'probabilidad', nombre: 'Probabilidad', icon: '🎲'},
+                    {id: 'arte', nombre: 'Arte', icon: '🎨'}
                   ].map(tipo => (
                     <button
                       key={tipo.id}
@@ -6792,7 +7068,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
                 jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
                 error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
-                comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' }
+                comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' },
+                matematica: { color: '#3b82f6', icon: '📐', nombre: 'Matemáticas' },
+                quimica: { color: '#10b981', icon: '🧪', nombre: 'Química' },
+                fisica: { color: '#f59e0b', icon: '⚡', nombre: 'Física' },
+                geometria: { color: '#22c55e', icon: '📐', nombre: 'Geometría' },
+                ingenieria: { color: '#ef4444', icon: '🔧', nombre: 'Ingeniería' },
+                'logica-discreta': { color: '#7c3aed', icon: '🔮', nombre: 'Lógica' },
+                linguistica: { color: '#ec4899', icon: '🗣️', nombre: 'Fonética' },
+                musica: { color: '#a855f7', icon: '🎼', nombre: 'Música' },
+                programacion: { color: '#14b8a6', icon: '💻', nombre: 'Programación' },
+                'programacion-avanzada': { color: '#8b5cf6', icon: '💻', nombre: 'Prog. Avanzada' },
+                'quimica-avanzada': { color: '#c084fc', icon: '🧬', nombre: 'Química Avz.' },
+                probabilidad: { color: '#8b5cf6', icon: '🎲', nombre: 'Probabilidad' },
+                datos: { color: '#06b6d4', icon: '📊', nombre: 'Datos' },
+                arte: { color: '#f472b6', icon: '🎨', nombre: 'Arte' }
               };
 
               return (
@@ -6818,22 +7108,328 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <span>{config.nombre}</span>
                         </div>
 
-                        {/* Cuerpo de la flashcard */}
-                        <div className="flashcard-body">
+                        {/* Cuerpo de la flashcard - clickeable para vista completa */}
+                        <div 
+                          className="flashcard-body" 
+                          onClick={() => setFlashcardVistaCompleta(flashcard)}
+                          style={{cursor: 'pointer'}}
+                        >
                           <h3 className="flashcard-titulo">{flashcard.titulo}</h3>
                           <div className="flashcard-preview">
                             {flashcard.contenido.substring(0, 100)}
                             {flashcard.contenido.length > 100 && '...'}
                           </div>
+                          
+                          {/* Indicador de archivos */}
+                          {((flashcard.imagenes && flashcard.imagenes.length > 0) || 
+                            (flashcard.archivos && flashcard.archivos.length > 0)) && (
+                            <div style={{
+                              marginTop: '0.75rem',
+                              fontSize: '0.8rem',
+                              color: '#94a3b8',
+                              display: 'flex',
+                              gap: '0.5rem',
+                              alignItems: 'center'
+                            }}>
+                              {flashcard.imagenes && flashcard.imagenes.length > 0 && (
+                                <span>🖼️ {flashcard.imagenes.length} {flashcard.imagenes.length === 1 ? 'imagen' : 'imágenes'}</span>
+                              )}
+                              {flashcard.archivos && flashcard.archivos.length > 0 && (
+                                <span>📎 {flashcard.archivos.length} {flashcard.archivos.length === 1 ? 'archivo' : 'archivos'}</span>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Indicador LaTeX */}
+                          {flashcard.latex && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#60a5fa',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              📐 LaTeX
+                            </div>
+                          )}
+                          
+                          {/* Indicador Programación */}
+                          {flashcard.tipo === 'programacion' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#5eead4',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(20, 184, 166, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              💻 {flashcard.lenguaje?.toUpperCase() || 'CODE'}
+                            </div>
+                          )}
+
+                          {/* Indicador Química */}
+                          {flashcard.tipo === 'quimica' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#6ee7b7',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(16, 185, 129, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              ⚗️ {flashcard.rama?.toUpperCase() || 'QUÍMICA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Física */}
+                          {flashcard.tipo === 'fisica' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#fbbf24',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              ⚛️ {flashcard.ramaFisica?.toUpperCase() || 'FÍSICA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Ingeniería */}
+                          {flashcard.tipo === 'ingenieria' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#fca5a5',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🔧 {flashcard.ramaIngenieria?.toUpperCase() || 'INGENIERÍA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Programación Avanzada */}
+                          {flashcard.tipo === 'programacion-avanzada' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#ddd6fe',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(139, 92, 246, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              💻 {flashcard.subtipoProgramacion?.toUpperCase() || 'PROGRAMACIÓN'}
+                            </div>
+                          )}
+
+                          {/* Indicador Lógica/Discreta */}
+                          {flashcard.tipo === 'logica-discreta' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#ddd6fe',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(124, 58, 237, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🔮 {flashcard.subtipoDiscreta?.toUpperCase() || 'LÓGICA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Música */}
+                          {flashcard.tipo === 'musica' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#f0abfc',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(168, 85, 247, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🎼 {flashcard.subtipoMusica?.toUpperCase() || 'MÚSICA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Geometría */}
+                          {flashcard.tipo === 'geometria' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#86efac',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(34, 197, 94, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              📐 {flashcard.subtipoGeometria?.toUpperCase() || 'GEOMETRÍA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Química Avanzada */}
+                          {flashcard.tipo === 'quimica-avanzada' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#e9d5ff',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(192, 132, 252, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🧬 {flashcard.subtipoQuimicaAvanzada?.toUpperCase() || 'QUÍMICA AVZ'}
+                            </div>
+                          )}
+
+                          {/* Indicador Música */}
+                          {flashcard.tipo === 'musica' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#f0abfc',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(168, 85, 247, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🎼 {flashcard.subtipoMusica?.toUpperCase() || 'MÚSICA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Geometría */}
+                          {flashcard.tipo === 'geometria' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#86efac',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(34, 197, 94, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              📐 {flashcard.subtipoGeometria?.toUpperCase() || 'GEOMETRÍA'}
+                            </div>
+                          )}
+
+                          {/* Indicador Química Avanzada */}
+                          {flashcard.tipo === 'quimica-avanzada' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#e9d5ff',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(192, 132, 252, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🧬 {flashcard.subtipoQuimicaAvanzada?.toUpperCase() || 'QUÍMICA AVZ'}
+                            </div>
+                          )}
+
+                          {/* Indicador Probabilidad */}
+                          {flashcard.tipo === 'probabilidad' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#c4b5fd',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(139, 92, 246, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🎲 {flashcard.subtipoProbabilidad?.toUpperCase() || 'PROBABILIDAD'}
+                            </div>
+                          )}
+
+                          {/* Indicador Arte */}
+                          {flashcard.tipo === 'arte' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#fbcfe8',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(244, 114, 182, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🎨 {flashcard.subtipoArte?.toUpperCase() || 'ARTE'}
+                            </div>
+                          )}
+
+                          {/* Indicador Lingüística */}
+                          {flashcard.tipo === 'linguistica' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              fontSize: '0.75rem',
+                              color: '#fce7f3',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              background: 'rgba(236, 72, 153, 0.15)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '6px'
+                            }}>
+                              🗣️ {flashcard.subtipoLinguistica?.toUpperCase() || 'LINGÜÍSTICA'}
+                            </div>
+                          )}
                         </div>
 
                         {/* Footer con metadata */}
                         <div className="flashcard-footer">
-                          {flashcard.tema && (
-                            <span className="flashcard-tema">
-                              🏷️ {flashcard.tema}
-                            </span>
-                          )}
+                          <div style={{display: 'flex', flexDirection: 'column', gap: '0.25rem'}}>
+                            {flashcard.tema && (
+                              <span className="flashcard-tema">
+                                🏷️ {flashcard.tema}
+                              </span>
+                            )}
+                            {flashcard.subtema && (
+                              <span style={{
+                                color: '#94a3b8',
+                                fontSize: '0.75rem'
+                              }}>
+                                📌 {flashcard.subtema}
+                              </span>
+                            )}
+                          </div>
                           <span 
                             className="flashcard-estado"
                             style={{
@@ -6857,6 +7453,18 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
                         {/* Acciones */}
                         <div className="flashcard-actions">
+                          <button 
+                            className="btn-flashcard-action"
+                            onClick={() => setFlashcardVistaCompleta(flashcard)}
+                            title="Ver completa"
+                            style={{
+                              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                              color: 'white',
+                              fontWeight: '600'
+                            }}
+                          >
+                            👁️
+                          </button>
                           <button 
                             className="btn-flashcard-action"
                             onClick={() => {
@@ -13564,7 +14172,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           }}>
             <div className="modal-content modal-flashcard" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h2>{flashcardEditando ? '✏️ Editar Flashcard' : '➕ Nueva Flashcard'}</h2>
+                <div>
+                  <h2>{flashcardEditando ? '✏️ Editar Flashcard' : '➕ Nueva Flashcard'}</h2>
+                  {carpetaFlashcardActual && (
+                    <p style={{
+                      margin: '0.5rem 0 0 0',
+                      fontSize: '0.85rem',
+                      color: '#94a3b8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      📁 {carpetaFlashcardActual.nombre}
+                    </p>
+                  )}
+                </div>
                 <button onClick={() => {
                   setModalNuevaFlashcard(false);
                   setFlashcardEditando(null);
@@ -13578,6 +14200,22 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   setModalNuevaFlashcard(false);
                   setFlashcardEditando(null);
                 }}>
+
+                  {/* 🎨 SELECTOR DE MODOS VISUALES */}
+                  <VisualModeSelector 
+                    currentMode={modoVisual}
+                    onModeChange={(mode) => {
+                      setModoVisual(mode.id);
+                      // Auto-seleccionar el primer tipo del modo
+                      if (mode.tipos && mode.tipos.length > 0) {
+                        setFormDataFlashcard({
+                          ...formDataFlashcard,
+                          tipo: mode.tipos[0]
+                        });
+                      }
+                    }}
+                  />
+
                   {/* Selección de Tipo */}
                   <div className="config-section">
                     <label className="config-label">
@@ -13588,7 +14226,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       className="input-select"
                       value={formDataFlashcard.tipo}
                       onChange={(e) => setFormDataFlashcard({...formDataFlashcard, tipo: e.target.value})}
-                      required
                     >
                       <option value="clasica">📇 Clásica (Pregunta → Respuesta)</option>
                       <option value="reconocimiento">👁️ Reconocimiento (Identificar concepto)</option>
@@ -13602,8 +14239,2125 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       <option value="jerarquia">🏗️ Jerarquía (Organizar niveles)</option>
                       <option value="error">❌ Error Común (Corregir)</option>
                       <option value="comparacion">⚖️ Comparación (A vs B)</option>
+                      <option value="matematica">🔢 Matemática (Fórmulas/LaTeX)</option>
+                      <option value="archivo">📎 Archivo (PDF/Documento)</option>
+                      <option value="programacion">&lt;/&gt; Programación (Código)</option>
+                      <option value="quimica">🧪 Química (Estructuras/Moléculas)</option>
+                      <option value="fisica">⚛️ Física (Ecuaciones/Diagramas)</option>
+                      <option value="ingenieria">🔧 Ingeniería (Circuitos/FBD/Vigas)</option>
+                      <option value="programacion-avanzada">💻 Programación Avanzada (UML/Flujo/Grafos)</option>
+                      <option value="logica-discreta">🔮 Lógica/Matemática Discreta (Tablas/Conjuntos/Grafos)</option>
+                      <option value="linguistica">🗣️ Linguística/Fonética (IPA/Stress/Entonación)</option>
+                      <option value="musica">🎼 Música/Teoría Musical (Pentagramas/Acordes/Escalas)</option>
+                      <option value="geometria">📐 Geometría (Construcciones/Ángulos/Trigonometría)</option>
+                      <option value="quimica-avanzada">🧬 Química Avanzada (Orbitales/VSEPR/MO/Mecanismos)</option>
+                      <option value="probabilidad">🎲 Probabilidad y Estadística (Árboles/Venn/Distribuciones/Bayes)</option>
+                      <option value="arte">🎨 Arte y Diseño Visual (Figuras/Paletas/Composiciones/Estilos)</option>
                     </select>
+                    
+                    {/* Toggle LaTeX */}
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '0.75rem',
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem'
+                    }}>
+                      <input
+                        type="checkbox"
+                        id="latex-toggle"
+                        checked={formDataFlashcard.latex}
+                        onChange={(e) => setFormDataFlashcard({...formDataFlashcard, latex: e.target.checked})}
+                        style={{
+                          width: '18px',
+                          height: '18px',
+                          cursor: 'pointer',
+                          accentColor: '#3b82f6'
+                        }}
+                      />
+                      <label htmlFor="latex-toggle" style={{
+                        color: '#cbd5e1',
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}>
+                        📐 Contiene fórmulas matemáticas (LaTeX)
+                      </label>
+                    </div>
+                    
+                    {/* Preview del tipo seleccionado */}
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '1rem',
+                      background: 'rgba(102, 126, 234, 0.1)',
+                      borderLeft: '3px solid #667eea',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#cbd5e1',
+                      whiteSpace: 'pre-line'
+                    }}>
+                      <strong style={{color: '#667eea'}}>💡 Estructura de este tipo:</strong>
+                      <div style={{marginTop: '0.5rem', lineHeight: '1.6'}}>
+                        {formDataFlashcard.tipo === 'clasica' && '• Pregunta directa en el frente\n• Respuesta concisa en el reverso'}
+                        {formDataFlashcard.tipo === 'reconocimiento' && '• Imagen o concepto visual\n• Identifica el nombre/término correcto'}
+                        {formDataFlashcard.tipo === 'cloze' && '• Texto con huecos marcados con []\n• Completa las palabras faltantes'}
+                        {formDataFlashcard.tipo === 'escenario' && '• Caso práctico de 2-3 líneas\n• Pregunta: "¿Qué harías?"'}
+                        {formDataFlashcard.tipo === 'mcq' && '• Pregunta + 4 opciones\n• Formato: A) B) C) D)'}
+                        {formDataFlashcard.tipo === 'visual' && '• Imagen/diagrama centrado\n• Pregunta: "Explica lo que ves"'}
+                        {formDataFlashcard.tipo === 'auditiva' && '• Audio o palabra para pronunciar\n• Pregunta sobre sonido/pronunciación'}
+                        {formDataFlashcard.tipo === 'produccion' && '• Prompt: "Produce..."\n• Espacio para generar contenido'}
+                        {formDataFlashcard.tipo === 'invertida' && '• Respuesta visible primero\n• Pregunta: "¿Cuál era la pregunta?"'}
+                        {formDataFlashcard.tipo === 'jerarquia' && '• Nodo principal + subnodos\n• Estructura de árbol o niveles'}
+                        {formDataFlashcard.tipo === 'error' && '• Texto con error intencional\n• Pregunta: "Corrige el error"'}
+                        {formDataFlashcard.tipo === 'comparacion' && '• Dos elementos lado a lado\n• Pregunta: "Compara ambos"'}
+                        {formDataFlashcard.tipo === 'matematica' && '• Fórmula matemática en LaTeX\n• Expresión limpia y renderizada\n• Ejemplo: ∫₀¹ x² dx = 1/3'}
+                        {formDataFlashcard.tipo === 'archivo' && '• Archivo adjunto (PDF/Documento)\n• Miniatura o ícono del archivo\n• Descripción del contenido'}
+                        {formDataFlashcard.tipo === 'programacion' && '• Bloque de código en fuente monospace\n• Puede ser: leer código, encontrar bug, completar huecos, o escribir solución\n• Lenguaje: JavaScript, Python, C++, etc.'}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* ========== CONFIGURACIÓN ESPECÍFICA PARA PROGRAMACIÓN ========== */}
+                  {formDataFlashcard.tipo === 'programacion' && (
+                    <>
+                      {/* Selector de Lenguaje */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">💻</span>
+                          Lenguaje de Programación
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.lenguaje}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, lenguaje: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(148, 163, 184, 0.3)',
+                            color: '#e2e8f0'
+                          }}
+                        >
+                          <option value="javascript">JavaScript</option>
+                          <option value="python">Python</option>
+                          <option value="java">Java</option>
+                          <option value="cpp">C++</option>
+                          <option value="csharp">C#</option>
+                          <option value="php">PHP</option>
+                          <option value="ruby">Ruby</option>
+                          <option value="go">Go</option>
+                          <option value="rust">Rust</option>
+                          <option value="typescript">TypeScript</option>
+                          <option value="sql">SQL</option>
+                          <option value="html">HTML</option>
+                          <option value="css">CSS</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Patrón de Código */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Patrón de Flashcard
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.patronCodigo}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, patronCodigo: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(148, 163, 184, 0.3)',
+                            color: '#e2e8f0'
+                          }}
+                        >
+                          <option value="comprension">📖 Comprensión (¿Qué hace este código?)</option>
+                          <option value="bug">🐛 Error Intencional (Encuentra y corrige el bug)</option>
+                          <option value="cloze">🔤 Cloze (Completa el código con [])</option>
+                          <option value="produccion">✍️ Producción (Escribe código desde cero)</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Dificultad */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">⚡</span>
+                          Dificultad
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.dificultad}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, dificultad: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(148, 163, 184, 0.3)',
+                            color: '#e2e8f0'
+                          }}
+                        >
+                          <option value="facil">🟢 Fácil</option>
+                          <option value="medio">🟡 Medio</option>
+                          <option value="dificil">🔴 Difícil</option>
+                        </select>
+                      </div>
+
+                      {/* Guía según el patrón seleccionado */}
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(20, 184, 166, 0.1)',
+                        borderLeft: '3px solid #14b8a6',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        color: '#cbd5e1',
+                        whiteSpace: 'pre-line'
+                      }}>
+                        <strong style={{color: '#14b8a6'}}>💡 Guía para {
+                          formDataFlashcard.patronCodigo === 'comprension' ? 'Comprensión' :
+                          formDataFlashcard.patronCodigo === 'bug' ? 'Error Intencional' :
+                          formDataFlashcard.patronCodigo === 'cloze' ? 'Cloze' :
+                          'Producción'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem', lineHeight: '1.6'}}>
+                          {formDataFlashcard.patronCodigo === 'comprension' && 
+                            '• Escribe código funcional\n• En el campo "Contenido", coloca el snippet\n• En "Respuesta", explica qué hace el código\n• Ejemplo: function sum(arr) { return arr.reduce((a,b) => a+b, 0); }'
+                          }
+                          {formDataFlashcard.patronCodigo === 'bug' && 
+                            '• Escribe código con un error intencional\n• Marca visualmente el error con comentario // ❌ BUG AQUÍ\n• En "Respuesta", explica el bug y la corrección\n• Ejemplo: if (x = 5) { ... } // ❌ Debería ser =='
+                          }
+                          {formDataFlashcard.patronCodigo === 'cloze' && 
+                            '• Escribe código con huecos usando []\n• Ejemplo: for (let i = 0; i < []; i++)\n• En "Respuesta", escribe lo que va en cada hueco\n• Puedes tener múltiples huecos'
+                          }
+                          {formDataFlashcard.patronCodigo === 'produccion' && 
+                            '• Escribe la instrucción/prompt en "Contenido"\n• Ejemplo: "Escribe una función que filtre números pares"\n• Deja "Respuesta" con la solución esperada\n• No escribas código en el campo de contenido, solo la tarea'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ========== CONFIGURACIÓN ESPECÍFICA PARA QUÍMICA ========== */}
+                  {formDataFlashcard.tipo === 'quimica' && (
+                    <>
+                      {/* Selector de Subtipo */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">⚗️</span>
+                          Tipo de Flashcard Química
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.subtipoQuimica}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, subtipoQuimica: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(16, 185, 129, 0.3)',
+                            color: '#d1fae5'
+                          }}
+                        >
+                          <option value="estructura">🔬 Estructura/Esqueleto (Identificar compuesto)</option>
+                          <option value="enlace">🔗 Enlaces y Geometría (Tipo de enlace/forma)</option>
+                          <option value="funcional">⚛️ Grupo Funcional (Identificar -OH, -COOH, etc.)</option>
+                          <option value="reaccion">➡️ Reacción (Reactivos → Productos)</option>
+                          <option value="mecanismo">🎯 Mecanismo (Flechas curvas/pasos)</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Rama */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📚</span>
+                          Rama de la Química
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.rama}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, rama: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(16, 185, 129, 0.3)',
+                            color: '#d1fae5'
+                          }}
+                        >
+                          <option value="organica">🧪 Química Orgánica</option>
+                          <option value="inorganica">⚗️ Química Inorgánica</option>
+                          <option value="fisicoquimica">🔬 Fisicoquímica</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Nivel */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Dificultad
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.nivelQuimica}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelQuimica: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(16, 185, 129, 0.3)',
+                            color: '#d1fae5'
+                          }}
+                        >
+                          <option value="basico">🟢 Básico</option>
+                          <option value="intermedio">🟡 Intermedio</option>
+                          <option value="avanzado">🔴 Avanzado</option>
+                        </select>
+                      </div>
+
+                      {/* Guía según el subtipo seleccionado */}
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(16, 185, 129, 0.1)',
+                        borderLeft: '3px solid #10b981',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        color: '#cbd5e1',
+                        whiteSpace: 'pre-line'
+                      }}>
+                        <strong style={{color: '#10b981'}}>💡 Guía para {
+                          formDataFlashcard.subtipoQuimica === 'estructura' ? 'Estructura/Esqueleto' :
+                          formDataFlashcard.subtipoQuimica === 'enlace' ? 'Enlaces y Geometría' :
+                          formDataFlashcard.subtipoQuimica === 'funcional' ? 'Grupo Funcional' :
+                          formDataFlashcard.subtipoQuimica === 'reaccion' ? 'Reacción' :
+                          'Mecanismo'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem', lineHeight: '1.6'}}>
+                          {formDataFlashcard.subtipoQuimica === 'estructura' && 
+                            '• Usa el panel para insertar estructuras (hexágonos, cadenas, etc.)\n• Pregunta típica: "¿Qué compuesto es este?", "Nombra esta estructura"\n• En "Respuesta", escribe el nombre del compuesto\n• Ejemplo: Benceno, Ciclohexano, Tolueno'
+                          }
+                          {formDataFlashcard.subtipoQuimica === 'enlace' && 
+                            '• Muestra una molécula simple\n• Pregunta sobre: tipo de enlace (simple/doble/triple), polaridad, geometría\n• En "Respuesta", explica el tipo de enlace y geometría\n• Ejemplo: H-Cl → enlace covalente polar, geometría lineal'
+                          }
+                          {formDataFlashcard.subtipoQuimica === 'funcional' && 
+                            '• Usa estructuras con grupos funcionales resaltados\n• Pregunta: "¿Qué grupo funcional es?", "¿A qué familia pertenece?"\n• En "Respuesta", nombra el grupo funcional\n• Ejemplo: -OH → Alcohol, -COOH → Ácido carboxílico'
+                          }
+                          {formDataFlashcard.subtipoQuimica === 'reaccion' && 
+                            '• Formato: Reactivo(s) → Producto(s)\n• Incluye condiciones (Δ, hv, catalizador)\n• Pregunta: "¿Tipo de reacción?", "Completa el producto"\n• En "Respuesta", explica tipo de reacción o producto'
+                          }
+                          {formDataFlashcard.subtipoQuimica === 'mecanismo' && 
+                            '• Muestra flechas curvas (movimiento de electrones)\n• Pregunta: "¿Qué ocurre en este paso?"\n• En "Respuesta", explica el mecanismo\n• Ejemplo: Ataque nucleófilo, eliminación, sustitución'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ========== CONFIGURACIÓN ESPECÍFICA PARA FÍSICA ========== */}
+                  {formDataFlashcard.tipo === 'fisica' && (
+                    <>
+                      {/* Selector de Subtipo */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">⚛️</span>
+                          Tipo de Flashcard Física
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.subtipoFisica}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, subtipoFisica: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(245, 158, 11, 0.3)',
+                            color: '#fef3c7'
+                          }}
+                        >
+                          <option value="ecuacion">📐 Ecuación/Fórmula (Ley o principio)</option>
+                          <option value="diagrama-fuerzas">➜ Diagrama de Fuerzas (FBD)</option>
+                          <option value="campo">⚡ Campo Vectorial (E, B, gravitacional)</option>
+                          <option value="proceso">🔄 Proceso Físico (Ciclo, transformación)</option>
+                          <option value="experimento">🔬 Experimento/Medición (Setup)</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Rama */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📚</span>
+                          Rama de la Física
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.ramaFisica}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, ramaFisica: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(245, 158, 11, 0.3)',
+                            color: '#fef3c7'
+                          }}
+                        >
+                          <option value="mecanica">⚙️ Mecánica Clásica</option>
+                          <option value="electromagnetismo">⚡ Electromagnetismo</option>
+                          <option value="optica">🔦 Óptica</option>
+                          <option value="termodinamica">🌡️ Termodinámica</option>
+                          <option value="cuantica">ℏ Física Cuántica</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Nivel */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Dificultad
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.nivelFisica}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelFisica: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(245, 158, 11, 0.3)',
+                            color: '#fef3c7'
+                          }}
+                        >
+                          <option value="basico">🟢 Básico (Secundaria)</option>
+                          <option value="intermedio">🟡 Intermedio (Bachillerato)</option>
+                          <option value="avanzado">🔴 Avanzado (Universidad)</option>
+                        </select>
+                      </div>
+
+                      {/* Guía según el subtipo seleccionado */}
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(245, 158, 11, 0.1)',
+                        borderLeft: '3px solid #f59e0b',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        color: '#cbd5e1',
+                        whiteSpace: 'pre-line'
+                      }}>
+                        <strong style={{color: '#fbbf24'}}>💡 Guía para {
+                          formDataFlashcard.subtipoFisica === 'ecuacion' ? 'Ecuación/Fórmula' :
+                          formDataFlashcard.subtipoFisica === 'diagrama-fuerzas' ? 'Diagrama de Fuerzas' :
+                          formDataFlashcard.subtipoFisica === 'campo' ? 'Campo Vectorial' :
+                          formDataFlashcard.subtipoFisica === 'proceso' ? 'Proceso Físico' :
+                          'Experimento/Medición'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem', lineHeight: '1.6'}}>
+                          {formDataFlashcard.subtipoFisica === 'ecuacion' && 
+                            '• Usa el panel para insertar ecuaciones (F=ma, Maxwell, Schrödinger)\n• Pregunta típica: "¿Qué ley es?", "Cuál es la ecuación de...?"\n• En "Respuesta", explica la ley y sus variables\n• Ejemplo: 2ª Ley de Newton, Ley de Coulomb, Ecuación de estado'
+                          }
+                          {formDataFlashcard.subtipoFisica === 'diagrama-fuerzas' && 
+                            '• Dibuja flechas de fuerzas (peso, normal, fricción, tensión)\n• Pregunta: "Identifica las fuerzas", "Dibuja el FBD"\n• En "Respuesta", lista las fuerzas y direcciones\n• Ejemplo: Bloque en plano inclinado, sistema de poleas'
+                          }
+                          {formDataFlashcard.subtipoFisica === 'campo' && 
+                            '• Representa campos E⃗, B⃗ con vectores o líneas de campo\n• Pregunta: "Dirección del campo", "Intensidad en este punto"\n• En "Respuesta", explica la geometría del campo\n• Ejemplo: Campo eléctrico de carga puntual, campo magnético de corriente'
+                          }
+                          {formDataFlashcard.subtipoFisica === 'proceso' && 
+                            '• Diagramas PV, Ts, o secuencias de estados\n• Pregunta: "¿Qué tipo de proceso?", "Trabajo realizado"\n• En "Respuesta", clasifica y calcula\n• Ejemplo: Ciclo de Carnot, proceso adiabático, transformación isotérmica'
+                          }
+                          {formDataFlashcard.subtipoFisica === 'experimento' && 
+                            '• Describe montaje experimental (lentes, circuitos, péndulos)\n• Pregunta: "¿Qué se mide?", "¿Cómo funciona?"\n• En "Respuesta", explica el principio y procedimiento\n• Ejemplo: Interferencia de Young, efecto fotoeléctrico, ley de Ohm'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ========== CONFIGURACIÓN ESPECÍFICA PARA INGENIERÍA ========== */}
+                  {formDataFlashcard.tipo === 'ingenieria' && (
+                    <>
+                      {/* Selector de Subtipo */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🔧</span>
+                          Tipo de Diagrama/Sistema
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.subtipoIngenieria}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, subtipoIngenieria: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(239, 68, 68, 0.3)',
+                            color: '#fecaca'
+                          }}
+                        >
+                          <option value="circuito">⚡ Circuito Eléctrico (LTspice-style)</option>
+                          <option value="fbd">➜ Diagrama de Cuerpo Libre (FBD)</option>
+                          <option value="viga">🏗️ Viga/Estructura (Civil)</option>
+                          <option value="material">🔬 Diagrama de Materiales (Fe-C, TTT)</option>
+                          <option value="mecanismo">⚙️ Mecanismo/Articulación</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Rama */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📚</span>
+                          Rama de Ingeniería
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.ramaIngenieria}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, ramaIngenieria: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(239, 68, 68, 0.3)',
+                            color: '#fecaca'
+                          }}
+                        >
+                          <option value="electrica">⚡ Eléctrica/Electrónica</option>
+                          <option value="mecanica">⚙️ Mecánica/Dinámica</option>
+                          <option value="materiales">🔬 Materiales/Metalurgia</option>
+                          <option value="civil">🏗️ Civil/Estructuras</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Nivel */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          className="input-select"
+                          value={formDataFlashcard.nivelIngenieria}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelIngenieria: e.target.value})}
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '2px solid rgba(239, 68, 68, 0.3)',
+                            color: '#fecaca'
+                          }}
+                        >
+                          <option value="basico">🟢 Básico (Conceptos fundamentales)</option>
+                          <option value="intermedio">🟡 Intermedio (Aplicaciones)</option>
+                          <option value="avanzado">🔴 Avanzado (Diseño/Análisis)</option>
+                        </select>
+                      </div>
+
+                      {/* Guía según el subtipo */}
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        borderLeft: '3px solid #ef4444',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        color: '#cbd5e1',
+                        whiteSpace: 'pre-line'
+                      }}>
+                        <strong style={{color: '#fca5a5'}}>💡 Guía para {
+                          formDataFlashcard.subtipoIngenieria === 'circuito' ? 'Circuitos Eléctricos' :
+                          formDataFlashcard.subtipoIngenieria === 'fbd' ? 'FBD (Diagrama de Cuerpo Libre)' :
+                          formDataFlashcard.subtipoIngenieria === 'viga' ? 'Vigas y Estructuras' :
+                          formDataFlashcard.subtipoIngenieria === 'material' ? 'Diagramas de Materiales' :
+                          'Mecanismos'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem', lineHeight: '1.6'}}>
+                          {formDataFlashcard.subtipoIngenieria === 'circuito' && 
+                            '• Lista componentes: [Resistencia] R = 10Ω, [Capacitor] C = 100μF\n• Indica conexiones: serie, paralelo, nodos\n• Pregunta: "Calcula corriente total", "Voltaje en R2"\n• Ejemplo: Divisor de voltaje, filtro RC, puente de Wheatstone'
+                          }
+                          {formDataFlashcard.subtipoIngenieria === 'fbd' && 
+                            '• Describe fuerzas: [Peso] 50N ↓, [Normal] N ↑, [Fricción] 15N ←\n• Identifica apoyos y restricciones\n• Pregunta: "Suma de fuerzas", "Aceleración del bloque"\n• Ejemplo: Bloque en rampa, sistema de poleas, viga en equilibrio'
+                          }
+                          {formDataFlashcard.subtipoIngenieria === 'viga' && 
+                            '• Especifica: [Viga] L=5m, [Apoyo Simple] x=0, [Carga] P=10kN\n• Indica tipo de apoyo (simple, empotrado, rodillo)\n• Pregunta: "Reacciones", "Diagrama de momento"\n• Ejemplo: Viga simplemente apoyada, voladizo, viga continua'
+                          }
+                          {formDataFlashcard.subtipoIngenieria === 'material' && 
+                            '• Describe fase o región: [Diagrama Fe-C] 0.8% C, 727°C → Eutectoide\n• Identifica microestructura: [Perlita], [Martensita]\n• Pregunta: "¿Qué fase?", "Tratamiento térmico"\n• Ejemplo: Punto eutéctico, transformación TTT, red cristalina'
+                          }
+                          {formDataFlashcard.subtipoIngenieria === 'mecanismo' && 
+                            '• Componentes: [Bisagra] punto A, [Slider] eje X, [Resorte] k=500N/m\n• Describe movimiento: rotación, traslación, DOF\n• Pregunta: "Grados de libertad", "Velocidad del punto B"\n• Ejemplo: Mecanismo de 4 barras, leva-seguidor, engranajes'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ========== CONFIGURACIÓN ESPECÍFICA PARA PROGRAMACIÓN AVANZADA ========== */}
+                  {formDataFlashcard.tipo === 'programacion-avanzada' && (
+                    <>
+                      {/* Selector de Subtipo de Diagrama */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📐</span>
+                          Tipo de Diagrama
+                        </label>
+                        <select
+                          value={formDataFlashcard.subtipoProgramacion}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            subtipoProgramacion: e.target.value
+                          })}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem 1rem',
+                            background: 'rgba(139, 92, 246, 0.1)',
+                            border: '2px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '10px',
+                            color: '#e9d5ff',
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="uml">🟣 UML (Clases/Interfaces/Relaciones)</option>
+                          <option value="flujo">🟡 Diagrama de Flujo</option>
+                          <option value="algoritmo">🟩 Tabla de Algoritmo</option>
+                          <option value="grafo">🔵 Árbol/Grafo</option>
+                          <option value="automata">🟠 Autómata Finito</option>
+                        </select>
+                      </div>
+
+                      {/* Selector de Patrón/Tipo */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Patrón o Tipo Específico
+                        </label>
+                        <select
+                          value={formDataFlashcard.patronProgramacion}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            patronProgramacion: e.target.value
+                          })}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem 1rem',
+                            background: 'rgba(139, 92, 246, 0.1)',
+                            border: '2px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '10px',
+                            color: '#e9d5ff',
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {formDataFlashcard.subtipoProgramacion === 'uml' && (
+                            <>
+                              <option value="clase">📦 Diagrama de Clases</option>
+                              <option value="secuencia">⏱️ Diagrama de Secuencia</option>
+                              <option value="casos-uso">👤 Casos de Uso</option>
+                              <option value="actividad">🔄 Diagrama de Actividad</option>
+                              <option value="componentes">🧩 Diagrama de Componentes</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProgramacion === 'flujo' && (
+                            <>
+                              <option value="algoritmo">🔢 Algoritmo Básico</option>
+                              <option value="validacion">✅ Validación/Verificación</option>
+                              <option value="proceso">⚙️ Proceso de Negocio</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProgramacion === 'algoritmo' && (
+                            <>
+                              <option value="pseudocodigo">📝 Pseudocódigo</option>
+                              <option value="complejidad">⏱️ Análisis de Complejidad</option>
+                              <option value="traza">🔍 Traza de Ejecución</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProgramacion === 'grafo' && (
+                            <>
+                              <option value="arbol-binario">🌳 Árbol Binario</option>
+                              <option value="grafo-dirigido">➡️ Grafo Dirigido</option>
+                              <option value="grafo-ponderado">⚖️ Grafo Ponderado</option>
+                              <option value="bfs-dfs">🔍 Recorrido BFS/DFS</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProgramacion === 'automata' && (
+                            <>
+                              <option value="afd">🎯 AFD (Autómata Finito Determinista)</option>
+                              <option value="afn">🔀 AFN (Autómata Finito No Determinista)</option>
+                              <option value="pushdown">📚 Autómata Pushdown</option>
+                              <option value="turing">🖥️ Máquina de Turing</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Selector de Nivel */}
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          value={formDataFlashcard.nivelProgramacion}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            nivelProgramacion: e.target.value
+                          })}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem 1rem',
+                            background: 'rgba(139, 92, 246, 0.1)',
+                            border: '2px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '10px',
+                            color: '#e9d5ff',
+                            fontSize: '1rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="basico">🟢 Básico - Introducción</option>
+                          <option value="intermedio">🟡 Intermedio - Aplicación</option>
+                          <option value="avanzado">🟣 Avanzado - Dominio</option>
+                        </select>
+                      </div>
+
+                      {/* Guía contextual específica */}
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(139, 92, 246, 0.1)',
+                        borderLeft: '4px solid #8b5cf6',
+                        borderRadius: '8px',
+                        fontSize: '0.85rem',
+                        color: '#ddd6fe',
+                        lineHeight: '1.6'
+                      }}>
+                        <strong style={{color: '#e9d5ff'}}>💡 Guía para {
+                          formDataFlashcard.subtipoProgramacion === 'uml' ? 'UML' :
+                          formDataFlashcard.subtipoProgramacion === 'flujo' ? 'Diagramas de Flujo' :
+                          formDataFlashcard.subtipoProgramacion === 'algoritmo' ? 'Tablas de Algoritmos' :
+                          formDataFlashcard.subtipoProgramacion === 'grafo' ? 'Árboles y Grafos' :
+                          'Autómatas Finitos'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoProgramacion === 'uml' && 
+                            '• Define clases: [Clase] Usuario {+id, +nombre} {+login(), +logout()}\n• Especifica relaciones: [Herencia] Usuario --|> Persona\n• Pregunta: "Identifica el patrón", "Completa el diagrama"\n• Ejemplo: Sistema de biblioteca, red social, e-commerce'
+                          }
+                          {formDataFlashcard.subtipoProgramacion === 'flujo' && 
+                            '• Secuencia lógica: [Inicio] → [Proceso] Validar → [Decisión] ¿Válido?\n• Usa formas estándar: Proceso (rectángulo), Decisión (rombo)\n• Pregunta: "Traza el flujo", "Encuentra el error"\n• Ejemplo: Login, búsqueda binaria, ordenamiento'
+                          }
+                          {formDataFlashcard.subtipoProgramacion === 'algoritmo' && 
+                            '• Tabla: [Paso | Acción] 1. Leer datos | 2. Ordenar\n• Complejidad: [Caso | O()] Mejor: O(n) | Peor: O(n²)\n• Pregunta: "Analiza complejidad", "Completa traza"\n• Ejemplo: Bubble sort, merge sort, búsqueda'
+                          }
+                          {formDataFlashcard.subtipoProgramacion === 'grafo' && 
+                            '• Nodos y aristas: [Nodo] 5, [Arista] A --> B (peso: 3)\n• Especifica tipo: árbol binario, grafo dirigido, ponderado\n• Pregunta: "Recorrido BFS/DFS", "Camino más corto"\n• Ejemplo: BST, grafo de rutas, árbol de expresión'
+                          }
+                          {formDataFlashcard.subtipoProgramacion === 'automata' && 
+                            '• Estados: [Estado Inicial] q0, [Estado Aceptación] q2\n• Transiciones: [Transición] q0 --a--> q1\n• Pregunta: "Cadena aceptada?", "Completa autómata"\n• Ejemplo: Reconocedor de patrones, validador, parser'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Lógica/Discreta */}
+                  {formDataFlashcard.tipo === 'logica-discreta' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🔮</span>
+                          Tipo de Estructura
+                        </label>
+                        <select
+                          value={formDataFlashcard.subtipoDiscreta}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            subtipoDiscreta: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="logica">🟣 Lógica Proposicional</option>
+                          <option value="conjuntos">🟫 Teoría de Conjuntos</option>
+                          <option value="venn">🟢 Diagramas de Venn</option>
+                          <option value="relaciones">🔵 Relaciones</option>
+                          <option value="grafos">⚫ Grafos Discretos</option>
+                          <option value="predicados">🟠 Lógica de Predicados</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Categoría Específica
+                        </label>
+                        <select
+                          value={formDataFlashcard.categoriaDiscreta}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            categoriaDiscreta: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          {formDataFlashcard.subtipoDiscreta === 'logica' && (
+                            <>
+                              <option value="proposicional">Proposiciones (p, q, r)</option>
+                              <option value="conectivos">Conectivos (¬, ∧, ∨, →)</option>
+                              <option value="tablas">Tablas de Verdad</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoDiscreta === 'conjuntos' && (
+                            <>
+                              <option value="operaciones">Operaciones (∪, ∩, \)</option>
+                              <option value="relaciones">Relaciones (⊂, ⊆, ∈)</option>
+                              <option value="numericos">Conjuntos Numéricos (ℕ, ℤ, ℚ, ℝ)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoDiscreta === 'venn' && (
+                            <>
+                              <option value="dos">Venn 2 Círculos</option>
+                              <option value="tres">Venn 3 Círculos</option>
+                              <option value="regiones">Regiones y Operaciones</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoDiscreta === 'relaciones' && (
+                            <>
+                              <option value="pares">Pares Ordenados</option>
+                              <option value="matrices">Matrices de Relación</option>
+                              <option value="propiedades">Propiedades (Reflexiva, Simétrica)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoDiscreta === 'grafos' && (
+                            <>
+                              <option value="dirigidos">Grafos Dirigidos</option>
+                              <option value="nodirigi">Grafos No Dirigidos</option>
+                              <option value="especiales">Grafos Especiales (K₃, K₄)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoDiscreta === 'predicados' && (
+                            <>
+                              <option value="cuantificadores">Cuantificadores (∀, ∃)</option>
+                              <option value="predicados">Predicados P(x)</option>
+                              <option value="formulas">Fórmulas Bien Formadas</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          value={formDataFlashcard.nivelDiscreta}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            nivelDiscreta: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="basico">🟢 Básico - Símbolos y operaciones simples</option>
+                          <option value="intermedio">🟡 Intermedio - Tablas de verdad, Venn 3</option>
+                          <option value="avanzado">🔴 Avanzado - Grafos complejos, predicados</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(124, 58, 237, 0.1)', borderLeft: '4px solid #7c3aed'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoDiscreta === 'logica' ? 'Lógica Proposicional' :
+                          formDataFlashcard.subtipoDiscreta === 'conjuntos' ? 'Teoría de Conjuntos' :
+                          formDataFlashcard.subtipoDiscreta === 'venn' ? 'Diagramas de Venn' :
+                          formDataFlashcard.subtipoDiscreta === 'relaciones' ? 'Relaciones' :
+                          formDataFlashcard.subtipoDiscreta === 'grafos' ? 'Grafos Discretos' :
+                          'Lógica de Predicados'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoDiscreta === 'logica' && 
+                            '• Usa símbolos: ¬ (negación), ∧ (conjunción), ∨ (disyunción), → (implicación)\n• Crea tablas de verdad interactivas\n• Pregunta: "Evalúa ¬p ∨ q", "Construye tabla de p → q"\n• Ejemplo: (p ∧ q) → r, ¬(p ∨ ¬q)'
+                          }
+                          {formDataFlashcard.subtipoDiscreta === 'conjuntos' && 
+                            '• Operaciones: A ∪ B, A ∩ B, A \\ B, A × B\n• Relaciones: ⊂ (subconjunto), ∈ (pertenece), ∅ (vacío)\n• Pregunta: "Calcula A ∩ B", "¿Es A ⊂ B?"\n• Ejemplo: A = {1,2,3}, B = {2,3,4}, A ∪ B = {1,2,3,4}'
+                          }
+                          {formDataFlashcard.subtipoDiscreta === 'venn' && 
+                            '• Representa conjuntos visualmente con círculos\n• Identifica regiones: solo A, A∩B, A∪B, universo\n• Pregunta: "Sombrea A∩B", "Identifica región"\n• Ejemplo: Venn 3 con A, B, C y todas las intersecciones'
+                          }
+                          {formDataFlashcard.subtipoDiscreta === 'relaciones' && 
+                            '• Pares ordenados: R = {(1,2), (2,3), (3,1)}\n• Matrices: representa relación como matriz 0/1\n• Propiedades: reflexiva, simétrica, transitiva\n• Pregunta: "¿Es simétrica?", "Completa matriz"\n• Ejemplo: Relación "es múltiplo de" en ℕ'
+                          }
+                          {formDataFlashcard.subtipoDiscreta === 'grafos' && 
+                            '• Nodos y aristas: [A] ---> [B], [C] <---> [D]\n• Pesos: arista con valor numérico\n• Tipos: dirigidos, no dirigidos, completos (Kₙ)\n• Pregunta: "Encuentra camino", "¿Es conexo?"\n• Ejemplo: K₄, árbol, ciclo C₅'
+                          }
+                          {formDataFlashcard.subtipoDiscreta === 'predicados' && 
+                            '• Cuantificadores: ∀x P(x) (para todo), ∃x P(x) (existe)\n• Predicados: P(x): "x es par", Q(x,y): "x > y"\n• Pregunta: "Niega ∀x P(x)", "Interpreta ∃x (P(x) ∧ Q(x))"\n• Ejemplo: ∀x∈ℕ (x≥0), ∃x∈ℤ (x²=4)'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Lingüística/Fonética */}
+                  {formDataFlashcard.tipo === 'linguistica' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🗣️</span>
+                          Tipo de Contenido
+                        </label>
+                        <select
+                          value={formDataFlashcard.subtipoLinguistica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            subtipoLinguistica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="ipa">🔤 Símbolos IPA</option>
+                          <option value="stress">🎵 Acento y Entonación</option>
+                          <option value="diagrams">📐 Diagramas de Articulación</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Categoría Fonética
+                        </label>
+                        <select
+                          value={formDataFlashcard.categoriaLinguistica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            categoriaLinguistica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          {formDataFlashcard.subtipoLinguistica === 'ipa' && (
+                            <>
+                              <option value="vocales">Vocales IPA (iː, ɪ, e, æ...)</option>
+                              <option value="consonantes">Consonantes (θ, ð, ʃ, ʒ...)</option>
+                              <option value="diptongos">Diptongos (eɪ, aɪ, ɔɪ...)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoLinguistica === 'stress' && (
+                            <>
+                              <option value="primario">Acento Primario (ˈ)</option>
+                              <option value="secundario">Acento Secundario (ˌ)</option>
+                              <option value="entonacion">Flechas Entonación (↗ ↘ →)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoLinguistica === 'diagrams' && (
+                            <>
+                              <option value="vocales_mapa">Mapa de Vocales</option>
+                              <option value="lengua">Posición de la Lengua</option>
+                              <option value="modo_lugar">Modo y Lugar de Articulación</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          value={formDataFlashcard.nivelLinguistica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            nivelLinguistica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="basico">🟢 Básico - Vocales y consonantes comunes</option>
+                          <option value="intermedio">🟡 Intermedio - Diptongos, stress patterns</option>
+                          <option value="avanzado">🔴 Avanzado - Diagramas articulación, alófonos</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(236, 72, 153, 0.1)', borderLeft: '4px solid #ec4899'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoLinguistica === 'ipa' ? 'Símbolos IPA' :
+                          formDataFlashcard.subtipoLinguistica === 'stress' ? 'Acento y Entonación' :
+                          'Diagramas de Articulación'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoLinguistica === 'ipa' && 
+                            '• Vocales largas: iː (sheep), uː (food), ɑː (car)\n• Vocales cortas: ɪ (sit), ʊ (good), ə (about)\n• Consonantes: θ (think), ð (this), ʃ (she), ʒ (measure)\n• Pregunta: "Transcribe /θɪŋk/", "Identifica vocal en /kæt/"\n• Ejemplo: /ˈwɔːtə/ (water), /ˈhæpi/ (happy)'
+                          }
+                          {formDataFlashcard.subtipoLinguistica === 'stress' && 
+                            '• Acento primario: ˈ antes de sílaba tónica (ˈhello)\n• Acento secundario: ˌ para sílabas secundarias\n• Entonación: ↗ (ascendente), ↘ (descendente), → (plana)\n• Pregunta: "Marca acento en photograph", "Identifica entonación"\n• Ejemplo: ˈfɒtəˌgræf (photograph), hello ↗ (pregunta)'
+                          }
+                          {formDataFlashcard.subtipoLinguistica === 'diagrams' && 
+                            '• Mapa vocales: eje frontal/posterior, alto/medio/bajo\n• Lengua: posición para cada vocal (alta, media, baja)\n• Modo articulación: oclusiva, fricativa, nasal\n• Lugar: bilabial, alveolar, velar\n• Pregunta: "Identifica posición de /i/", "Clasifica /p/"\n• Ejemplo: /p/ = bilabial oclusiva sorda'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Música/Teoría Musical */}
+                  {formDataFlashcard.tipo === 'musica' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎼</span>
+                          Tipo de Contenido Musical
+                        </label>
+                        <select
+                          value={formDataFlashcard.subtipoMusica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            subtipoMusica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="pentagramas">🎼 Pentagramas y Compases</option>
+                          <option value="notas">🎵 Notas Musicales</option>
+                          <option value="acordes">🎸 Acordes</option>
+                          <option value="intervalos">📏 Intervalos</option>
+                          <option value="escalas">🎹 Escalas</option>
+                          <option value="progresiones">🔄 Progresiones Armónicas</option>
+                          <option value="ritmo">🥁 Ritmo y Estructura</option>
+                          <option value="simbolos">♯♭ Símbolos Musicales</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Categoría Musical
+                        </label>
+                        <select
+                          value={formDataFlashcard.categoriaMusica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            categoriaMusica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          {formDataFlashcard.subtipoMusica === 'pentagramas' && (
+                            <>
+                              <option value="claves">Claves (Sol, Fa, Do)</option>
+                              <option value="compases">Compases (4/4, 3/4, 6/8)</option>
+                              <option value="barras">Barras de compás</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'notas' && (
+                            <>
+                              <option value="figuras">Figuras (redonda, blanca, negra)</option>
+                              <option value="alturas">Alturas (Do, Re, Mi...)</option>
+                              <option value="duraciones">Duraciones y puntillos</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'acordes' && (
+                            <>
+                              <option value="triadas">Tríadas (mayor, menor, dim, aug)</option>
+                              <option value="septima">Acordes de 7ª (maj7, m7, 7)</option>
+                              <option value="extensiones">Extensiones (9, 11, 13)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'intervalos' && (
+                            <>
+                              <option value="simples">Intervalos simples (2ª-8ª)</option>
+                              <option value="compuestos">Intervalos compuestos</option>
+                              <option value="calidad">Calidad (M, m, P, A, d)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'escalas' && (
+                            <>
+                              <option value="mayores-menores">Escalas mayor y menor</option>
+                              <option value="modos">Modos griegos</option>
+                              <option value="pentatonicas">Pentatónicas y blues</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'progresiones' && (
+                            <>
+                              <option value="tonales">Progresiones tonales (I-IV-V)</option>
+                              <option value="jazz">Progresiones jazz (ii-V-I)</option>
+                              <option value="pop">Progresiones pop (vi-IV-I-V)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'ritmo' && (
+                            <>
+                              <option value="silencios">Silencios</option>
+                              <option value="patrones">Patrones rítmicos</option>
+                              <option value="subdivisiones">Subdivisiones</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'simbolos' && (
+                            <>
+                              <option value="alteraciones">Alteraciones (♯ ♭ ♮)</option>
+                              <option value="dinamicas">Dinámicas (f, p, mf, mp)</option>
+                              <option value="articulaciones">Articulaciones</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          value={formDataFlashcard.nivelMusica}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            nivelMusica: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="basico">🟢 Básico - Notas, figuras, acordes simples</option>
+                          <option value="intermedio">🟡 Intermedio - Escalas, progresiones comunes</option>
+                          <option value="avanzado">🔴 Avanzado - Modos, jazz, análisis armónico</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(168, 85, 247, 0.1)', borderLeft: '4px solid #a855f7'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoMusica === 'pentagramas' ? 'Pentagramas y Compases' :
+                          formDataFlashcard.subtipoMusica === 'notas' ? 'Notas Musicales' :
+                          formDataFlashcard.subtipoMusica === 'acordes' ? 'Acordes' :
+                          formDataFlashcard.subtipoMusica === 'intervalos' ? 'Intervalos' :
+                          formDataFlashcard.subtipoMusica === 'escalas' ? 'Escalas' :
+                          formDataFlashcard.subtipoMusica === 'progresiones' ? 'Progresiones Armónicas' :
+                          formDataFlashcard.subtipoMusica === 'ritmo' ? 'Ritmo y Estructura' :
+                          'Símbolos Musicales'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoMusica === 'pentagramas' && 
+                            '• Pentagramas con claves: 𝄞 (sol), 𝄢 (fa), 𝄡 (do)\n• Compases: 4/4, 3/4, 6/8, 2/4\n• Barras: | (simple), || (doble), ||: (final)\n• Pregunta: "Dibuja pentagrama con clave de fa", "Marca compás 3/4"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'notas' && 
+                            '• Figuras: 𝅝 (redonda), 𝅗𝅥 (blanca), ♩ (negra), ♪ (corchea)\n• Alturas: C D E F G A B (Do Re Mi Fa Sol La Si)\n• Puntillo (·) aumenta 50% la duración\n• Pregunta: "Identifica figura", "Escribe nota Mi", "Duración de blanca con puntillo"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'acordes' && 
+                            '• Tríadas: C (mayor), Cm (menor), Cdim (disminuido), Caug (aumentado)\n• Séptimas: Cmaj7, Cm7, C7, Cdim7\n• Slash chords: C/E (bajo diferente)\n• Pregunta: "Construye acorde Cmaj7", "Identifica tríada", "Funciona como dominante?"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'intervalos' && 
+                            '• Notación: m2, M2, m3, M3, P4, A4, P5, m6, M6, m7, M7, P8\n• Calidad: M (mayor), m (menor), P (justa), A (aumentada), d (disminuida)\n• Pregunta: "Intervalo de C a E?", "3ª menor desde Re?", "Identifica P5"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'escalas' && 
+                            '• Mayor: C-D-E-F-G-A-B-C (T-T-S-T-T-T-S)\n• Menor natural: A-B-C-D-E-F-G-A (T-S-T-T-S-T-T)\n• Modos: Jónico, Dórico, Frigio, Lidio, Mixolidio, Eólico, Locrio\n• Pentatónicas: 5 notas sin semitonos\n• Pregunta: "Construye escala Re mayor", "Modo frigio desde Mi", "Pentatónica menor de La"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'progresiones' && 
+                            '• Tonales: | I | IV | V | I | (rock/pop)\n• Jazz: | iim7 | V7 | Imaj7 | (cadencia ii-V-I)\n• Pop: | vi | IV | I | V | (eje de la balada)\n• Círculo de quintas: C→F→B♭→E♭...\n• Pregunta: "Completa progresión I-?-V", "Identifica función dominante", "Transporta a Sol mayor"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'ritmo' && 
+                            '• Silencios: 𝄻 (redonda), 𝄼 (blanca), 𝄽 (negra), 𝄾 (corchea)\n• Tresillo: [3] 3 notas en tiempo de 2\n• Compás simple: subdivisión binaria (4/4)\n• Compás compuesto: subdivisión ternaria (6/8)\n• Pregunta: "Dibuja patrón rítmico", "Completa compás", "Identifica tresillo"'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'simbolos' && 
+                            '• Alteraciones: ♯ (sostenido +½ tono), ♭ (bemol -½ tono), ♮ (becuadro cancela)\n• Dinámicas: f (forte), p (piano), mf, mp, ff, pp\n• Articulaciones: · (staccato), > (acento), ⌢ (ligadura)\n• Otros: 𝄐 (calderón), tr~~~ (trino)\n• Pregunta: "¿Qué es ♯?", "Interpreta mf", "Dibuja staccato"'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Geometría */}
+                  {formDataFlashcard.tipo === 'geometria' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📐</span>
+                          Tipo de Objeto Geométrico
+                        </label>
+                        <select
+                          value={formDataFlashcard.subtipoGeometria}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            subtipoGeometria: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="puntos">⚫ Puntos</option>
+                          <option value="rectas">📏 Rectas y Segmentos</option>
+                          <option value="angulos">📐 Ángulos</option>
+                          <option value="poligonos">🔷 Polígonos</option>
+                          <option value="circulos">⭕ Círculos</option>
+                          <option value="construcciones">🔨 Construcciones</option>
+                          <option value="flechas">➡️ Flechas y Notación</option>
+                          <option value="medidas">📊 Medidas y Trigonometría</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Categoría Geométrica
+                        </label>
+                        <select
+                          value={formDataFlashcard.categoriaGeometria}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            categoriaGeometria: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          {formDataFlashcard.subtipoGeometria === 'puntos' && (
+                            <>
+                              <option value="basicos">Puntos básicos (A, B, C)</option>
+                              <option value="coordenadas">Coordenadas (x, y)</option>
+                              <option value="especiales">Puntos especiales</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'rectas' && (
+                            <>
+                              <option value="segmentos">Segmentos AB̅</option>
+                              <option value="rectas-infinitas">Rectas infinitas ↔</option>
+                              <option value="relaciones">Relaciones (⟂, ∥)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'angulos' && (
+                            <>
+                              <option value="tipos">Tipos (agudo, recto, obtuso)</option>
+                              <option value="medidas-grados">Medidas en grados</option>
+                              <option value="medidas-radianes">Medidas en radianes (π/6, π/4)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'poligonos' && (
+                            <>
+                              <option value="triangulos">Triángulos</option>
+                              <option value="cuadrilateros">Cuadriláteros</option>
+                              <option value="regulares">Polígonos regulares</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'circulos' && (
+                            <>
+                              <option value="basicos">Círculos y circunferencias</option>
+                              <option value="arcos">Arcos y sectores</option>
+                              <option value="elementos">Elementos (radio, cuerda, tangente)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'construcciones' && (
+                            <>
+                              <option value="mediatriz-bisectriz">Mediatriz y bisectriz</option>
+                              <option value="puntos-notables">Puntos notables del triángulo</option>
+                              <option value="perpendiculares">Perpendiculares y paralelas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'flechas' && (
+                            <>
+                              <option value="direccionales">Flechas direccionales</option>
+                              <option value="vectores">Vectores</option>
+                              <option value="marcas">Marcas y etiquetas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'medidas' && (
+                            <>
+                              <option value="longitudes">Longitudes y distancias</option>
+                              <option value="areas-perimetros">Áreas y perímetros</option>
+                              <option value="trigonometria">Trigonometría</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select
+                          value={formDataFlashcard.nivelGeometria}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard,
+                            nivelGeometria: e.target.value
+                          })}
+                          className="select-control"
+                        >
+                          <option value="basico">🟢 Básico - Puntos, rectas, ángulos simples</option>
+                          <option value="intermedio">🟡 Intermedio - Polígonos, construcciones, π/4</option>
+                          <option value="avanzado">🔴 Avanzado - Trigonometría, puntos notables, demostraciones</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(34, 197, 94, 0.1)', borderLeft: '4px solid #22c55e'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoGeometria === 'puntos' ? 'Puntos' :
+                          formDataFlashcard.subtipoGeometria === 'rectas' ? 'Rectas y Segmentos' :
+                          formDataFlashcard.subtipoGeometria === 'angulos' ? 'Ángulos' :
+                          formDataFlashcard.subtipoGeometria === 'poligonos' ? 'Polígonos' :
+                          formDataFlashcard.subtipoGeometria === 'circulos' ? 'Círculos' :
+                          formDataFlashcard.subtipoGeometria === 'construcciones' ? 'Construcciones' :
+                          formDataFlashcard.subtipoGeometria === 'flechas' ? 'Flechas y Notación' :
+                          'Medidas y Trigonometría'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoGeometria === 'puntos' && 
+                            '• Puntos etiquetados: • A, • B, • C\n• Coordenadas: P(x, y), origen O(0,0)\n• Puntos especiales: punto medio M, fijos (✱), móviles (○)\n• Pregunta: "Marca punto medio de AB", "Coordenadas de P", "Identifica punto fijo"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'rectas' && 
+                            '• Segmento: AB̅ (limitado)\n• Recta: ←→ (infinita)\n• Semirrecta: AB→ (un extremo)\n• Vector: AB⃗ (dirección y magnitud)\n• Relaciones: AB ⟂ CD (perpendicular), AB ∥ CD (paralela)\n• Pregunta: "Dibuja perpendicular", "AB̅ = 5cm, traza paralela"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'angulos' && 
+                            '• Tipos: agudo (<90°), recto (90°), obtuso (>90°), llano (180°)\n• Grados: 30°, 45°, 60°, 90°\n• Radianes: π/6 (30°), π/4 (45°), π/3 (60°), π/2 (90°)\n• Marcas: ⌒ (arco), ⟂ (ángulo recto)\n• Pregunta: "∠ABC = π/4, ¿cuántos grados?", "Construye ángulo 60°"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'poligonos' && 
+                            '• Triángulos: △ABC, rectángulo (90°), equilátero (60°-60°-60°), isósceles (2 lados =)\n• Cuadriláteros: □ (cuadrado), ▭ (rectángulo), ◊ (rombo), ▱ (paralelogramo)\n• Regulares: pentágono (5), hexágono (6), octágono (8)\n• Pregunta: "Clasifica triángulo", "Propiedades del rombo", "Dibuja hexágono regular"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'circulos' && 
+                            '• Circunferencia: ○ (borde), círculo: ● (relleno)\n• Radio r, diámetro d = 2r\n• Arco ⌒AB, sector circular (porción), segmento circular\n• Cuerda AB̅, tangente →|, secante ↔\n• Pregunta: "r = 5, calcula d", "Dibuja tangente en P", "Circunferencia por 3 puntos"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'construcciones' && 
+                            '• Mediatriz: perpendicular en punto medio de AB̅\n• Bisectriz: divide ∠ABC en 2 partes iguales\n• Altura: perpendicular desde vértice a lado opuesto\n• Mediana: une vértice con punto medio del lado opuesto\n• Puntos notables: circuncentro O, baricentro G, ortocentro H, incentro I\n• Pregunta: "Construye mediatriz de AB̅", "Marca baricentro de △ABC"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'flechas' && 
+                            '• Direccionales: → ← ↔ ↑ ↓\n• Curvas: ↻ ↺ (rotación)\n• Vectores: v⃗, AB⃗\n• Marcas: × (cruz), • (punto), ⟂ (perpendicular), ∥ (paralelo)\n• Etiquetas: [Label], coordenadas\n• Pregunta: "Dibuja vector AB⃗", "Marca ángulo con ⌒"'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'medidas' && 
+                            '• Longitud: |AB| = □, distancia d(A,B)\n• Área: A = □, perímetro: P = □\n• Pendiente: m = Δy/Δx, positiva (/) o negativa (\\)\n• Trigonometría: sen θ = opuesto/hipotenusa, cos θ = adyacente/hipotenusa, tan θ = opuesto/adyacente\n• Pitágoras: a² + b² = c²\n• Pregunta: "Calcula área del △", "Pendiente de AB", "sen(30°) = ?"'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Música/Teoría Musical */}
+                  {formDataFlashcard.tipo === 'musica' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎵</span>
+                          Tipo de Contenido Musical
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.subtipoMusica || 'pentagramas'}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard, 
+                            subtipoMusica: e.target.value,
+                            categoriaMusica: e.target.value === 'pentagramas' ? 'claves' :
+                                           e.target.value === 'notas' ? 'duraciones' :
+                                           e.target.value === 'acordes' ? 'triadas' :
+                                           e.target.value === 'intervalos' ? 'melodicos' :
+                                           e.target.value === 'escalas' ? 'mayores' :
+                                           e.target.value === 'progresiones' ? 'basicas' :
+                                           e.target.value === 'ritmo' ? 'silencios' : 'alteraciones'
+                          })}
+                        >
+                          <option value="pentagramas">🎼 Pentagramas y Claves</option>
+                          <option value="notas">♩ Notas y Duraciones</option>
+                          <option value="acordes">🎹 Acordes</option>
+                          <option value="intervalos">🎶 Intervalos</option>
+                          <option value="escalas">🎵 Escalas</option>
+                          <option value="progresiones">🎸 Progresiones Armónicas</option>
+                          <option value="ritmo">🥁 Ritmo y Silencios</option>
+                          <option value="simbolos">♯ Símbolos Musicales</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎼</span>
+                          Categoría Musical
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.categoriaMusica || 'claves'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, categoriaMusica: e.target.value})}
+                        >
+                          {formDataFlashcard.subtipoMusica === 'pentagramas' && (
+                            <>
+                              <option value="claves">Claves Musicales</option>
+                              <option value="compases">Compases</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'notas' && (
+                            <>
+                              <option value="duraciones">Duraciones</option>
+                              <option value="alturas">Alturas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'acordes' && (
+                            <>
+                              <option value="triadas">Tríadas</option>
+                              <option value="septimas">Séptimas</option>
+                              <option value="suspendidos">Suspendidos</option>
+                              <option value="aumentados">Aumentados/Disminuidos</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'intervalos' && (
+                            <>
+                              <option value="melodicos">Melódicos</option>
+                              <option value="armonicos">Armónicos</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'escalas' && (
+                            <>
+                              <option value="mayores">Escalas Mayores</option>
+                              <option value="menores">Escalas Menores</option>
+                              <option value="pentatonicas">Pentatónicas</option>
+                              <option value="modales">Modos Griegos</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'progresiones' && (
+                            <>
+                              <option value="basicas">Progresiones Básicas</option>
+                              <option value="jazz">Progresiones Jazz</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'ritmo' && (
+                            <>
+                              <option value="silencios">Silencios</option>
+                              <option value="ritmos">Patrones Rítmicos</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoMusica === 'simbolos' && (
+                            <>
+                              <option value="alteraciones">Alteraciones</option>
+                              <option value="dinamica">Dinámica</option>
+                              <option value="articulacion">Articulación</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.nivelMusica || 'basico'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelMusica: e.target.value})}
+                        >
+                          <option value="basico">🟢 Básico</option>
+                          <option value="intermedio">🟡 Intermedio</option>
+                          <option value="avanzado">🔴 Avanzado</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(168, 85, 247, 0.1)', borderLeft: '4px solid #a855f7'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoMusica === 'pentagramas' ? 'Pentagramas y Claves' :
+                          formDataFlashcard.subtipoMusica === 'notas' ? 'Notas y Duraciones' :
+                          formDataFlashcard.subtipoMusica === 'acordes' ? 'Acordes' :
+                          formDataFlashcard.subtipoMusica === 'intervalos' ? 'Intervalos' :
+                          formDataFlashcard.subtipoMusica === 'escalas' ? 'Escalas' :
+                          formDataFlashcard.subtipoMusica === 'progresiones' ? 'Progresiones' :
+                          formDataFlashcard.subtipoMusica === 'ritmo' ? 'Ritmo' :
+                          'Símbolos Musicales'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoMusica === 'pentagramas' && 
+                            '• Claves: 𝄞 (Sol), 𝄢 (Fa), 𝄡 (Do)\n• Compases: 4/4, 3/4, 6/8, 2/4, 5/4\n• Pregunta: "Identifica la clave", "¿Qué compás es este?"\n• Ejemplo: 𝄞 4/4 (clave de Sol en 4/4)'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'notas' && 
+                            '• Duraciones: 𝅝 (redonda), 𝅗𝅥 (blanca), ♩ (negra), ♪ (corchea), ♬ (semicorchea)\n• Alturas: Do, Re, Mi, Fa, Sol, La, Si\n• Pregunta: "¿Cuántos tiempos dura ♩?", "Identifica la nota"\n• Ejemplo: ♩ = 1 tiempo, 𝅗𝅥 = 2 tiempos'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'acordes' && 
+                            '• Tríadas: Cmaj, Cm, Caug, Cdim\n• Séptimas: Cmaj7, Cm7, C7, Cdim7\n• Suspendidos: Csus2, Csus4\n• Pregunta: "¿Qué notas tiene Cmaj7?", "Identifica el acorde"\n• Ejemplo: Cmaj7 = Do-Mi-Sol-Si'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'intervalos' && 
+                            '• Intervalos: m2, M2, m3, M3, P4, TT, P5, m6, M6, m7, M7, P8\n• Pregunta: "¿Qué intervalo hay entre Do y Mi?", "Identifica el intervalo"\n• Ejemplo: Do→Mi = M3 (tercera mayor)'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'escalas' && 
+                            '• Mayores: Do, Re, Mi, Fa, Sol, La, Si\n• Menores: Do menor, Re menor, etc.\n• Pentatónicas: Mayor, Menor\n• Modos: Jónico, Dórico, Frigio, Lidio, Mixolidio, Eólico, Locrio\n• Pregunta: "Escribe la escala de Do mayor", "¿Qué modo es este?"\n• Ejemplo: Do mayor = Do-Re-Mi-Fa-Sol-La-Si-Do'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'progresiones' && 
+                            '• Básicas: I-IV-V, I-V-vi-IV, ii-V-I\n• Jazz: ii-V-I, I-vi-ii-V, iii-VI-ii-V\n• Pregunta: "¿Qué acordes forman I-IV-V en Do?", "Identifica la progresión"\n• Ejemplo: I-IV-V en Do = C-F-G'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'ritmo' && 
+                            '• Silencios: 𝄻 (redonda), 𝄼 (blanca), 𝄽 (negra), 𝄾 (corchea), 𝄿 (semicorchea)\n• Patrones: ♩♩♩♩, ♪♪♪♪, ♩𝄽♩𝄽\n• Pregunta: "¿Cuántos tiempos dura 𝄽?", "Completa el compás"\n• Ejemplo: 𝄽 = 1 tiempo de silencio'
+                          }
+                          {formDataFlashcard.subtipoMusica === 'simbolos' && 
+                            '• Alteraciones: ♯ (sostenido), ♭ (bemol), ♮ (becuadro), 𝄪 (doble sostenido), 𝄫 (doble bemol)\n• Dinámica: 𝆏𝆏 (pianissimo), 𝆑 (forte), 𝆑𝆑 (fortissimo)\n• Pregunta: "¿Qué hace ♯?", "Identifica el símbolo"\n• Ejemplo: ♯ sube medio tono'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Geometría */}
+                  {formDataFlashcard.tipo === 'geometria' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📐</span>
+                          Tipo de Objeto Geométrico
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.subtipoGeometria || 'puntos'}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard, 
+                            subtipoGeometria: e.target.value,
+                            categoriaGeometria: e.target.value === 'puntos' ? 'basicos' :
+                                              e.target.value === 'rectas' ? 'segmentos' :
+                                              e.target.value === 'angulos' ? 'medidas' :
+                                              e.target.value === 'poligonos' ? 'triangulos' :
+                                              e.target.value === 'circulos' ? 'basicos' :
+                                              e.target.value === 'construcciones' ? 'basicas' :
+                                              e.target.value === 'flechas' ? 'direcciones' : 'distancias'
+                          })}
+                        >
+                          <option value="puntos">• Puntos</option>
+                          <option value="rectas">📏 Rectas y Segmentos</option>
+                          <option value="angulos">∠ Ángulos</option>
+                          <option value="poligonos">△ Polígonos</option>
+                          <option value="circulos">○ Círculos y Arcos</option>
+                          <option value="construcciones">📐 Construcciones Geométricas</option>
+                          <option value="flechas">→ Vectores y Flechas</option>
+                          <option value="medidas">📊 Medidas y Cálculos</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🔧</span>
+                          Categoría Geométrica
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.categoriaGeometria || 'basicos'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, categoriaGeometria: e.target.value})}
+                        >
+                          {formDataFlashcard.subtipoGeometria === 'puntos' && (
+                            <>
+                              <option value="basicos">Puntos Básicos</option>
+                              <option value="coordenadas">Coordenadas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'rectas' && (
+                            <>
+                              <option value="segmentos">Segmentos</option>
+                              <option value="rectas">Rectas Infinitas</option>
+                              <option value="semirrectas">Semirrectas</option>
+                              <option value="especiales">Perpendiculares/Paralelas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'angulos' && (
+                            <>
+                              <option value="medidas">Medidas de Ángulos</option>
+                              <option value="radianes">Radianes</option>
+                              <option value="grados">Grados</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'poligonos' && (
+                            <>
+                              <option value="triangulos">Triángulos</option>
+                              <option value="cuadrilateros">Cuadriláteros</option>
+                              <option value="regulares">Polígonos Regulares</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'circulos' && (
+                            <>
+                              <option value="basicos">Círculos Básicos</option>
+                              <option value="arcos">Arcos y Sectores</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'construcciones' && (
+                            <>
+                              <option value="basicas">Construcciones Básicas</option>
+                              <option value="centros">Puntos Notables</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'flechas' && (
+                            <>
+                              <option value="direcciones">Direcciones</option>
+                              <option value="vectores">Vectores</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoGeometria === 'medidas' && (
+                            <>
+                              <option value="distancias">Distancias</option>
+                              <option value="areas">Áreas y Perímetros</option>
+                              <option value="trigonometria">Trigonometría</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.nivelGeometria || 'basico'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelGeometria: e.target.value})}
+                        >
+                          <option value="basico">🟢 Básico</option>
+                          <option value="intermedio">🟡 Intermedio</option>
+                          <option value="avanzado">🔴 Avanzado</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(34, 197, 94, 0.1)', borderLeft: '4px solid #22c55e'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoGeometria === 'puntos' ? 'Puntos y Coordenadas' :
+                          formDataFlashcard.subtipoGeometria === 'rectas' ? 'Rectas y Segmentos' :
+                          formDataFlashcard.subtipoGeometria === 'angulos' ? 'Ángulos' :
+                          formDataFlashcard.subtipoGeometria === 'poligonos' ? 'Polígonos' :
+                          formDataFlashcard.subtipoGeometria === 'circulos' ? 'Círculos' :
+                          formDataFlashcard.subtipoGeometria === 'construcciones' ? 'Construcciones' :
+                          formDataFlashcard.subtipoGeometria === 'flechas' ? 'Vectores' :
+                          'Medidas y Cálculos'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoGeometria === 'puntos' && 
+                            '• Puntos: •A, •B, P(x,y)\n• Coordenadas: P(3,4), Q(-2,5)\n• Pregunta: "Ubica el punto A", "¿Qué coordenadas tiene P?"\n• Ejemplo: A(2,3) está en el primer cuadrante'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'rectas' && 
+                            '• Segmentos: AB̅, longitud |AB|\n• Rectas: ←→AB (infinita)\n• Perpendiculares: ⟂, Paralelas: ∥\n• Pregunta: "Traza AB̅", "¿Son paralelas?"\n• Ejemplo: AB̅ ⟂ CD̅ (perpendiculares)'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'angulos' && 
+                            '• Ángulos: ∠ABC, medida en grados o radianes\n• Radianes: π/6, π/4, π/3, π/2\n• Grados: 30°, 45°, 60°, 90°\n• Pregunta: "Mide ∠ABC", "Convierte 45° a radianes"\n• Ejemplo: ∠ABC = 60° = π/3 rad'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'poligonos' && 
+                            '• Triángulos: △ABC (equilátero, isósceles, escaleno)\n• Cuadriláteros: □ (cuadrado), ▱ (paralelogramo), ◊ (rombo)\n• Pregunta: "Clasifica △ABC", "¿Cuántos lados tiene?"\n• Ejemplo: △ equilátero tiene 3 lados iguales'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'circulos' && 
+                            '• Círculos: ○ con centro y radio\n• Arcos: ⌒AB\n• Pregunta: "Calcula perímetro", "¿Qué es el radio?"\n• Ejemplo: C = 2πr, A = πr²'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'construcciones' && 
+                            '• Mediatriz: línea perpendicular que biseca un segmento\n• Bisectriz: divide un ángulo en dos partes iguales\n• Puntos notables: circuncentro, incentro, baricentro, ortocentro\n• Pregunta: "Construye la mediatriz de AB̅", "Ubica el baricentro"\n• Ejemplo: La mediatriz de AB̅ pasa por su punto medio'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'flechas' && 
+                            '• Flechas: →, ←, ↔, ↑, ↓\n• Vectores: v⃗ = (x,y)\n• Pregunta: "Representa el vector AB⃗", "¿Qué dirección tiene?"\n• Ejemplo: AB⃗ = (3,4) va de A a B'
+                          }
+                          {formDataFlashcard.subtipoGeometria === 'medidas' && 
+                            '• Distancia: d(A,B) = √[(x₂-x₁)² + (y₂-y₁)²]\n• Área: A = bh/2 (triángulo), A = πr² (círculo)\n• Trigonometría: sen θ, cos θ, tan θ\n• Pitágoras: a² + b² = c²\n• Pregunta: "Calcula d(A,B)", "¿Qué es sen(30°)?"\n• Ejemplo: d((0,0),(3,4)) = 5'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Química Avanzada */}
+                  {formDataFlashcard.tipo === 'quimica-avanzada' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🧬</span>
+                          Tipo de Estructura Química
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.subtipoQuimicaAvanzada || 'orbitales'}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard, 
+                            subtipoQuimicaAvanzada: e.target.value,
+                            categoriaQuimicaAvanzada: e.target.value === 'orbitales' ? 'atomicos' :
+                                                     e.target.value === 'hibridacion' ? 'sp' :
+                                                     e.target.value === 'vsepr' ? 'ax2' :
+                                                     e.target.value === 'electrones' ? 'flechas' :
+                                                     e.target.value === 'cargas' ? 'parciales' :
+                                                     e.target.value === 'mo' ? 'diatomicos' :
+                                                     e.target.value === 'pares' ? 'libres' :
+                                                     e.target.value === 'resonancia' ? 'estructuras' : 'sigma'
+                          })}
+                        >
+                          <option value="orbitales">⚛️ Orbitales Atómicos</option>
+                          <option value="hibridacion">🔀 Hibridación</option>
+                          <option value="vsepr">🧮 Geometría VSEPR</option>
+                          <option value="electrones">↷ Movimiento de Electrones</option>
+                          <option value="cargas">⚡ Cargas y Polaridad</option>
+                          <option value="mo">🌌 Diagramas MO</option>
+                          <option value="pares">•• Pares Electrónicos</option>
+                          <option value="resonancia">⇌ Resonancia</option>
+                          <option value="enlaces">🔗 Enlaces Especiales</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">⚗️</span>
+                          Categoría Química
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.categoriaQuimicaAvanzada || 'atomicos'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, categoriaQuimicaAvanzada: e.target.value})}
+                        >
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'orbitales' && (
+                            <>
+                              <option value="atomicos">Orbitales s, p, d, f</option>
+                              <option value="orientaciones">Orientaciones espaciales</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'hibridacion' && (
+                            <>
+                              <option value="sp">sp (lineal)</option>
+                              <option value="sp2">sp² (trigonal)</option>
+                              <option value="sp3">sp³ (tetraédrico)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'vsepr' && (
+                            <>
+                              <option value="ax2">AX₂ (lineal)</option>
+                              <option value="ax3">AX₃ (trigonal plana)</option>
+                              <option value="ax4">AX₄ (tetraédrica)</option>
+                              <option value="ax5">AX₅ (bipiramidal)</option>
+                              <option value="ax6">AX₆ (octaédrica)</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'electrones' && (
+                            <>
+                              <option value="flechas">Flechas curvas</option>
+                              <option value="mecanismos">Mecanismos de reacción</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'cargas' && (
+                            <>
+                              <option value="parciales">Cargas parciales δ</option>
+                              <option value="dipolos">Momentos dipolares</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'mo' && (
+                            <>
+                              <option value="diatomicos">Diatómicos homonucleares</option>
+                              <option value="heteronucleares">Diatómicos heteronucleares</option>
+                              <option value="generales">Diagramas generales</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'pares' && (
+                            <>
+                              <option value="libres">Pares libres</option>
+                              <option value="enlazantes">Pares enlazantes</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'resonancia' && (
+                            <>
+                              <option value="estructuras">Estructuras resonantes</option>
+                              <option value="hibridos">Híbridos de resonancia</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'enlaces' && (
+                            <>
+                              <option value="sigma">Enlaces σ</option>
+                              <option value="pi">Enlaces π</option>
+                              <option value="coordinados">Enlaces coordinados</option>
+                              <option value="parciales">Enlaces parciales</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.nivelQuimicaAvanzada || 'basico'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelQuimicaAvanzada: e.target.value})}
+                        >
+                          <option value="basico">🟢 Básico</option>
+                          <option value="intermedio">🟡 Intermedio</option>
+                          <option value="avanzado">🔴 Avanzado</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(192, 132, 252, 0.1)', borderLeft: '4px solid #c084fc'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'orbitales' ? 'Orbitales Atómicos' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'hibridacion' ? 'Hibridación' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'vsepr' ? 'Geometría VSEPR' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'electrones' ? 'Movimiento de Electrones' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'cargas' ? 'Cargas y Polaridad' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'mo' ? 'Orbitales Moleculares' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'pares' ? 'Pares Electrónicos' :
+                          formDataFlashcard.subtipoQuimicaAvanzada === 'resonancia' ? 'Resonancia' :
+                          'Enlaces Especiales'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'orbitales' && 
+                            '• Orbitales s: forma esférica, 1 orbital\n• Orbitales p: dos lóbulos, 3 orientaciones (px, py, pz)\n• Orbitales d: 4-5 lóbulos, 5 orientaciones\n• Orbitales f: formas complejas, 7 orientaciones\n• Pregunta: "Dibuja orbital 2p", "¿Cuántos lóbulos tiene d?"\n• Ejemplo: [1s]○ [2px]∞ [3dxy]✥'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'hibridacion' && 
+                            '• sp: 2 orbitales híbridos, geometría lineal, 180°\n• sp²: 3 orbitales híbridos, geometría trigonal plana, 120°\n• sp³: 4 orbitales híbridos, geometría tetraédrica, 109.5°\n• Pregunta: "¿Qué hibridación tiene C en CH₄?", "Dibuja sp²"\n• Ejemplo: CH₄ tiene sp³ (109.5°)'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'vsepr' && 
+                            '• AX₂: lineal, 180° (CO₂)\n• AX₃: trigonal plana, 120° (BF₃)\n• AX₄: tetraédrica, 109.5° (CH₄)\n• AX₅: bipiramidal trigonal (PCl₅)\n• AX₆: octaédrica, 90° (SF₆)\n• Pregunta: "¿Qué geometría tiene NH₃?", "Dibuja AX₄"\n• Ejemplo: NH₃ es AX₃E (piramidal, 107°)'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'electrones' && 
+                            '• Flechas curvas: movimiento de pares electrónicos\n• Nucleófilo → Electrófilo: Nu:⁻ → E⁺\n• Mecanismos: SN1, SN2, E1, E2\n• Pregunta: "Dibuja el mecanismo", "¿Hacia dónde van los e⁻?"\n• Ejemplo: Nu:⁻ ↷ → C⁺ (ataque nucleofílico)'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'cargas' && 
+                            '• Cargas parciales: δ⁺ δ⁻ en enlaces polares\n• Dipolos: → indica dirección (de ⁺ a ⁻)\n• Pregunta: "Asigna δ⁺ y δ⁻", "¿Hacia dónde apunta el dipolo?"\n• Ejemplo: H-Cl: Hδ⁺-Clδ⁻ →'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'mo' && 
+                            '• Orbitales moleculares: σ, σ*, π, π*\n• Enlazantes: σ₁s, σ₂s, π₂p, σ₂p\n• Antienlazantes: σ*₁s, σ*₂s, π*₂p, σ*₂p\n• Electrones: ↑↓ (apareados), ↑ (desapareado)\n• Pregunta: "Diagrama MO de O₂", "¿Cuántos e⁻ en π₂p?"\n• Ejemplo: O₂ tiene 2 e⁻ desapareados en π*₂p'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'pares' && 
+                            '• Pares libres: •• (dos puntos)\n• Electrones individuales: • (un punto)\n• Nubes electrónicas: ⊙\n• Pregunta: "Marca pares libres en NH₃", "¿Cuántos tiene O?"\n• Ejemplo: NH₃ tiene 1 par libre: H₃N••'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'resonancia' && 
+                            '• Estructuras resonantes: A ⇌ B\n• Híbridos: combinación de estructuras\n• Pregunta: "Dibuja formas resonantes de CO₃²⁻", "¿Son equivalentes?"\n• Ejemplo: O=C-O⁻ ⇌ ⁻O-C=O (carbonato)'
+                          }
+                          {formDataFlashcard.subtipoQuimicaAvanzada === 'enlaces' && 
+                            '• Enlace σ: enlace simple, rotación libre\n• Enlace π: enlace doble/triple, restricción rotacional\n• Enlace coordinado: A→B (par compartido de A)\n• Enlace parcial: línea punteada\n• Pregunta: "¿Cuántos σ y π en C≡N?", "Dibuja enlace coordinado"\n• Ejemplo: C≡N tiene 1σ + 2π'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Configuración Probabilidad y Estadística */}
+                  {formDataFlashcard.tipo === 'probabilidad' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎲</span>
+                          Tipo de Elemento Estadístico
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.subtipoProbabilidad || 'arboles'}
+                          onChange={(e) => setFormDataFlashcard({
+                            ...formDataFlashcard, 
+                            subtipoProbabilidad: e.target.value,
+                            categoriaProbabilidad: e.target.value === 'arboles' ? 'simple' :
+                                                  e.target.value === 'venn' ? 'dos-conjuntos' :
+                                                  e.target.value === 'tablas' ? '2x2' :
+                                                  e.target.value === 'distribuciones' ? 'normal' :
+                                                  e.target.value === 'graficos' ? 'histograma' :
+                                                  e.target.value === 'formulas' ? 'bayes' : 'dataset'
+                          })}
+                        >
+                          <option value="arboles">🌳 Árboles de Probabilidad</option>
+                          <option value="venn">⭕ Diagramas de Venn</option>
+                          <option value="tablas">📋 Tablas de Contingencia</option>
+                          <option value="distribuciones">📊 Distribuciones</option>
+                          <option value="graficos">📈 Gráficos</option>
+                          <option value="formulas">🔣 Fórmulas Esenciales</option>
+                          <option value="datos">🧪 Mini Datasets</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Categoría Estadística
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.categoriaProbabilidad || 'simple'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, categoriaProbabilidad: e.target.value})}
+                        >
+                          {formDataFlashcard.subtipoProbabilidad === 'arboles' && (
+                            <>
+                              <option value="simple">Árbol Simple</option>
+                              <option value="dos-niveles">Dos Niveles</option>
+                              <option value="tres-ramas">Tres Ramas</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'venn' && (
+                            <>
+                              <option value="dos-conjuntos">Dos Conjuntos</option>
+                              <option value="tres-conjuntos">Tres Conjuntos</option>
+                              <option value="con-probabilidades">Con Probabilidades</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'tablas' && (
+                            <>
+                              <option value="2x2">Tabla 2×2</option>
+                              <option value="3x3">Tabla 3×3</option>
+                              <option value="con-totales">Con Totales</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'distribuciones' && (
+                            <>
+                              <option value="normal">Normal</option>
+                              <option value="binomial">Binomial</option>
+                              <option value="poisson">Poisson</option>
+                              <option value="exponencial">Exponencial</option>
+                              <option value="uniforme">Uniforme</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'graficos' && (
+                            <>
+                              <option value="histograma">Histograma</option>
+                              <option value="dispersion">Dispersión</option>
+                              <option value="barras">Barras</option>
+                              <option value="linea">Línea</option>
+                              <option value="boxplot">Box Plot</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'formulas' && (
+                            <>
+                              <option value="bayes">Teorema de Bayes</option>
+                              <option value="esperanza">Esperanza</option>
+                              <option value="varianza">Varianza</option>
+                              <option value="covarianza">Covarianza</option>
+                            </>
+                          )}
+                          {formDataFlashcard.subtipoProbabilidad === 'datos' && (
+                            <>
+                              <option value="dataset">Dataset Simple</option>
+                              <option value="medidas">Medidas de Tendencia</option>
+                              <option value="cuartiles">Cuartiles</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">📊</span>
+                          Nivel de Complejidad
+                        </label>
+                        <select 
+                          className="config-input"
+                          value={formDataFlashcard.nivelProbabilidad || 'basico'}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, nivelProbabilidad: e.target.value})}
+                        >
+                          <option value="basico">🟢 Básico</option>
+                          <option value="intermedio">🟡 Intermedio</option>
+                          <option value="avanzado">🔴 Avanzado</option>
+                        </select>
+                      </div>
+
+                      <div className="info-box" style={{background: 'rgba(139, 92, 246, 0.1)', borderLeft: '4px solid #8b5cf6'}}>
+                        <strong>💡 {
+                          formDataFlashcard.subtipoProbabilidad === 'arboles' ? 'Árboles de Probabilidad' :
+                          formDataFlashcard.subtipoProbabilidad === 'venn' ? 'Diagramas de Venn' :
+                          formDataFlashcard.subtipoProbabilidad === 'tablas' ? 'Tablas de Contingencia' :
+                          formDataFlashcard.subtipoProbabilidad === 'distribuciones' ? 'Distribuciones' :
+                          formDataFlashcard.subtipoProbabilidad === 'graficos' ? 'Gráficos Estadísticos' :
+                          formDataFlashcard.subtipoProbabilidad === 'formulas' ? 'Fórmulas Esenciales' :
+                          'Mini Datasets'
+                        }:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoProbabilidad === 'arboles' && 
+                            '• Úsalo para decisiones y caminos posibles\n• Cada rama tiene probabilidad editable (□)\n• Perfecto para experimentos secuenciales\n• Ejemplo: Lanzar una moneda dos veces'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'venn' && 
+                            '• Conjuntos A, B, C con intersección\n• A∩B (intersección), A∪B (unión), Aᶜ (complemento)\n• Con porcentajes editables\n• Ejemplo: P(A∩B) = 30%, P(A∪B) = 70%'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'tablas' && 
+                            '• Tablas 2×2 o 3×3 para probabilidades conjuntas\n• Probabilidad condicional: P(A|B)\n• Con totales automáticos\n• Ejemplo: Género vs Preferencia'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'distribuciones' && 
+                            '• Normal: N(μ, σ) - campana de Gauss\n• Binomial: n ensayos, p probabilidad\n• Poisson: eventos raros\n• Exponencial: tiempo entre eventos\n• Parámetros editables con □'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'graficos' && 
+                            '• Histograma: distribución de datos\n• Dispersión: relación entre variables\n• Box plot: cuartiles y outliers\n• Barras/Línea: comparación/tendencia'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'formulas' && 
+                            '• Bayes: P(A|B) = P(B|A)·P(A) / P(B)\n• Esperanza: E[X] = Σ xᵢ·pᵢ\n• Varianza: Var(X) = E[X²] - (E[X])²\n• Covarianza: relación entre variables\n• Valores editables con □'
+                          }
+                          {formDataFlashcard.subtipoProbabilidad === 'datos' && 
+                            '• Mini tabla de datos (x, y)\n• Media: x̄ = Σxᵢ / n\n• Mediana: valor central\n• Moda: más frecuente\n• Cuartiles: Q₁, Me, Q₃'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 🎨 Configuración de ARTE */}
+                  {formDataFlashcard.tipo === 'arte' && (
+                    <>
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎨</span>
+                          Tipo de Elemento Visual
+                        </label>
+                        <select
+                          className="select-tipo"
+                          value={formDataFlashcard.subtipoArte}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, subtipoArte: e.target.value})}
+                        >
+                          <option value="figuras">🔷 Figuras básicas (círculo, cuadrado, triángulo, flechas)</option>
+                          <option value="paletas">🎨 Paletas de color (pastel, neón, tierra, retro)</option>
+                          <option value="composiciones">📐 Composiciones/Layouts (2 columnas, grid, diagonal)</option>
+                          <option value="estilos">🖼️ Estilos artísticos (impresionismo, cubismo, surrealismo)</option>
+                          <option value="timeline">📅 Timeline historia del arte</option>
+                          <option value="iconos">✨ Iconos artísticos (pincel, paleta, museo)</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🎯</span>
+                          Categoría Visual
+                        </label>
+                        <select
+                          className="select-tipo"
+                          value={formDataFlashcard.categoriaArte}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, categoriaArte: e.target.value})}
+                        >
+                          <option value="basico">🟢 Básico - Formas y colores simples</option>
+                          <option value="intermedio">🟡 Intermedio - Composiciones estructuradas</option>
+                          <option value="avanzado">🟣 Avanzado - Estilos artísticos complejos</option>
+                        </select>
+                      </div>
+
+                      <div className="config-section">
+                        <label className="config-label">
+                          <span className="label-icon">🖼️</span>
+                          Estilo Artístico Aplicado
+                        </label>
+                        <select
+                          className="select-tipo"
+                          value={formDataFlashcard.estiloArtistico}
+                          onChange={(e) => setFormDataFlashcard({...formDataFlashcard, estiloArtistico: e.target.value})}
+                        >
+                          <option value="ninguno">Sin estilo (visual puro)</option>
+                          <option value="impresionismo">🌅 Impresionismo - Monet</option>
+                          <option value="cubismo">📐 Cubismo - Picasso</option>
+                          <option value="surrealismo">🌙 Surrealismo - Dalí</option>
+                          <option value="barroco">👑 Barroco - Caravaggio</option>
+                          <option value="modernismo">🏛️ Modernismo - Klimt</option>
+                          <option value="bauhaus">▲■● Bauhaus - Minimalista</option>
+                          <option value="ukiyo-e">🌸 Ukiyo-e - Hokusai</option>
+                          <option value="pop-art">💥 Pop Art - Warhol</option>
+                        </select>
+                      </div>
+
+                      <div style={{
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'rgba(244, 114, 182, 0.1)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(244, 114, 182, 0.2)'
+                      }}>
+                        <strong style={{color: '#f9a8d4'}}>💡 Uso del Panel de Arte:</strong>
+                        <div style={{marginTop: '0.5rem'}}>
+                          {formDataFlashcard.subtipoArte === 'figuras' && 
+                            '• Inserta formas básicas editables\n• Perfecto para esquemas visuales\n• Círculos, cuadrados, flechas, líneas\n• Cambia colores con □ placeholders'
+                          }
+                          {formDataFlashcard.subtipoArte === 'paletas' && 
+                            '• Aplica paletas de color profesionales\n• Pastel, neón, tierra, retro, minimalista\n• Vista previa de 5 colores\n• Ideal para aprender diseño'
+                          }
+                          {formDataFlashcard.subtipoArte === 'composiciones' && 
+                            '• Layouts prearmados para organizar info\n• 2 columnas, grid 3×3, división diagonal\n• Estructuras editables con □\n• Perfecto para notas visuales'
+                          }
+                          {formDataFlashcard.subtipoArte === 'estilos' && 
+                            '• Filtros artísticos para estudiar historia del arte\n• Impresionismo, cubismo, surrealismo\n• Con descripción y artista representativo\n• Para flashcards de identificación de estilos'
+                          }
+                          {formDataFlashcard.subtipoArte === 'timeline' && 
+                            '• Líneas de tiempo de movimientos artísticos\n• Renacimiento, Barroco, Romanticismo\n• Con artistas y obras editables\n• Ideal para estudiar historia del arte'
+                          }
+                          {formDataFlashcard.subtipoArte === 'iconos' && 
+                            '• Iconos temáticos de arte y cultura\n• Pincel, paleta, museo, estatua\n• Para enriquecer composiciones\n• Complementa otras herramientas'
+                          }
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Selector de Imágenes/Archivos */}
+                  {(formDataFlashcard.tipo === 'visual' || formDataFlashcard.tipo === 'archivo' || formDataFlashcard.tipo === 'matematica') && (
+                    <div className="config-section">
+                      <label className="config-label">
+                        <span className="label-icon">{formDataFlashcard.tipo === 'visual' ? '🖼️' : '📎'}</span>
+                        {formDataFlashcard.tipo === 'visual' ? 'Imágenes' : 'Archivos Adjuntos'}
+                      </label>
+                      <div style={{
+                        padding: '1.5rem',
+                        background: 'rgba(51, 65, 85, 0.4)',
+                        border: '2px dashed rgba(148, 163, 184, 0.3)',
+                        borderRadius: '12px',
+                        textAlign: 'center'
+                      }}>
+                        <input
+                          type="file"
+                          id="file-upload"
+                          multiple={formDataFlashcard.tipo === 'visual'}
+                          accept={formDataFlashcard.tipo === 'visual' ? 'image/*' : '*'}
+                          onChange={async (e) => {
+                            const files = Array.from(e.target.files);
+                            
+                            // 🔥 Convertir archivos a base64 para persistencia
+                            const filePromises = files.map(file => {
+                              return new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  resolve({
+                                    nombre: file.name,
+                                    tipo: file.type,
+                                    tamano: file.size,
+                                    url: event.target.result, // Base64
+                                    base64: event.target.result
+                                  });
+                                };
+                                reader.readAsDataURL(file);
+                              });
+                            });
+                            
+                            const fileData = await Promise.all(filePromises);
+                            
+                            if (formDataFlashcard.tipo === 'visual') {
+                              setFormDataFlashcard({...formDataFlashcard, imagenes: [...formDataFlashcard.imagenes, ...fileData]});
+                            } else {
+                              setFormDataFlashcard({...formDataFlashcard, archivos: [...formDataFlashcard.archivos, ...fileData]});
+                            }
+                          }}
+                          style={{display: 'none'}}
+                        />
+                        <label htmlFor="file-upload" style={{
+                          display: 'inline-block',
+                          padding: '0.875rem 1.5rem',
+                          background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                          color: 'white',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          marginBottom: '0.75rem'
+                        }}>
+                          📁 Seleccionar {formDataFlashcard.tipo === 'visual' ? 'imágenes' : 'archivos'}
+                        </label>
+                        <p style={{color: '#94a3b8', fontSize: '0.85rem', margin: '0.5rem 0 0 0'}}>
+                          {formDataFlashcard.tipo === 'visual' 
+                            ? 'Formatos: JPG, PNG, GIF, SVG' 
+                            : 'Formatos: PDF, DOCX, XLSX, TXT, etc.'}
+                        </p>
+                        
+                        {/* Preview de archivos/imágenes */}
+                        {(formDataFlashcard.imagenes.length > 0 || formDataFlashcard.archivos.length > 0) && (
+                          <div style={{
+                            marginTop: '1rem',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                            gap: '0.75rem'
+                          }}>
+                            {[...(formDataFlashcard.imagenes || []), ...(formDataFlashcard.archivos || [])].map((file, idx) => (
+                              <div key={idx} style={{
+                                position: 'relative',
+                                padding: '0.5rem',
+                                background: 'rgba(100, 116, 139, 0.3)',
+                                borderRadius: '8px',
+                                textAlign: 'center'
+                              }}>
+                                {file.tipo?.startsWith('image/') ? (
+                                  <img src={file.url} alt={file.nombre} style={{
+                                    width: '100%',
+                                    height: '80px',
+                                    objectFit: 'cover',
+                                    borderRadius: '6px'
+                                  }} />
+                                ) : (
+                                  <div style={{
+                                    fontSize: '2rem',
+                                    padding: '1rem 0'
+                                  }}>📄</div>
+                                )}
+                                <p style={{
+                                  fontSize: '0.7rem',
+                                  color: '#cbd5e1',
+                                  margin: '0.25rem 0 0 0',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}>{file.nombre}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (formDataFlashcard.tipo === 'visual') {
+                                      setFormDataFlashcard({
+                                        ...formDataFlashcard,
+                                        imagenes: formDataFlashcard.imagenes.filter((_, i) => i !== idx)
+                                      });
+                                    } else {
+                                      setFormDataFlashcard({
+                                        ...formDataFlashcard,
+                                        archivos: formDataFlashcard.archivos.filter((_, i) => i !== idx)
+                                      });
+                                    }
+                                  }}
+                                  style={{
+                                    position: 'absolute',
+                                    top: '0.25rem',
+                                    right: '0.25rem',
+                                    background: 'rgba(244, 67, 54, 0.9)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '50%',
+                                    width: '20px',
+                                    height: '20px',
+                                    fontSize: '0.7rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                  }}
+                                >×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Título */}
                   <div className="config-section">
@@ -13617,7 +16371,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       placeholder="Título breve de la flashcard"
                       value={formDataFlashcard.titulo}
                       onChange={(e) => setFormDataFlashcard({...formDataFlashcard, titulo: e.target.value})}
-                      required
                     />
                   </div>
 
@@ -13626,23 +16379,759 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     <label className="config-label">
                       <span className="label-icon">💭</span>
                       {formDataFlashcard.tipo === 'clasica' ? 'Pregunta' : 
-                       formDataFlashcard.tipo === 'cloze' ? 'Texto con espacios (usa ___ para blancos)' :
+                       formDataFlashcard.tipo === 'reconocimiento' ? 'Imagen/Concepto a Identificar' :
+                       formDataFlashcard.tipo === 'cloze' ? 'Texto con espacios (usa [] para blancos)' :
                        formDataFlashcard.tipo === 'escenario' ? 'Descripción del Escenario' :
+                       formDataFlashcard.tipo === 'mcq' ? 'Pregunta' :
+                       formDataFlashcard.tipo === 'visual' ? 'Descripción de la Imagen' :
+                       formDataFlashcard.tipo === 'auditiva' ? 'Audio/Pronunciación' :
+                       formDataFlashcard.tipo === 'produccion' ? 'Prompt de Producción' :
+                       formDataFlashcard.tipo === 'invertida' ? 'Respuesta Visible' :
+                       formDataFlashcard.tipo === 'jerarquia' ? 'Concepto Principal' :
+                       formDataFlashcard.tipo === 'error' ? 'Texto con Error Intencional' :
+                       formDataFlashcard.tipo === 'comparacion' ? 'Primer Elemento (A)' :
+                       formDataFlashcard.tipo === 'matematica' ? 'Expresión Matemática (Editor Visual)' :
+                       formDataFlashcard.tipo === 'quimica' ? 'Estructura Química (Editor Molecular)' :
+                       formDataFlashcard.tipo === 'fisica' ? 'Ecuación/Diagrama Físico (Editor LaTeX)' :
+                       formDataFlashcard.tipo === 'ingenieria' ? 'Diagrama/Sistema de Ingeniería (Circuito/FBD/Viga)' :
+                       formDataFlashcard.tipo === 'programacion-avanzada' ? 'Diagrama de Programación (UML/Flujo/Grafo)' :
+                       formDataFlashcard.tipo === 'archivo' ? 'Descripción del Documento' :
+                       formDataFlashcard.tipo === 'programacion' ? (
+                         formDataFlashcard.patronCodigo === 'produccion' ? 'Instrucción/Tarea de Programación' : 'Código (en fuente monospace)'
+                       ) :
                        'Contenido'}
                     </label>
-                    <textarea
-                      className="textarea-prompt"
-                      placeholder={
-                        formDataFlashcard.tipo === 'clasica' ? '¿Cuál es la definición de...?' :
-                        formDataFlashcard.tipo === 'cloze' ? 'El ___ es un proceso de ___' :
-                        formDataFlashcard.tipo === 'escenario' ? 'Un cliente llega con el siguiente problema...' :
-                        'Escribe el contenido de la flashcard'
-                      }
-                      value={formDataFlashcard.contenido}
-                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, contenido: e.target.value})}
-                      rows={4}
-                      required
-                    />
+
+                    {/* EDITOR MATEMÁTICO INTERACTIVO ESTILO WOLFRAM */}
+                    {formDataFlashcard.tipo === 'matematica' ? (
+                      <div style={{
+                        background: 'rgba(17, 24, 39, 0.8)',
+                        border: '2px solid rgba(147, 51, 234, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1.5rem'
+                        }}>
+                          {/* Panel de herramientas matemáticas - ARRIBA */}
+                          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                            <MathToolbar 
+                              onInsertTemplate={(latex) => {
+                                // Obtener el math-field del DOM
+                                const mathField = document.querySelector('math-field');
+                                if (mathField) {
+                                  mathField.executeCommand(['insert', latex]);
+                                  mathField.focus();
+                                }
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor y vista previa - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {/* Botón de salto de línea rápido */}
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '0.5rem',
+                              alignItems: 'center',
+                              padding: '0.5rem',
+                              background: 'rgba(147, 51, 234, 0.1)',
+                              borderRadius: '8px'
+                            }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const mathField = document.querySelector('math-field');
+                                  if (mathField) {
+                                    mathField.executeCommand(['insert', '\\\\']);
+                                    mathField.focus();
+                                  }
+                                }}
+                                style={{
+                                  padding: '0.5rem 1rem',
+                                  background: 'linear-gradient(135deg, #9333ea, #7c3aed)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  transition: 'all 0.2s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.transform = 'translateY(-1px)'
+                                  e.target.style.boxShadow = '0 4px 12px rgba(147, 51, 234, 0.4)'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.transform = 'translateY(0)'
+                                  e.target.style.boxShadow = 'none'
+                                }}
+                              >
+                                ⏎ Salto de Línea
+                              </button>
+                              <span style={{ color: '#c4b5fd', fontSize: '0.8rem' }}>
+                                o presiona <strong>SHIFT + ENTER</strong>
+                              </span>
+                            </div>
+
+                            <MathEditor
+                              value={formDataFlashcard.contenido}
+                              onChange={(latex) => setFormDataFlashcard({
+                                ...formDataFlashcard, 
+                                contenido: latex,
+                                latex: true
+                              })}
+                              placeholder="Escribe matemáticas o usa el panel de herramientas..."
+                            />
+
+                            {/* Vista previa renderizada - FONDO OSCURO */}
+                            {formDataFlashcard.contenido && (
+                              <div style={{
+                                background: 'rgba(30, 41, 59, 0.8)',
+                                padding: '1.5rem',
+                                borderRadius: '8px',
+                                border: '2px solid rgba(147, 51, 234, 0.3)'
+                              }}>
+                                <div style={{
+                                  color: '#c4b5fd',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '600',
+                                  marginBottom: '1rem',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em'
+                                }}>
+                                  👁️ Vista Previa
+                                </div>
+                                <div style={{
+                                  fontSize: '1.2rem',
+                                  textAlign: 'center',
+                                  minHeight: '60px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#e9d5ff'
+                                }}>
+                                  <BlockMath math={formDataFlashcard.contenido} />
+                                </div>
+                              </div>
+                            )}
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(147, 51, 234, 0.1)',
+                              borderLeft: '4px solid #9333ea',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#c4b5fd',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#a855f7'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en los botones para insertar plantillas matemáticas<br/>
+                              • Usa <strong>TAB</strong> para navegar entre cajas editables<br/>
+                              • Usa <strong>SHIFT + ENTER</strong> para salto de línea<br/>
+                              • Usa <strong>\\\\</strong> para nueva línea en ecuaciones<br/>
+                              • Escribe directamente o usa atajos (sqrt, frac, etc.)<br/>
+                              • El editor convierte automáticamente a LaTeX
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'quimica' ? (
+                      /* EDITOR QUÍMICO INTERACTIVO */
+                      <div style={{
+                        background: 'rgba(17, 24, 39, 0.8)',
+                        border: '2px solid rgba(16, 185, 129, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1.5rem'
+                        }}>
+                          {/* Panel de herramientas químicas - ARRIBA */}
+                          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                            <ChemToolbar 
+                              onInsertStructure={(smiles) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: smiles
+                                })
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor químico - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <ChemEditor
+                              value={formDataFlashcard.contenido}
+                              onChange={(smiles) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: smiles
+                              })}
+                              placeholder="Escribe notación SMILES o usa el panel de herramientas..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(16, 185, 129, 0.1)',
+                              borderLeft: '4px solid #10b981',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#a7f3d0',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#10b981'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en los botones para insertar estructuras predefinidas<br/>
+                              • Escribe notación SMILES directamente para estructuras personalizadas<br/>
+                              • La estructura se dibuja automáticamente<br/>
+                              • Ejemplos: <code style={{background: 'rgba(16, 185, 129, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>c1ccccc1</code> (benceno), <code style={{background: 'rgba(16, 185, 129, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>CCO</code> (etanol)
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'fisica' ? (
+                      /* 🔥 EDITOR DE FÍSICA INTERACTIVO ESTILO WOLFRAM */
+                      <div style={{
+                        background: 'rgba(17, 24, 39, 0.8)',
+                        border: '2px solid rgba(245, 158, 11, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '1.5rem'
+                        }}>
+                          {/* Panel de herramientas físicas - ARRIBA */}
+                          <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                            <PhysicsToolbar 
+                              onInsertTemplate={(latex) => {
+                                const currentContent = formDataFlashcard.contenido || '';
+                                const newContent = currentContent 
+                                  ? currentContent + '\n\n' + latex
+                                  : latex;
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: newContent
+                                })
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor físico - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <PhysicsEditor
+                              value={formDataFlashcard.contenido}
+                              onChange={(latex) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: latex
+                              })}
+                              placeholder="Escribe LaTeX o usa el panel de herramientas de física..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(245, 158, 11, 0.1)',
+                              borderLeft: '4px solid #f59e0b',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#fef3c7',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#fbbf24'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en los botones para insertar ecuaciones y fórmulas físicas<br/>
+                              • Escribe LaTeX directamente para personalizar<br/>
+                              • Las ecuaciones se renderizan en tiempo real en la vista previa<br/>
+                              • Usa <code style={{background: 'rgba(245, 158, 11, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>\vec{'{F}'}</code> para vectores, <code style={{background: 'rgba(245, 158, 11, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>\nabla</code> para gradiente
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'ingenieria' ? (
+                      /* Editor de ingeniería */
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.12) 100%)',
+                        border: '2px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                          {/* Panel de herramientas - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(239, 68, 68, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(239, 68, 68, 0.2)'
+                          }}>
+                            <EngineeringToolbar
+                              onInsertComponent={(comp) => {
+                                const texto = `[${comp.nombre}] ${comp.latex || ''}`;
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + '\n' + texto
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de ingeniería - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <EngineeringCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                              placeholder="Describe tu sistema de ingeniería usando [Componentes]..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              borderLeft: '4px solid #ef4444',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#fca5a5',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#fecaca'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en componentes del panel superior para insertarlos<br/>
+                              • Escribe directamente en formato: <code style={{background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Componente] Parámetros</code><br/>
+                              • Ejemplo circuito: <code style={{background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Resistencia] R = 10Ω</code><br/>
+                              • Ejemplo FBD: <code style={{background: 'rgba(239, 68, 68, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Fuerza] F = 50N →</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'programacion-avanzada' ? (
+                      /* Editor de programación avanzada */
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(124, 58, 237, 0.12) 100%)',
+                        border: '2px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '12px',
+                        padding: '1.5rem',
+                        boxShadow: '0 4px 12px rgba(139, 92, 246, 0.1)'
+                      }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                          {/* Panel de herramientas - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(139, 92, 246, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(139, 92, 246, 0.2)'
+                          }}>
+                            <ProgrammingToolbar
+                              onInsertComponent={(comp) => {
+                                const texto = `[${comp.nombre}] ${comp.latex || ''}`;
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + '\n' + texto
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de programación - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <ProgrammingCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                              placeholder="Describe tu diagrama de programación usando [Componentes]..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              borderLeft: '4px solid #8b5cf6',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#ddd6fe',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#e9d5ff'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en componentes del panel superior para insertarlos<br/>
+                              • Escribe directamente en formato: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Componente] Parámetros</code><br/>
+                              • Ejemplo UML: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Clase] Usuario {'{+id, +nombre}'} {'{+login()}'}</code><br/>
+                              • Ejemplo Flujo: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[Decisión] ¿Usuario válido?</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'logica-discreta' ? (
+                      /* Editor de Lógica/Discreta */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Lógica/Discreta - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(124, 58, 237, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(124, 58, 237, 0.2)'
+                          }}>
+                            <DiscreteToolbar
+                              onInsertSymbol={(symbol) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + symbol
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de lógica discreta - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <DiscreteCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                              placeholder="Escribe expresiones lógicas usando símbolos: ¬p ∨ q, A ∪ B, etc..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(124, 58, 237, 0.1)',
+                              borderLeft: '4px solid #7c3aed',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#ddd6fe',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#e9d5ff'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en símbolos del panel superior para insertarlos<br/>
+                              • Lógica: <code style={{background: 'rgba(124, 58, 237, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>¬p ∨ q → r</code><br/>
+                              • Conjuntos: <code style={{background: 'rgba(124, 58, 237, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>A ∪ B = {'{1,2,3,4}'}</code><br/>
+                              • Relaciones: <code style={{background: 'rgba(124, 58, 237, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>R = {'{(1,2), (2,3)}'}</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'linguistica' ? (
+                      /* Editor de Lingüística/Fonética */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Lingüística - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(236, 72, 153, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(236, 72, 153, 0.2)'
+                          }}>
+                            <LinguisticsToolbar
+                              onInsertSymbol={(symbol) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + symbol
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de lingüística - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <LinguisticsCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                              placeholder="Escribe transcripciones IPA: /ˈwɔːtə/, símbolos de stress: ˈhello ↗, etc..."
+                            />
+
+                            <div style={{
+                              padding: '1rem',
+                              background: 'rgba(236, 72, 153, 0.1)',
+                              borderLeft: '4px solid #ec4899',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#fce7f3',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#fbcfe8'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en símbolos IPA del panel superior para insertarlos<br/>
+                              • Transcripción: <code style={{background: 'rgba(236, 72, 153, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>/ˈwɔːtə/ (water)</code><br/>
+                              • Consonantes: <code style={{background: 'rgba(236, 72, 153, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>/θɪŋk/ (think)</code><br/>
+                              • Stress: <code style={{background: 'rgba(236, 72, 153, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>ˈhello ↗ (pregunta)</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'musica' ? (
+                      /* Editor de Música/Teoría Musical */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Música - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(168, 85, 247, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(168, 85, 247, 0.2)'
+                          }}>
+                            <MusicToolbar
+                              onInsertSymbol={(symbol) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + symbol
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de música - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <MusicCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                            />
+
+                            <div style={{
+                              background: 'rgba(168, 85, 247, 0.08)',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#f3e8ff',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#e9d5ff'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en símbolos musicales del panel superior para insertarlos<br/>
+                              • Pentagrama: <code style={{background: 'rgba(168, 85, 247, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>𝄞 4/4</code><br/>
+                              • Acordes: <code style={{background: 'rgba(168, 85, 247, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>Cmaj7 = Do-Mi-Sol-Si</code><br/>
+                              • Escala: <code style={{background: 'rgba(168, 85, 247, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>Do mayor: Do-Re-Mi-Fa-Sol-La-Si-Do</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'geometria' ? (
+                      /* Editor de Geometría */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Geometría - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(34, 197, 94, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(34, 197, 94, 0.2)'
+                          }}>
+                            <GeometryToolbar
+                              onInsertSymbol={(symbol) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + symbol
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de geometría - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <GeometryCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                            />
+
+                            <div style={{
+                              background: 'rgba(34, 197, 94, 0.08)',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#d1fae5',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#a7f3d0'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en símbolos geométricos del panel superior para insertarlos<br/>
+                              • Triángulo: <code style={{background: 'rgba(34, 197, 94, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>△ABC</code><br/>
+                              • Ángulo: <code style={{background: 'rgba(34, 197, 94, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>∠ABC = 60°</code><br/>
+                              • Segmento: <code style={{background: 'rgba(34, 197, 94, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>AB̅ ⟂ CD̅</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'quimica-avanzada' ? (
+                      /* Editor de Química Avanzada */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Química Avanzada - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(192, 132, 252, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(192, 132, 252, 0.2)'
+                          }}>
+                            <AdvancedChemistryToolbar
+                              onInsertSymbol={(symbol) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + symbol
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de química avanzada - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <AdvancedChemistryCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                            />
+
+                            <div style={{
+                              background: 'rgba(192, 132, 252, 0.08)',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#f3e8ff',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#e9d5ff'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en símbolos químicos del panel superior para insertarlos<br/>
+                              • Hibridación: <code style={{background: 'rgba(192, 132, 252, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[sp³]⧓A 109.5°</code><br/>
+                              • VSEPR: <code style={{background: 'rgba(192, 132, 252, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>[AX₄] tetraédrica</code><br/>
+                              • Mecanismo: <code style={{background: 'rgba(192, 132, 252, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>Nu:⁻ ↷ → E⁺</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'probabilidad' ? (
+                      /* Editor de Probabilidad y Estadística */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Probabilidad - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(139, 92, 246, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(139, 92, 246, 0.2)'
+                          }}>
+                            <ProbabilityToolbar
+                              onInsertElement={(element) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + '\n' + element
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de probabilidad - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <ProbabilityCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                            />
+
+                            <div style={{
+                              background: 'rgba(139, 92, 246, 0.08)',
+                              padding: '1rem',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              color: '#c4b5fd',
+                              lineHeight: '1.6'
+                            }}>
+                              <strong style={{color: '#a78bfa'}}>💡 Cómo usar:</strong><br/>
+                              • Haz clic en elementos del panel superior para insertarlos<br/>
+                              • Árbol: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>• ─→ [P=□] ─→ □</code><br/>
+                              • Bayes: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>P(A|B) = P(B|A)·P(A) / P(B)</code><br/>
+                              • Normal: <code style={{background: 'rgba(139, 92, 246, 0.2)', padding: '2px 6px', borderRadius: '4px'}}>N(μ=100, σ=15)</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : formDataFlashcard.tipo === 'arte' ? (
+                      /* Editor de Arte y Diseño Visual */
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {/* Toolbar de Arte - ARRIBA */}
+                          <div style={{
+                            background: 'rgba(244, 114, 182, 0.05)',
+                            borderRadius: '10px',
+                            padding: '1rem',
+                            border: '1px solid rgba(244, 114, 182, 0.2)'
+                          }}>
+                            <ArtToolbar
+                              onInsertElement={(element) => {
+                                setFormDataFlashcard({
+                                  ...formDataFlashcard,
+                                  contenido: formDataFlashcard.contenido + '\n' + element
+                                });
+                              }}
+                            />
+                          </div>
+
+                          {/* Editor de arte - ABAJO */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            <ArtCanvas
+                              value={formDataFlashcard.contenido}
+                              onChange={(texto) => setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                contenido: texto
+                              })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Textarea normal para otros tipos */
+                      <textarea
+                        className="textarea-prompt"
+                        placeholder={
+                          formDataFlashcard.tipo === 'clasica' ? '¿Cuál es la definición de...?\n¿Qué es...?\n¿Cómo funciona...?' :
+                          formDataFlashcard.tipo === 'reconocimiento' ? 'URL de imagen o descripción:\nIdentifica: [concepto clave]' :
+                          formDataFlashcard.tipo === 'cloze' ? 'La capital de Francia es [].\nEl [] es un proceso de [].' :
+                          formDataFlashcard.tipo === 'escenario' ? 'Un cliente llega con el siguiente problema:\n[Descripción del caso]\n¿Qué harías?' :
+                          formDataFlashcard.tipo === 'mcq' ? '¿Cuál de las siguientes opciones...?\n¿Qué es correcto sobre...?' :
+                          formDataFlashcard.tipo === 'visual' ? 'Describe lo que ves en la imagen.\nURL/referencia de imagen' :
+                          formDataFlashcard.tipo === 'auditiva' ? 'Audio: [palabra/frase]\n¿Cómo se pronuncia...?' :
+                          formDataFlashcard.tipo === 'produccion' ? 'Produce: Escribe un ejemplo de...\nGenera una lista de...' :
+                          formDataFlashcard.tipo === 'invertida' ? 'Respuesta: [dato/definición]\nRecuerda: ¿Cuál era la pregunta?' :
+                          formDataFlashcard.tipo === 'jerarquia' ? 'Nodo principal: [Concepto]\n├─ Subnodo 1\n├─ Subnodo 2\n└─ Subnodo 3' :
+                          formDataFlashcard.tipo === 'error' ? 'Texto con error:\nLa fotosintisis es un proceso...\n⚠️ Corrige el error' :
+                          formDataFlashcard.tipo === 'comparacion' ? 'Elemento A:\n[Descripción/características]' :
+                          formDataFlashcard.tipo === 'archivo' ? 'Describe el contenido del documento adjunto' :
+                          formDataFlashcard.tipo === 'programacion' ? (
+                            formDataFlashcard.patronCodigo === 'comprension' ? 'function sum(arr) {\n  return arr.reduce((acc, x) => acc + x, 0);\n}\n\n¿Qué hace esta función?' :
+                            formDataFlashcard.patronCodigo === 'bug' ? 'def divide(a, b):\n    return a / b\n    if b == 0:  # ❌ BUG AQUÍ\n        return 0' :
+                            formDataFlashcard.patronCodigo === 'cloze' ? 'for (let i = 0; i < []; i++) {\n  console.log(i);\n}' :
+                            'Escribe una función que recibe un array de números y devuelve solo los pares.'
+                          ) :
+                          'Escribe el contenido de la flashcard'
+                        }
+                        value={formDataFlashcard.contenido}
+                        onChange={(e) => setFormDataFlashcard({...formDataFlashcard, contenido: e.target.value})}
+                        rows={formDataFlashcard.tipo === 'escenario' || formDataFlashcard.tipo === 'jerarquia' || formDataFlashcard.tipo === 'programacion' ? 6 : 4}
+                        style={formDataFlashcard.tipo === 'programacion' ? {
+                          fontFamily: 'monospace',
+                          fontSize: '0.9rem',
+                          background: 'rgba(30, 41, 59, 0.6)',
+                          border: '2px solid rgba(20, 184, 166, 0.3)'
+                        } : {}}
+                      />
+                    )}
                   </div>
 
                   {/* Opciones (solo para MCQ) */}
@@ -13650,11 +17139,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     <div className="config-section">
                       <label className="config-label">
                         <span className="label-icon">☑️</span>
-                        Opciones (una por línea)
+                        Opciones de Respuesta
                       </label>
                       <textarea
                         className="textarea-prompt"
-                        placeholder="Opción A&#10;Opción B&#10;Opción C&#10;Opción D"
+                        placeholder="A) Primera opción&#10;B) Segunda opción&#10;C) Tercera opción&#10;D) Cuarta opción"
                         value={Array.isArray(formDataFlashcard.opciones) ? formDataFlashcard.opciones.join('\n') : ''}
                         onChange={(e) => setFormDataFlashcard({
                           ...formDataFlashcard, 
@@ -13662,6 +17151,29 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         })}
                         rows={4}
                       />
+                      <p className="config-hint" style={{marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8'}}>
+                        💡 Usa el formato: A) Opción 1, B) Opción 2, etc.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Campo adicional para Comparación (Elemento B) */}
+                  {formDataFlashcard.tipo === 'comparacion' && (
+                    <div className="config-section">
+                      <label className="config-label">
+                        <span className="label-icon">⚖️</span>
+                        Elemento B (para comparar)
+                      </label>
+                      <textarea
+                        className="textarea-prompt"
+                        placeholder="Elemento B:&#10;[Descripción/características del segundo elemento]"
+                        value={formDataFlashcard.explicacion}
+                        onChange={(e) => setFormDataFlashcard({...formDataFlashcard, explicacion: e.target.value})}
+                        rows={4}
+                      />
+                      <p className="config-hint" style={{marginTop: '0.5rem', fontSize: '0.85rem', color: '#94a3b8'}}>
+                        💡 Este campo se usará como el segundo elemento de la comparación
+                      </p>
                     </div>
                   )}
 
@@ -13669,32 +17181,53 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   <div className="config-section">
                     <label className="config-label">
                       <span className="label-icon">✅</span>
-                      Respuesta Correcta
+                      {formDataFlashcard.tipo === 'mcq' ? 'Respuesta Correcta (Indica la letra)' :
+                       formDataFlashcard.tipo === 'cloze' ? 'Palabras que completan los []' :
+                       formDataFlashcard.tipo === 'error' ? 'Versión Corregida' :
+                       formDataFlashcard.tipo === 'reconocimiento' ? 'Concepto/Nombre Correcto' :
+                       formDataFlashcard.tipo === 'invertida' ? 'Pregunta Original' :
+                       formDataFlashcard.tipo === 'produccion' ? 'Ejemplo de Respuesta' :
+                       'Respuesta Correcta'}
                     </label>
                     <textarea
                       className="textarea-prompt"
-                      placeholder="La respuesta correcta es..."
+                      placeholder={
+                        formDataFlashcard.tipo === 'mcq' ? 'Ejemplo: B) Segunda opción' :
+                        formDataFlashcard.tipo === 'cloze' ? 'Palabra 1, Palabra 2, ...' :
+                        formDataFlashcard.tipo === 'error' ? 'La fotosíntesis es un proceso...' :
+                        formDataFlashcard.tipo === 'reconocimiento' ? 'Nombre del concepto identificado' :
+                        formDataFlashcard.tipo === 'invertida' ? '¿Cuál era la pregunta?' :
+                        'La respuesta correcta es...'
+                      }
                       value={formDataFlashcard.respuestaCorrecta}
                       onChange={(e) => setFormDataFlashcard({...formDataFlashcard, respuestaCorrecta: e.target.value})}
                       rows={3}
-                      required
                     />
                   </div>
 
-                  {/* Explicación */}
-                  <div className="config-section">
-                    <label className="config-label">
-                      <span className="label-icon">💡</span>
-                      Explicación (opcional)
-                    </label>
-                    <textarea
-                      className="textarea-prompt"
-                      placeholder="Explicación adicional, mnemotecnia, consejos..."
-                      value={formDataFlashcard.explicacion}
-                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, explicacion: e.target.value})}
-                      rows={3}
-                    />
-                  </div>
+                  {/* Explicación - Oculto para comparación ya que usa este campo para Elemento B */}
+                  {formDataFlashcard.tipo !== 'comparacion' && (
+                    <div className="config-section">
+                      <label className="config-label">
+                        <span className="label-icon">💡</span>
+                        {formDataFlashcard.tipo === 'error' ? 'Explicación del Error' :
+                         formDataFlashcard.tipo === 'jerarquia' ? 'Relaciones entre Nodos' :
+                         'Explicación (opcional)'}
+                      </label>
+                      <textarea
+                        className="textarea-prompt"
+                        placeholder={
+                          formDataFlashcard.tipo === 'error' ? 'Explica por qué es un error común y cómo recordar la forma correcta' :
+                          formDataFlashcard.tipo === 'jerarquia' ? 'Describe las relaciones jerárquicas entre conceptos' :
+                          formDataFlashcard.tipo === 'escenario' ? 'Contexto adicional, pistas para resolver el caso' :
+                          'Explicación adicional, mnemotecnia, consejos para recordar...'
+                        }
+                        value={formDataFlashcard.explicacion}
+                        onChange={(e) => setFormDataFlashcard({...formDataFlashcard, explicacion: e.target.value})}
+                        rows={3}
+                      />
+                    </div>
+                  )}
 
                   {/* Tema/Tags */}
                   <div className="config-section">
@@ -13708,6 +17241,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       placeholder="Ej: JavaScript, Historia, Matemáticas"
                       value={formDataFlashcard.tema}
                       onChange={(e) => setFormDataFlashcard({...formDataFlashcard, tema: e.target.value})}
+                    />
+                  </div>
+
+                  {/* Subtema (opcional) */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">📌</span>
+                      Subtema (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      className="input-text"
+                      placeholder="Ej: Álgebra Lineal, Segunda Guerra Mundial, React Hooks"
+                      value={formDataFlashcard.subtema}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, subtema: e.target.value})}
                     />
                   </div>
 
@@ -13728,6 +17276,1536 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============= MODAL VISTA COMPLETA DE FLASHCARD ============= */}
+        {flashcardVistaCompleta && (
+          <div className="modal-overlay" onClick={() => setFlashcardVistaCompleta(null)} style={{
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(8px)'
+          }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
+              maxWidth: '900px',
+              width: '95%',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+              border: '1px solid rgba(148, 163, 184, 0.2)'
+            }}>
+              {/* Header con acciones */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '1.5rem',
+                borderBottom: '1px solid rgba(148, 163, 184, 0.15)'
+              }}>
+                <button 
+                  onClick={() => setFlashcardVistaCompleta(null)}
+                  style={{
+                    padding: '0.75rem 1.25rem',
+                    background: 'rgba(100, 116, 139, 0.3)',
+                    border: '1px solid rgba(148, 163, 184, 0.3)',
+                    borderRadius: '8px',
+                    color: '#cbd5e1',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  ← Volver
+                </button>
+                <button 
+                  onClick={() => {
+                    setFlashcardEditando(flashcardVistaCompleta);
+                    setFormDataFlashcard(flashcardVistaCompleta);
+                    setFlashcardVistaCompleta(null);
+                    setModalNuevaFlashcard(true);
+                  }}
+                  style={{
+                    padding: '0.75rem 1.25rem',
+                    background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  ✏️ Editar flashcard
+                </button>
+              </div>
+
+              {/* Contenido de la flashcard */}
+              <div style={{padding: '2rem'}}>
+                {/* Badge de tipo */}
+                {(() => {
+                  const tipoConfig = {
+                    clasica: { color: '#667eea', icon: '📇', nombre: 'Clásica' },
+                    reconocimiento: { color: '#f093fb', icon: '👁️', nombre: 'Reconocimiento' },
+                    cloze: { color: '#4facfe', icon: '🔤', nombre: 'Cloze' },
+                    escenario: { color: '#43e97b', icon: '🎬', nombre: 'Escenario' },
+                    mcq: { color: '#fa709a', icon: '☑️', nombre: 'Opción Múltiple' },
+                    visual: { color: '#30cfd0', icon: '🖼️', nombre: 'Visual' },
+                    auditiva: { color: '#a8edea', icon: '🔊', nombre: 'Auditiva' },
+                    produccion: { color: '#ffa751', icon: '✍️', nombre: 'Producción' },
+                    invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
+                    jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
+                    error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
+                    comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' },
+                    matematica: { color: '#3b82f6', icon: '🔢', nombre: 'Matemática' },
+                    archivo: { color: '#64748b', icon: '📎', nombre: 'Archivo' },
+                    programacion: { color: '#14b8a6', icon: '</>', nombre: 'PROGRAMACIÓN' }, // Teal
+                    quimica: { color: '#10b981', icon: '🧪', nombre: 'QUÍMICA' }, // Verde esmeralda
+                    fisica: { color: '#f59e0b', icon: '⚛️', nombre: 'FÍSICA' }, // Naranja/Ámbar
+                    ingenieria: { color: '#ef4444', icon: '🔧', nombre: 'INGENIERÍA' }, // Rojo
+                    'programacion-avanzada': { color: '#8b5cf6', icon: '💻', nombre: 'PROGRAMACIÓN' }, // Morado
+                    'logica-discreta': { color: '#7c3aed', icon: '🔮', nombre: 'LÓGICA' }, // Morado oscuro
+                    linguistica: { color: '#ec4899', icon: '🗣️', nombre: 'LINGUÍSTICA' }, // Rosa
+                    musica: { color: '#a855f7', icon: '🎼', nombre: 'MÚSICA' }, // Púrpura
+                    geometria: { color: '#22c55e', icon: '📐', nombre: 'GEOMETRÍA' }, // Verde
+                    'quimica-avanzada': { color: '#c084fc', icon: '🧬', nombre: 'QCA AVANZADA' } // Púrpura claro
+                  };
+                  const config = tipoConfig[flashcardVistaCompleta.tipo] || tipoConfig.clasica;
+
+                  return (
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.65rem 1.25rem',
+                      background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}dd 100%)`,
+                      borderRadius: '20px',
+                      color: 'white',
+                      fontSize: '0.95rem',
+                      fontWeight: '600',
+                      marginBottom: '1.5rem',
+                      boxShadow: `0 4px 12px ${config.color}40`
+                    }}>
+                      <span>{config.icon}</span>
+                      <span>{config.nombre}</span>
+                    </div>
+                  );
+                })()}
+
+                {/* Título */}
+                <h1 style={{
+                  color: '#f1f5f9',
+                  fontSize: '2rem',
+                  fontWeight: '700',
+                  marginBottom: '1.5rem',
+                  lineHeight: '1.3'
+                }}>
+                  {flashcardVistaCompleta.titulo}
+                </h1>
+
+                {/* Imágenes */}
+                {flashcardVistaCompleta.imagenes && flashcardVistaCompleta.imagenes.length > 0 && (
+                  <div style={{
+                    marginBottom: '2rem',
+                    display: 'grid',
+                    gridTemplateColumns: flashcardVistaCompleta.imagenes.length === 1 ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))',
+                    gap: '1rem'
+                  }}>
+                    {flashcardVistaCompleta.imagenes.map((img, idx) => (
+                      <div key={idx} style={{
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        border: '2px solid rgba(148, 163, 184, 0.2)',
+                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
+                        cursor: 'zoom-in',
+                        transition: 'transform 0.2s'
+                      }}
+                      onClick={() => setImagenZoom(img.url)}
+                      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                      >
+                        <img src={img.url} alt={img.nombre} style={{
+                          width: '100%',
+                          height: 'auto',
+                          display: 'block'
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Contenido con LaTeX, Código, Química o Física */}
+                <div style={{
+                  background: flashcardVistaCompleta.latex 
+                    ? 'rgba(59, 130, 246, 0.08)' 
+                    : flashcardVistaCompleta.tipo === 'programacion'
+                    ? 'rgba(20, 184, 166, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'quimica'
+                    ? 'rgba(16, 185, 129, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'fisica'
+                    ? 'rgba(245, 158, 11, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'musica'
+                    ? 'rgba(168, 85, 247, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'geometria'
+                    ? 'rgba(34, 197, 94, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'quimica-avanzada'
+                    ? 'rgba(192, 132, 252, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'probabilidad'
+                    ? 'rgba(139, 92, 246, 0.08)'
+                    : flashcardVistaCompleta.tipo === 'arte'
+                    ? 'rgba(244, 114, 182, 0.08)'
+                    : 'rgba(100, 116, 139, 0.15)',
+                  padding: '1.5rem',
+                  borderRadius: '12px',
+                  border: flashcardVistaCompleta.latex 
+                    ? '2px solid rgba(59, 130, 246, 0.3)' 
+                    : flashcardVistaCompleta.tipo === 'programacion'
+                    ? '2px solid rgba(20, 184, 166, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'quimica'
+                    ? '2px solid rgba(16, 185, 129, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'fisica'
+                    ? '2px solid rgba(245, 158, 11, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'musica'
+                    ? '2px solid rgba(168, 85, 247, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'geometria'
+                    ? '2px solid rgba(34, 197, 94, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'quimica-avanzada'
+                    ? '2px solid rgba(192, 132, 252, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'probabilidad'
+                    ? '2px solid rgba(139, 92, 246, 0.3)'
+                    : flashcardVistaCompleta.tipo === 'arte'
+                    ? '2px solid rgba(244, 114, 182, 0.3)'
+                    : '2px solid rgba(148, 163, 184, 0.15)',
+                  marginBottom: '1.5rem'
+                }}>
+                  <h3 style={{
+                    color: '#cbd5e1',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    marginBottom: '1rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em'
+                  }}>
+                    {flashcardVistaCompleta.tipo === 'clasica' ? 'Pregunta' :
+                     flashcardVistaCompleta.tipo === 'cloze' ? 'Completa' :
+                     flashcardVistaCompleta.tipo === 'escenario' ? 'Escenario' :
+                     flashcardVistaCompleta.tipo === 'matematica' ? 'Fórmula' :
+                     flashcardVistaCompleta.tipo === 'quimica' ? 'Estructura Química' :
+                     flashcardVistaCompleta.tipo === 'fisica' ? 'Ecuación/Diagrama Físico' :
+                     flashcardVistaCompleta.tipo === 'ingenieria' ? 'Diagrama de Ingeniería' :
+                     flashcardVistaCompleta.tipo === 'programacion-avanzada' ? 'Diagrama de Programación' :
+                     flashcardVistaCompleta.tipo === 'logica-discreta' ? 'Expresión Lógica/Discreta' :
+                     flashcardVistaCompleta.tipo === 'linguistica' ? 'Transcripción Fonética' :
+                     flashcardVistaCompleta.tipo === 'musica' ? 'Notación Musical' :
+                     flashcardVistaCompleta.tipo === 'geometria' ? 'Construcción Geométrica' :
+                     flashcardVistaCompleta.tipo === 'quimica-avanzada' ? 'Estructura Química Avanzada' :
+                     flashcardVistaCompleta.tipo === 'probabilidad' ? 'Elemento Estadístico' :
+                     flashcardVistaCompleta.tipo === 'arte' ? 'Composición Visual' :
+                     flashcardVistaCompleta.tipo === 'programacion' ? (
+                       flashcardVistaCompleta.patronCodigo === 'produccion' ? 'Tarea' : 'Código'
+                     ) :
+                     'Contenido'}
+                  </h3>
+                  <div style={{
+                    color: '#e2e8f0',
+                    fontSize: '1.1rem',
+                    lineHeight: '1.8',
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: flashcardVistaCompleta.latex ? 'serif' : 
+                                flashcardVistaCompleta.tipo === 'programacion' ? 'monospace' : 
+                                flashcardVistaCompleta.tipo === 'quimica' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'fisica' ? 'serif' :
+                                flashcardVistaCompleta.tipo === 'ingenieria' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'programacion-avanzada' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'logica-discreta' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'linguistica' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'musica' ? 'serif' :
+                                flashcardVistaCompleta.tipo === 'geometria' ? 'serif' :
+                                flashcardVistaCompleta.tipo === 'quimica-avanzada' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'probabilidad' ? 'monospace' :
+                                flashcardVistaCompleta.tipo === 'arte' ? 'monospace' :
+                                'inherit'
+                  }}>
+                    {flashcardVistaCompleta.latex ? (
+                      // 🔥 Renderizado KaTeX real
+                      <BlockMath math={flashcardVistaCompleta.contenido} />
+                    ) : flashcardVistaCompleta.tipo === 'quimica' && flashcardVistaCompleta.contenido ? (
+                      // 🧪 Renderizado de estructura química con canvas
+                      <div style={{textAlign: 'center', padding: '1rem 0'}}>
+                        <ChemEditor 
+                          value={flashcardVistaCompleta.contenido}
+                          onChange={() => {}} // Solo lectura
+                          placeholder=""
+                        />
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'fisica' && flashcardVistaCompleta.contenido ? (
+                      // ⚛️ Renderizado de ecuaciones físicas con KaTeX
+                      <div style={{textAlign: 'center', padding: '1rem 0'}}>
+                        {flashcardVistaCompleta.contenido.split('\n\n').map((line, idx) => (
+                          line.trim() && (
+                            <div key={idx} style={{ marginBottom: '1rem' }}>
+                              <BlockMath math={line.trim()} />
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'ingenieria' && flashcardVistaCompleta.contenido ? (
+                      // 🔧 Renderizado de diagrama de ingeniería
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'programacion-avanzada' && flashcardVistaCompleta.contenido ? (
+                      // 💻 Renderizado de diagrama de programación
+                      <div style={{
+                        background: 'rgba(139, 92, 246, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'logica-discreta' && flashcardVistaCompleta.contenido ? (
+                      // 🔮 Renderizado de lógica/discreta
+                      <div style={{
+                        background: 'rgba(124, 58, 237, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(124, 58, 237, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'linguistica' && flashcardVistaCompleta.contenido ? (
+                      // 🗣️ Renderizado de lingüística
+                      <div style={{
+                        background: 'rgba(236, 72, 153, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(236, 72, 153, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '0.95rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'musica' && flashcardVistaCompleta.contenido ? (
+                      // 🎼 Renderizado de notación musical
+                      <div style={{
+                        background: 'rgba(168, 85, 247, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(168, 85, 247, 0.2)',
+                        fontFamily: 'serif',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '1.3rem',
+                        lineHeight: '2'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'geometria' && flashcardVistaCompleta.contenido ? (
+                      // 📐 Renderizado de geometría
+                      <div style={{
+                        background: 'rgba(34, 197, 94, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                        fontFamily: 'serif',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '1.2rem',
+                        lineHeight: '1.8'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'quimica-avanzada' && flashcardVistaCompleta.contenido ? (
+                      // 🧬 Renderizado de química avanzada
+                      <div style={{
+                        background: 'rgba(192, 132, 252, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(192, 132, 252, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '1rem',
+                        lineHeight: '2.2'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'probabilidad' && flashcardVistaCompleta.contenido ? (
+                      // 🎲 Renderizado de Probabilidad y Estadística
+                      <div style={{
+                        background: 'rgba(139, 92, 246, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '1.1rem',
+                        lineHeight: '2'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : flashcardVistaCompleta.tipo === 'arte' && flashcardVistaCompleta.contenido ? (
+                      // 🎨 Renderizado de Arte y Diseño Visual
+                      <div style={{
+                        background: 'rgba(244, 114, 182, 0.05)',
+                        padding: '1.5rem',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(244, 114, 182, 0.2)',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'pre-wrap',
+                        fontSize: '1.1rem',
+                        lineHeight: '2'
+                      }}>
+                        {flashcardVistaCompleta.contenido}
+                      </div>
+                    ) : (
+                      flashcardVistaCompleta.contenido
+                    )}
+                  </div>
+                  {flashcardVistaCompleta.latex && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      padding: '0.5rem',
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      borderRadius: '6px',
+                      fontSize: '0.85rem',
+                      color: '#60a5fa'
+                    }}>
+                      📐 Esta flashcard contiene notación matemática (LaTeX)
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'quimica' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(16, 185, 129, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#6ee7b7',
+                        fontWeight: '600'
+                      }}>
+                        🧪 {flashcardVistaCompleta.rama?.toUpperCase() || 'QUÍMICA'}
+                      </div>
+                      {flashcardVistaCompleta.subtipoQuimica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#a7f3d0',
+                          fontWeight: '600'
+                        }}>
+                          ⚗️ {flashcardVistaCompleta.subtipoQuimica.charAt(0).toUpperCase() + 
+                               flashcardVistaCompleta.subtipoQuimica.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelQuimica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelQuimica === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelQuimica === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelQuimica === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelQuimica === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelQuimica === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelQuimica === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'ingenieria' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#fca5a5',
+                        fontWeight: '600'
+                      }}>
+                        🔧 {flashcardVistaCompleta.ramaIngenieria?.toUpperCase() || 'INGENIERÍA'}
+                      </div>
+                      {flashcardVistaCompleta.subtipoIngenieria && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#fecaca',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.subtipoIngenieria === 'circuito' ? '⚡ Circuito' :
+                           flashcardVistaCompleta.subtipoIngenieria === 'fbd' ? '🎯 FBD' :
+                           flashcardVistaCompleta.subtipoIngenieria === 'viga' ? '🏗️ Viga' :
+                           flashcardVistaCompleta.subtipoIngenieria === 'material' ? '🔬 Material' :
+                           '⚙️ Mecanismo'}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelIngenieria && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelIngenieria === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelIngenieria === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelIngenieria === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelIngenieria === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelIngenieria === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelIngenieria === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'programacion-avanzada' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(139, 92, 246, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#ddd6fe',
+                        fontWeight: '600'
+                      }}>
+                        💻 {flashcardVistaCompleta.subtipoProgramacion?.toUpperCase() || 'PROGRAMACIÓN'}
+                      </div>
+                      {flashcardVistaCompleta.patronProgramacion && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#e9d5ff',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.patronProgramacion === 'clase' ? '📦 Clases' :
+                           flashcardVistaCompleta.patronProgramacion === 'secuencia' ? '⏱️ Secuencia' :
+                           flashcardVistaCompleta.patronProgramacion === 'casos-uso' ? '👤 Casos Uso' :
+                           flashcardVistaCompleta.patronProgramacion === 'algoritmo' ? '🔢 Algoritmo' :
+                           flashcardVistaCompleta.patronProgramacion === 'arbol-binario' ? '🌳 Árbol' :
+                           flashcardVistaCompleta.patronProgramacion === 'afd' ? '🎯 AFD' :
+                           flashcardVistaCompleta.patronProgramacion.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.patronProgramacion.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelProgramacion && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelProgramacion === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelProgramacion === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelProgramacion === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelProgramacion === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelProgramacion === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelProgramacion === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'logica-discreta' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(124, 58, 237, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#ddd6fe',
+                        fontWeight: '600'
+                      }}>
+                        🔮 {flashcardVistaCompleta.subtipoDiscreta?.toUpperCase() || 'LÓGICA'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaDiscreta && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(124, 58, 237, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#e9d5ff',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaDiscreta === 'proposicional' ? '💭 Proposiciones' :
+                           flashcardVistaCompleta.categoriaDiscreta === 'conectivos' ? '🔗 Conectivos' :
+                           flashcardVistaCompleta.categoriaDiscreta === 'tablas' ? '📊 Tablas' :
+                           flashcardVistaCompleta.categoriaDiscreta === 'operaciones' ? '➕ Operaciones' :
+                           flashcardVistaCompleta.categoriaDiscreta === 'pares' ? '📌 Pares' :
+                           flashcardVistaCompleta.categoriaDiscreta === 'dirigidos' ? '➡️ Dirigidos' :
+                           flashcardVistaCompleta.categoriaDiscreta.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaDiscreta.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelDiscreta && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelDiscreta === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelDiscreta === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelDiscreta === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelDiscreta === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelDiscreta === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelDiscreta === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'linguistica' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(236, 72, 153, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#fce7f3',
+                        fontWeight: '600'
+                      }}>
+                        🗣️ {flashcardVistaCompleta.subtipoLinguistica?.toUpperCase() || 'LINGÜÍSTICA'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaLinguistica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(236, 72, 153, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#fbcfe8',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaLinguistica === 'vocales' ? '🔤 Vocales' :
+                           flashcardVistaCompleta.categoriaLinguistica === 'consonantes' ? '🔠 Consonantes' :
+                           flashcardVistaCompleta.categoriaLinguistica === 'diptongos' ? '📢 Diptongos' :
+                           flashcardVistaCompleta.categoriaLinguistica === 'primario' ? '🎵 Primario' :
+                           flashcardVistaCompleta.categoriaLinguistica === 'entonacion' ? '↗️ Entonación' :
+                           flashcardVistaCompleta.categoriaLinguistica === 'lengua' ? '👅 Lengua' :
+                           flashcardVistaCompleta.categoriaLinguistica.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaLinguistica.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelLinguistica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelLinguistica === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelLinguistica === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelLinguistica === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelLinguistica === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelLinguistica === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelLinguistica === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Badges para Música */}
+                  {flashcardVistaCompleta.tipo === 'musica' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(168, 85, 247, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#f0abfc',
+                        fontWeight: '600'
+                      }}>
+                        🎼 {flashcardVistaCompleta.subtipoMusica?.toUpperCase() || 'MÚSICA'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaMusica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#e9d5ff',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaMusica === 'claves' ? '🎵 Claves' :
+                           flashcardVistaCompleta.categoriaMusica === 'compases' ? '📏 Compases' :
+                           flashcardVistaCompleta.categoriaMusica === 'duraciones' ? '⏱️ Duraciones' :
+                           flashcardVistaCompleta.categoriaMusica === 'triadas' ? '🎹 Tríadas' :
+                           flashcardVistaCompleta.categoriaMusica === 'septimas' ? '🎸 Séptimas' :
+                           flashcardVistaCompleta.categoriaMusica === 'mayores' ? '🎵 Mayores' :
+                           flashcardVistaCompleta.categoriaMusica === 'menores' ? '🎶 Menores' :
+                           flashcardVistaCompleta.categoriaMusica.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaMusica.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelMusica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelMusica === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelMusica === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelMusica === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelMusica === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelMusica === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelMusica === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Badges para Geometría */}
+                  {flashcardVistaCompleta.tipo === 'geometria' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(34, 197, 94, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#86efac',
+                        fontWeight: '600'
+                      }}>
+                        📐 {flashcardVistaCompleta.subtipoGeometria?.toUpperCase() || 'GEOMETRÍA'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaGeometria && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(34, 197, 94, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#a7f3d0',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaGeometria === 'basicos' ? '• Básicos' :
+                           flashcardVistaCompleta.categoriaGeometria === 'coordenadas' ? '📍 Coordenadas' :
+                           flashcardVistaCompleta.categoriaGeometria === 'segmentos' ? '📏 Segmentos' :
+                           flashcardVistaCompleta.categoriaGeometria === 'triangulos' ? '△ Triángulos' :
+                           flashcardVistaCompleta.categoriaGeometria === 'cuadrilateros' ? '□ Cuadriláteros' :
+                           flashcardVistaCompleta.categoriaGeometria === 'construcciones' ? '🔧 Construcciones' :
+                           flashcardVistaCompleta.categoriaGeometria.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaGeometria.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelGeometria && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelGeometria === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelGeometria === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelGeometria === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelGeometria === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelGeometria === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelGeometria === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Badges para Química Avanzada */}
+                  {flashcardVistaCompleta.tipo === 'quimica-avanzada' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'center',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(192, 132, 252, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#e9d5ff',
+                        fontWeight: '600'
+                      }}>
+                        🧬 {flashcardVistaCompleta.subtipoQuimicaAvanzada?.toUpperCase() || 'QUÍMICA AVZ'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaQuimicaAvanzada && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(192, 132, 252, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#ddd6fe',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaQuimicaAvanzada === 'atomicos' ? '⚛️ Atómicos' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'sp' ? '→ sp' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'sp2' ? '⟁ sp²' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'sp3' ? '⧓ sp³' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'diatomicos' ? '🌌 Diatómicos' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'flechas' ? '↷ Flechas' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada === 'mecanismos' ? '⚡ Mecanismos' :
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaQuimicaAvanzada.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelQuimicaAvanzada && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelQuimicaAvanzada === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelQuimicaAvanzada === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelQuimicaAvanzada === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelQuimicaAvanzada === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelQuimicaAvanzada === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelQuimicaAvanzada === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 🎲 Badges de Probabilidad y Estadística */}
+                  {flashcardVistaCompleta.tipo === 'probabilidad' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(139, 92, 246, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#c4b5fd',
+                        fontWeight: '600'
+                      }}>
+                        🎲 {flashcardVistaCompleta.subtipoProbabilidad?.toUpperCase() || 'PROBABILIDAD'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaProbabilidad && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#ddd6fe',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaProbabilidad === 'simple' ? '📊 Simple' :
+                           flashcardVistaCompleta.categoriaProbabilidad === 'condicional' ? '🔗 Condicional' :
+                           flashcardVistaCompleta.categoriaProbabilidad === 'conjunta' ? '⚡ Conjunta' :
+                           flashcardVistaCompleta.categoriaProbabilidad === 'marginal' ? '📐 Marginal' :
+                           flashcardVistaCompleta.categoriaProbabilidad === 'total' ? '🌐 Total' :
+                           flashcardVistaCompleta.categoriaProbabilidad.charAt(0).toUpperCase() + 
+                           flashcardVistaCompleta.categoriaProbabilidad.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelProbabilidad && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelProbabilidad === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelProbabilidad === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(168, 85, 247, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelProbabilidad === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelProbabilidad === 'intermedio' ? '#fbbf24' :
+                                 '#c084fc',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelProbabilidad === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelProbabilidad === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 🎨 Badges de Arte y Diseño Visual */}
+                  {flashcardVistaCompleta.tipo === 'arte' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(244, 114, 182, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#fbcfe8',
+                        fontWeight: '600'
+                      }}>
+                        🎨 {flashcardVistaCompleta.subtipoArte?.toUpperCase() || 'ARTE'}
+                      </div>
+                      {flashcardVistaCompleta.categoriaArte && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(244, 114, 182, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#f9a8d4',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.categoriaArte === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.categoriaArte === 'intermedio' ? '🟡 Intermedio' :
+                           '🟣 Avanzado'}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.estiloArtistico && flashcardVistaCompleta.estiloArtistico !== 'ninguno' && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#fbbf24',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.estiloArtistico === 'impresionismo' ? '🌅 Impresionismo' :
+                           flashcardVistaCompleta.estiloArtistico === 'cubismo' ? '📐 Cubismo' :
+                           flashcardVistaCompleta.estiloArtistico === 'surrealismo' ? '🌙 Surrealismo' :
+                           flashcardVistaCompleta.estiloArtistico === 'barroco' ? '👑 Barroco' :
+                           flashcardVistaCompleta.estiloArtistico === 'modernismo' ? '🏛️ Modernismo' :
+                           flashcardVistaCompleta.estiloArtistico === 'bauhaus' ? '▲■● Bauhaus' :
+                           flashcardVistaCompleta.estiloArtistico === 'ukiyo-e' ? '🌸 Ukiyo-e' :
+                           flashcardVistaCompleta.estiloArtistico === 'pop-art' ? '💥 Pop Art' :
+                           flashcardVistaCompleta.estiloArtistico.charAt(0).toUpperCase() + flashcardVistaCompleta.estiloArtistico.slice(1)}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {flashcardVistaCompleta.tipo === 'fisica' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#fbbf24',
+                        fontWeight: '600'
+                      }}>
+                        ⚛️ {flashcardVistaCompleta.ramaFisica?.toUpperCase() || 'FÍSICA'}
+                      </div>
+                      {flashcardVistaCompleta.subtipoFisica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#fef3c7',
+                          fontWeight: '600'
+                        }}>
+                          📐 {flashcardVistaCompleta.subtipoFisica === 'diagrama-fuerzas' ? 'Diagrama Fuerzas' :
+                               flashcardVistaCompleta.subtipoFisica.charAt(0).toUpperCase() + 
+                               flashcardVistaCompleta.subtipoFisica.slice(1)}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.nivelFisica && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.nivelFisica === 'basico' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.nivelFisica === 'intermedio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(239, 68, 68, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.nivelFisica === 'basico' ? '#4ade80' :
+                                 flashcardVistaCompleta.nivelFisica === 'intermedio' ? '#fbbf24' :
+                                 '#f87171',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.nivelFisica === 'basico' ? '🟢 Básico' :
+                           flashcardVistaCompleta.nivelFisica === 'intermedio' ? '🟡 Intermedio' :
+                           '🔴 Avanzado'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.tipo === 'programacion' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      gap: '0.75rem',
+                      flexWrap: 'wrap'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem 1rem',
+                        background: 'rgba(20, 184, 166, 0.15)',
+                        borderRadius: '20px',
+                        fontSize: '0.85rem',
+                        color: '#5eead4',
+                        fontWeight: '600'
+                      }}>
+                        💻 {flashcardVistaCompleta.lenguaje?.toUpperCase() || 'CÓDIGO'}
+                      </div>
+                      {flashcardVistaCompleta.dificultad && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: flashcardVistaCompleta.dificultad === 'facil' ? 'rgba(34, 197, 94, 0.15)' :
+                                     flashcardVistaCompleta.dificultad === 'medio' ? 'rgba(251, 191, 36, 0.15)' :
+                                     'rgba(239, 68, 68, 0.15)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: flashcardVistaCompleta.dificultad === 'facil' ? '#4ade80' :
+                                 flashcardVistaCompleta.dificultad === 'medio' ? '#fbbf24' :
+                                 '#f87171',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.dificultad === 'facil' ? '🟢 Fácil' :
+                           flashcardVistaCompleta.dificultad === 'medio' ? '🟡 Medio' :
+                           '🔴 Difícil'}
+                        </div>
+                      )}
+                      {flashcardVistaCompleta.patronCodigo && (
+                        <div style={{
+                          padding: '0.5rem 1rem',
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          borderRadius: '20px',
+                          fontSize: '0.85rem',
+                          color: '#94a3b8',
+                          fontWeight: '600'
+                        }}>
+                          {flashcardVistaCompleta.patronCodigo === 'comprension' ? '📖 Comprensión' :
+                           flashcardVistaCompleta.patronCodigo === 'bug' ? '🐛 Bug' :
+                           flashcardVistaCompleta.patronCodigo === 'cloze' ? '🔤 Cloze' :
+                           '✍️ Producción'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Opciones MCQ */}
+                {flashcardVistaCompleta.tipo === 'mcq' && flashcardVistaCompleta.opciones && flashcardVistaCompleta.opciones.length > 0 && (
+                  <div style={{marginBottom: '1.5rem'}}>
+                    <h3 style={{
+                      color: '#cbd5e1',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      marginBottom: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}>Opciones</h3>
+                    <div style={{display: 'flex', flexDirection: 'column', gap: '0.75rem'}}>
+                      {flashcardVistaCompleta.opciones.map((opcion, idx) => (
+                        <div key={idx} style={{
+                          padding: '1rem',
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          border: '2px solid rgba(148, 163, 184, 0.2)',
+                          borderRadius: '10px',
+                          color: '#e2e8f0',
+                          fontSize: '1rem',
+                          transition: 'all 0.2s ease'
+                        }}>
+                          {opcion}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Archivos adjuntos */}
+                {flashcardVistaCompleta.archivos && flashcardVistaCompleta.archivos.length > 0 && (
+                  <div style={{marginBottom: '1.5rem'}}>
+                    <h3 style={{
+                      color: '#cbd5e1',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      marginBottom: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em'
+                    }}>📎 Archivos Adjuntos</h3>
+                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem'}}>
+                      {flashcardVistaCompleta.archivos.map((archivo, idx) => (
+                        <div key={idx} style={{
+                          padding: '1rem',
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          border: '2px solid rgba(148, 163, 184, 0.2)',
+                          borderRadius: '10px',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{fontSize: '2.5rem', marginBottom: '0.5rem'}}>
+                            {archivo.tipo?.includes('pdf') ? '📕' :
+                             archivo.tipo?.includes('word') || archivo.tipo?.includes('document') ? '📄' :
+                             archivo.tipo?.includes('excel') || archivo.tipo?.includes('spreadsheet') ? '📊' :
+                             '📎'}
+                          </div>
+                          <p style={{
+                            color: '#cbd5e1',
+                            fontSize: '0.85rem',
+                            marginBottom: '0.25rem',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>{archivo.nombre}</p>
+                          <p style={{
+                            color: '#94a3b8',
+                            fontSize: '0.75rem',
+                            marginBottom: '0.75rem'
+                          }}>{(archivo.tamano / 1024).toFixed(1)} KB</p>
+                          {/* Botón de descarga */}
+                          <a
+                            href={archivo.url || archivo.base64}
+                            download={archivo.nombre}
+                            style={{
+                              display: 'inline-block',
+                              padding: '0.5rem 1rem',
+                              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                              color: 'white',
+                              textDecoration: 'none',
+                              borderRadius: '8px',
+                              fontSize: '0.85rem',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                          >
+                            📥 Descargar
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Respuesta */}
+                <div style={{
+                  background: 'rgba(34, 197, 94, 0.08)',
+                  padding: '1.5rem',
+                  borderRadius: '12px',
+                  border: '2px solid rgba(34, 197, 94, 0.3)',
+                  marginBottom: '1.5rem'
+                }}>
+                  <h3 style={{
+                    color: '#4ade80',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    marginBottom: '1rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}>
+                    ✅ Respuesta Correcta
+                  </h3>
+                  <div style={{
+                    color: '#e2e8f0',
+                    fontSize: '1.1rem',
+                    lineHeight: '1.8',
+                    whiteSpace: 'pre-wrap'
+                  }}>
+                    {flashcardVistaCompleta.respuestaCorrecta}
+                  </div>
+                </div>
+
+                {/* Explicación */}
+                {flashcardVistaCompleta.explicacion && (
+                  <div style={{
+                    background: 'rgba(251, 191, 36, 0.08)',
+                    padding: '1.5rem',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(251, 191, 36, 0.3)',
+                    marginBottom: '1.5rem'
+                  }}>
+                    <h3 style={{
+                      color: '#fbbf24',
+                      fontSize: '1rem',
+                      fontWeight: '600',
+                      marginBottom: '1rem',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      💡 Explicación
+                    </h3>
+                    <div style={{
+                      color: '#e2e8f0',
+                      fontSize: '1rem',
+                      lineHeight: '1.8',
+                      whiteSpace: 'pre-wrap'
+                    }}>
+                      {flashcardVistaCompleta.explicacion}
+                    </div>
+                  </div>
+                )}
+
+                {/* Metadata */}
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  padding: '1.5rem',
+                  background: 'rgba(100, 116, 139, 0.1)',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(148, 163, 184, 0.15)'
+                }}>
+                  {flashcardVistaCompleta.tema && (
+                    <div style={{
+                      padding: '0.5rem 1rem',
+                      background: 'rgba(102, 126, 234, 0.2)',
+                      borderRadius: '20px',
+                      color: '#cbd5e1',
+                      fontSize: '0.9rem'
+                    }}>
+                      🏷️ {flashcardVistaCompleta.tema}
+                    </div>
+                  )}
+                  {flashcardVistaCompleta.subtema && (
+                    <div style={{
+                      padding: '0.5rem 1rem',
+                      background: 'rgba(100, 116, 139, 0.3)',
+                      borderRadius: '20px',
+                      color: '#94a3b8',
+                      fontSize: '0.9rem'
+                    }}>
+                      📌 {flashcardVistaCompleta.subtema}
+                    </div>
+                  )}
+                  <div style={{
+                    padding: '0.5rem 1rem',
+                    background: 'rgba(100, 116, 139, 0.3)',
+                    borderRadius: '20px',
+                    color: '#94a3b8',
+                    fontSize: '0.85rem'
+                  }}>
+                    📅 {new Date(flashcardVistaCompleta.fecha).toLocaleDateString('es-ES', {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============= MODAL ZOOM DE IMAGEN ============= */}
+        {imagenZoom && (
+          <div className="modal-overlay" onClick={() => setImagenZoom(null)} style={{
+            background: 'rgba(0, 0, 0, 0.95)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem'
+          }}>
+            <div style={{
+              position: 'relative',
+              maxWidth: '95vw',
+              maxHeight: '95vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}>
+              <button
+                onClick={() => setImagenZoom(null)}
+                style={{
+                  position: 'absolute',
+                  top: '-50px',
+                  right: '0',
+                  background: 'rgba(244, 67, 54, 0.9)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
+                }}
+              >
+                ✕
+              </button>
+              <img
+                src={imagenZoom}
+                alt="Zoom"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '90vh',
+                  objectFit: 'contain',
+                  borderRadius: '12px',
+                  boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8)'
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ============= MODAL ASISTENTE LaTeX INTELIGENTE ============= */}
+        {modalAsistenteLatex && (
+          <div className="modal-overlay" onClick={() => setModalAsistenteLatex(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
+              maxWidth: '800px',
+              width: '95%',
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+              border: '2px solid rgba(102, 126, 234, 0.3)',
+              boxShadow: '0 20px 60px rgba(102, 126, 234, 0.3)'
+            }}>
+              <div className="modal-header" style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                padding: '1.5rem',
+                borderRadius: '14px 14px 0 0'
+              }}>
+                <h2 style={{
+                  margin: 0,
+                  color: 'white',
+                  fontSize: '1.5rem',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem'
+                }}>
+                  <span>🧠</span>
+                  Asistente LaTeX Inteligente
+                </h2>
+                <button onClick={() => setModalAsistenteLatex(false)} className="btn-close">✕</button>
+              </div>
+
+              <div className="modal-body" style={{padding: '2rem'}}>
+                <div style={{
+                  marginBottom: '1.5rem',
+                  padding: '1rem',
+                  background: 'rgba(102, 126, 234, 0.1)',
+                  borderLeft: '4px solid #667eea',
+                  borderRadius: '8px',
+                  color: '#cbd5e1',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.6'
+                }}>
+                  <strong style={{color: '#667eea'}}>💡 Cómo usar:</strong><br/>
+                  Describe la expresión matemática en lenguaje natural y el asistente la convertirá a LaTeX perfecto.<br/>
+                  <br/>
+                  <strong>Ejemplos:</strong><br/>
+                  • "fracción de 3x sobre x-4"<br/>
+                  • "integral de 0 a 1 de x al cuadrado"<br/>
+                  • "raíz cuadrada de x+1"<br/>
+                  • "matriz de 2x2 con 1 2 3 4"<br/>
+                  • "límite de x→0 de seno x sobre x"
+                </div>
+
+                {/* Input de lenguaje natural */}
+                <div className="config-section">
+                  <label className="config-label">
+                    <span className="label-icon">💬</span>
+                    Describe tu expresión matemática
+                  </label>
+                  <textarea
+                    className="textarea-prompt"
+                    placeholder="Ejemplo: 'quiero una fracción de 3x más 2 sobre x menos 4'"
+                    value={promptLatex}
+                    onChange={(e) => setPromptLatex(e.target.value)}
+                    rows={3}
+                    style={{
+                      background: 'rgba(51, 65, 85, 0.4)',
+                      border: '2px solid rgba(148, 163, 184, 0.3)',
+                      color: '#e2e8f0'
+                    }}
+                  />
+                </div>
+
+                {/* Botón de generar */}
+                <button
+                  onClick={() => {
+                    const latex = asistenteLaTeX(promptLatex);
+                    setLatexGenerado(latex);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '1rem',
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '10px',
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    marginBottom: '1.5rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  ✨ Generar LaTeX
+                </button>
+
+                {/* LaTeX generado */}
+                {latexGenerado && (
+                  <>
+                    <div className="config-section">
+                      <label className="config-label">
+                        <span className="label-icon">📐</span>
+                        LaTeX Generado
+                      </label>
+                      <textarea
+                        className="textarea-prompt"
+                        value={latexGenerado}
+                        onChange={(e) => setLatexGenerado(e.target.value)}
+                        rows={3}
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          border: '2px solid rgba(59, 130, 246, 0.3)',
+                          color: '#60a5fa',
+                          fontFamily: 'monospace'
+                        }}
+                      />
+                    </div>
+
+                    {/* Vista previa renderizada */}
+                    <div style={{
+                      marginTop: '1rem',
+                      padding: '1.5rem',
+                      background: 'rgba(59, 130, 246, 0.05)',
+                      border: '2px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '12px'
+                    }}>
+                      <h4 style={{
+                        color: '#60a5fa',
+                        fontSize: '0.9rem',
+                        marginBottom: '1rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}>👁️ Vista Previa</h4>
+                      <div style={{
+                        background: 'white',
+                        padding: '2rem',
+                        borderRadius: '8px',
+                        textAlign: 'center',
+                        minHeight: '80px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <BlockMath math={latexGenerado} />
+                      </div>
+                    </div>
+
+                    {/* Botón de insertar */}
+                    <button
+                      onClick={() => {
+                        setFormDataFlashcard({
+                          ...formDataFlashcard,
+                          contenido: latexGenerado,
+                          latex: true
+                        });
+                        setModalAsistenteLatex(false);
+                        setPromptLatex('');
+                        setLatexGenerado('');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '1rem',
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '10px',
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        marginTop: '1.5rem',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      ✅ Insertar en Flashcard
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
