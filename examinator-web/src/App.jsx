@@ -98,6 +98,26 @@ function App() {
   const [archivosDisponibles, setArchivosDisponibles] = useState([])
   const [archivosSeleccionados, setArchivosSeleccionados] = useState([])
   const [promptPersonalizado, setPromptPersonalizado] = useState('')
+  
+  // Estados para sistema de Flashcards
+  const [flashcardsCarpetas, setFlashcardsCarpetas] = useState([])
+  const [flashcardsActuales, setFlashcardsActuales] = useState([])
+  const [carpetaFlashcardActual, setCarpetaFlashcardActual] = useState(null)
+  const [filtroTipoFlashcard, setFiltroTipoFlashcard] = useState('todas')
+  const [modalNuevaFlashcard, setModalNuevaFlashcard] = useState(false)
+  const [flashcardEditando, setFlashcardEditando] = useState(null)
+  const [formDataFlashcard, setFormDataFlashcard] = useState({
+    tipo: 'clasica',
+    titulo: '',
+    contenido: '',
+    opciones: [],
+    respuestaCorrecta: '',
+    explicacion: '',
+    tema: '',
+    carpeta: '',
+    estadoRevision: 'nueva'
+  })
+
   const [promptSistema, setPromptSistema] = useState('')
   const [rutaExploracion, setRutaExploracion] = useState('')
   const [carpetasExploracion, setCarpetasExploracion] = useState([])
@@ -3601,6 +3621,21 @@ JSON:`
   // Configuración de tipos de práctica - Generales
   const [numFlashcards, setNumFlashcards] = useState(0);
   const [tipoFlashcard, setTipoFlashcard] = useState('respuesta_corta'); // 'respuesta_corta' o 'seleccion_confusa'
+  
+  // 12 Flashcards Avanzadas
+  const [numFlashClassic, setNumFlashClassic] = useState(0);
+  const [numFlashRecognition, setNumFlashRecognition] = useState(0);
+  const [numFlashCloze, setNumFlashCloze] = useState(0);
+  const [numFlashScenario, setNumFlashScenario] = useState(0);
+  const [numFlashMCQ, setNumFlashMCQ] = useState(0);
+  const [numFlashVisual, setNumFlashVisual] = useState(0);
+  const [numFlashAudio, setNumFlashAudio] = useState(0);
+  const [numFlashProduction, setNumFlashProduction] = useState(0);
+  const [numFlashReversed, setNumFlashReversed] = useState(0);
+  const [numFlashHierarchy, setNumFlashHierarchy] = useState(0);
+  const [numFlashError, setNumFlashError] = useState(0);
+  const [numFlashComparison, setNumFlashComparison] = useState(0);
+  
   const [numMCQ, setNumMCQ] = useState(0);
   const [numCloze, setNumCloze] = useState(0);
   const [numOpenQuestion, setNumOpenQuestion] = useState(0);
@@ -4809,6 +4844,121 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     }
   }
 
+  // ============================================
+  // FUNCIONES DEL SISTEMA DE FLASHCARDS
+  // ============================================
+
+  // Cargar flashcards del localStorage
+  useEffect(() => {
+    const flashcardsGuardadas = localStorage.getItem('flashcards')
+    if (flashcardsGuardadas) {
+      try {
+        setFlashcardsActuales(JSON.parse(flashcardsGuardadas))
+      } catch (error) {
+        console.error('Error cargando flashcards:', error)
+        setFlashcardsActuales([])
+      }
+    }
+  }, [])
+
+  const cargarCarpetasFlashcards = async (ruta = '') => {
+    try {
+      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
+      const data = await response.json()
+      
+      // Contar flashcards por carpeta
+      const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+      const carpetasConConteo = (data.carpetas || []).map(carpeta => {
+        const totalFlashcards = flashcards.filter(f => f.carpeta === carpeta.ruta).length
+        return { ...carpeta, totalFlashcards }
+      })
+      
+      setFlashcardsCarpetas(carpetasConConteo)
+    } catch (error) {
+      console.error('Error cargando carpetas de flashcards:', error)
+      setFlashcardsCarpetas([])
+    }
+  }
+
+  const abrirCarpetaFlashcards = (carpeta) => {
+    setCarpetaFlashcardActual(carpeta)
+    setFiltroTipoFlashcard('todas')
+  }
+
+  const volverListaFlashcards = () => {
+    setCarpetaFlashcardActual(null)
+    cargarCarpetasFlashcards()
+  }
+
+  const crearNuevaFlashcard = () => {
+    setFlashcardEditando(null)
+    setFormDataFlashcard({
+      tipo: 'clasica',
+      titulo: '',
+      contenido: '',
+      opciones: [],
+      respuestaCorrecta: '',
+      explicacion: '',
+      tema: '',
+      carpeta: carpetaFlashcardActual?.ruta || '',
+      estadoRevision: 'nueva'
+    })
+    setModalNuevaFlashcard(true)
+  }
+
+
+  const guardarFlashcard = (flashcard) => {
+    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+    
+    const nuevaFlashcard = {
+      id: flashcard.id || Date.now(),
+      tipo: flashcard.tipo,
+      titulo: flashcard.titulo,
+      contenido: flashcard.contenido,
+      opciones: flashcard.opciones || [],
+      respuestaCorrecta: flashcard.respuestaCorrecta,
+      explicacion: flashcard.explicacion,
+      tema: flashcard.tema,
+      carpeta: carpetaFlashcardActual?.ruta || '',
+      fecha: flashcard.fecha || new Date().toISOString(),
+      fechaRevision: null,
+      estadoRevision: 'nueva'
+    }
+
+    let flashcardsActualizadas
+    if (flashcard.id) {
+      // Editar existente
+      flashcardsActualizadas = flashcards.map(f => f.id === flashcard.id ? nuevaFlashcard : f)
+    } else {
+      // Nueva flashcard
+      flashcardsActualizadas = [...flashcards, nuevaFlashcard]
+    }
+
+    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
+    setFlashcardsActuales(flashcardsActualizadas)
+    setModalNuevaFlashcard(false)
+    
+    setMensaje({
+      tipo: 'success',
+      texto: flashcard.id ? '✅ Flashcard actualizada' : '✅ Flashcard creada'
+    })
+  }
+
+  const eliminarFlashcard = (id) => {
+    if (!confirm('¿Eliminar esta flashcard?')) return
+    
+    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+    const flashcardsActualizadas = flashcards.filter(f => f.id !== id)
+    
+    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
+    setFlashcardsActuales(flashcardsActualizadas)
+    
+    setMensaje({
+      tipo: 'success',
+      texto: '🗑️ Flashcard eliminada'
+    })
+  }
+
   const seleccionarCarpetaNota = (carpeta) => {
     setCarpetaNota(carpeta)
     setModalCarpetasNotaAbierto(false)
@@ -5080,6 +5230,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           >
             <span className="icon">📓</span>
             <span>Notas</span>
+          </button>
+          <button 
+            className={`nav-item ${selectedMenu === 'flashcards' ? 'active' : ''}`}
+            onClick={() => { 
+              setSelectedMenu('flashcards'); 
+              setMenuMovilAbierto(false);
+              cargarCarpetasFlashcards();
+            }}
+          >
+            <span className="icon">🃏</span>
+            <span>Flashcards</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'historial' ? 'active' : ''}`}
@@ -6505,6 +6666,257 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ============= SECCIÓN FLASHCARDS ============= */}
+        {selectedMenu === 'flashcards' && (
+          <div className="content-section">
+            <div className="section-header">
+              <h1>🃏 Mis Flashcards</h1>
+              <button className="btn-primary" onClick={crearNuevaFlashcard}>
+                ➕ Nueva Flashcard
+              </button>
+            </div>
+
+            {/* Breadcrumb de navegación */}
+            {carpetaFlashcardActual && (
+              <div className="breadcrumb-nav">
+                <button onClick={volverListaFlashcards} className="breadcrumb-btn">
+                  🏠 Inicio
+                </button>
+                <span className="breadcrumb-separator">/</span>
+                <span className="breadcrumb-current">{carpetaFlashcardActual.nombre}</span>
+                <button onClick={volverListaFlashcards} className="btn-volver" style={{marginLeft: '1rem'}}>
+                  ← Volver
+                </button>
+              </div>
+            )}
+
+            {/* Barra de filtros por tipo (solo si hay carpeta abierta) */}
+            {carpetaFlashcardActual && (() => {
+              const flashcards = flashcardsActuales.filter(f => f.carpeta === carpetaFlashcardActual.ruta);
+              const contadores = {
+                todas: flashcards.length,
+                clasica: flashcards.filter(f => f.tipo === 'clasica').length,
+                reconocimiento: flashcards.filter(f => f.tipo === 'reconocimiento').length,
+                cloze: flashcards.filter(f => f.tipo === 'cloze').length,
+                escenario: flashcards.filter(f => f.tipo === 'escenario').length,
+                mcq: flashcards.filter(f => f.tipo === 'mcq').length,
+                visual: flashcards.filter(f => f.tipo === 'visual').length,
+                auditiva: flashcards.filter(f => f.tipo === 'auditiva').length,
+                produccion: flashcards.filter(f => f.tipo === 'produccion').length,
+                invertida: flashcards.filter(f => f.tipo === 'invertida').length,
+                jerarquia: flashcards.filter(f => f.tipo === 'jerarquia').length,
+                error: flashcards.filter(f => f.tipo === 'error').length,
+                comparacion: flashcards.filter(f => f.tipo === 'comparacion').length
+              };
+
+              return (
+                <div className="flashcard-filters">
+                  {[
+                    {id: 'todas', nombre: 'Todas', icon: '🃏'},
+                    {id: 'clasica', nombre: 'Clásica', icon: '📇'},
+                    {id: 'reconocimiento', nombre: 'Reconocimiento', icon: '👁️'},
+                    {id: 'cloze', nombre: 'Cloze', icon: '🔤'},
+                    {id: 'escenario', nombre: 'Escenario', icon: '🎬'},
+                    {id: 'mcq', nombre: 'Opción Múltiple', icon: '☑️'},
+                    {id: 'visual', nombre: 'Visual', icon: '🖼️'},
+                    {id: 'auditiva', nombre: 'Auditiva', icon: '🔊'},
+                    {id: 'produccion', nombre: 'Producción', icon: '✍️'},
+                    {id: 'invertida', nombre: 'Invertida', icon: '🔄'},
+                    {id: 'jerarquia', nombre: 'Jerarquía', icon: '🏗️'},
+                    {id: 'error', nombre: 'Error', icon: '❌'},
+                    {id: 'comparacion', nombre: 'Comparación', icon: '⚖️'}
+                  ].map(tipo => (
+                    <button
+                      key={tipo.id}
+                      className={`filter-chip ${filtroTipoFlashcard === tipo.id ? 'active' : ''}`}
+                      onClick={() => setFiltroTipoFlashcard(tipo.id)}
+                      disabled={contadores[tipo.id] === 0 && tipo.id !== 'todas'}
+                    >
+                      <span className="filter-icon">{tipo.icon}</span>
+                      <span className="filter-name">{tipo.nombre}</span>
+                      <span className="filter-count">({contadores[tipo.id]})</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Grid de carpetas */}
+            {!carpetaFlashcardActual && flashcardsCarpetas.length > 0 && (
+              <div className="carpetas-grid">
+                {flashcardsCarpetas.map((carpeta, idx) => (
+                  <button
+                    key={idx}
+                    className="carpeta-card flashcard-folder"
+                    onClick={() => abrirCarpetaFlashcards(carpeta)}
+                  >
+                    <span className="carpeta-icon">📚</span>
+                    <span className="carpeta-nombre">{carpeta.nombre}</span>
+                    <span className="carpeta-count">{carpeta.count} flashcards</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Grid de Flashcards */}
+            {carpetaFlashcardActual && (() => {
+              const flashcards = flashcardsActuales
+                .filter(f => f.carpeta === carpetaFlashcardActual.ruta)
+                .filter(f => filtroTipoFlashcard === 'todas' || f.tipo === filtroTipoFlashcard);
+
+              if (flashcards.length === 0) {
+                return (
+                  <div className="empty-state">
+                    <div className="empty-icon">🃏</div>
+                    <h3>No hay flashcards {filtroTipoFlashcard !== 'todas' ? `de tipo "${filtroTipoFlashcard}"` : ''}</h3>
+                    <p>Crea tu primera flashcard para comenzar a estudiar</p>
+                    <button className="btn-primary" onClick={crearNuevaFlashcard}>
+                      ➕ Nueva Flashcard
+                    </button>
+                  </div>
+                );
+              }
+
+              const tipoConfig = {
+                clasica: { color: '#667eea', icon: '📇', nombre: 'Clásica' },
+                reconocimiento: { color: '#f093fb', icon: '👁️', nombre: 'Reconocimiento' },
+                cloze: { color: '#4facfe', icon: '🔤', nombre: 'Cloze' },
+                escenario: { color: '#43e97b', icon: '🎬', nombre: 'Escenario' },
+                mcq: { color: '#fa709a', icon: '☑️', nombre: 'Opción Múltiple' },
+                visual: { color: '#30cfd0', icon: '🖼️', nombre: 'Visual' },
+                auditiva: { color: '#a8edea', icon: '🔊', nombre: 'Auditiva' },
+                produccion: { color: '#ffa751', icon: '✍️', nombre: 'Producción' },
+                invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
+                jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
+                error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
+                comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' }
+              };
+
+              return (
+                <div className="flashcards-grid">
+                  {flashcards.map((flashcard) => {
+                    const config = tipoConfig[flashcard.tipo] || tipoConfig.clasica;
+                    const estadoColor = {
+                      nueva: '#ff9800',
+                      en_progreso: '#3b82f6',
+                      dominada: '#4caf50'
+                    }[flashcard.estadoRevision] || '#ff9800';
+
+                    return (
+                      <div key={flashcard.id} className="flashcard-card">
+                        {/* Indicador de tipo */}
+                        <div 
+                          className="flashcard-type-badge"
+                          style={{
+                            background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}dd 100%)`
+                          }}
+                        >
+                          <span>{config.icon}</span>
+                          <span>{config.nombre}</span>
+                        </div>
+
+                        {/* Cuerpo de la flashcard */}
+                        <div className="flashcard-body">
+                          <h3 className="flashcard-titulo">{flashcard.titulo}</h3>
+                          <div className="flashcard-preview">
+                            {flashcard.contenido.substring(0, 100)}
+                            {flashcard.contenido.length > 100 && '...'}
+                          </div>
+                        </div>
+
+                        {/* Footer con metadata */}
+                        <div className="flashcard-footer">
+                          {flashcard.tema && (
+                            <span className="flashcard-tema">
+                              🏷️ {flashcard.tema}
+                            </span>
+                          )}
+                          <span 
+                            className="flashcard-estado"
+                            style={{
+                              background: estadoColor,
+                              color: 'white',
+                              padding: '0.3rem 0.6rem',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: '600'
+                            }}
+                          >
+                            {flashcard.estadoRevision === 'nueva' && '🆕'}
+                            {flashcard.estadoRevision === 'en_progreso' && '📖'}
+                            {flashcard.estadoRevision === 'dominada' && '✅'}
+                            {' '}
+                            {flashcard.estadoRevision === 'nueva' && 'Nueva'}
+                            {flashcard.estadoRevision === 'en_progreso' && 'En Progreso'}
+                            {flashcard.estadoRevision === 'dominada' && 'Dominada'}
+                          </span>
+                        </div>
+
+                        {/* Acciones */}
+                        <div className="flashcard-actions">
+                          <button 
+                            className="btn-flashcard-action"
+                            onClick={() => {
+                              setFlashcardEditando(flashcard);
+                              setFormDataFlashcard(flashcard);
+                              setModalNuevaFlashcard(true);
+                            }}
+                            title="Editar"
+                          >
+                            ✏️
+                          </button>
+                          <button 
+                            className="btn-flashcard-action"
+                            onClick={() => {
+                              // Copiar flashcard
+                              const nueva = {
+                                ...flashcard,
+                                id: Date.now(),
+                                titulo: `${flashcard.titulo} (copia)`,
+                                estadoRevision: 'nueva',
+                                fecha: new Date().toISOString()
+                              };
+                              guardarFlashcard(nueva);
+                            }}
+                            title="Duplicar"
+                          >
+                            📋
+                          </button>
+                          <button 
+                            className="btn-flashcard-action danger"
+                            onClick={() => eliminarFlashcard(flashcard.id)}
+                            title="Eliminar"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Estado vacío - sin carpetas */}
+            {!carpetaFlashcardActual && flashcardsCarpetas.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-icon">🃏</div>
+                <h3>No tienes flashcards todavía</h3>
+                <p>Las flashcards se organizan por carpetas de cursos. Selecciona una carpeta para ver las flashcards asociadas.</p>
+                <button 
+                  className="btn-primary"
+                  onClick={() => {
+                    setSelectedMenu('cursos');
+                    cargarCarpeta('');
+                  }}
+                >
+                  📚 Ir a Mis Cursos
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -10320,6 +10732,267 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         <option value="seleccion_confusa">🤔 Selección Confusa - Elige entre opciones similares</option>
                       </select>
                     </div>
+                    
+                    {/* 12 Flashcards Avanzadas */}
+                    <details style={{
+                      marginTop: '20px',
+                      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                      borderRadius: '12px',
+                      padding: '15px',
+                      border: '1px solid rgba(148, 163, 184, 0.2)'
+                    }}>
+                      <summary style={{
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        color: '#60a5fa',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px'
+                      }}>
+                        <span>🎓</span>
+                        <span>Flashcards Avanzadas ({
+                          numFlashClassic + numFlashRecognition + numFlashCloze + 
+                          numFlashScenario + numFlashMCQ + numFlashVisual + 
+                          numFlashAudio + numFlashProduction + numFlashReversed + 
+                          numFlashHierarchy + numFlashError + numFlashComparison
+                        })</span>
+                      </summary>
+                      
+                      <div style={{marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '12px'}}>
+                        
+                        {/* 1. Clásica */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>📇</span>
+                            <span>1. Clásica (Anverso–Reverso)</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashClassic}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Pregunta en un lado, respuesta en el otro. Lo más tradicional.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Memorizar vocabulario, fechas, fórmulas, definiciones. Es como aprender cartas de memoria.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Te darás cuenta cuando digas "¡Ah! Ya no necesito buscar esa palabra, la sé de memoria". Mejora tu velocidad de recordación automática.</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "¿Capital de Japón?" → "Tokio". Cuando viajes o veas una noticia, recordarás instantáneamente sin pensar.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashClassic} onChange={(e) => setNumFlashClassic(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 2. Reconocimiento */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>👁️</span>
+                            <span>2. Reconocimiento</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashRecognition}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te muestran una imagen, símbolo o estructura y debes identificar qué es.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Perfecto para anatomía (huesos, músculos), química (moléculas), logos, mapas, diagramas.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando veas un diagrama en un examen o una radiografía en la práctica, dirás "¡Eso es el húmero!" sin dudar.</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> Imagen de una molécula → "H₂O, agua". En laboratorio o examen, reconocerás estructuras al instante.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashRecognition} onChange={(e) => setNumFlashRecognition(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 3. Cloze Deletion */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🔲</span>
+                            <span>3. Cloze Deletion (Texto con Huecos)</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashCloze}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Un texto con palabras ocultas que debes rellenar. Ej: "La _____ es fundamental para..."</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Oro para memorizar leyes, artículos, reglas, procesos paso a paso, párrafos completos.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando tengas que recitar una ley o explicar un proceso, las palabras fluirán automáticamente. "¡Ah, ya sé qué sigue!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "Artículo 1: Todos los seres humanos nacen _____ en dignidad" → "libres e iguales". En exámenes de derecho o presentaciones, lo recordarás completo.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashCloze} onChange={(e) => setNumFlashCloze(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 4. Escenarios */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🎬</span>
+                            <span>4. Escenarios (Mini-Casos)</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashScenario}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te presentan una situación real y preguntan qué harías. No es teórica, es práctica.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Entrenar pensamiento crítico, toma de decisiones y aplicar conocimiento a casos reales.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> En tu trabajo o vida diaria, cuando enfrentes problemas similares, dirás "Esto ya lo resolví antes mentalmente".</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "Un paciente llega con dolor torácico, ¿primera acción?" → "Evaluar signos vitales y ECG". En emergencias reales, actuarás con confianza.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashScenario} onChange={(e) => setNumFlashScenario(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 5. Múltiples Opciones */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🔀</span>
+                            <span>5. Múltiples Opciones (MCQ)</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashMCQ}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Pregunta con opciones donde algunas son muy parecidas (distractores). Debes elegir la correcta.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Crear "fricción cognitiva" - te hace pensar más profundo para distinguir detalles sutiles.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando debas tomar decisiones donde varias opciones parecen válidas, sabrás elegir con criterio. "No es solo correcta, es LA correcta".</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "¿Cuál es mitocondria?" A) Núcleo B) Retículo C) Mitocondria D) Ribosoma. En exámenes tipo test, evitarás trampas.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashMCQ} onChange={(e) => setNumFlashMCQ(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 6. Visuales */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🖼️</span>
+                            <span>6. Visuales</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashVisual}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Solo imágenes. Tú debes explicar o identificar lo que ves sin texto de ayuda.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Anatomía, diseño, ingeniería, mapas geográficos, reparación técnica, arquitectura.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando veas un plano, esquema o parte del cuerpo, lo reconocerás instantáneamente. "¡Ah, ese es el ventrículo izquierdo!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> Imagen de un circuito → "Circuito serie con resistencias en paralelo". En prácticas o trabajo de campo, no necesitarás manual.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashVisual} onChange={(e) => setNumFlashVisual(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 7. Auditivas */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🔊</span>
+                            <span>7. Auditivas</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashAudio}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Escuchas un audio: frase, acento, sonido, música. Debes identificarlo o responder.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Aprender idiomas, fonética, reconocimiento de acentos, música, diagnóstico médico (estetoscopio).</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando hables con nativos o escuches síntomas, tu oído estará entrenado. "¡Ese acento es británico, no estadounidense!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> Audio: "I've already eaten" → "Present Perfect con 'already'". En conversaciones reales, entenderás matices automáticamente.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashAudio} onChange={(e) => setNumFlashAudio(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 8. Producción Activa */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>✍️</span>
+                            <span>8. Producción Activa</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashProduction}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Debes CREAR algo desde cero: frase, código, procedimiento, ecuación. No solo recordar.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Programación, idiomas (escribir oraciones), matemáticas (resolver paso a paso), recetas, protocolos.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando tengas que escribir código o una frase en otro idioma, lo harás sin pensar. "¡Ah, ya sé cómo se construye esto!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "Produce una función en Python que sume dos números" → "def suma(a, b): return a + b". En entrevistas técnicas, fluirá naturalmente.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashProduction} onChange={(e) => setNumFlashProduction(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 9. Invertidas */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🔄</span>
+                            <span>9. Invertidas (Reversas)</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashReversed}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te dan la RESPUESTA primero, tú debes recordar cuál era la pregunta original.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Entrenar síntesis y asociaciones profundas. Conectas conceptos en ambas direcciones.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando veas resultados o síntomas, recordarás las causas. "Si veo esto, sé qué lo provocó".</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> Respuesta: "Mitocondria" → Pregunta: "¿Orgánulo que genera ATP?". En diagnósticos, irás de síntoma a causa rápidamente.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashReversed} onChange={(e) => setNumFlashReversed(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 10. Jerarquías */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🌳</span>
+                            <span>10. Jerarquías / Mapas Mentales</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashHierarchy}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te muestran un nodo (concepto) y debes recordar todo lo que se conecta: ramas superiores e inferiores.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Sistemas complejos, taxonomías (clasificaciones biológicas), organigramas, estructuras de datos.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando expliques temas complejos, recordarás la estructura completa. "¡Ah, esto va arriba de aquello y se divide en estas 3 ramas!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> Nodo: "Mamíferos" → Recordar: "Animales (arriba), Primates/Cetáceos/Carnívoros (abajo)". En biología, conectarás todo el árbol.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashHierarchy} onChange={(e) => setNumFlashHierarchy(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 11. Error Intencional */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>🐛</span>
+                            <span>11. Error Intencional</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashError}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te presentan algo INCORRECTO. Tu trabajo es detectar el error y corregirlo.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Gramática, código con bugs, matemáticas, procedimientos médicos, auditorías.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando revises documentos o código, detectarás errores que otros no ven. "¡Espera, ahí hay un error!"</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "She don't like coffee" → Error: "don't", Corrección: "doesn't". En tus propios textos, evitarás esos errores.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashError} onChange={(e) => setNumFlashError(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* 12. Comparación */}
+                        <details style={{background: 'rgba(71, 85, 105, 0.3)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(148, 163, 184, 0.2)'}}>
+                          <summary style={{fontSize: '0.95rem', fontWeight: '600', color: '#93c5fd', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}>
+                            <span>⚖️</span>
+                            <span>12. Comparación</span>
+                            <span style={{marginLeft: 'auto', background: '#3b82f6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.85rem'}}>{numFlashComparison}</span>
+                          </summary>
+                          <div style={{marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(148, 163, 184, 0.2)', color: '#cbd5e1', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>📖 Qué es:</strong> Te piden comparar DOS conceptos y explicar diferencias y similitudes.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>🎯 Para qué sirve:</strong> Entender reglas gramaticales, decisiones de diseño, categorías, análisis crítico.</p>
+                            <p style={{marginBottom: '8px'}}><strong style={{color: '#93c5fd'}}>💡 Cómo te ayuda:</strong> Cuando debas elegir entre opciones o explicar diferencias, lo harás con claridad. "Esto es mejor que aquello porque..."</p>
+                            <p style={{marginBottom: '12px'}}><strong style={{color: '#93c5fd'}}>✨ Ejemplo útil:</strong> "Compara mitosis vs meiosis" → "Mitosis: 2 células idénticas. Meiosis: 4 células con mitad de cromosomas". En exámenes de ensayo, brillarás.</p>
+                            <div className="config-control">
+                              <label style={{color: '#e2e8f0'}}>Cantidad:</label>
+                              <input type="number" min="0" max="20" value={numFlashComparison} onChange={(e) => setNumFlashComparison(Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))} className="input-number" style={{background: '#334155', color: '#e2e8f0', border: '1px solid #475569'}} />
+                            </div>
+                          </div>
+                        </details>
+
+                      </div>
+                    </details>
                   </div>
                 </details>
 
@@ -12878,6 +13551,183 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 >
                   {instalandoModelo ? '⏳ Instalando...' : '🚀 Instalar Modelo'}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============= MODAL NUEVA/EDITAR FLASHCARD ============= */}
+        {modalNuevaFlashcard && (
+          <div className="modal-overlay" onClick={() => {
+            setModalNuevaFlashcard(false);
+            setFlashcardEditando(null);
+          }}>
+            <div className="modal-content modal-flashcard" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{flashcardEditando ? '✏️ Editar Flashcard' : '➕ Nueva Flashcard'}</h2>
+                <button onClick={() => {
+                  setModalNuevaFlashcard(false);
+                  setFlashcardEditando(null);
+                }} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  guardarFlashcard(formDataFlashcard);
+                  setModalNuevaFlashcard(false);
+                  setFlashcardEditando(null);
+                }}>
+                  {/* Selección de Tipo */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">🎯</span>
+                      Tipo de Flashcard
+                    </label>
+                    <select
+                      className="input-select"
+                      value={formDataFlashcard.tipo}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, tipo: e.target.value})}
+                      required
+                    >
+                      <option value="clasica">📇 Clásica (Pregunta → Respuesta)</option>
+                      <option value="reconocimiento">👁️ Reconocimiento (Identificar concepto)</option>
+                      <option value="cloze">🔤 Cloze (Completar espacios)</option>
+                      <option value="escenario">🎬 Escenario (Caso práctico)</option>
+                      <option value="mcq">☑️ Opción Múltiple</option>
+                      <option value="visual">🖼️ Visual (Imagen/Diagrama)</option>
+                      <option value="auditiva">🔊 Auditiva (Audio/Pronunciación)</option>
+                      <option value="produccion">✍️ Producción (Generar respuesta)</option>
+                      <option value="invertida">🔄 Invertida (Respuesta → Pregunta)</option>
+                      <option value="jerarquia">🏗️ Jerarquía (Organizar niveles)</option>
+                      <option value="error">❌ Error Común (Corregir)</option>
+                      <option value="comparacion">⚖️ Comparación (A vs B)</option>
+                    </select>
+                  </div>
+
+                  {/* Título */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">📝</span>
+                      Título
+                    </label>
+                    <input
+                      type="text"
+                      className="input-text"
+                      placeholder="Título breve de la flashcard"
+                      value={formDataFlashcard.titulo}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, titulo: e.target.value})}
+                      required
+                    />
+                  </div>
+
+                  {/* Contenido/Pregunta */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">💭</span>
+                      {formDataFlashcard.tipo === 'clasica' ? 'Pregunta' : 
+                       formDataFlashcard.tipo === 'cloze' ? 'Texto con espacios (usa ___ para blancos)' :
+                       formDataFlashcard.tipo === 'escenario' ? 'Descripción del Escenario' :
+                       'Contenido'}
+                    </label>
+                    <textarea
+                      className="textarea-prompt"
+                      placeholder={
+                        formDataFlashcard.tipo === 'clasica' ? '¿Cuál es la definición de...?' :
+                        formDataFlashcard.tipo === 'cloze' ? 'El ___ es un proceso de ___' :
+                        formDataFlashcard.tipo === 'escenario' ? 'Un cliente llega con el siguiente problema...' :
+                        'Escribe el contenido de la flashcard'
+                      }
+                      value={formDataFlashcard.contenido}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, contenido: e.target.value})}
+                      rows={4}
+                      required
+                    />
+                  </div>
+
+                  {/* Opciones (solo para MCQ) */}
+                  {formDataFlashcard.tipo === 'mcq' && (
+                    <div className="config-section">
+                      <label className="config-label">
+                        <span className="label-icon">☑️</span>
+                        Opciones (una por línea)
+                      </label>
+                      <textarea
+                        className="textarea-prompt"
+                        placeholder="Opción A&#10;Opción B&#10;Opción C&#10;Opción D"
+                        value={Array.isArray(formDataFlashcard.opciones) ? formDataFlashcard.opciones.join('\n') : ''}
+                        onChange={(e) => setFormDataFlashcard({
+                          ...formDataFlashcard, 
+                          opciones: e.target.value.split('\n').filter(o => o.trim())
+                        })}
+                        rows={4}
+                      />
+                    </div>
+                  )}
+
+                  {/* Respuesta Correcta */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">✅</span>
+                      Respuesta Correcta
+                    </label>
+                    <textarea
+                      className="textarea-prompt"
+                      placeholder="La respuesta correcta es..."
+                      value={formDataFlashcard.respuestaCorrecta}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, respuestaCorrecta: e.target.value})}
+                      rows={3}
+                      required
+                    />
+                  </div>
+
+                  {/* Explicación */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">💡</span>
+                      Explicación (opcional)
+                    </label>
+                    <textarea
+                      className="textarea-prompt"
+                      placeholder="Explicación adicional, mnemotecnia, consejos..."
+                      value={formDataFlashcard.explicacion}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, explicacion: e.target.value})}
+                      rows={3}
+                    />
+                  </div>
+
+                  {/* Tema/Tags */}
+                  <div className="config-section">
+                    <label className="config-label">
+                      <span className="label-icon">🏷️</span>
+                      Tema/Etiqueta
+                    </label>
+                    <input
+                      type="text"
+                      className="input-text"
+                      placeholder="Ej: JavaScript, Historia, Matemáticas"
+                      value={formDataFlashcard.tema}
+                      onChange={(e) => setFormDataFlashcard({...formDataFlashcard, tema: e.target.value})}
+                    />
+                  </div>
+
+                  {/* Botones */}
+                  <div className="modal-actions">
+                    <button 
+                      type="button" 
+                      className="btn-secondary"
+                      onClick={() => {
+                        setModalNuevaFlashcard(false);
+                        setFlashcardEditando(null);
+                      }}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn-primary">
+                      {flashcardEditando ? '💾 Guardar Cambios' : '➕ Crear Flashcard'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
