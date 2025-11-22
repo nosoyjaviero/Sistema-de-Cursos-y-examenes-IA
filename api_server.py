@@ -1232,16 +1232,13 @@ async def obtener_arbol():
 async def obtener_info_carpeta(ruta: str = ""):
     """Obtiene información detallada de una carpeta específica"""
     try:
-        # Usar la función existente para obtener carpetas
-        resultado = cursos_db.listar_carpetas(ruta)
-        
-        # Contar documentos y subcarpetas
-        num_documentos = len(resultado.get('documentos', []))
-        num_subcarpetas = len(resultado.get('carpetas', []))
+        # listar_carpetas retorna una lista de dicts, listar_documentos otra lista
+        subcarpetas = cursos_db.listar_carpetas(ruta)
+        documentos = cursos_db.listar_documentos(ruta)
         
         return {
-            "num_documentos": num_documentos,
-            "num_subcarpetas": num_subcarpetas,
+            "num_documentos": len(documentos),
+            "num_subcarpetas": len(subcarpetas),
             "ruta": ruta
         }
     except Exception as e:
@@ -1297,15 +1294,23 @@ async def generar_examen_bloque(datos: dict):
     try:
         # Leer contenido de todos los archivos del bloque
         contenido_total = ""
-        for ruta_archivo in archivos:
+        for archivo_obj in archivos:
             try:
-                contenido = cursos_db.obtener_contenido_documento(ruta_archivo)
-                if contenido:
+                # Extraer ruta del objeto (puede ser string o dict con 'ruta')
+                if isinstance(archivo_obj, dict):
+                    ruta_archivo = archivo_obj.get('ruta', archivo_obj.get('nombre', ''))
+                else:
+                    ruta_archivo = archivo_obj
+                
+                # obtener_contenido_documento retorna un dict con 'contenido'
+                resultado = cursos_db.obtener_contenido_documento(ruta_archivo)
+                if resultado and 'contenido' in resultado:
+                    contenido_texto = resultado['contenido']
                     nombre_archivo = Path(ruta_archivo).stem
-                    contenido_total += f"\n\n=== {nombre_archivo} ===\n{contenido}\n"
-                    print(f"  ✅ Leído: {nombre_archivo} ({len(contenido)} chars)")
+                    contenido_total += f"\n\n=== {nombre_archivo} ===\n{contenido_texto}\n"
+                    print(f"  ✅ Leído: {nombre_archivo} ({len(contenido_texto)} chars)")
             except Exception as e:
-                print(f"  ⚠️  Error leyendo {ruta_archivo}: {e}")
+                print(f"  ⚠️  Error leyendo {archivo_obj}: {e}")
         
         if not contenido_total:
             raise HTTPException(status_code=404, detail="No se pudo leer el contenido de los archivos")
@@ -1324,9 +1329,25 @@ async def generar_examen_bloque(datos: dict):
         preguntas = generador_actual.generar_examen(contenido_total, num_preguntas)
         print(f"✅ {len(preguntas)} preguntas generadas")
         
+        # Mapear tipos de pregunta al formato esperado por la UI
+        tipo_map = {
+            'mcq': 'multiple',
+            'short_answer': 'corta',
+            'true_false': 'verdadero-falso',
+            'open_question': 'desarrollo'
+        }
+        
+        preguntas_dict = []
+        for p in preguntas:
+            pregunta_dict = p.to_dict()
+            # Mapear el tipo al formato de la UI
+            if pregunta_dict['tipo'] in tipo_map:
+                pregunta_dict['tipo'] = tipo_map[pregunta_dict['tipo']]
+            preguntas_dict.append(pregunta_dict)
+        
         return {
-            "preguntas": [p.dict() for p in preguntas],
-            "total": len(preguntas)
+            "preguntas": preguntas_dict,
+            "total": len(preguntas_dict)
         }
         
     except Exception as e:
@@ -1540,9 +1561,23 @@ async def generar_examen(datos: dict):
         )
         print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
         
-        # Convertir a formato JSON
+        # Mapear tipos de pregunta al formato esperado por la UI
+        tipo_map = {
+            'mcq': 'multiple',
+            'short_answer': 'corta',
+            'true_false': 'verdadero-falso',
+            'open_question': 'desarrollo'
+        }
+        
+        # Convertir a formato JSON y mapear tipos
         callback_progreso(95, "Finalizando...")
-        preguntas_json = [p.to_dict() for p in preguntas]
+        preguntas_json = []
+        for p in preguntas:
+            p_dict = p.to_dict()
+            # Mapear el tipo al formato de la UI
+            if p_dict['tipo'] in tipo_map:
+                p_dict['tipo'] = tipo_map[p_dict['tipo']]
+            preguntas_json.append(p_dict)
         
         # Marcar como completado
         progreso_generacion[session_id] = {
@@ -3350,6 +3385,18 @@ def generar_practica(datos: dict):
             preguntas = [p.to_dict() if hasattr(p, 'to_dict') else p for p in preguntas_obj]
         else:
             preguntas = []
+        
+        # Mapear tipos de pregunta al formato esperado por la UI
+        tipo_map = {
+            'mcq': 'multiple',
+            'short_answer': 'corta',
+            'true_false': 'verdadero-falso',
+            'open_question': 'desarrollo'
+        }
+        
+        for pregunta in preguntas:
+            if 'tipo' in pregunta and pregunta['tipo'] in tipo_map:
+                pregunta['tipo'] = tipo_map[pregunta['tipo']]
 
         if not preguntas:
             print(f"⚠️  ADVERTENCIA: No se generaron preguntas")
@@ -3608,11 +3655,233 @@ PARAMETER num_ctx 4096
         raise HTTPException(status_code=500, detail=f"Error instalando modelo: {str(e)}")
 
 
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINTS: SISTEMA DE GESTIÓN DE ERRORES
+# ═══════════════════════════════════════════════════════════════
+
+from detector_errores import DetectorErrores
+from banco_errores import BancoErrores
+from priorizador_errores import Priorizador
+
+# Instancias globales
+banco_errores = BancoErrores()
+priorizador = Priorizador()
+
+
+@app.post("/api/errores/procesar-examen")
+async def procesar_examen_errores(examen_id: str):
+    """
+    Procesa un examen completado y actualiza el banco de errores.
+    
+    Args:
+        examen_id: ID del examen (ej: "20251122_111844")
+    
+    Returns:
+        Resumen de errores detectados y actualizados
+    """
+    try:
+        # Buscar el examen
+        examenes_dir = Path("examenes")
+        examen_path = None
+        
+        for archivo in examenes_dir.rglob(f"examen_{examen_id}.json"):
+            examen_path = archivo
+            break
+        
+        if not examen_path:
+            raise HTTPException(status_code=404, detail=f"Examen {examen_id} no encontrado")
+        
+        # Verificar que esté completado
+        with open(examen_path, 'r', encoding='utf-8') as f:
+            datos = json.load(f)
+        
+        if datos.get("tipo") != "completado":
+            raise HTTPException(
+                status_code=400, 
+                detail="Solo se pueden procesar exámenes completados"
+            )
+        
+        # Procesar con los módulos
+        detector = DetectorErrores()
+        resultados = detector.analizar_examen(str(examen_path))
+        
+        # Actualizar banco
+        resumen_banco = banco_errores.actualizar_banco_desde_examen(str(examen_path))
+        
+        # Extraer errores y débiles
+        errores_detectados = [
+            {
+                "pregunta": p["pregunta"],
+                "tipo": p["tipo"],
+                "estado": p["estado_respuesta"],
+                "respuesta_usuario": p["respuesta_usuario"],
+                "respuesta_correcta": p.get("respuesta_correcta"),
+                "puntos": p["puntos"],
+                "puntos_maximos": p["puntos_maximos"]
+            }
+            for p in resultados["resultados_clasificados"]
+            if p["estado_respuesta"] in ["fallo", "respuesta_debil"]
+        ]
+        
+        return {
+            "examen_id": examen_id,
+            "examen_metadata": resultados["metadata"],
+            "resumen_estados": resultados["resumen_estados"],
+            "errores_detectados": errores_detectados,
+            "banco_actualizado": resumen_banco,
+            "mensaje": f"✅ {len(errores_detectados)} errores procesados"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error procesando examen: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/errores/estadisticas")
+async def obtener_estadisticas_banco():
+    """
+    Obtiene estadísticas del banco de errores.
+    
+    Returns:
+        Estadísticas agregadas del banco
+    """
+    try:
+        stats = banco_errores.obtener_estadisticas()
+        return stats
+    except Exception as e:
+        print(f"❌ Error obteniendo estadísticas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/errores/sesion-estudio")
+async def obtener_sesion_estudio(max_errores: int = 10):
+    """
+    Obtiene la sesión de estudio recomendada para hoy.
+    
+    Args:
+        max_errores: Número máximo de errores a incluir (default: 10)
+    
+    Returns:
+        Sesión de estudio priorizada con errores y recomendaciones
+    """
+    try:
+        sesion = priorizador.obtener_errores_para_hoy(max_errores=max_errores)
+        return sesion
+    except Exception as e:
+        print(f"❌ Error generando sesión: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/errores/todos")
+async def obtener_todos_errores():
+    """
+    Obtiene todos los errores del banco.
+    
+    Returns:
+        Lista completa de errores
+    """
+    try:
+        errores = banco_errores.obtener_todos_errores()
+        return {
+            "total": len(errores),
+            "errores": errores
+        }
+    except Exception as e:
+        print(f"❌ Error obteniendo errores: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/errores/buscar")
+async def buscar_errores(
+    carpeta: Optional[str] = None,
+    tipo_pregunta: Optional[str] = None,
+    estado: Optional[str] = None
+):
+    """
+    Busca errores con filtros específicos.
+    
+    Args:
+        carpeta: Filtrar por carpeta (ej: "Matematicas")
+        tipo_pregunta: Filtrar por tipo (ej: "multiple")
+        estado: Filtrar por estado (ej: "nuevo_error")
+    
+    Returns:
+        Lista filtrada de errores
+    """
+    try:
+        errores = banco_errores.buscar_errores(
+            carpeta=carpeta,
+            tipo_pregunta=tipo_pregunta
+        )
+        
+        # Filtrar por estado si se especifica
+        if estado:
+            errores = [e for e in errores if e["estado_refuerzo"] == estado]
+        
+        return {
+            "total": len(errores),
+            "filtros": {
+                "carpeta": carpeta,
+                "tipo_pregunta": tipo_pregunta,
+                "estado": estado
+            },
+            "errores": errores
+        }
+    except Exception as e:
+        print(f"❌ Error buscando errores: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/errores/marcar-resuelto/{error_id}")
+async def marcar_error_resuelto(error_id: str):
+    """
+    Marca un error como resuelto manualmente.
+    
+    Args:
+        error_id: ID del error a marcar
+    
+    Returns:
+        Confirmación de actualización
+    """
+    try:
+        # Cargar banco
+        banco_data = banco_errores._cargar_banco()
+        
+        # Buscar error
+        error = next((e for e in banco_data["errores"] if e["id_error"] == error_id), None)
+        
+        if not error:
+            raise HTTPException(status_code=404, detail=f"Error {error_id} no encontrado")
+        
+        # Actualizar estado
+        error["estado_refuerzo"] = "resuelto"
+        
+        # Guardar
+        banco_errores._guardar_banco(banco_data)
+        
+        return {
+            "mensaje": f"✅ Error {error_id} marcado como resuelto",
+            "error": error
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error marcando como resuelto: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Iniciando servidor API de Examinator...")
     print("📍 URL: http://localhost:8000")
     print("📚 Docs: http://localhost:8000/docs")
+    print("🎯 Sistema de Gestión de Errores: ACTIVO")
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 

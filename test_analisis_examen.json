@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "id": "20251120_122000",
+    "carpeta": "Platzi",
+    "carpeta_ruta": "Platzi",
+    "fecha_completado": "2025-11-20T12:20:00.121802",
+    "puntos_obtenidos": 0.0,
+    "puntos_totales": 1,
+    "porcentaje": 0.0
+  },
+  "resultados_clasificados": [
+    {
+      "id_pregunta": null,
+      "pregunta": "¿Qué son los principios jurídicos en el diseño?",
+      "tipo": "flashcard",
+      "opciones": [],
+      "respuesta_usuario": "djasnkdjnasknds",
+      "respuesta_correcta": null,
+      "puntos": 0.0,
+      "puntos_maximos": 1,
+      "feedback": "Incompleto. Respuesta esperada: None",
+      "estado_respuesta": "fallo"
+    }
+  ],
+  "resumen_estados": {
+    "total_preguntas": 1,
+    "aciertos": 0,
+    "fallos": 1,
+    "respuestas_debiles": 0,
+    "porcentaje_aciertos": 0.0,
+    "porcentaje_fallos": 100.0,
+    "porcentaje_debiles": 0.0
+  }
+}

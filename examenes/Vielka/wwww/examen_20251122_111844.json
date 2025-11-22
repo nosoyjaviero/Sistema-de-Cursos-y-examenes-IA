@@ -1,0 +1,53 @@
+{
+  "id": "20251122_111844",
+  "archivo": "examen_20251122_111844.json",
+  "fecha_completado": "2025-11-22T11:18:44.996423",
+  "carpeta_ruta": "Vielka\\wwww",
+  "carpeta_nombre": "wwww",
+  "puntos_obtenidos": 0.0,
+  "puntos_totales": 14,
+  "porcentaje": 0.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué se refiere a que un diseño no cambia su esencia con el tiempo?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": "B",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: B"
+    },
+    {
+      "pregunta": "¿Qué es la innovación en el contexto de diseño?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: A"
+    },
+    {
+      "pregunta": "¿Qué enriquece la relación entre el diseño y la audiencia?",
+      "tipo": "short_answer",
+      "opciones": [],
+      "respuesta_usuario": "fgvgfvfg ",
+      "respuesta_correcta": "La interpretación única de cada persona según su propia experiencia y perspectiva.",
+      "puntos": 0.0,
+      "puntos_maximos": 3,
+      "feedback": "Incompleto. Respuesta esperada: La interpretación única de cada persona según su propia experiencia y perspectiva."
+    },
+    {
+      "pregunta": "Describe brevemente cómo se beneficia el aprendizaje a lo largo de la vida gracias al proceso constante de interactuar con diseños en nuestro entorno. ¿Cómo nos ayuda cada interacción?",
+      "tipo": "open_question",
+      "opciones": [],
+      "respuesta_usuario": " gf fdvc ",
+      "respuesta_correcta": null,
+      "puntos": 0.0,
+      "puntos_maximos": 5,
+      "feedback": "Incompleto. Respuesta esperada: None"
+    }
+  ],
+  "tipo": "completado"
+}

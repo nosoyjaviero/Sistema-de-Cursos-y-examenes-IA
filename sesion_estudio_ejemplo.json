@@ -1,0 +1,284 @@
+{
+  "fecha_sesion": "2025-11-22T11:09:31.246656",
+  "total_errores_seleccionados": 4,
+  "errores": [
+    {
+      "id_error": "d4fd8cef-215f-4d9e-bfff-68e8bbb7a0a4",
+      "hash_pregunta": "a56c68c1a071f44a0b2851b6e69d9d206d8c71dc49ea5e7144f3344acc686638",
+      "examen_origen": {
+        "id": "20251120_122000",
+        "archivo": "examen_20251120_122000.json",
+        "fecha_completado": "2025-11-20T12:20:00.121802",
+        "carpeta_ruta": "Platzi",
+        "carpeta_nombre": "Platzi"
+      },
+      "pregunta": {
+        "texto": "¿Qué son los principios jurídicos en el diseño?",
+        "tipo": "flashcard",
+        "opciones": [],
+        "respuesta_correcta": null
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-20T12:20:00.121802",
+          "respuesta_usuario": "djasnkdjnasknds",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_122000"
+        },
+        {
+          "fecha": "2025-11-20T12:20:00.121802",
+          "respuesta_usuario": "djasnkdjnasknds",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_122000"
+        },
+        {
+          "fecha": "2025-11-20T13:03:00.965883",
+          "respuesta_usuario": "rhgtrhhrt",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_130300"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-20T13:03:00.965883",
+      "fecha_primer_error": "2025-11-20T12:20:00.121802",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 1,
+      "puntuacion_prioridad": 112,
+      "ultimo_intento": {
+        "fecha": "2025-11-20T13:03:00.965883",
+        "respuesta_usuario": "rhgtrhhrt",
+        "puntos": 0.0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "20251120_130300"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "95fb3ab7-29a6-43b0-aeeb-b85b4e23d652",
+      "hash_pregunta": "70b4cc9ce7ba17874b317e73d2790d61c8239e559c54b73772724683bf6998af",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Cuál es la derivada de x²?",
+        "tipo": "multiple",
+        "opciones": [
+          "x",
+          "2x",
+          "x³",
+          "2"
+        ],
+        "respuesta_correcta": "2x"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 110,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "x",
+        "puntos": 0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "bdde75be-fc03-4cca-8bd3-c38b1a0c2d7c",
+      "hash_pregunta": "87d4be7a01a421b35cc5db341955d93ac65c08e221915581585f037923a73532",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Cuál es la integral de 2x?",
+        "tipo": "multiple",
+        "opciones": [
+          "x²",
+          "2",
+          "x² + C",
+          "2x²"
+        ],
+        "respuesta_correcta": "x² + C"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 110,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "x²",
+        "puntos": 0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "9c0f5c53-d8ef-415f-b440-d48422d789fd",
+      "hash_pregunta": "e49a76768051624672d37d7d488030a500e13c3543fd66926f26e707901baf49",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Qué es una integral?",
+        "tipo": "corta",
+        "opciones": [],
+        "respuesta_correcta": "Operación inversa a la derivada"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 0,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "baja",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 55,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "una suma continua",
+        "puntos": 0.8,
+        "puntos_maximos": 1,
+        "estado": "respuesta_debil",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    }
+  ],
+  "estadisticas_sesion": {
+    "errores_nuevos_incluidos": 0,
+    "errores_alta_frecuencia": 3,
+    "errores_antiguos": 0,
+    "promedio_dias_sin_practica": 0.2,
+    "tipos_pregunta": {
+      "flashcard": 1,
+      "multiple": 2,
+      "corta": 1
+    }
+  },
+  "mensaje_motivacional": "🎯 Sesión intensiva: 3 conceptos difíciles. ¡Puedes con esto! 💡"
+}

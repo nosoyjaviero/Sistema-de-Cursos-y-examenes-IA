@@ -1,0 +1,511 @@
+{
+  "fecha_sesion": "2025-11-22T11:22:55.835079",
+  "total_errores_seleccionados": 8,
+  "errores": [
+    {
+      "id_error": "d4fd8cef-215f-4d9e-bfff-68e8bbb7a0a4",
+      "hash_pregunta": "a56c68c1a071f44a0b2851b6e69d9d206d8c71dc49ea5e7144f3344acc686638",
+      "examen_origen": {
+        "id": "20251120_122000",
+        "archivo": "examen_20251120_122000.json",
+        "fecha_completado": "2025-11-20T12:20:00.121802",
+        "carpeta_ruta": "Platzi",
+        "carpeta_nombre": "Platzi"
+      },
+      "pregunta": {
+        "texto": "¿Qué son los principios jurídicos en el diseño?",
+        "tipo": "flashcard",
+        "opciones": [],
+        "respuesta_correcta": null
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-20T12:20:00.121802",
+          "respuesta_usuario": "djasnkdjnasknds",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_122000"
+        },
+        {
+          "fecha": "2025-11-20T12:20:00.121802",
+          "respuesta_usuario": "djasnkdjnasknds",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_122000"
+        },
+        {
+          "fecha": "2025-11-20T13:03:00.965883",
+          "respuesta_usuario": "rhgtrhhrt",
+          "puntos": 0.0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "20251120_130300"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-20T13:03:00.965883",
+      "fecha_primer_error": "2025-11-20T12:20:00.121802",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 1,
+      "puntuacion_prioridad": 112,
+      "ultimo_intento": {
+        "fecha": "2025-11-20T13:03:00.965883",
+        "respuesta_usuario": "rhgtrhhrt",
+        "puntos": 0.0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "20251120_130300"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "95fb3ab7-29a6-43b0-aeeb-b85b4e23d652",
+      "hash_pregunta": "70b4cc9ce7ba17874b317e73d2790d61c8239e559c54b73772724683bf6998af",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Cuál es la derivada de x²?",
+        "tipo": "multiple",
+        "opciones": [
+          "x",
+          "2x",
+          "x³",
+          "2"
+        ],
+        "respuesta_correcta": "2x"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "x",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 110,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "x",
+        "puntos": 0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "bdde75be-fc03-4cca-8bd3-c38b1a0c2d7c",
+      "hash_pregunta": "87d4be7a01a421b35cc5db341955d93ac65c08e221915581585f037923a73532",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Cuál es la integral de 2x?",
+        "tipo": "multiple",
+        "opciones": [
+          "x²",
+          "2",
+          "x² + C",
+          "2x²"
+        ],
+        "respuesta_correcta": "x² + C"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "x²",
+          "puntos": 0,
+          "puntos_maximos": 1,
+          "estado": "fallo",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 3,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "alta",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 110,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "x²",
+        "puntos": 0,
+        "puntos_maximos": 1,
+        "estado": "fallo",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🔴 Fallada 3 veces - concepto difícil | 🎯 Alta prioridad",
+      "recomendacion_estudio": "💡 Dedica tiempo extra a entender el concepto fundamental. Busca recursos adicionales."
+    },
+    {
+      "id_error": "5da84809-6148-464e-9efe-5f550a26c9a9",
+      "hash_pregunta": "cbd70d88347959cec836c5eb4dcc3406e6c14be06d4bd2d923f8181c9ea0f155",
+      "examen_origen": {
+        "id": "20251122_111844",
+        "archivo": "examen_20251122_111844.json",
+        "fecha_completado": "2025-11-22T11:18:44.996423",
+        "carpeta_ruta": "Vielka\\wwww",
+        "carpeta_nombre": "wwww"
+      },
+      "pregunta": {
+        "texto": "¿Qué se refiere a que un diseño no cambia su esencia con el tiempo?",
+        "tipo": "mcq",
+        "opciones": [],
+        "respuesta_correcta": "B"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "C",
+          "puntos": 0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        },
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "C",
+          "puntos": 0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        }
+      ],
+      "veces_fallada": 2,
+      "veces_practicada": 2,
+      "ultima_vez_practicada": "2025-11-22T11:18:44.996423",
+      "fecha_primer_error": "2025-11-22T11:18:44.996423",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "media",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 85,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:18:44.996423",
+        "respuesta_usuario": "C",
+        "puntos": 0,
+        "puntos_maximos": 3,
+        "estado": "fallo",
+        "examen_id": "20251122_111844"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🟡 Fallada 2 veces - necesita refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    },
+    {
+      "id_error": "4d908d9d-7107-44b8-9a20-372c48a2fa28",
+      "hash_pregunta": "13284c57ca36c1c949734db212f6f340cd00094c56c3fd7692331790a5600a89",
+      "examen_origen": {
+        "id": "20251122_111844",
+        "archivo": "examen_20251122_111844.json",
+        "fecha_completado": "2025-11-22T11:18:44.996423",
+        "carpeta_ruta": "Vielka\\wwww",
+        "carpeta_nombre": "wwww"
+      },
+      "pregunta": {
+        "texto": "¿Qué es la innovación en el contexto de diseño?",
+        "tipo": "mcq",
+        "opciones": [],
+        "respuesta_correcta": "A"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "C",
+          "puntos": 0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        },
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "C",
+          "puntos": 0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        }
+      ],
+      "veces_fallada": 2,
+      "veces_practicada": 2,
+      "ultima_vez_practicada": "2025-11-22T11:18:44.996423",
+      "fecha_primer_error": "2025-11-22T11:18:44.996423",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "media",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 85,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:18:44.996423",
+        "respuesta_usuario": "C",
+        "puntos": 0,
+        "puntos_maximos": 3,
+        "estado": "fallo",
+        "examen_id": "20251122_111844"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🟡 Fallada 2 veces - necesita refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    },
+    {
+      "id_error": "db566cd9-6be6-4fd6-8aa1-94a31c82b8e2",
+      "hash_pregunta": "7112b8c263398f4be7053a1e5268cd518481b0efb9ed901e9f2a0f83f561aa44",
+      "examen_origen": {
+        "id": "20251122_111844",
+        "archivo": "examen_20251122_111844.json",
+        "fecha_completado": "2025-11-22T11:18:44.996423",
+        "carpeta_ruta": "Vielka\\wwww",
+        "carpeta_nombre": "wwww"
+      },
+      "pregunta": {
+        "texto": "¿Qué enriquece la relación entre el diseño y la audiencia?",
+        "tipo": "short_answer",
+        "opciones": [],
+        "respuesta_correcta": "La interpretación única de cada persona según su propia experiencia y perspectiva."
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "fgvgfvfg ",
+          "puntos": 0.0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        },
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": "fgvgfvfg ",
+          "puntos": 0.0,
+          "puntos_maximos": 3,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        }
+      ],
+      "veces_fallada": 2,
+      "veces_practicada": 2,
+      "ultima_vez_practicada": "2025-11-22T11:18:44.996423",
+      "fecha_primer_error": "2025-11-22T11:18:44.996423",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "media",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 85,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:18:44.996423",
+        "respuesta_usuario": "fgvgfvfg ",
+        "puntos": 0.0,
+        "puntos_maximos": 3,
+        "estado": "fallo",
+        "examen_id": "20251122_111844"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🟡 Fallada 2 veces - necesita refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    },
+    {
+      "id_error": "0e8b805d-97cb-4dd7-9d6e-66a092057d77",
+      "hash_pregunta": "f19d3947249bbed0b31defdfab1a1260dfd0d2d06f4308049a1d93632c4f30eb",
+      "examen_origen": {
+        "id": "20251122_111844",
+        "archivo": "examen_20251122_111844.json",
+        "fecha_completado": "2025-11-22T11:18:44.996423",
+        "carpeta_ruta": "Vielka\\wwww",
+        "carpeta_nombre": "wwww"
+      },
+      "pregunta": {
+        "texto": "Describe brevemente cómo se beneficia el aprendizaje a lo largo de la vida gracias al proceso constante de interactuar con diseños en nuestro entorno. ¿Cómo nos ayuda cada interacción?",
+        "tipo": "open_question",
+        "opciones": [],
+        "respuesta_correcta": null
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": " gf fdvc ",
+          "puntos": 0.0,
+          "puntos_maximos": 5,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        },
+        {
+          "fecha": "2025-11-22T11:18:44.996423",
+          "respuesta_usuario": " gf fdvc ",
+          "puntos": 0.0,
+          "puntos_maximos": 5,
+          "estado": "fallo",
+          "examen_id": "20251122_111844"
+        }
+      ],
+      "veces_fallada": 2,
+      "veces_practicada": 2,
+      "ultima_vez_practicada": "2025-11-22T11:18:44.996423",
+      "fecha_primer_error": "2025-11-22T11:18:44.996423",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "media",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 85,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:18:44.996423",
+        "respuesta_usuario": " gf fdvc ",
+        "puntos": 0.0,
+        "puntos_maximos": 5,
+        "estado": "fallo",
+        "examen_id": "20251122_111844"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo | 🟡 Fallada 2 veces - necesita refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    },
+    {
+      "id_error": "9c0f5c53-d8ef-415f-b440-d48422d789fd",
+      "hash_pregunta": "e49a76768051624672d37d7d488030a500e13c3543fd66926f26e707901baf49",
+      "examen_origen": {
+        "id": "ejemplo_20251122_104504",
+        "archivo": "examen_ejemplo_20251122_104504.json",
+        "fecha_completado": "2025-11-22T10:45:04.434731",
+        "carpeta_ruta": "Matematicas/Algebra",
+        "carpeta_nombre": "Algebra"
+      },
+      "pregunta": {
+        "texto": "¿Qué es una integral?",
+        "tipo": "corta",
+        "opciones": [],
+        "respuesta_correcta": "Operación inversa a la derivada"
+      },
+      "historial_respuestas": [
+        {
+          "fecha": "2025-11-22T10:45:04.434731",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_104504"
+        },
+        {
+          "fecha": "2025-11-22T11:08:11.908553",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_110811"
+        },
+        {
+          "fecha": "2025-11-22T11:09:31.193029",
+          "respuesta_usuario": "una suma continua",
+          "puntos": 0.8,
+          "puntos_maximos": 1,
+          "estado": "respuesta_debil",
+          "examen_id": "ejemplo_20251122_110931"
+        }
+      ],
+      "veces_fallada": 0,
+      "veces_practicada": 3,
+      "ultima_vez_practicada": "2025-11-22T11:09:31.193029",
+      "fecha_primer_error": "2025-11-22T10:45:04.434731",
+      "estado_refuerzo": "en_refuerzo",
+      "prioridad": "baja",
+      "tema_detectado": null,
+      "etiquetas": [],
+      "nota_usuario": "",
+      "dias_sin_practica": 0,
+      "puntuacion_prioridad": 55,
+      "ultimo_intento": {
+        "fecha": "2025-11-22T11:09:31.193029",
+        "respuesta_usuario": "una suma continua",
+        "puntos": 0.8,
+        "puntos_maximos": 1,
+        "estado": "respuesta_debil",
+        "examen_id": "ejemplo_20251122_110931"
+      },
+      "razon_seleccion": "🔄 En proceso de refuerzo",
+      "recomendacion_estudio": "✍️ Practica con atención a los detalles. ¡Tú puedes!"
+    }
+  ],
+  "estadisticas_sesion": {
+    "errores_nuevos_incluidos": 0,
+    "errores_alta_frecuencia": 3,
+    "errores_antiguos": 0,
+    "promedio_dias_sin_practica": 0.1,
+    "tipos_pregunta": {
+      "flashcard": 1,
+      "multiple": 2,
+      "mcq": 2,
+      "short_answer": 1,
+      "open_question": 1,
+      "corta": 1
+    }
+  },
+  "mensaje_motivacional": "🎯 Sesión intensiva: 3 conceptos difíciles. ¡Puedes con esto! 💡"
+}

@@ -612,7 +612,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         if num_preguntas.get('short_answer', 0) > 0:
             tipos_detalle.append(f"{num_preguntas['short_answer']} de respuesta corta (puntos: 3)")
         if num_preguntas.get('open_question', 0) > 0:
-            tipos_detalle.append(f"{num_preguntas['open_question']} de desarrollo/ensayo (puntos: 5)")
+            tipos_detalle.append(f"**🔥 {num_preguntas['open_question']} de desarrollo/ensayo EXTENSO** (puntos: 5) - OBLIGATORIO: pregunta compleja que requiere ANÁLISIS PROFUNDO")
         
         # Soporte para case_study
         num_casos = num_preguntas.get('case_study', 0)
@@ -659,8 +659,8 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         if num_preguntas.get('open_question', 0) > 0:
             json_ejemplos.append("""    {
       "tipo": "open_question",
-      "pregunta": "Pregunta que requiere análisis profundo y desarrollo extenso",
-      "respuesta_correcta": "Respuesta esperada detallada con conceptos clave, explicaciones y ejemplos",
+      "pregunta": "📝 DESARROLLO EXTENSO: Analiza en profundidad [tema complejo del contenido]. Explica los conceptos principales, sus interrelaciones y aplicaciones. (Mínimo 150 palabras)",
+      "respuesta_correcta": "Respuesta modelo DETALLADA: 1) Definiciones completas con ejemplos del contenido (mínimo 3 conceptos clave), 2) Análisis de relaciones entre conceptos con 8-10 oraciones explicativas, 3) Ejemplos concretos extraídos del texto, 4) Aplicaciones prácticas o importancia. DEBE ser sustancialmente más larga que short_answer - mínimo 150 palabras totales.",
       "puntos": 5
     }""")
         
@@ -675,21 +675,26 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
 CONTENIDO A EVALUAR:
 {contenido}
 
-IMPORTANTE - DEBES GENERAR {total} PREGUNTAS COMPLETAS:
+🔥 DISTRIBUCIÓN OBLIGATORIA - GENERA {total} PREGUNTAS ASI:
 {tipos_str}
 
-⚠️ REGLAS CRÍTICAS:
+⚠️ ATENCIÓN ESPECIAL: Si la distribución incluye "open_question" o "desarrollo", DEBES generarla. Es el tipo más importante.
+
+⚠️ REGLAS CRÍTICAS - LEE CON ATENCIÓN:
 1. Genera EXACTAMENTE {total} preguntas COMPLETAS con contenido REAL
-2. NO uses placeholders como "...", "[...]", "puntos: ..."
-3. CADA pregunta debe estar COMPLETAMENTE llena con:
+2. RESPETA LA DISTRIBUCIÓN DE TIPOS especificada arriba - CADA TIPO ES OBLIGATORIO
+3. Los tipos válidos son SOLAMENTE: "mcq", "true_false", "short_answer", "open_question"
+4. NO uses placeholders como "...", "[...]", "puntos: ..."
+5. NO REPITAS preguntas - cada una debe ser ÚNICA con texto diferente
+6. CADA pregunta debe estar COMPLETAMENTE llena con:
    - "tipo": uno de estos valores exactos: "mcq", "true_false", "short_answer", "open_question"
    - "pregunta": texto completo de la pregunta (mínimo 10 palabras)
    - Para "mcq": "opciones" debe ser un array de 4 strings completos (ej: ["A) opción real 1", "B) opción real 2", "C) opción real 3", "D) opción real 4"])
    - "respuesta_correcta": la respuesta correcta REAL (para MCQ: letra A/B/C/D, para otros: texto completo)
    - "puntos": número entero (3 para mcq, 2 para true_false, 3 para short_answer, 5 para open_question)
-4. Todas las preguntas deben basarse en información del contenido proporcionado
-5. NO inventes información que no esté en el texto
-6. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
+6. Todas las preguntas deben basarse en información del contenido proporcionado
+7. NO inventes información que no esté en el texto
+8. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
 
 FORMATO JSON VÁLIDO (con datos REALES, NO placeholders):
 {{
@@ -710,7 +715,9 @@ FORMATO JSON VÁLIDO (con datos REALES, NO placeholders):
   ]
 }}
 
-AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
+🔥 RECORDATORIO FINAL: Si la distribución arriba especifica "open_question", debes incluirla obligatoriamente en tu respuesta JSON.
+
+AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir TODOS los tipos solicitados):"""
     
     def _obtener_prompt_caso_estudio(self, tipo_caso: str) -> str:
         """Retorna el formato JSON específico para cada tipo de caso de estudio
@@ -738,6 +745,7 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
             'mcq': 'mcq', 
             'true_false': 'true_false',
             'verdadero_falso': 'true_false',
+            'verdadero-falso': 'true_false',
             'cloze': 'cloze',
             'short_answer': 'short_answer',
             'respuesta_corta': 'short_answer',
@@ -825,10 +833,15 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
             self._agregar_log('errores', warning_msg)
             print(f"⚠️ ADVERTENCIA: El modelo no generó suficientes preguntas de algunos tipos:")
             for faltante in tipos_faltantes:
+                tipo_falt = faltante.split(':')[0].strip()
                 print(f"   - {faltante}")
+            
             if len(preguntas_filtradas) < total_esperado:
-                print(f"   💡 Se retornaron {len(preguntas_filtradas)}/{total_esperado} preguntas")
-                print(f"   💡 Intenta regenerar la práctica o reduce la cantidad de tipos solicitados")
+                print(f"   Esto puede ocurrir porque:")
+                print(f"   1. El modelo generó tipos diferentes a los solicitados")
+                print(f"   2. El modelo ignoró las instrucciones del prompt")
+                print(f"   3. El contenido es muy corto para generar más preguntas")
+                print(f"   💡 Intenta regenerar la práctica")
             else:
                 print(f"   ✅ Se compensó con extras: {len(preguntas_filtradas)}/{total_esperado} preguntas retornadas")
         
@@ -1218,6 +1231,7 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
                             'mcq': 'mcq', 
                             'true_false': 'true_false',
                             'verdadero_falso': 'true_false',
+                            'verdadero-falso': 'true_false',
                             'cloze': 'cloze',
                             'short_answer': 'short_answer',
                             'respuesta_corta': 'short_answer',
@@ -1243,7 +1257,7 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
                             'corta': 'short_answer'
                         }
                         
-                        for pregunta in preguntas:
+                        for pregunta in preguntas_unicas:
                             # DEBUG: Imprimir tipo exacto de la pregunta
                             print(f"  🔍 Pregunta tipo='{pregunta.tipo}' (repr: {repr(pregunta.tipo)})")
                             tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
@@ -1259,13 +1273,14 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
                                     preguntas_filtradas.append(pregunta)
                                     contador_por_tipo[tipo_normalizado] += 1
                         
-                        print(f"🔍 Filtrado: {len(preguntas)} generadas → {len(preguntas_filtradas)} solicitadas")
+                        print(f"🔍 Filtrado: {len(preguntas_unicas)} únicas → {len(preguntas_filtradas)} solicitadas")
                         print(f"   Solicitadas: {num_preguntas}")
                         print(f"   Filtradas por tipo: {contador_por_tipo}")
                         
                         # Registrar filtrado
                         self._agregar_log('filtrado', {
-                            'total_generadas': len(preguntas),
+                            'total_generadas_originales': len(preguntas),
+                            'total_unicas': len(preguntas_unicas),
                             'total_filtradas': len(preguntas_filtradas),
                             'solicitadas': num_preguntas,
                             'contador_por_tipo': contador_por_tipo
@@ -1279,16 +1294,12 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
                                 tipos_faltantes.append(f"{tipo}: {generadas}/{cantidad}")
                         
                         if tipos_faltantes:
-                            warning_msg = f"El modelo no generó suficientes preguntas: {', '.join(tipos_faltantes)}"
-                            self._agregar_log('errores', warning_msg)
-                            print(f"⚠️ ADVERTENCIA: El modelo no generó suficientes preguntas de algunos tipos:")
+                            warning_msg = f"Tipos con menos preguntas generadas: {', '.join(tipos_faltantes)}"
+                            self._agregar_log('advertencia', warning_msg)
+                            print(f"ℹ️  INFO: Distribución de preguntas generadas:")
                             for faltante in tipos_faltantes:
-                                print(f"   - {faltante}")
-                            print(f"   Esto puede ocurrir porque:")
-                            print(f"   1. El modelo generó tipos diferentes a los solicitados")
-                            print(f"   2. El modelo ignoró las instrucciones del prompt")
-                            print(f"   3. El contenido es muy corto para generar más preguntas")
-                            print(f"   💡 Intenta regenerar la práctica")
+                                print(f"   📊 {faltante}")
+                            print(f"   💡 El examen sigue siendo válido. Si necesitas exactamente la cantidad solicitada, puedes regenerar.")
                         
                         # Registrar resultado final
                         resultado_final = [p.to_dict() if hasattr(p, 'to_dict') else str(p) for p in preguntas_filtradas]
@@ -1447,7 +1458,7 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
             else:
                 resultado["feedback"] = f"Incorrecto. La respuesta correcta es: {pregunta.respuesta_correcta}"
         
-        elif pregunta.tipo == "verdadero_falso" or pregunta.tipo == "true_false":
+        elif pregunta.tipo in ["verdadero_falso", "verdadero-falso", "true_false"]:
             # Extraer respuesta correcta de metadata si existe
             respuesta_correcta_display = pregunta.respuesta_correcta
             if hasattr(pregunta, 'metadata') and pregunta.metadata:
@@ -1456,7 +1467,11 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
                     if correct_answer is not None:
                         respuesta_correcta_display = 'Verdadero' if correct_answer else 'Falso'
             
-            if respuesta_usuario_lower == respuesta_correcta_lower:
+            # Normalizar respuestas para comparación flexible
+            resp_lower = respuesta_usuario_lower.replace('verdadero', 'true').replace('falso', 'false')
+            corr_lower = respuesta_correcta_lower.replace('verdadero', 'true').replace('falso', 'false')
+            
+            if resp_lower == corr_lower or respuesta_usuario_lower == respuesta_correcta_lower:
                 resultado["correcta"] = True
                 resultado["puntos_obtenidos"] = pregunta.puntos
                 resultado["feedback"] = "¡Correcto!"
@@ -1511,32 +1526,32 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES:"""
         if not respuesta_modelo or respuesta_modelo == 'None':
             respuesta_modelo = "No hay respuesta modelo definida para esta pregunta"
         
-        prompt = f"""Eres un profesor evaluando una respuesta de estudiante. Compara la respuesta del estudiante con la respuesta modelo y proporciona retroalimentación específica.
+        prompt = f"""Actúa como profesor evaluando el aprendizaje. Analiza cuánto de la respuesta esperada está presente en lo que escribió el estudiante.
 
-PREGUNTA:
-{pregunta.pregunta}
+PREGUNTA: {pregunta.pregunta}
 
-RESPUESTA MODELO (lo que se esperaba):
+RESPUESTA ESPERADA:
 {respuesta_modelo}
 
 RESPUESTA DEL ESTUDIANTE:
 {respuesta_usuario}
 
-PUNTOS MÁXIMOS: {pregunta.puntos}
+TAREA DE ANÁLISIS:
+Identifica los conceptos de la respuesta esperada. Para cada concepto, verifica si aparece en la respuesta del estudiante.
 
-INSTRUCCIONES DE EVALUACIÓN:
-1. Identifica los CONCEPTOS CLAVE en la respuesta modelo
-2. Verifica cuáles de esos conceptos están presentes en la respuesta del estudiante
-3. Identifica qué conceptos FALTAN o están INCOMPLETOS
-4. Asigna puntos proporcionales a los conceptos presentes
-5. Proporciona retroalimentación ESPECÍFICA sobre qué falta comprender
+CALCULA LA NOTA:
+- Puntos máximos posibles: {pregunta.puntos}
+- Dale puntos según cuántos conceptos clave mencionó correctamente
+- Si mencionó todos los conceptos: {pregunta.puntos} puntos
+- Si mencionó la mitad: {pregunta.puntos/2} puntos
+- Si no mencionó ninguno: da 0 puntos (es válido dar 0 si no hay comprensión)
 
-Responde ÚNICAMENTE con JSON en este formato exacto:
+FORMATO DE RESPUESTA (solo JSON, sin texto adicional):
 {{
-  "puntos": <número decimal de 0 a {pregunta.puntos}>,
-  "conceptos_correctos": ["concepto1", "concepto2"],
-  "conceptos_faltantes": ["concepto3", "concepto4"],
-  "feedback": "Retroalimentación específica explicando qué conceptos domina y cuáles le faltan comprender"
+  "puntos": <número>,
+  "conceptos_correctos": ["lista de conceptos presentes"],
+  "conceptos_faltantes": ["lista de conceptos ausentes"],
+  "feedback": "Análisis constructivo"
 }}
 
 JSON:"""
@@ -1561,6 +1576,25 @@ JSON:"""
                 if response.status_code == 200:
                     respuesta_ia = response.json()['response']
                     print(f"📝 Respuesta IA (primeros 300 chars): {respuesta_ia[:300]}")
+                    
+                    # Detectar rechazo del modelo
+                    rechazos = ['lo siento', 'no puedo', 'cannot', "can't", 'disculpa', 'sorry']
+                    if any(rechazo in respuesta_ia.lower() for rechazo in rechazos):
+                        print(f"⚠️ Modelo rechazó evaluar - usando evaluación por similitud de texto")
+                        # Calcular similitud básica
+                        palabras_modelo = set(respuesta_modelo.lower().split())
+                        palabras_usuario = set(respuesta_usuario.lower().split())
+                        coincidencias = palabras_modelo.intersection(palabras_usuario)
+                        porcentaje = len(coincidencias) / max(len(palabras_modelo), 1)
+                        puntos = round(porcentaje * pregunta.puntos, 1)
+                        
+                        return {
+                            "correcta": puntos >= pregunta.puntos * 0.6,
+                            "puntos_obtenidos": puntos,
+                            "conceptos_correctos": list(coincidencias)[:5],
+                            "conceptos_faltantes": list(palabras_modelo - palabras_usuario)[:5],
+                            "feedback": f"Evaluación automática: {puntos}/{pregunta.puntos} puntos basado en similitud de conceptos."
+                        }
                     
                     # Extraer JSON balanceado
                     inicio = respuesta_ia.find('{')

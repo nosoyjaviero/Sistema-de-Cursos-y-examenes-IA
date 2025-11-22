@@ -1,0 +1,92 @@
+{
+  "preguntas": [
+    {
+      "tipo": "multiple",
+      "pregunta": "¿Cuál es el objetivo principal del curso de Fundamentos UI en Platzi?",
+      "opciones": [
+        "A) Aprender a utilizar Figma",
+        "B) Desarrollar habilidades de diseño y pensamiento crítico",
+        "C) Crear productos digitales funcionales y user-friendly",
+        "D) Trabajar en grandes corporaciones"
+      ],
+      "respuesta_correcta": "B",
+      "puntos": 3,
+      "metadata": {
+        "tipo": "mcq",
+        "pregunta": "¿Cuál es el objetivo principal del curso de Fundamentos UI en Platzi?",
+        "opciones": [
+          "A) Aprender a utilizar Figma",
+          "B) Desarrollar habilidades de diseño y pensamiento crítico",
+          "C) Crear productos digitales funcionales y user-friendly",
+          "D) Trabajar en grandes corporaciones"
+        ],
+        "respuesta_correcta": "B",
+        "puntos": 3
+      }
+    },
+    {
+      "tipo": "verdadero-falso",
+      "pregunta": "Figma es una herramienta de diseño gráfico que se utiliza principalmente para crear prototipos.",
+      "opciones": [],
+      "respuesta_correcta": "",
+      "puntos": 2,
+      "metadata": {
+        "tipo": "true_false",
+        "pregunta": "Figma es una herramienta de diseño gráfico que se utiliza principalmente para crear prototipos.",
+        "respuesta_correcta": false,
+        "puntos": 2
+      }
+    },
+    {
+      "tipo": "corta",
+      "pregunta": "¿Qué beneficio adicional ofrece el curso en cuanto a desarrollo mental?",
+      "opciones": [],
+      "respuesta_correcta": "A través del curso, se busca expandir tu mentalidad para que puedas aprender de manera continua y ampliar tu conocimiento y comprensión crítica del diseño.",
+      "puntos": 3,
+      "metadata": {
+        "tipo": "short_answer",
+        "pregunta": "¿Qué beneficio adicional ofrece el curso en cuanto a desarrollo mental?",
+        "respuesta_correcta": "A través del curso, se busca expandir tu mentalidad para que puedas aprender de manera continua y ampliar tu conocimiento y comprensión crítica del diseño.",
+        "puntos": 3
+      }
+    },
+    {
+      "tipo": "multiple",
+      "pregunta": "¿Por qué utiliza Emilio Figma en el curso?",
+      "opciones": [
+        "A) Por su capacidad para manejar diversas facetas del diseño",
+        "B) Por ser una herramienta gratuita",
+        "C) Por no requerir conocimientos previos de diseño",
+        "D) Por ser la herramienta más popular"
+      ],
+      "respuesta_correcta": "A",
+      "puntos": 3,
+      "metadata": {
+        "tipo": "mcq",
+        "pregunta": "¿Por qué utiliza Emilio Figma en el curso?",
+        "opciones": [
+          "A) Por su capacidad para manejar diversas facetas del diseño",
+          "B) Por ser una herramienta gratuita",
+          "C) Por no requerir conocimientos previos de diseño",
+          "D) Por ser la herramienta más popular"
+        ],
+        "respuesta_correcta": "A",
+        "puntos": 3
+      }
+    },
+    {
+      "tipo": "desarrollo",
+      "pregunta": "¿Cuáles son los cuatro objetivos clave que se buscan lograr en el curso de Fundamentos UI?",
+      "opciones": [],
+      "respuesta_correcta": "Aplicar principios fundamentales del diseño de producto digital, fomentar el pensamiento crítico en diseño, construir conocimientos básicos en Figma y colaboración y sistemas de diseño.",
+      "puntos": 5,
+      "metadata": {
+        "tipo": "open_question",
+        "pregunta": "¿Cuáles son los cuatro objetivos clave que se buscan lograr en el curso de Fundamentos UI?",
+        "respuesta_correcta": "Aplicar principios fundamentales del diseño de producto digital, fomentar el pensamiento crítico en diseño, construir conocimientos básicos en Figma y colaboración y sistemas de diseño.",
+        "puntos": 5
+      }
+    }
+  ],
+  "total": 5
+}

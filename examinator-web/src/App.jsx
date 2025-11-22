@@ -1250,6 +1250,30 @@ function App() {
       setTotalBloques(bloques.length);
       const todasLasPreguntas = [];
       
+      // Calcular preguntas por bloque (distribuir uniformemente)
+      const totalPreguntasDeseadas = configExamenCarpeta.num_multiple + 
+                                     configExamenCarpeta.num_corta + 
+                                     configExamenCarpeta.num_vf + 
+                                     configExamenCarpeta.num_desarrollo;
+      
+      const preguntasPorBloque = Math.ceil(totalPreguntasDeseadas / bloques.length);
+      
+      // Ajustar config para cada bloque (floor para evitar exceso)
+      const configPorBloque = {
+        num_multiple: Math.floor(configExamenCarpeta.num_multiple / bloques.length),
+        num_corta: Math.floor(configExamenCarpeta.num_corta / bloques.length),
+        num_vf: Math.floor(configExamenCarpeta.num_vf / bloques.length),
+        num_desarrollo: Math.floor(configExamenCarpeta.num_desarrollo / bloques.length)
+      };
+      
+      // Calcular residuos para distribuir en los primeros bloques
+      const residuos = {
+        num_multiple: configExamenCarpeta.num_multiple % bloques.length,
+        num_corta: configExamenCarpeta.num_corta % bloques.length,
+        num_vf: configExamenCarpeta.num_vf % bloques.length,
+        num_desarrollo: configExamenCarpeta.num_desarrollo % bloques.length
+      };
+      
       // Procesar cada bloque
       for (let i = 0; i < bloques.length; i++) {
         setBloqueActual(i + 1);
@@ -1258,13 +1282,21 @@ function App() {
         
         const bloque = bloques[i];
         
+        // Config para este bloque específico (agregar residuos a los primeros bloques)
+        const configBloqueActual = {
+          num_multiple: configPorBloque.num_multiple + (i < residuos.num_multiple ? 1 : 0),
+          num_corta: configPorBloque.num_corta + (i < residuos.num_corta ? 1 : 0),
+          num_vf: configPorBloque.num_vf + (i < residuos.num_vf ? 1 : 0),
+          num_desarrollo: configPorBloque.num_desarrollo + (i < residuos.num_desarrollo ? 1 : 0)
+        };
+        
         // Llamar al endpoint para generar preguntas de este bloque
         const response = await fetch(`${API_URL}/api/generar_examen_bloque`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             archivos: bloque.map(a => a.ruta),
-            config: configExamenCarpeta
+            config: configBloqueActual  // Usar config ajustada para este bloque
           })
         });
         
@@ -10641,11 +10673,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               pregunta.tipo === 'mcq' ? '✅ Opción Múltiple' :
                               pregunta.tipo === 'flashcard' ? '🃏 Flashcard' :
                               pregunta.tipo === 'verdadero_falso' ? '✓✗ Verdadero/Falso' :
+                              pregunta.tipo === 'verdadero-falso' ? '✓✗ Verdadero/Falso' :
                               pregunta.tipo === 'true_false' ? '✓✗ Verdadero/Falso' :
                               pregunta.tipo === 'cloze' ? '📝 Relleno de Huecos' :
                               pregunta.tipo === 'corta' ? '✍️ Respuesta Corta' : 
                               pregunta.tipo === 'short_answer' ? '✍️ Respuesta Corta' :
-                              pregunta.tipo === 'open_question' ? '📖 Explicación Detallada' :
+                              pregunta.tipo === 'desarrollo' ? '📖 Desarrollo' :
+                              pregunta.tipo === 'open_question' ? '📖 Desarrollo' :
                               pregunta.tipo === 'case_study' ? '💼 Caso de Estudio' :
                               // Reading types
                               pregunta.tipo === 'reading_comprehension' ? '📖 Reading Comprehension' :
@@ -11313,7 +11347,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           )}
                           
                           {/* Verdadero/Falso */}
-                          {(pregunta.tipo === 'verdadero_falso' || pregunta.tipo === 'true_false') && (
+                          {(pregunta.tipo === 'verdadero_falso' || pregunta.tipo === 'verdadero-falso' || pregunta.tipo === 'true_false') && (
                             <div className="opciones-verdadero-falso">
                               <label className="opcion-vf">
                                 <input
