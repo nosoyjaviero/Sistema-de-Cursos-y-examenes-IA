@@ -1206,10 +1206,13 @@ function App() {
       return;
     }
     
+    // Extraer nombre de carpeta desde la ruta
+    const nombreCarpeta = ruta.split(/[/\\]/).filter(Boolean).pop() || 'Sin nombre';
+    
     setArchivosEncontrados(archivos);
     setArchivosExcluidos([]);
     setTipoCarpeta(tipo);
-    setCarpetaExamen(ruta);
+    setCarpetaExamen({ ruta, nombre: nombreCarpeta });
     setModalSeleccionArchivos(true);
     setGenerandoExamen(false);
     
@@ -1240,7 +1243,54 @@ function App() {
     }
     
     try {
-      // Dividir en bloques de 5 archivos
+      const totalPreguntasDeseadas = configExamenCarpeta.num_multiple + 
+                                     configExamenCarpeta.num_corta + 
+                                     configExamenCarpeta.num_vf + 
+                                     configExamenCarpeta.num_desarrollo;
+      
+      // Si hay pocos archivos (<=10), generar todo de una vez
+      if (archivosIncluidos.length <= 10) {
+        setTotalBloques(1);
+        setBloqueActual(1);
+        setMensajeProgreso(`Generando ${totalPreguntasDeseadas} preguntas desde ${archivosIncluidos.length} archivos...`);
+        setProgresoGeneracion(50);
+        
+        // Llamar al endpoint con TODOS los archivos
+        const response = await fetch(`${API_URL}/api/generar_examen_bloque`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            archivos: archivosIncluidos.map(a => a.ruta),
+            config: {
+              num_multiple: configExamenCarpeta.num_multiple,
+              num_corta: configExamenCarpeta.num_corta,
+              num_vf: configExamenCarpeta.num_vf,
+              num_desarrollo: configExamenCarpeta.num_desarrollo
+            }
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Error generando examen');
+        }
+        
+        const data = await response.json();
+        setProgresoGeneracion(100);
+        
+        setPreguntasExamen(data.preguntas || []);
+        setRespuestasUsuario({});
+        setExamenCompletado(false);
+        setModalExamenAbierto(true);
+        
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Examen generado con ${data.preguntas?.length || 0} preguntas`
+        });
+        
+        return;
+      }
+      
+      // Para muchos archivos (>10), dividir en bloques
       const tamañoBloque = 5;
       const bloques = [];
       for (let i = 0; i < archivosIncluidos.length; i += tamañoBloque) {
@@ -1250,12 +1300,7 @@ function App() {
       setTotalBloques(bloques.length);
       const todasLasPreguntas = [];
       
-      // Calcular preguntas por bloque (distribuir uniformemente)
-      const totalPreguntasDeseadas = configExamenCarpeta.num_multiple + 
-                                     configExamenCarpeta.num_corta + 
-                                     configExamenCarpeta.num_vf + 
-                                     configExamenCarpeta.num_desarrollo;
-      
+      // Usar la variable ya declarada arriba
       const preguntasPorBloque = Math.ceil(totalPreguntasDeseadas / bloques.length);
       
       // Ajustar config para cada bloque (floor para evitar exceso)
@@ -1347,12 +1392,12 @@ function App() {
   const seleccionarMejoresPreguntas = (preguntas, total, config) => {
     const seleccionadas = [];
     
-    // Separar por tipo
+    // Separar por tipo (aceptando variantes normalizadas del backend)
     const porTipo = {
-      'multiple': preguntas.filter(p => p.tipo === 'multiple'),
-      'corta': preguntas.filter(p => p.tipo === 'corta'),
-      'verdadero-falso': preguntas.filter(p => p.tipo === 'verdadero-falso'),
-      'desarrollo': preguntas.filter(p => p.tipo === 'desarrollo')
+      'multiple': preguntas.filter(p => p.tipo === 'multiple' || p.tipo === 'mcq'),
+      'corta': preguntas.filter(p => p.tipo === 'corta' || p.tipo === 'short_answer'),
+      'verdadero-falso': preguntas.filter(p => p.tipo === 'verdadero-falso' || p.tipo === 'true_false'),
+      'desarrollo': preguntas.filter(p => p.tipo === 'desarrollo' || p.tipo === 'open_question')
     };
     
     // Seleccionar aleatoriamente de cada tipo
@@ -3732,7 +3777,7 @@ JSON:`
         body: JSON.stringify({
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
-          carpeta_path: carpetaExamen?.ruta || ''
+          carpeta_path: carpetaExamen?.ruta || 'Examenes_Generales'
         })
       })
       
@@ -3802,15 +3847,25 @@ JSON:`
   
   // Pausar examen (guardar progreso)
   const pausarExamen = async () => {
-    if (!carpetaExamen || preguntasExamen.length === 0) return
+    if (preguntasExamen.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ No hay examen activo para pausar'
+      })
+      return
+    }
     
     try {
+      // Usar carpeta asignada o carpeta por defecto
+      const carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
+      const carpetaNombre = carpetaExamen?.nombre || 'Exámenes Generales'
+      
       const response = await fetch(`${API_URL}/api/examenes/pausar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          carpeta_ruta: carpetaExamen.ruta,
-          carpeta_nombre: carpetaExamen.nombre,
+          carpeta_ruta: carpetaRuta,
+          carpeta_nombre: carpetaNombre,
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
           fecha_inicio: new Date().toISOString()
@@ -14223,7 +14278,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               
               <div className="modal-body">
                 <div className="info-carpeta">
-                  <p>📁 <strong>Carpeta:</strong> {carpetaExamen}</p>
+                  <p>📁 <strong>Carpeta:</strong> {carpetaExamen?.nombre || carpetaExamen?.ruta || 'Sin nombre'}</p>
                   <p>📄 <strong>Archivos encontrados:</strong> {archivosEncontrados.length}</p>
                   <p>✅ <strong>Seleccionados:</strong> {archivosEncontrados.length - archivosExcluidos.length}</p>
                 </div>

@@ -1,0 +1,293 @@
+{
+  "id": "20251122_151334",
+  "archivo": "examen_20251122_151334.json",
+  "fecha_completado": "2025-11-22T15:13:34.578511",
+  "carpeta_ruta": "Platzi\\Prueba",
+  "carpeta_nombre": "Prueba",
+  "puntos_obtenidos": 12.4,
+  "puntos_totales": 70,
+  "porcentaje": 17.714285714285715,
+  "resultados": [
+    {
+      "pregunta": "¿Cómo utiliza el diseño gráfico esta ley?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "El diseño gráfico utiliza la Ley de Figura-Fondo para crear contraste claro entre lo importante y lo que no, jugar con la ambigüedad entre figura y fondo, y crear profundidad visual.",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "Según la Ley de la Experiencia o Familiaridad, ¿qué sucede con las formas que se parecen a cosas conocidas?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Se interpretan como desconocidas",
+        "B) No tienen significado",
+        "C) Se interpretan como familiares aunque estén incompletas o distorsionadas",
+        "D) Solo importan si están completas"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "C",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "Discuta cómo la Ley de Figura-Fondo se aplica en diferentes aspectos del diseño gráfico, como señales, íconos y pictogramas. ¿Qué ventajas tiene esta ley para crear comunicación efectiva?",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_usuario": "Donald John Trump (pronunciación en inglés: /ˈdɑnəld ˈdʒɑːn trʌmp/ (escucharⓘ); Queens, Nueva York, 14 de junio de 1946) es un empresario, personalidad televisiva y político conservador[4]​[5]​ estadounidense. Miembro del Partido Republicano, es el 47.º presidente de los Estados Unidos de",
+      "respuesta_correcta": null,
+      "puntos": 0.0,
+      "puntos_maximos": 5,
+      "feedback": "Evaluación automática: 0.0/5 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "¿Qué tipo de aprendizaje ocurre en el proceso de diseñar?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "e bienes inmuebles y construcción Elizabeth Trump & Son, que más tarde sería renombrada como Trump Organization.[6]​[7]​ Durante su carrera empresarial, Trump construyó, renovó y gestionó numerosas torres de oficinas, hoteles, casinos y campos de golf. Fue accionista principal de los concursos de belleza Miss USA y Miss Universo desde 1996 has",
+      "respuesta_correcta": "Un proceso constante y evolutivo que implica adquirir nuevas habilidades, perspectivas y conocimientos.",
+      "puntos": 0.5,
+      "puntos_maximos": 3,
+      "feedback": "Evaluación automática: 0.5/3 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "¿Cómo se manipula el color en el diseño digital?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "Trump buscó la nominación presidencial del Partido Reformista en 2000, pero se retiró antes de que comenzara la votación. Con",
+      "respuesta_correcta": "Es aditivo, es decir, al mezclar colores primarios en sus valores máximos se obtiene blanco.",
+      "puntos": 0.4,
+      "puntos_maximos": 3,
+      "feedback": "Evaluación automática: 0.4/3 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "¿Qué dice la Ley del Cierre?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) El cerebro no puede reconocer formas incompletas",
+        "B) La mente entiende una forma como un todo aunque falten partes de ella",
+        "C) Las figuras deben ser completas para generar interés",
+        "D) Los logos deben mostrar todas sus líneas"
+      ],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": "B",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: B"
+    },
+    {
+      "pregunta": "¿Dónde se usa la Ley del Cierre?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Solo en señales de tránsito dañadas",
+        "B) En diseño editorial o afiches, logos famosos y señales de tránsito dañadas",
+        "C) En interfaces de apps con íconos semi-incompletos",
+        "D) Solamente en carteles rotos"
+      ],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": "B",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: B"
+    },
+    {
+      "pregunta": "Los colores primarios en el diseño digital son rojo, verde y azul.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 2,
+      "puntos_maximos": 2,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Por qué funciona la Ley del Cierre?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "mócrata Hillary Clinton, debido a su victoria en el sistema del Colegio Electoral, y accedió a la presidencia ",
+      "respuesta_correcta": "El cerebro ama el orden y la familiaridad, así que si ve partes de algo que conoce automáticamente lo completa.",
+      "puntos": 0.5,
+      "puntos_maximos": 3,
+      "feedback": "Evaluación automática: 0.5/3 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "La Ley del Cierre se utiliza solo en diseños gráficos de logotipos famosos.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "¿Qué son los espacios de color?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Conjuntos específicos de colores que pueden ser reproducidos por un dispositivo",
+        "B) Unidades gráficas digitales más pequeñas",
+        "C) Resoluciones de pantalla",
+        "D) Espacios para el diseño"
+      ],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": "A",
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "La densidad de pixels es un factor importante en el diseño para dispositivos de pantallas de alta resolución.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 2,
+      "puntos_maximos": 2,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué es la resolución de pantalla?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) La cantidad de pixels que una pantalla puede mostrar",
+        "B) Un espacio de color específico",
+        "C) Una unidad gráfica digital más pequeña",
+        "D) Una herramienta de diseño"
+      ],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": "A",
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué efecto tiene la Ley de Continuidad en el diseño gráfico?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Dirigir el flujo visual",
+        "B) Unir elementos que están separados",
+        "C) Hacer que algo se sienta natural y fluido",
+        "D) Todas las anteriores"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "D",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "La Ley de Continuidad solo sirve para crear armonía visual en diseños editoriales.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cuál es el principal factor que determina cómo se representan las imágenes en dispositivos de alta densidad?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) La resolución",
+        "B) El color",
+        "C) La densidad de pixels o PPI/DPI",
+        "D) El tamaño del dispositivo"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "C",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué representa la resolución de pantalla?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) La cantidad de pixels que una pantalla puede mostrar",
+        "B) Un espacio de color específico",
+        "C) Una unidad gráfica digital más pequeña",
+        "D) Un tipo de diseño"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cómo afectan las variables como la luz ambiental y el estado anímico del usuario en la experiencia de usuario?",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_usuario": " haber perdido en número total de votos (igual que J. Q. Adams en 1824, R. B. Hayes en 1876, B. Harrison en 1888 y G. W. ",
+      "respuesta_correcta": "Las pantallas pueden influir significativamente la experiencia de usuario, por lo que es crucial considerar estos factores al diseñar.",
+      "puntos": 0.5,
+      "puntos_maximos": 5,
+      "feedback": "Evaluación automática: 0.5/5 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "Las pantallas están limitadas a una variedad infinita de colores.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Por qué es importante trabajar dentro del espacio de color adecuado para el medio en que se visualizará el diseño?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": " haber perdido en número total de votos (igual que J. Q. Adams en 1824, R. B. Hayes en 1876, B. Harrison en 1888 y G. W. ",
+      "respuesta_correcta": "Para mantener la consistencia y garantizar que el color diseñado sea reproducido correctamente.",
+      "puntos": 0.5,
+      "puntos_maximos": 3,
+      "feedback": "Evaluación automática: 0.5/3 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "¿Qué es el pixel y por qué es importante en diseño digital?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Es una unidad gráfica digital más pequeña que existe",
+        "B) Se utiliza solo para crear arte",
+        "C) No tiene relación con la resolución de pantalla",
+        "D) Es un software utilizado para diseñar"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "Análisa la importancia de la continuidad en el diseño gráfico y cómo puede afectar la percepción del usuario. Considera diferentes casos de uso, como diseños editoriales e interfaces y apps.",
+      "tipo": "desarrollo",
+      "opciones": [],
+      "respuesta_usuario": " haber perdido en número total de votos (igual que J. Q. Adams en 1824, R. B. Hayes en 1876, B. Harrison en 1888 y G. W. ",
+      "respuesta_correcta": null,
+      "puntos": 0.0,
+      "puntos_maximos": 5,
+      "feedback": "Evaluación automática: 0.0/5 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "¿Qué es un espacio de color como sRGB?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Un conjunto específico de colores que pueden ser reproducidos por un dispositivo",
+        "B) Una herramienta para diseñar en color",
+        "C) La resolución mínima de una pantalla",
+        "D) El tamaño máximo de una imagen"
+      ],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: A"
+    }
+  ],
+  "tipo": "completado"
+}

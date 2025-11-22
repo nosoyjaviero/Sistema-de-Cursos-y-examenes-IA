@@ -495,7 +495,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         
         if ajustes_modelo is None:
             ajustes_modelo = {
-                'temperature': 0.25,
+                'temperature': 0.7,  # Aumentado para máxima variedad y evitar duplicados
                 'max_tokens': 3000,
                 'top_p': 0.9,
                 'repeat_penalty': 1.15
@@ -686,15 +686,19 @@ CONTENIDO A EVALUAR:
 3. Los tipos válidos son SOLAMENTE: "mcq", "true_false", "short_answer", "open_question"
 4. NO uses placeholders como "...", "[...]", "puntos: ..."
 5. NO REPITAS preguntas - cada una debe ser ÚNICA con texto diferente
-6. CADA pregunta debe estar COMPLETAMENTE llena con:
+6. ⚠️ IMPORTANTE: Cada pregunta debe ser AUTOCONTENIDA - incluye el contexto necesario en el texto de la pregunta
+   - En lugar de: "¿Cómo utiliza el diseño gráfico esta ley?" → "¿Cómo utiliza el diseño gráfico la Ley de Continuidad de Gestalt?"
+   - En lugar de: "¿Qué significa esto?" → "¿Qué significa el término 'diseño basado en valores'?"
+   - La pregunta debe entenderse SIN necesidad de ver el contenido original
+7. CADA pregunta debe estar COMPLETAMENTE llena con:
    - "tipo": uno de estos valores exactos: "mcq", "true_false", "short_answer", "open_question"
-   - "pregunta": texto completo de la pregunta (mínimo 10 palabras)
+   - "pregunta": texto completo y autocontenido de la pregunta (mínimo 10 palabras, con contexto incluido)
    - Para "mcq": "opciones" debe ser un array de 4 strings completos (ej: ["A) opción real 1", "B) opción real 2", "C) opción real 3", "D) opción real 4"])
    - "respuesta_correcta": la respuesta correcta REAL (para MCQ: letra A/B/C/D, para otros: texto completo)
    - "puntos": número entero (3 para mcq, 2 para true_false, 3 para short_answer, 5 para open_question)
-6. Todas las preguntas deben basarse en información del contenido proporcionado
-7. NO inventes información que no esté en el texto
-8. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
+8. Todas las preguntas deben basarse en información del contenido proporcionado
+9. NO inventes información que no esté en el texto
+10. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
 
 FORMATO JSON VÁLIDO (con datos REALES, NO placeholders):
 {{
@@ -1220,7 +1224,44 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                     
                     print(f"\n✅ Total: {len(preguntas)} preguntas generadas exitosamente")
                     
-                    # FILTRAR PREGUNTAS POR TIPO Y CANTIDAD SOLICITADA
+                    # PASO 1: Eliminar duplicados exactos y similares
+                    preguntas_unicas = []
+                    textos_vistos = set()
+                    
+                    def similitud_texto(t1, t2):
+                        """Calcula similitud básica entre dos textos"""
+                        palabras1 = set(t1.lower().split())
+                        palabras2 = set(t2.lower().split())
+                        if not palabras1 or not palabras2:
+                            return 0
+                        interseccion = palabras1.intersection(palabras2)
+                        union = palabras1.union(palabras2)
+                        return len(interseccion) / len(union)
+                    
+                    for pregunta in preguntas:
+                        texto_normalizado = pregunta.pregunta.strip().lower()
+                        
+                        # Verificar duplicado exacto
+                        if texto_normalizado in textos_vistos:
+                            print(f"  🗑️  Duplicado exacto: {pregunta.pregunta[:60]}...")
+                            continue
+                        
+                        # Verificar similitud alta (>80%) con preguntas existentes
+                        es_similar = False
+                        for texto_visto in textos_vistos:
+                            if similitud_texto(texto_normalizado, texto_visto) > 0.8:
+                                print(f"  🗑️  Muy similar: {pregunta.pregunta[:60]}...")
+                                es_similar = True
+                                break
+                        
+                        if not es_similar:
+                            preguntas_unicas.append(pregunta)
+                            textos_vistos.add(texto_normalizado)
+                    
+                    if len(preguntas_unicas) < len(preguntas):
+                        print(f"🧹 Duplicados/similares eliminados: {len(preguntas)} → {len(preguntas_unicas)} preguntas únicas")
+                    
+                    # PASO 2: FILTRAR PREGUNTAS POR TIPO Y CANTIDAD SOLICITADA
                     if num_preguntas and any(v > 0 for v in num_preguntas.values()):
                         preguntas_filtradas = []
                         contador_por_tipo = {}
@@ -1308,12 +1349,12 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                         
                         return preguntas_filtradas
                     
-                    # Si no hay filtrado, retornar todas las preguntas
-                    resultado_final = [p.to_dict() if hasattr(p, 'to_dict') else str(p) for p in preguntas]
+                    # Si no hay filtrado, retornar todas las preguntas únicas
+                    resultado_final = [p.to_dict() if hasattr(p, 'to_dict') else str(p) for p in preguntas_unicas]
                     self._agregar_log('resultado_final', resultado_final)
                     self._guardar_log()
                     
-                    return preguntas
+                    return preguntas_unicas
                     
                 except json.JSONDecodeError as e:
                         error_msg = f"Error parseando JSON: {e}"
@@ -1526,35 +1567,30 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         if not respuesta_modelo or respuesta_modelo == 'None':
             respuesta_modelo = "No hay respuesta modelo definida para esta pregunta"
         
-        prompt = f"""Actúa como profesor evaluando el aprendizaje. Analiza cuánto de la respuesta esperada está presente en lo que escribió el estudiante.
+        prompt = f"""Tarea: Comparación de texto y extracción de conceptos clave.
 
-PREGUNTA: {pregunta.pregunta}
+TEXTO DE REFERENCIA:
+"{respuesta_modelo}"
 
-RESPUESTA ESPERADA:
-{respuesta_modelo}
+TEXTO A COMPARAR:
+"{respuesta_usuario}"
 
-RESPUESTA DEL ESTUDIANTE:
-{respuesta_usuario}
+INSTRUCCIONES DE PROCESAMIENTO:
+1. Extraer términos y conceptos importantes del texto de referencia
+2. Verificar presencia de cada término/concepto en el texto a comparar
+3. Calcular puntuación: (conceptos_presentes / total_conceptos) * {pregunta.puntos}
 
-TAREA DE ANÁLISIS:
-Identifica los conceptos de la respuesta esperada. Para cada concepto, verifica si aparece en la respuesta del estudiante.
-
-CALCULA LA NOTA:
-- Puntos máximos posibles: {pregunta.puntos}
-- Dale puntos según cuántos conceptos clave mencionó correctamente
-- Si mencionó todos los conceptos: {pregunta.puntos} puntos
-- Si mencionó la mitad: {pregunta.puntos/2} puntos
-- Si no mencionó ninguno: da 0 puntos (es válido dar 0 si no hay comprensión)
-
-FORMATO DE RESPUESTA (solo JSON, sin texto adicional):
+OUTPUT REQUERIDO - JSON únicamente:
 {{
-  "puntos": <número>,
-  "conceptos_correctos": ["lista de conceptos presentes"],
-  "conceptos_faltantes": ["lista de conceptos ausentes"],
-  "feedback": "Análisis constructivo"
+  "puntos": <float entre 0 y {pregunta.puntos}>,
+  "conceptos_correctos": [<lista de términos encontrados>],
+  "conceptos_faltantes": [<lista de términos ausentes>],
+  "feedback": "<resumen de coincidencias>"
 }}
 
-JSON:"""
+CONTEXTO DE LA PREGUNTA: {pregunta.pregunta}
+
+Genera el JSON ahora:"""
 
         try:
             if self.usar_ollama:
@@ -1577,21 +1613,37 @@ JSON:"""
                     respuesta_ia = response.json()['response']
                     print(f"📝 Respuesta IA (primeros 300 chars): {respuesta_ia[:300]}")
                     
-                    # Detectar rechazo del modelo
-                    rechazos = ['lo siento', 'no puedo', 'cannot', "can't", 'disculpa', 'sorry']
+                    # Detectar rechazo del modelo con más patrones
+                    rechazos = [
+                        'lo siento', 'no puedo', 'cannot', "can't", 'disculpa', 'sorry',
+                        'no pueda', 'unable to', 'cannot fulfill', 'no cumplir',
+                        'esa solicitud', 'that request', 'contenido político', 'political content',
+                        'evaluar el trabajo', 'generar respuestas que', 'no puedo generar'
+                    ]
                     if any(rechazo in respuesta_ia.lower() for rechazo in rechazos):
                         print(f"⚠️ Modelo rechazó evaluar - usando evaluación por similitud de texto")
-                        # Calcular similitud básica
-                        palabras_modelo = set(respuesta_modelo.lower().split())
-                        palabras_usuario = set(respuesta_usuario.lower().split())
+                        # Calcular similitud mejorada
+                        texto_modelo = respuesta_modelo.lower()
+                        texto_usuario = respuesta_usuario.lower()
+                        
+                        # Extraer palabras significativas (más de 3 letras)
+                        palabras_modelo = set(p for p in texto_modelo.split() if len(p) > 3)
+                        palabras_usuario = set(p for p in texto_usuario.split() if len(p) > 3)
+                        
                         coincidencias = palabras_modelo.intersection(palabras_usuario)
-                        porcentaje = len(coincidencias) / max(len(palabras_modelo), 1)
+                        
+                        # Calcular porcentaje basado en palabras clave
+                        if len(palabras_modelo) > 0:
+                            porcentaje = len(coincidencias) / len(palabras_modelo)
+                        else:
+                            porcentaje = 0
+                        
                         puntos = round(porcentaje * pregunta.puntos, 1)
                         
                         return {
                             "correcta": puntos >= pregunta.puntos * 0.6,
                             "puntos_obtenidos": puntos,
-                            "conceptos_correctos": list(coincidencias)[:5],
+                            "conceptos_correctos": list(coincidencias)[:8],
                             "conceptos_faltantes": list(palabras_modelo - palabras_usuario)[:5],
                             "feedback": f"Evaluación automática: {puntos}/{pregunta.puntos} puntos basado en similitud de conceptos."
                         }

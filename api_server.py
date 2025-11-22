@@ -1292,42 +1292,161 @@ async def generar_examen_bloque(datos: dict):
         raise HTTPException(status_code=500, detail="Modelo no inicializado")
     
     try:
-        # Leer contenido de todos los archivos del bloque
-        contenido_total = ""
+        # ESTRATEGIA: Generar preguntas por archivo individualmente
+        # Esto evita que el modelo se quede sin tokens con exámenes grandes
+        
+        # Leer contenido de cada archivo
+        archivos_contenido = []
         for archivo_obj in archivos:
             try:
-                # Extraer ruta del objeto (puede ser string o dict con 'ruta')
                 if isinstance(archivo_obj, dict):
                     ruta_archivo = archivo_obj.get('ruta', archivo_obj.get('nombre', ''))
                 else:
                     ruta_archivo = archivo_obj
                 
-                # obtener_contenido_documento retorna un dict con 'contenido'
                 resultado = cursos_db.obtener_contenido_documento(ruta_archivo)
                 if resultado and 'contenido' in resultado:
                     contenido_texto = resultado['contenido']
                     nombre_archivo = Path(ruta_archivo).stem
-                    contenido_total += f"\n\n=== {nombre_archivo} ===\n{contenido_texto}\n"
+                    archivos_contenido.append({
+                        'nombre': nombre_archivo,
+                        'ruta': ruta_archivo,
+                        'contenido': contenido_texto,
+                        'chars': len(contenido_texto)
+                    })
                     print(f"  ✅ Leído: {nombre_archivo} ({len(contenido_texto)} chars)")
             except Exception as e:
                 print(f"  ⚠️  Error leyendo {archivo_obj}: {e}")
         
-        if not contenido_total:
+        if not archivos_contenido:
             raise HTTPException(status_code=404, detail="No se pudo leer el contenido de los archivos")
         
-        print(f"📄 Contenido total: {len(contenido_total)} caracteres")
+        # Calcular total de caracteres
+        total_chars = sum(a['chars'] for a in archivos_contenido)
+        print(f"📄 Contenido total: {total_chars} caracteres en {len(archivos_contenido)} archivos")
         
-        # Generar preguntas (claves normalizadas para coincidir con el generador)
-        num_preguntas = {
+        # Calcular distribución proporcional de preguntas por archivo
+        total_preguntas = num_multiple + num_corta + num_vf + num_desarrollo
+        
+        print(f"\n🎯 Estrategia: Generar {total_preguntas} preguntas desde {len(archivos_contenido)} archivos")
+        
+        todas_preguntas = []
+        
+        for idx, archivo_info in enumerate(archivos_contenido, 1):
+            # Calcular proporción de preguntas para este archivo
+            proporcion = archivo_info['chars'] / total_chars
+            preguntas_este_archivo = max(3, round(total_preguntas * proporcion * 2.0))  # Generar 100% más (x2)
+            
+            # Distribuir tipos de preguntas proporcionalmente
+            num_preguntas_archivo = {
+                'mcq': max(0, round(preguntas_este_archivo * 0.5)),  # 50% MCQ
+                'short_answer': max(0, round(preguntas_este_archivo * 0.2)),  # 20% cortas
+                'true_false': max(0, round(preguntas_este_archivo * 0.2)),  # 20% V/F
+                'open_question': max(0, round(preguntas_este_archivo * 0.1))  # 10% desarrollo
+            }
+            
+            total_calculado = sum(num_preguntas_archivo.values())
+            if total_calculado < preguntas_este_archivo:
+                num_preguntas_archivo['mcq'] += (preguntas_este_archivo - total_calculado)
+            
+            print(f"\n  📝 Archivo {idx}/{len(archivos_contenido)}: {archivo_info['nombre']}")
+            print(f"     Proporción: {proporcion*100:.1f}% ({archivo_info['chars']} chars)")
+            print(f"     Generando ~{sum(num_preguntas_archivo.values())} preguntas (variedad de tipos)")
+            
+            # Generar preguntas para este archivo
+            contenido_formateado = f"=== {archivo_info['nombre']} ===\n{archivo_info['contenido']}"
+            preguntas_archivo = generador_actual.generar_examen(contenido_formateado, num_preguntas_archivo)
+            
+            print(f"     ✅ Obtenidas: {len(preguntas_archivo)} preguntas")
+            todas_preguntas.extend(preguntas_archivo)
+        
+        # Mezclar todas las preguntas para variedad
+        import random
+        random.shuffle(todas_preguntas)
+        
+        print(f"\n📊 Resumen de generación:")
+        print(f"   Total obtenido: {len(todas_preguntas)} preguntas")
+        print(f"   Total solicitado: {total_preguntas}")
+        
+        # Contar por tipo lo que tenemos
+        contador_tipos = {}
+        for p in todas_preguntas:
+            tipo = p.tipo
+            contador_tipos[tipo] = contador_tipos.get(tipo, 0) + 1
+        
+        print(f"   Distribución obtenida: {contador_tipos}")
+        
+        # Seleccionar las necesarias respetando proporción solicitada
+        preguntas_finales = []
+        tipos_necesarios = {
             'mcq': num_multiple,
             'short_answer': num_corta,
             'true_false': num_vf,
             'open_question': num_desarrollo
         }
         
-        print(f"🤖 Generando preguntas...")
-        preguntas = generador_actual.generar_examen(contenido_total, num_preguntas)
-        print(f"✅ {len(preguntas)} preguntas generadas")
+        # Separar por tipo con normalización
+        preguntas_por_tipo = {
+            'mcq': [],
+            'short_answer': [],
+            'true_false': [],
+            'open_question': []
+        }
+        
+        # Mapeo de tipos para normalizar
+        mapeo_tipos = {
+            'mcq': 'mcq',
+            'multiple': 'mcq',
+            'true_false': 'true_false',
+            'verdadero_falso': 'true_false',
+            'verdadero-falso': 'true_false',
+            'short_answer': 'short_answer',
+            'corta': 'short_answer',
+            'respuesta_corta': 'short_answer',
+            'open_question': 'open_question',
+            'desarrollo': 'open_question'
+        }
+        
+        for p in todas_preguntas:
+            tipo_normalizado = mapeo_tipos.get(p.tipo, p.tipo)
+            if tipo_normalizado in preguntas_por_tipo:
+                preguntas_por_tipo[tipo_normalizado].append(p)
+            else:
+                print(f"   ⚠️  Tipo desconocido ignorado: '{p.tipo}' (no está en el mapeo)")
+        
+        print(f"\n📋 Preguntas por tipo (normalizadas):")
+        for tipo, lista in preguntas_por_tipo.items():
+            if lista:
+                print(f"   {tipo}: {len(lista)} disponibles")
+        
+        # Tomar las necesarias de cada tipo
+        for tipo, cantidad in tipos_necesarios.items():
+            disponibles = preguntas_por_tipo.get(tipo, [])
+            random.shuffle(disponibles)  # Aleatorizar dentro del tipo
+            tomadas = disponibles[:cantidad]
+            preguntas_finales.extend(tomadas)
+            print(f"   {tipo}: tomadas {len(tomadas)}/{cantidad} (disponibles: {len(disponibles)})")
+            if len(tomadas) < cantidad:
+                print(f"      ⚠️  Faltan {cantidad - len(tomadas)} preguntas de tipo '{tipo}'")
+        
+        # Si aún faltan, completar con las que sobran
+        if len(preguntas_finales) < total_preguntas:
+            faltantes = total_preguntas - len(preguntas_finales)
+            print(f"\n  🔄 Completando {faltantes} preguntas faltantes...")
+            
+            # Tomar de las que sobraron
+            usadas = set(id(p) for p in preguntas_finales)
+            sobrantes = [p for p in todas_preguntas if id(p) not in usadas]
+            random.shuffle(sobrantes)
+            preguntas_finales.extend(sobrantes[:faltantes])
+        
+        # Mezclar resultado final
+        random.shuffle(preguntas_finales)
+        
+        # Limitar al total solicitado
+        preguntas = preguntas_finales[:total_preguntas]
+        
+        print(f"\n✅ Total final: {len(preguntas)} preguntas generadas")
         
         # Mapear tipos de pregunta al formato esperado por la UI
         tipo_map = {
@@ -1753,44 +1872,55 @@ async def evaluar_examen(datos: dict):
             
             porcentaje = (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0
             
-            # Guardar resultados si hay carpeta especificada
-            if carpeta_path:
-                try:
+            # Guardar resultados SIEMPRE (con o sin carpeta)
+            try:
+                # Si no hay carpeta, usar carpeta por defecto
+                if not carpeta_path:
+                    carpeta_path = "Examenes_Generales"
+                    carpeta_nombre = "Exámenes Generales"
+                    print(f"💾 Guardando en carpeta por defecto: {carpeta_path}")
+                else:
                     print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
                     carpeta = Path(carpeta_path)
                     if not carpeta.exists():
                         carpeta = Path("extracciones") / carpeta_path
+                    carpeta_nombre = carpeta.name
 
-                    carpeta_examenes = Path("examenes") / carpeta.relative_to(Path("extracciones"))
-                    carpeta_examenes.mkdir(parents=True, exist_ok=True)
+                # Crear estructura en examenes/
+                carpeta_examenes = Path("examenes") / carpeta_path
+                carpeta_examenes.mkdir(parents=True, exist_ok=True)
 
-                    fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    archivo_resultado = carpeta_examenes / f"examen_{fecha}.json"
+                fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archivo_resultado = carpeta_examenes / f"examen_{fecha}.json"
 
-                    resultado_completo = {
-                        "id": fecha,
-                        "archivo": f"examen_{fecha}.json",
-                        "fecha_completado": datetime.now().isoformat(),
-                        "carpeta_ruta": str(carpeta.relative_to(Path("extracciones"))),
-                        "carpeta_nombre": carpeta.name,
-                        "puntos_obtenidos": puntos_obtenidos,
-                        "puntos_totales": puntos_totales,
-                        "porcentaje": porcentaje,
-                        "resultados": resultados,
-                        "tipo": "completado"
-                    }
+                resultado_completo = {
+                    "id": fecha,
+                    "archivo": f"examen_{fecha}.json",
+                    "fecha_completado": datetime.now().isoformat(),
+                    "carpeta_ruta": carpeta_path,
+                    "carpeta_nombre": carpeta_nombre,
+                    "puntos_obtenidos": puntos_obtenidos,
+                    "puntos_totales": puntos_totales,
+                    "porcentaje": porcentaje,
+                    "resultados": resultados,
+                    "tipo": "completado"
+                }
 
-                    with open(archivo_resultado, 'w', encoding='utf-8') as f:
-                        json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
+                with open(archivo_resultado, 'w', encoding='utf-8') as f:
+                    json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
 
-                    print(f"✅ Resultados guardados en: {archivo_resultado}")
+                print(f"✅ Resultados guardados en: {archivo_resultado}")
 
-                    carpeta_progreso = carpeta_examenes / "examenes_progreso"
-                    if carpeta_progreso.exists():
-                        for archivo in carpeta_progreso.glob("examen_progreso_*.json"):
-                            archivo.unlink()
-                except Exception as e:
-                    print(f"❌ Error guardando resultados: {e}")
+                # Limpiar exámenes en progreso de esta carpeta
+                carpeta_progreso = carpeta_examenes / "examenes_progreso"
+                if carpeta_progreso.exists():
+                    for archivo in carpeta_progreso.glob("examen_progreso_*.json"):
+                        archivo.unlink()
+                        print(f"🗑️ Examen en progreso eliminado: {archivo.name}")
+            except Exception as e:
+                print(f"❌ Error guardando resultados: {e}")
+                import traceback
+                traceback.print_exc()
 
             return {
                 "success": True,
@@ -1811,37 +1941,22 @@ async def evaluar_examen(datos: dict):
 async def pausar_examen(datos: dict):
     """Guarda el progreso de un examen para continuarlo después"""
     try:
-        carpeta_ruta = datos.get("carpeta_ruta")
-        carpeta_nombre = datos.get("carpeta_nombre")
+        carpeta_ruta = datos.get("carpeta_ruta") or "Examenes_Generales"
+        carpeta_nombre = datos.get("carpeta_nombre") or "Exámenes Generales"
         preguntas = datos.get("preguntas", [])
         respuestas = datos.get("respuestas", {})
         fecha_inicio = datos.get("fecha_inicio")
         
-        if not carpeta_ruta:
-            raise HTTPException(status_code=400, detail="Falta la ruta de la carpeta")
+        print(f"⏸️ Pausando examen para carpeta: {carpeta_ruta}")
         
-        print(f"📝 Pausando examen para carpeta: {carpeta_ruta}")
-        
-        # Determinar ruta relativa desde extracciones/
-        carpeta = Path(carpeta_ruta)
-        if not carpeta.exists():
-            carpeta = Path("extracciones") / carpeta_ruta
-        
-        # Obtener ruta relativa respecto a extracciones
-        try:
-            ruta_relativa = carpeta.relative_to(Path("extracciones"))
-        except ValueError:
-            # Si no está en extracciones, usar la ruta tal cual
-            ruta_relativa = Path(carpeta_ruta)
-        
-        # Crear estructura paralela en examenes/
-        carpeta_examenes_base = Path("examenes") / ruta_relativa
+        # Crear estructura en examenes/
+        carpeta_examenes_base = Path("examenes") / carpeta_ruta
         carpeta_examenes_base.mkdir(parents=True, exist_ok=True)
         
         carpeta_examenes = carpeta_examenes_base / "examenes_progreso"
         carpeta_examenes.mkdir(parents=True, exist_ok=True)
         
-        print(f"   Guardando en estructura paralela: {carpeta_examenes}")
+        print(f"   📁 Guardando en: {carpeta_examenes}")
         
         # IMPORTANTE: Eliminar exámenes anteriores de esta misma carpeta
         # para evitar duplicados
@@ -1859,7 +1974,7 @@ async def pausar_examen(datos: dict):
         datos_progreso = {
             "id": fecha,
             "archivo": f"examen_progreso_{fecha}.json",
-            "carpeta_ruta": str(ruta_relativa),
+            "carpeta_ruta": carpeta_ruta,
             "carpeta_nombre": carpeta_nombre,
             "preguntas": preguntas,
             "respuestas": respuestas,
