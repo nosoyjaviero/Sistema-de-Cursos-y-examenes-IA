@@ -1228,6 +1228,27 @@ async def obtener_arbol():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/carpetas/info")
+async def obtener_info_carpeta(ruta: str = ""):
+    """Obtiene información detallada de una carpeta específica"""
+    try:
+        # Usar la función existente para obtener carpetas
+        resultado = cursos_db.listar_carpetas(ruta)
+        
+        # Contar documentos y subcarpetas
+        num_documentos = len(resultado.get('documentos', []))
+        num_subcarpetas = len(resultado.get('carpetas', []))
+        
+        return {
+            "num_documentos": num_documentos,
+            "num_subcarpetas": num_subcarpetas,
+            "ruta": ruta
+        }
+    except Exception as e:
+        print(f"❌ Error obteniendo info de carpeta: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/carpetas/archivos-recursivos")
 async def obtener_archivos_recursivos(ruta: str = ""):
     """Obtiene todos los archivos .txt recursivamente de una carpeta y sus subcarpetas"""

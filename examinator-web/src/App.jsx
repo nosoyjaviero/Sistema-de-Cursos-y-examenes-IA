@@ -98,6 +98,21 @@ function App() {
   const [respuestasUsuario, setRespuestasUsuario] = useState({})
   const [resultadoExamen, setResultadoExamen] = useState(null)
   const [examenCompletado, setExamenCompletado] = useState(false)
+  
+  // Estados para carpetas recientes en inicio (cursos, capítulos, clases, lecciones)
+  const [cursosRecientes, setCursosRecientes] = useState([])
+  const [capitulosRecientes, setCapitulosRecientes] = useState([])
+  const [clasesRecientes, setClasesRecientes] = useState([])
+  const [leccionesRecientes, setLeccionesRecientes] = useState([])
+  
+  // Estados para sesión de estudio
+  const [modalSesionAbierto, setModalSesionAbierto] = useState(false)
+  const [tiempoSesion, setTiempoSesion] = useState(30) // minutos
+  const [sesionActiva, setSesionActiva] = useState(false)
+  const [faseActual, setFaseActual] = useState('repaso') // 'repaso', 'practica', 'examen'
+  const [tiempoRestante, setTiempoRestante] = useState(0) // segundos
+  const [tiempoFaseActual, setTiempoFaseActual] = useState(0)
+  
   const [carpetaExamen, setCarpetaExamen] = useState(null)
   const [esPractica, setEsPractica] = useState(false) // 🔥 Flag para distinguir prácticas de exámenes
   const [flashcardsVolteadas, setFlashcardsVolteadas] = useState({}) // 🃏 Estado de volteo de flashcards
@@ -1003,6 +1018,11 @@ function App() {
     }
   }, []);
   
+  // Cargar cursos recientes cuando cambien las carpetas marcadas
+  useEffect(() => {
+    cargarCursosRecientes();
+  }, [carpetasMarcadas]);
+  
   // Marcar carpeta con un tipo específico
   const marcarCarpeta = (ruta, tipo) => {
     const nuevasMarcadas = {
@@ -1018,7 +1038,140 @@ function App() {
       tipo: 'success',
       texto: `✅ Carpeta marcada como ${tipo.toUpperCase()}`
     });
+    // Actualizar carpetas recientes según el tipo
+    cargarCarpetasRecientesPorTipo(tipo);
   };
+  
+  // Cargar carpetas recientes según tipo
+  const cargarCarpetasRecientesPorTipo = async (tipo) => {
+    try {
+      // Filtrar carpetas por tipo
+      const carpetasFiltradas = Object.entries(carpetasMarcadas)
+        .filter(([ruta, info]) => info.tipo === tipo)
+        .sort((a, b) => new Date(b[1].fecha) - new Date(a[1].fecha))
+        .slice(0, 5);
+      
+      // Obtener información detallada de cada carpeta
+      const carpetasConInfo = await Promise.all(
+        carpetasFiltradas.map(async ([ruta, info]) => {
+          try {
+            const response = await fetch(`${API_URL}/api/carpetas/info?ruta=${encodeURIComponent(ruta)}`);
+            const data = await response.json();
+            return {
+              ruta,
+              nombre: ruta.split('\\').pop() || tipo.charAt(0).toUpperCase() + tipo.slice(1),
+              num_documentos: data.num_documentos || 0,
+              num_subcarpetas: data.num_subcarpetas || 0,
+              fecha: info.fecha
+            };
+          } catch (error) {
+            console.error(`Error cargando info de ${ruta}:`, error);
+            return {
+              ruta,
+              nombre: ruta.split('\\').pop() || tipo.charAt(0).toUpperCase() + tipo.slice(1),
+              num_documentos: 0,
+              num_subcarpetas: 0,
+              fecha: info.fecha
+            };
+          }
+        })
+      );
+      
+      // Actualizar el estado correspondiente
+      switch(tipo) {
+        case 'curso':
+          setCursosRecientes(carpetasConInfo);
+          break;
+        case 'capitulo':
+          setCapitulosRecientes(carpetasConInfo);
+          break;
+        case 'clase':
+          setClasesRecientes(carpetasConInfo);
+          break;
+        case 'leccion':
+          setLeccionesRecientes(carpetasConInfo);
+          break;
+      }
+    } catch (error) {
+      console.error(`Error cargando ${tipo}s recientes:`, error);
+    }
+  };
+  
+  // Obtener últimos 5 de cada tipo
+  const cargarCursosRecientes = async () => {
+    await cargarCarpetasRecientesPorTipo('curso');
+    await cargarCarpetasRecientesPorTipo('capitulo');
+    await cargarCarpetasRecientesPorTipo('clase');
+    await cargarCarpetasRecientesPorTipo('leccion');
+  };
+  
+  // ========== FUNCIONES PARA SESIÓN DE ESTUDIO ==========
+  
+  const iniciarSesion = () => {
+    const tiempoEnSegundos = tiempoSesion * 60;
+    setTiempoRestante(tiempoEnSegundos);
+    setTiempoFaseActual(tiempoEnSegundos / 3); // Dividir en 3 fases
+    setFaseActual('repaso');
+    setSesionActiva(true);
+    setModalSesionAbierto(false);
+  };
+  
+  const detenerSesion = () => {
+    setSesionActiva(false);
+    setTiempoRestante(0);
+    setFaseActual('repaso');
+  };
+  
+  const obtenerNombreFase = (fase) => {
+    const fases = {
+      'repaso': 'Repaso de Flashcards 📚',
+      'practica': 'Práctica Activa ✍️',
+      'examen': 'Evaluación Final 🎯'
+    };
+    return fases[fase] || fase;
+  };
+  
+  const obtenerSiguienteFase = (faseActual) => {
+    const fases = {
+      'repaso': 'Práctica Activa',
+      'practica': 'Evaluación Final',
+      'examen': 'Sesión Completa'
+    };
+    return fases[faseActual] || '';
+  };
+  
+  // Timer de la sesión
+  useEffect(() => {
+    let intervalo;
+    if (sesionActiva && tiempoRestante > 0) {
+      intervalo = setInterval(() => {
+        setTiempoRestante(prev => {
+          if (prev <= 1) {
+            // Cambiar de fase o finalizar
+            const tiempoTotal = tiempoSesion * 60;
+            const tiempoPorFase = tiempoTotal / 3;
+            
+            if (faseActual === 'repaso') {
+              setFaseActual('practica');
+              return tiempoPorFase;
+            } else if (faseActual === 'practica') {
+              setFaseActual('examen');
+              return tiempoPorFase;
+            } else {
+              setSesionActiva(false);
+              setMensaje({
+                tipo: 'success',
+                texto: '🎉 ¡Sesión de estudio completada! Excelente trabajo.'
+              });
+              return 0;
+            }
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(intervalo);
+  }, [sesionActiva, tiempoRestante, faseActual, tiempoSesion]);
   
   // Obtener todos los archivos recursivamente de una carpeta
   const obtenerArchivosRecursivos = async (ruta) => {
@@ -5548,60 +5701,184 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
         {selectedMenu === 'inicio' && (
           <div className="welcome-section">
-            <h1>Bienvenido a Examinator</h1>
-            <p className="subtitle">Genera exámenes personalizados con inteligencia artificial</p>
+            <h1>📚 Mis Carpetas Recientes</h1>
+            <p className="subtitle">Accede rápidamente a tus cursos, capítulos, clases y lecciones marcadas</p>
             
-            <div className="feature-cards">
-              <div className="feature-card upload-card">
-                <div className="feature-icon">📄</div>
-                <h3>Carga documentos</h3>
-                <p>Sube archivos PDF con el contenido de estudio</p>
-                
-                <div className="upload-section">
-                  <label className="btn-upload">
-                    {loading ? '⏳ Procesando...' : '📤 Subir PDF'}
-                    <input 
-                      type="file" 
-                      accept=".pdf" 
-                      onChange={handleFileUpload}
-                      disabled={loading}
-                      style={{display: 'none'}}
-                    />
-                  </label>
-                  
-                  <p style={{color: '#a0a0b0', fontSize: '0.9rem', marginTop: '0.5rem'}}>
-                    Los PDFs se guardarán en la carpeta raíz. Organízalos desde "Mis Cursos"
-                  </p>
+            {/* BOTÓN COMENZAR - Primera fila */}
+            <div className="seccion-comenzar">
+              <button 
+                className="btn-comenzar"
+                onClick={() => setModalSesionAbierto(true)}
+              >
+                <div className="comenzar-icon">🚀</div>
+                <div className="comenzar-content">
+                  <h3>¡Comienza a Estudiar!</h3>
+                  <p>Organiza tus cursos y genera exámenes con IA</p>
+                </div>
+                <div className="comenzar-arrow">→</div>
+              </button>
+            </div>
+
+            {/* CURSOS */}
+            {cursosRecientes.length > 0 && (
+              <div className="seccion-carpetas">
+                <h2 className="titulo-seccion">📚 Cursos</h2>
+                <div className="cursos-recientes-grid">
+                  {cursosRecientes.map(curso => (
+                    <div 
+                      key={curso.ruta} 
+                      className="curso-card"
+                      onClick={() => {
+                        setSelectedMenu('cursos');
+                        cargarCarpeta(curso.ruta);
+                      }}
+                    >
+                      <div className="curso-icon">📁</div>
+                      <div className="curso-nombre">{curso.nombre}</div>
+                      <div className="curso-rendimiento">
+                        <span className="rendimiento-label">Rendimiento</span>
+                      </div>
+                      <div className="curso-stats">
+                        <div className="stat-item">
+                          <div className="stat-value">{curso.num_documentos}</div>
+                          <div className="stat-label">Documentos</div>
+                        </div>
+                        <div className="stat-divider"></div>
+                        <div className="stat-item">
+                          <div className="stat-value">{curso.num_subcarpetas}</div>
+                          <div className="stat-label">Carpetas</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
+            )}
 
-              <div className="feature-card">
-                <div className="feature-icon">🤖</div>
-                <h3>IA Avanzada</h3>
-                <p>Utiliza modelos de lenguaje para generar preguntas inteligentes</p>
+            {/* CAPÍTULOS */}
+            {capitulosRecientes.length > 0 && (
+              <div className="seccion-carpetas">
+                <h2 className="titulo-seccion">📖 Capítulos</h2>
+                <div className="cursos-recientes-grid">
+                  {capitulosRecientes.map(capitulo => (
+                    <div 
+                      key={capitulo.ruta} 
+                      className="curso-card"
+                      onClick={() => {
+                        setSelectedMenu('cursos');
+                        cargarCarpeta(capitulo.ruta);
+                      }}
+                    >
+                      <div className="curso-icon">📁</div>
+                      <div className="curso-nombre">{capitulo.nombre}</div>
+                      <div className="curso-rendimiento">
+                        <span className="rendimiento-label">Rendimiento</span>
+                      </div>
+                      <div className="curso-stats">
+                        <div className="stat-item">
+                          <div className="stat-value">{capitulo.num_documentos}</div>
+                          <div className="stat-label">Documentos</div>
+                        </div>
+                        <div className="stat-divider"></div>
+                        <div className="stat-item">
+                          <div className="stat-value">{capitulo.num_subcarpetas}</div>
+                          <div className="stat-label">Carpetas</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              
-              <div className="feature-card">
-                <div className="feature-icon">✅</div>
-                <h3>Personalizable</h3>
-                <p>Ajusta el tipo y cantidad de preguntas según tus necesidades</p>
-              </div>
-            </div>
+            )}
 
-            <div className="quick-actions">
-              <button 
-                className="btn-primary"
-                onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
-              >
-                Organizar Carpetas
-              </button>
-              <button 
-                className="btn-secondary"
-                onClick={() => setSelectedMenu('generar')}
-              >
-                Generar Examen
-              </button>
-            </div>
+            {/* CLASES */}
+            {clasesRecientes.length > 0 && (
+              <div className="seccion-carpetas">
+                <h2 className="titulo-seccion">📑 Clases</h2>
+                <div className="cursos-recientes-grid">
+                  {clasesRecientes.map(clase => (
+                    <div 
+                      key={clase.ruta} 
+                      className="curso-card"
+                      onClick={() => {
+                        setSelectedMenu('cursos');
+                        cargarCarpeta(clase.ruta);
+                      }}
+                    >
+                      <div className="curso-icon">📁</div>
+                      <div className="curso-nombre">{clase.nombre}</div>
+                      <div className="curso-rendimiento">
+                        <span className="rendimiento-label">Rendimiento</span>
+                      </div>
+                      <div className="curso-stats">
+                        <div className="stat-item">
+                          <div className="stat-value">{clase.num_documentos}</div>
+                          <div className="stat-label">Documentos</div>
+                        </div>
+                        <div className="stat-divider"></div>
+                        <div className="stat-item">
+                          <div className="stat-value">{clase.num_subcarpetas}</div>
+                          <div className="stat-label">Carpetas</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* LECCIONES */}
+            {leccionesRecientes.length > 0 && (
+              <div className="seccion-carpetas">
+                <h2 className="titulo-seccion">📄 Lecciones</h2>
+                <div className="cursos-recientes-grid">
+                  {leccionesRecientes.map(leccion => (
+                    <div 
+                      key={leccion.ruta} 
+                      className="curso-card"
+                      onClick={() => {
+                        setSelectedMenu('cursos');
+                        cargarCarpeta(leccion.ruta);
+                      }}
+                    >
+                      <div className="curso-icon">📁</div>
+                      <div className="curso-nombre">{leccion.nombre}</div>
+                      <div className="curso-rendimiento">
+                        <span className="rendimiento-label">Rendimiento</span>
+                      </div>
+                      <div className="curso-stats">
+                        <div className="stat-item">
+                          <div className="stat-value">{leccion.num_documentos}</div>
+                          <div className="stat-label">Documentos</div>
+                        </div>
+                        <div className="stat-divider"></div>
+                        <div className="stat-item">
+                          <div className="stat-value">{leccion.num_subcarpetas}</div>
+                          <div className="stat-label">Carpetas</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Estado vacío */}
+            {cursosRecientes.length === 0 && capitulosRecientes.length === 0 && 
+             clasesRecientes.length === 0 && leccionesRecientes.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-icon">📚</div>
+                <h3>Aún no hay carpetas marcadas</h3>
+                <p>Ve a "Mis Cursos", selecciona una carpeta y márcala como curso, capítulo, clase o lección desde el menú de opciones (⋮) para que aparezca aquí</p>
+                <button 
+                  className="btn-primary"
+                  onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
+                  style={{marginTop: '1.5rem'}}
+                >
+                  Ir a Mis Cursos
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -5837,6 +6114,36 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                       ? `🧑‍💻 Generar práctica (${carpeta.num_documentos} docs)` 
                                       : 'No disponible: sin documentos'}
                                   </button>
+                                <hr style={{margin: '0.5rem 0', border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)'}} />
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  marcarCarpeta(carpeta.ruta, 'curso');
+                                }}>
+                                  📚 Marcar como CURSO
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  marcarCarpeta(carpeta.ruta, 'capitulo');
+                                }}>
+                                  📖 Marcar como CAPÍTULO
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  marcarCarpeta(carpeta.ruta, 'clase');
+                                }}>
+                                  📑 Marcar como CLASE
+                                </button>
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(null);
+                                  marcarCarpeta(carpeta.ruta, 'leccion');
+                                }}>
+                                  📄 Marcar como LECCIÓN
+                                </button>
+                                <hr style={{margin: '0.5rem 0', border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)'}} />
                                 <button onClick={(e) => {
                                   e.stopPropagation();
                                   setMenuAbierto(null);
@@ -16560,9 +16867,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                             <ChemToolbar 
                               onInsertStructure={(smiles) => {
+                                const currentContent = formDataFlashcard.contenido || '';
                                 setFormDataFlashcard({
                                   ...formDataFlashcard,
-                                  contenido: smiles
+                                  contenido: currentContent ? currentContent + '\n' + smiles : smiles
                                 })
                               }}
                             />
@@ -18807,6 +19115,138 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   </>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE SESIÓN DE ESTUDIO */}
+        {modalSesionAbierto && (
+          <div className="modal-overlay" onClick={() => setModalSesionAbierto(false)}>
+            <div className="modal-sesion" onClick={(e) => e.stopPropagation()}>
+              <button 
+                className="modal-close"
+                onClick={() => setModalSesionAbierto(false)}
+              >
+                ✕
+              </button>
+              
+              <div className="sesion-header">
+                <div className="sesion-icon">📚</div>
+                <h2>Comienza tu Sesión de Estudio</h2>
+                <p>Maximiza tu aprendizaje con un plan estructurado</p>
+              </div>
+
+              <div className="sesion-body">
+                <div className="tiempo-selector">
+                  <label>⏱️ ¿Cuánto tiempo dispones?</label>
+                  <div className="tiempo-opciones">
+                    {[15, 30, 45, 60, 90, 120].map(minutos => (
+                      <button
+                        key={minutos}
+                        className={`tiempo-opcion ${tiempoSesion === minutos ? 'active' : ''}`}
+                        onClick={() => setTiempoSesion(minutos)}
+                      >
+                        <span className="tiempo-valor">{minutos}</span>
+                        <span className="tiempo-label">min</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="fases-preview">
+                  <h3>📋 Plan de Estudio</h3>
+                  <div className="fases-lista">
+                    <div className="fase-item">
+                      <div className="fase-numero">1</div>
+                      <div className="fase-info">
+                        <h4>📚 Repaso de Flashcards</h4>
+                        <p>{Math.floor(tiempoSesion / 3)} minutos - Refresca conceptos clave</p>
+                      </div>
+                    </div>
+                    <div className="fase-divider">↓</div>
+                    <div className="fase-item">
+                      <div className="fase-numero">2</div>
+                      <div className="fase-info">
+                        <h4>✍️ Práctica Activa</h4>
+                        <p>{Math.floor(tiempoSesion / 3)} minutos - Aplica lo aprendido</p>
+                      </div>
+                    </div>
+                    <div className="fase-divider">↓</div>
+                    <div className="fase-item">
+                      <div className="fase-numero">3</div>
+                      <div className="fase-info">
+                        <h4>🎯 Evaluación Final</h4>
+                        <p>{Math.floor(tiempoSesion / 3)} minutos - Demuestra tu conocimiento</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button 
+                  className="btn-iniciar-sesion"
+                  onClick={iniciarSesion}
+                >
+                  <span className="btn-icon">🚀</span>
+                  <span className="btn-text">Comenzar Sesión</span>
+                  <span className="btn-arrow">→</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TIMER DE SESIÓN ACTIVA */}
+        {sesionActiva && (
+          <div className="timer-flotante">
+            <div className="timer-contenido">
+              <div className="timer-fase">
+                <span className="fase-label">Fase Actual</span>
+                <h3 className="fase-nombre">{obtenerNombreFase(faseActual)}</h3>
+              </div>
+              
+              <div className="timer-reloj">
+                <div className="tiempo-circular">
+                  <svg className="progreso-circular" viewBox="0 0 100 100">
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      fill="none"
+                      stroke="rgba(100, 108, 255, 0.2)"
+                      strokeWidth="8"
+                    />
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      fill="none"
+                      stroke="#646cff"
+                      strokeWidth="8"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(tiempoRestante / (tiempoFaseActual)) * 283} 283`}
+                      transform="rotate(-90 50 50)"
+                      style={{transition: 'stroke-dasharray 1s linear'}}
+                    />
+                  </svg>
+                  <div className="tiempo-texto">
+                    <span className="minutos">{Math.floor(tiempoRestante / 60)}</span>
+                    <span className="separador">:</span>
+                    <span className="segundos">{String(tiempoRestante % 60).padStart(2, '0')}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="timer-siguiente">
+                <span className="siguiente-label">Después:</span>
+                <span className="siguiente-fase">{obtenerSiguienteFase(faseActual)}</span>
+              </div>
+
+              <button 
+                className="btn-detener-sesion"
+                onClick={detenerSesion}
+              >
+                ⏹️ Detener Sesión
+              </button>
             </div>
           </div>
         )}

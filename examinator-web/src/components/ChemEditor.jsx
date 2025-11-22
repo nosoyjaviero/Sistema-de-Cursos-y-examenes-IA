@@ -47,6 +47,11 @@ const ChemEditor = ({ value, onChange, placeholder = 'Estructura química...' })
   const [inputSmiles, setInputSmiles] = useState(value || '')
   const [error, setError] = useState(null)
 
+  // Sincronizar cuando value cambie desde fuera
+  useEffect(() => {
+    setInputSmiles(value || '')
+  }, [value])
+
   useEffect(() => {
     if (canvasRef.current && inputSmiles) {
       try {

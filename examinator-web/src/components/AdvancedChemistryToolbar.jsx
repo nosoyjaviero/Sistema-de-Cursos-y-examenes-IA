@@ -185,6 +185,7 @@ function AdvancedChemistryToolbar({ onInsertComponent }) {
         {tabs.map(tab => (
           <button
             key={tab.id}
+            type="button"
             onClick={() => setActiveTab(tab.id)}
             style={{
               padding: '0.5rem 1rem',

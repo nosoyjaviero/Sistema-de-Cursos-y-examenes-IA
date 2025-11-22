@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { renderMixedContent } from '../utils/renderMixedContent';
 
 function GeometryCanvas({ value, onChange, placeholder }) {
   const [preview, setPreview] = useState(true);
@@ -97,7 +98,7 @@ function GeometryCanvas({ value, onChange, placeholder }) {
             whiteSpace: 'pre-wrap',
             letterSpacing: '0.3px'
           }}>
-            {value}
+            {renderMixedContent(value)}
           </div>
         </div>
       )}

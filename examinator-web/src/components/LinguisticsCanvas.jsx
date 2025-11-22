@@ -1,4 +1,30 @@
+import { useState } from 'react';
+import { renderMixedContent } from '../utils/renderMixedContent';
+
 const LinguisticsCanvas = ({ value, onChange, placeholder }) => {
+  const [renderMode, setRenderMode] = useState('enhanced');
+
+  // Función para destacar símbolos IPA
+  const highlightIPA = (text) => {
+    if (!text) return text;
+    
+    // Símbolos IPA para resaltar
+    const ipaSymbols = /([θðʃʒtʃdʒŋjwriːɪeæɑːʌɔːɒuːʊəɜːeɪaɪɔɪəʊaʊɪəeəʊəˈˌː])/g;
+    
+    return text.split('\n').map((line, i) => {
+      const parts = line.split(ipaSymbols);
+      return (
+        <div key={i}>
+          {parts.map((part, j) => 
+            part.match(ipaSymbols) ? (
+              <span key={j} style={{color: '#f9a8d4', fontWeight: '600', background: 'rgba(236, 72, 153, 0.15)', padding: '0 4px', borderRadius: '3px'}}>{part}</span>
+            ) : part
+          )}
+        </div>
+      );
+    });
+  };
+
   return (
     <div style={{
       background: 'rgba(236, 72, 153, 0.05)',
@@ -9,6 +35,28 @@ const LinguisticsCanvas = ({ value, onChange, placeholder }) => {
       flexDirection: 'column',
       gap: '1rem'
     }}>
+      {/* Controles */}
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+        <label style={{fontSize: '0.9rem', fontWeight: '600', color: '#fce7f3'}}>
+          🔊 Editor IPA/Fonética
+        </label>
+        <button
+          type="button"
+          onClick={() => setRenderMode(renderMode === 'enhanced' ? 'plain' : 'enhanced')}
+          style={{
+            padding: '0.4rem 0.8rem',
+            background: renderMode === 'enhanced' ? 'linear-gradient(135deg, #ec4899, #db2777)' : 'rgba(236, 72, 153, 0.2)',
+            border: '1px solid rgba(236, 72, 153, 0.4)',
+            borderRadius: '6px',
+            color: '#fce7f3',
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            fontWeight: '600'
+          }}
+        >
+          {renderMode === 'enhanced' ? '🎨 IPA Coloreado' : '📝 Texto Simple'}
+        </button>
+      </div>
       {/* Editor de texto */}
       <textarea
         value={value}
@@ -45,19 +93,31 @@ const LinguisticsCanvas = ({ value, onChange, placeholder }) => {
           textTransform: 'uppercase',
           letterSpacing: '0.05em'
         }}>
-          🔊 Vista Previa
+          🔊 Vista Previa {renderMode === 'enhanced' && '(IPA Destacado)'}
         </div>
-        <pre style={{
-          margin: 0,
-          color: '#fbcfe8',
-          fontFamily: 'monospace',
-          fontSize: '1rem',
-          lineHeight: '1.8',
-          whiteSpace: 'pre-wrap',
-          wordWrap: 'break-word'
-        }}>
-          {value || '(Vacío - Comienza a escribir arriba)'}
-        </pre>
+        {renderMode === 'enhanced' ? (
+          <div style={{
+            color: '#fbcfe8',
+            fontFamily: 'monospace',
+            fontSize: '1.1rem',
+            lineHeight: '2',
+            letterSpacing: '0.3px'
+          }}>
+            {value ? highlightIPA(value) : <span style={{color: '#94a3b8'}}>{'(Vacío - Comienza a escribir arriba)'}</span>}
+          </div>
+        ) : (
+          <pre style={{
+            margin: 0,
+            color: '#fbcfe8',
+            fontFamily: 'monospace',
+            fontSize: '1rem',
+            lineHeight: '1.8',
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word'
+          }}>
+            {value ? renderMixedContent(value) : '(Vacío - Comienza a escribir arriba)'}
+          </pre>
+        )}
       </div>
 
       {/* Guía rápida */}

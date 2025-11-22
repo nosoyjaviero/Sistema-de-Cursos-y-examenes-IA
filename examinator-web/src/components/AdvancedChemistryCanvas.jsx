@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { renderMixedContent } from '../utils/renderMixedContent';
 
 function AdvancedChemistryCanvas({ value, onChange, placeholder }) {
   const [preview, setPreview] = useState(true);
@@ -28,6 +29,7 @@ function AdvancedChemistryCanvas({ value, onChange, placeholder }) {
             ✍️ Editor de Química Avanzada
           </label>
           <button
+            type="button"
             onClick={() => setPreview(!preview)}
             style={{
               padding: '0.35rem 0.75rem',
@@ -96,7 +98,7 @@ function AdvancedChemistryCanvas({ value, onChange, placeholder }) {
             whiteSpace: 'pre-wrap',
             letterSpacing: '0.3px'
           }}>
-            {value}
+            {renderMixedContent(value)}
           </div>
         </div>
       )}

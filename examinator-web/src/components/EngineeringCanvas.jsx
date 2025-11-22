@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { renderMixedContent } from '../utils/renderMixedContent';
 
 const EngineeringCanvas = ({ value, onChange, placeholder }) => {
   const [components, setComponents] = useState([]);
@@ -16,28 +17,14 @@ const EngineeringCanvas = ({ value, onChange, placeholder }) => {
     onChange(newValue);
   };
 
-  const addComponent = (comp) => {
-    // Agregar como texto descriptivo
-    const newText = textMode 
-      ? textMode + '\n\n' + `[${comp.nombre}] ${comp.latex || comp.descripcion}`
-      : `[${comp.nombre}] ${comp.latex || comp.descripcion}`;
-    
-    setText(newText);
-    onChange(newText);
-  };
-
   return (
     <div style={{
       display: 'flex',
       flexDirection: 'column',
       gap: '1rem'
     }}>
-      {/* Editor de texto para diagrama */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem'
-      }}>
+      {/* Controles */}
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
         <label style={{
           color: '#fca5a5',
           fontSize: '0.9rem',
@@ -45,8 +32,32 @@ const EngineeringCanvas = ({ value, onChange, placeholder }) => {
           textTransform: 'uppercase',
           letterSpacing: '0.05em'
         }}>
-          Editor de Diagramas de Ingeniería
+          ⚙️ Editor de Ingeniería
         </label>
+        <button
+          type="button"
+          onClick={() => setRenderMode(renderMode === 'text' ? 'visual' : 'text')}
+          style={{
+            padding: '0.4rem 0.8rem',
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '6px',
+            color: '#fee2e2',
+            fontSize: '0.75rem',
+            cursor: 'pointer',
+            fontWeight: '600'
+          }}
+        >
+          {renderMode === 'text' ? '🎨 Vista Previa' : '📝 Solo Editor'}
+        </button>
+      </div>
+
+      {/* Editor de texto para diagrama */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem'
+      }}>
         
         <textarea
           value={textMode}
@@ -73,18 +84,28 @@ const EngineeringCanvas = ({ value, onChange, placeholder }) => {
       </div>
 
       {/* Vista previa (opcional) */}
-      {textMode && (
+      {renderMode === 'visual' && textMode && (
         <div style={{
-          padding: '1rem',
+          padding: '1.25rem',
           background: 'rgba(30, 41, 59, 0.8)',
           border: '2px solid rgba(239, 68, 68, 0.3)',
           borderRadius: '8px',
-          fontSize: '0.9rem',
+          fontSize: '0.95rem',
           color: '#cbd5e1',
           whiteSpace: 'pre-wrap',
           fontFamily: 'monospace',
-          lineHeight: '1.8'
+          lineHeight: '2',
+          letterSpacing: '0.3px'
         }}>
+          <div style={{
+            fontSize: '0.85rem',
+            fontWeight: '600',
+            color: '#fca5a5',
+            marginBottom: '0.75rem',
+            textTransform: 'uppercase'
+          }}>
+            ⚙️ Diagrama Renderizado
+          </div>
           {textMode}
         </div>
       )}

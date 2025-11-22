@@ -13,18 +13,18 @@ const ArtToolbar = ({ onInsertElement }) => {
 
   const elementos = {
     figuras: [
-      { nombre: 'Círculo', simbolo: '●', template: '<svg width="80" height="80"><circle cx="40" cy="40" r="35" fill="□" stroke="#000" stroke-width="2"/></svg>' },
-      { nombre: 'Cuadrado', simbolo: '■', template: '<svg width="80" height="80"><rect x="10" y="10" width="60" height="60" fill="□" stroke="#000" stroke-width="2"/></svg>' },
-      { nombre: 'Triángulo', simbolo: '▲', template: '<svg width="80" height="80"><polygon points="40,10 70,70 10,70" fill="□" stroke="#000" stroke-width="2"/></svg>' },
-      { nombre: 'Rectángulo', simbolo: '▭', template: '<svg width="120" height="60"><rect x="5" y="5" width="110" height="50" fill="□" stroke="#000" stroke-width="2"/></svg>' },
-      { nombre: 'Rectángulo redondeado', simbolo: '▢', template: '<svg width="120" height="60"><rect x="5" y="5" width="110" height="50" rx="10" fill="□" stroke="#000" stroke-width="2"/></svg>' },
-      { nombre: 'Línea recta', simbolo: '─', template: '<svg width="100" height="20"><line x1="5" y1="10" x2="95" y2="10" stroke="□" stroke-width="3"/></svg>' },
-      { nombre: 'Línea curva', simbolo: '〰', template: '<svg width="100" height="50"><path d="M 5 25 Q 30 5, 50 25 T 95 25" stroke="□" fill="none" stroke-width="3"/></svg>' },
-      { nombre: 'Flecha derecha', simbolo: '→', template: '<svg width="100" height="40"><path d="M 5 20 L 75 20 L 65 10 M 75 20 L 65 30" stroke="□" fill="none" stroke-width="3"/></svg>' },
-      { nombre: 'Flecha izquierda', simbolo: '←', template: '<svg width="100" height="40"><path d="M 95 20 L 25 20 L 35 10 M 25 20 L 35 30" stroke="□" fill="none" stroke-width="3"/></svg>' },
-      { nombre: 'Flecha arriba', simbolo: '↑', template: '<svg width="40" height="100"><path d="M 20 95 L 20 25 L 10 35 M 20 25 L 30 35" stroke="□" fill="none" stroke-width="3"/></svg>' },
-      { nombre: 'Flecha abajo', simbolo: '↓', template: '<svg width="40" height="100"><path d="M 20 5 L 20 75 L 10 65 M 20 75 L 30 65" stroke="□" fill="none" stroke-width="3"/></svg>' },
-      { nombre: 'Estrella', simbolo: '★', template: '<svg width="80" height="80"><polygon points="40,5 48,30 75,30 53,46 60,70 40,55 20,70 27,46 5,30 32,30" fill="□" stroke="#000" stroke-width="2"/></svg>' }
+      { nombre: 'Círculo', simbolo: '●', template: '⬤ (tamaño: □)' },
+      { nombre: 'Cuadrado', simbolo: '■', template: '◼ (tamaño: □)' },
+      { nombre: 'Triángulo', simbolo: '▲', template: '▲ (tamaño: □)' },
+      { nombre: 'Rectángulo', simbolo: '▭', template: '▬ (ancho: □, alto: □)' },
+      { nombre: 'Rectángulo redondeado', simbolo: '▢', template: '▢ (ancho: □, alto: □, radio: □)' },
+      { nombre: 'Línea recta', simbolo: '─', template: '━━━━━ (longitud: □)' },
+      { nombre: 'Línea curva', simbolo: '〰', template: '〰️〰️〰️ (amplitud: □)' },
+      { nombre: 'Flecha derecha', simbolo: '→', template: '➡️ (tamaño: □)' },
+      { nombre: 'Flecha izquierda', simbolo: '←', template: '⬅️ (tamaño: □)' },
+      { nombre: 'Flecha arriba', simbolo: '↑', template: '⬆️ (tamaño: □)' },
+      { nombre: 'Flecha abajo', simbolo: '↓', template: '⬇️ (tamaño: □)' },
+      { nombre: 'Estrella', simbolo: '★', template: '⭐ (tamaño: □, puntas: □)' }
     ],
     paletas: [
       { 
@@ -318,7 +318,7 @@ const ArtToolbar = ({ onInsertElement }) => {
               key={idx}
               type="button"
               onClick={() => {
-                const paletaTexto = `🎨 Paleta ${pal.nombre}:\n${pal.colores.map((c, i) => `${i + 1}. ${c}`).join('\n')}`;
+                const paletaTexto = `🎨 Paleta ${pal.nombre} (${pal.descripcion}):\n${pal.colores.map((c, i) => `█ ${c}`).join(' ')}`;
                 onInsertElement(paletaTexto);
               }}
               style={{
@@ -415,7 +415,7 @@ const ArtToolbar = ({ onInsertElement }) => {
               key={idx}
               type="button"
               onClick={() => {
-                const estiloTexto = `🖼️ ${est.nombre}\n${est.descripcion}\nFiltro: ${est.filtro}`;
+                const estiloTexto = `🖼️ Estilo: ${est.nombre}\n📝 ${est.descripcion}\n✨ Características: ${est.filtro}`;
                 onInsertElement(estiloTexto);
               }}
               style={{

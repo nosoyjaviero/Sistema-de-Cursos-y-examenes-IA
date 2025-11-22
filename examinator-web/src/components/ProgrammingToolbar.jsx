@@ -113,6 +113,7 @@ const ProgrammingToolbar = ({ onInsertComponent }) => {
         {tabs.map(tab => (
           <button
             key={tab.id}
+            type="button"
             onClick={() => setTabActiva(tab.id)}
             style={{
               padding: '0.5rem 1rem',

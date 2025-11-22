@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { renderMixedContent } from './utils/renderMixedContent';
 
 /**
  * 🎲 CANVAS DE PROBABILIDAD Y ESTADÍSTICA
@@ -31,6 +32,7 @@ export default function ProbabilityCanvas({ value, onChange }) {
           Contenido Estadístico
         </label>
         <button
+          type="button"
           onClick={() => setShowPreview(!showPreview)}
           style={{
             background: showPreview ? 'rgba(139, 92, 246, 0.2)' : 'rgba(71, 85, 105, 0.3)',
@@ -104,7 +106,7 @@ Todos los □ son espacios para completar."
             whiteSpace: 'pre-wrap',
             margin: 0
           }}>
-            {value}
+            {renderMixedContent(value)}
           </pre>
         </div>
       )}

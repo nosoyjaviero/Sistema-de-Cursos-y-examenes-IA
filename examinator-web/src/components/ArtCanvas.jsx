@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { renderMixedContent } from '../utils/renderMixedContent';
 
 const ArtCanvas = ({ value, onChange }) => {
   const [showPreview, setShowPreview] = useState(true);
@@ -38,6 +39,7 @@ const ArtCanvas = ({ value, onChange }) => {
       {/* Controles superiores */}
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
         <button
+          type="button"
           onClick={() => setShowPreview(!showPreview)}
           style={{
             padding: '0.6rem 1.2rem',
@@ -54,6 +56,7 @@ const ArtCanvas = ({ value, onChange }) => {
         </button>
 
         <button
+          type="button"
           onClick={() => setShowTimeline(!showTimeline)}
           style={{
             padding: '0.6rem 1.2rem',
@@ -70,6 +73,7 @@ const ArtCanvas = ({ value, onChange }) => {
         </button>
 
         <button
+          type="button"
           onClick={() => setShowPrompts(!showPrompts)}
           style={{
             padding: '0.6rem 1.2rem',
@@ -100,6 +104,7 @@ const ArtCanvas = ({ value, onChange }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {timelinePeriodos.map((per, idx) => (
               <button
+                type="button"
                 key={idx}
                 onClick={() => {
                   const timeline = `📅 ${per.periodo} (${per.años})\n   Artistas: ${per.artistas}\n   Obras: □\n   Conceptos: □`;
@@ -147,6 +152,7 @@ const ArtCanvas = ({ value, onChange }) => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
             {promptsVisuales.map((prompt, idx) => (
               <button
+                type="button"
                 key={idx}
                 onClick={() => onChange(value + '\n\n' + prompt + '\n□')}
                 style={{
@@ -178,6 +184,7 @@ const ArtCanvas = ({ value, onChange }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {analogiasVisuales.map((ana, idx) => (
               <button
+                type="button"
                 key={idx}
                 onClick={() => {
                   const texto = `${ana.analogia}\n  Concepto: ${ana.concepto}\n  Uso: ${ana.uso}`;
@@ -260,7 +267,7 @@ const ArtCanvas = ({ value, onChange }) => {
             whiteSpace: 'pre-wrap',
             fontFamily: 'monospace'
           }}>
-            {value || (
+            {value ? renderMixedContent(value) : (
               <span style={{ color: '#64748b', fontStyle: 'italic' }}>
                 La composición aparecerá aquí...
               </span>
