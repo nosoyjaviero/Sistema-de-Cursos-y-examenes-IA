@@ -1,6 +1,6 @@
 {
-  "id": "20251122_152722",
-  "archivo": "examen_progreso_20251122_152722.json",
+  "id": "20251122_154657",
+  "archivo": "examen_progreso_20251122_154657.json",
   "carpeta_ruta": "Platzi\\Prueba",
   "carpeta_nombre": "Prueba",
   "preguntas": [
@@ -310,8 +310,10 @@
       }
     }
   ],
-  "respuestas": {},
-  "fecha_inicio": "2025-11-22T21:27:22.204Z",
-  "fecha_pausa": "2025-11-22T15:27:22.519162",
+  "respuestas": {
+    "14": "B"
+  },
+  "fecha_inicio": "2025-11-22T21:46:57.671Z",
+  "fecha_pausa": "2025-11-22T15:46:57.680395",
   "tipo": "en_progreso"
 }
