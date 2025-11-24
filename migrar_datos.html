@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migrar Datos a Archivos</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px 40px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            width: 100%;
+            margin: 10px 0;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        #resultado {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        .info-text {
+            color: #FFD700;
+        }
+        ul {
+            text-align: left;
+            line-height: 1.8;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Migración de Datos</h1>
+        
+        <div class="info">
+            <h3>📋 ¿Qué hace esta herramienta?</h3>
+            <ul>
+                <li>✅ Migra tus <strong>notas</strong> de localStorage a archivos JSON</li>
+                <li>✅ Migra tus <strong>flashcards</strong> a archivos JSON</li>
+                <li>✅ Migra tus <strong>prácticas</strong> a archivos JSON</li>
+                <li>✅ Migra tus <strong>sesiones</strong> a archivos JSON</li>
+                <li>✅ Los archivos quedan en <code>extracciones/</code> para backups fáciles</li>
+            </ul>
+        </div>
+
+        <button onclick="migrarTodo()">📦 Migrar Todos los Datos</button>
+        <button onclick="verificarDatos()">🔍 Verificar Datos Actuales</button>
+        <button onclick="limpiarLocalStorage()">🗑️ Limpiar localStorage (después de migrar)</button>
+        
+        <div id="resultado"></div>
+    </div>
+
+    <script>
+        const resultado = document.getElementById('resultado');
+        const SERVER_IP = window.location.hostname;
+        const SERVER_PORT = 8000;
+
+        function log(msg, tipo = 'info') {
+            const timestamp = new Date().toLocaleTimeString('es-ES');
+            const color = tipo === 'success' ? '#4CAF50' : tipo === 'error' ? '#f44336' : '#FFD700';
+            resultado.innerHTML += `<span style="color: ${color}">[${timestamp}] ${msg}</span>\n`;
+            resultado.scrollTop = resultado.scrollHeight;
+        }
+
+        async function migrarTodo() {
+            resultado.innerHTML = '';
+            log('🔄 Iniciando migración completa...', 'info');
+            
+            const tipos = ['notas', 'flashcards', 'practicas'];
+            let totalMigrado = 0;
+            
+            for (const tipo of tipos) {
+                try {
+                    const data = localStorage.getItem(tipo);
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        log(`📦 Migrando ${tipo}: ${parsed.length} elementos`, 'info');
+                        
+                        const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/${tipo}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: data
+                        });
+                        
+                        if (response.ok) {
+                            const result = await response.json();
+                            log(`✅ ${tipo}: ${result.count} elementos migrados correctamente`, 'success');
+                            totalMigrado += result.count;
+                        } else {
+                            log(`❌ Error migrando ${tipo}`, 'error');
+                        }
+                    } else {
+                        log(`ℹ️  No hay datos de ${tipo} en localStorage`, 'info');
+                    }
+                } catch (e) {
+                    log(`❌ Error con ${tipo}: ${e.message}`, 'error');
+                }
+            }
+            
+            // Migrar sesiones completadas
+            try {
+                const sesiones = localStorage.getItem('sesiones_completadas');
+                if (sesiones) {
+                    const parsed = JSON.parse(sesiones);
+                    log(`📦 Migrando sesiones completadas: ${parsed.length} sesiones`, 'info');
+                    const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/sesiones/completadas`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: sesiones
+                    });
+                    if (response.ok) {
+                        log('✅ Sesiones completadas migradas', 'success');
+                    }
+                }
+            } catch (e) {
+                log(`❌ Error migrando sesiones: ${e.message}`, 'error');
+            }
+            
+            // Migrar sesión activa
+            try {
+                const sesionActiva = localStorage.getItem('examinator_sesion_activa');
+                if (sesionActiva) {
+                    log('📦 Migrando sesión activa...', 'info');
+                    const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/sesion/activa`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: sesionActiva
+                    });
+                    if (response.ok) {
+                        log('✅ Sesión activa migrada', 'success');
+                    }
+                }
+            } catch (e) {
+                log(`❌ Error migrando sesión activa: ${e.message}`, 'error');
+            }
+            
+            log('', 'info');
+            log('🎉 ¡Migración completada!', 'success');
+            log(`📊 Total: ${totalMigrado} elementos migrados`, 'success');
+            log('💾 Ubicación: C:\\Users\\Fela\\Documents\\Proyectos\\Examinator\\extracciones\\', 'info');
+            log('', 'info');
+            log('⚠️  IMPORTANTE: Ahora ejecuta "Limpiar localStorage" para liberar espacio', 'info');
+        }
+
+        async function verificarDatos() {
+            resultado.innerHTML = '';
+            log('🔍 Verificando datos actuales...', 'info');
+            log('', 'info');
+            
+            const tipos = ['notas', 'flashcards', 'practicas', 'sesiones_completadas', 'examinator_sesion_activa'];
+            
+            log('📱 localStorage:', 'info');
+            for (const tipo of tipos) {
+                const data = localStorage.getItem(tipo);
+                if (data) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        const count = Array.isArray(parsed) ? parsed.length : 1;
+                        log(`  • ${tipo}: ${count} elementos`, 'info');
+                    } catch (e) {
+                        log(`  • ${tipo}: datos corruptos`, 'error');
+                    }
+                } else {
+                    log(`  • ${tipo}: vacío`, 'info');
+                }
+            }
+            
+            log('', 'info');
+            log('💾 Archivos guardados:', 'info');
+            
+            const tiposArchivo = ['notas', 'flashcards', 'practicas'];
+            for (const tipo of tiposArchivo) {
+                try {
+                    const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/${tipo}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        log(`  • ${tipo}.json: ${data.length} elementos`, 'success');
+                    }
+                } catch (e) {
+                    log(`  • ${tipo}.json: no existe o error`, 'error');
+                }
+            }
+            
+            // Verificar sesiones
+            try {
+                const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/sesiones/completadas`);
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`  • completadas.json: ${data.length} sesiones`, 'success');
+                }
+            } catch (e) {}
+            
+            try {
+                const response = await fetch(`http://${SERVER_IP}:${SERVER_PORT}/datos/sesion/activa`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const hasData = Object.keys(data).length > 0;
+                    log(`  • activa.json: ${hasData ? 'con datos' : 'vacío'}`, hasData ? 'success' : 'info');
+                }
+            } catch (e) {}
+        }
+
+        function limpiarLocalStorage() {
+            if (!confirm('⚠️ ¿Estás seguro de que ya migraste todos los datos?\n\nEsta acción es IRREVERSIBLE.')) {
+                return;
+            }
+            
+            resultado.innerHTML = '';
+            log('🗑️ Limpiando localStorage...', 'info');
+            
+            const tipos = ['notas', 'flashcards', 'practicas', 'sesiones_completadas', 'examinator_sesion_activa'];
+            
+            for (const tipo of tipos) {
+                const data = localStorage.getItem(tipo);
+                if (data) {
+                    localStorage.removeItem(tipo);
+                    log(`✅ Eliminado: ${tipo}`, 'success');
+                }
+            }
+            
+            log('', 'info');
+            log('🎉 localStorage limpiado', 'success');
+            log('💡 Ahora la app usará los archivos JSON en extracciones/', 'info');
+        }
+
+        // Verificar al cargar
+        window.addEventListener('load', verificarDatos);
+    </script>
+</body>
+</html>

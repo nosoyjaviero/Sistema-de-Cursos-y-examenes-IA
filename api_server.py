@@ -1,7 +1,7 @@
 """
 API Backend para Examinator Web
 """
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pathlib import Path
@@ -2306,8 +2306,6 @@ async def listar_examenes():
 # =============================
 # TIMER SYNC ENDPOINTS
 # =============================
-from fastapi import Request
-from fastapi.responses import JSONResponse
 TIMER_SYNC_PATH = Path("timer_sync_state.json")
 
 @app.get("/timer_sync")
@@ -2319,10 +2317,10 @@ def get_timer_sync():
     return JSONResponse(content={"timer": 0, "enPausa": False, "pausaRestante": 0, "ultimoUpdate": None})
 
 @app.post("/timer_sync")
-def set_timer_sync(request: Request):
+async def set_timer_sync(request: Request):
     data = None
     try:
-        data = asyncio.run(request.json())
+        data = await request.json()
     except Exception:
         return JSONResponse(content={"error": "JSON inválido"}, status_code=400)
     if not isinstance(data, dict):
@@ -2334,3 +2332,93 @@ def set_timer_sync(request: Request):
 
 
 
+# =============================
+# GESTIÓN DE DATOS PERSISTENTES (NOTAS, FLASHCARDS, PRÁCTICAS)
+# =============================
+EXTRACCIONES_PATH = Path("extracciones")
+
+@app.get("/datos/{tipo}")
+def get_datos(tipo: str):
+    """Lee notas, flashcards o prácticas desde archivos JSON"""
+    try:
+        archivo = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
+        if archivo.exists():
+            with open(archivo, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return JSONResponse(content=data)
+        return JSONResponse(content=[])
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/{tipo}")
+async def set_datos(tipo: str, request: Request):
+    """Guarda notas, flashcards o prácticas en archivos JSON"""
+    try:
+        data = await request.json()
+        carpeta = EXTRACCIONES_PATH / tipo
+        carpeta.mkdir(parents=True, exist_ok=True)
+        archivo = carpeta / f"{tipo}.json"
+        with open(archivo, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return JSONResponse(content={"ok": True, "count": len(data) if isinstance(data, list) else 1})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/datos/sesiones/completadas")
+def get_sesiones_completadas():
+    """Lee sesiones completadas"""
+    try:
+        archivo = EXTRACCIONES_PATH / "sesiones" / "completadas.json"
+        if archivo.exists():
+            with open(archivo, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return JSONResponse(content=data)
+        return JSONResponse(content=[])
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/sesiones/completadas")
+async def set_sesiones_completadas(request: Request):
+    """Guarda sesiones completadas"""
+    try:
+        data = await request.json()
+        carpeta = EXTRACCIONES_PATH / "sesiones"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        archivo = carpeta / "completadas.json"
+        with open(archivo, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.get("/datos/sesion/activa")
+def get_sesion_activa():
+    """Lee la sesión activa"""
+    try:
+        archivo = EXTRACCIONES_PATH / "sesiones" / "activa.json"
+        if archivo.exists():
+            with open(archivo, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return JSONResponse(content=data)
+        return JSONResponse(content={})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/sesion/activa")
+async def set_sesion_activa(request: Request):
+    """Guarda la sesión activa"""
+    try:
+        data = await request.json()
+        carpeta = EXTRACCIONES_PATH / "sesiones"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        archivo = carpeta / "activa.json"
+        with open(archivo, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return JSONResponse(content={"ok": True})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

@@ -31,6 +31,142 @@ import VisualModeSelector from './VisualModeSelector';
 import ArtCanvas from './components/ArtCanvas';
 import ArtToolbar from './components/ArtToolbar';
 
+// ========================================
+// FUNCIONES HELPER PARA DATOS PERSISTENTES
+// ========================================
+const SERVER_IP = window.location.hostname;
+
+/**
+ * Obtiene datos (notas, flashcards, practicas) desde el backend
+ * @param {string} tipo - 'notas', 'flashcards' o 'practicas'
+ * @returns {Promise<Array>} Array de datos o array vacío si falla
+ */
+async function getDatos(tipo) {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/${tipo}`);
+    if (!response.ok) {
+      console.error(`Error al obtener ${tipo}: ${response.status}`);
+      return [];
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error(`Error de red al obtener ${tipo}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Guarda datos (notas, flashcards, practicas) en el backend
+ * @param {string} tipo - 'notas', 'flashcards' o 'practicas'
+ * @param {Array|Object} data - Datos a guardar
+ * @returns {Promise<boolean>} true si tuvo éxito, false si falló
+ */
+async function setDatos(tipo, data) {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/${tipo}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      console.error(`Error al guardar ${tipo}: ${response.status}`);
+      return false;
+    }
+    const result = await response.json();
+    return result.ok === true;
+  } catch (error) {
+    console.error(`Error de red al guardar ${tipo}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Obtiene sesiones completadas desde el backend
+ * @returns {Promise<Array>} Array de sesiones o array vacío si falla
+ */
+async function getSesionesCompletadas() {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/sesiones/completadas`);
+    if (!response.ok) {
+      console.error(`Error al obtener sesiones completadas: ${response.status}`);
+      return [];
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error de red al obtener sesiones completadas:', error);
+    return [];
+  }
+}
+
+/**
+ * Guarda sesiones completadas en el backend
+ * @param {Array} data - Array de sesiones completadas
+ * @returns {Promise<boolean>} true si tuvo éxito, false si falló
+ */
+async function setSesionesCompletadas(data) {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/sesiones/completadas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      console.error(`Error al guardar sesiones completadas: ${response.status}`);
+      return false;
+    }
+    const result = await response.json();
+    return result.ok === true;
+  } catch (error) {
+    console.error('Error de red al guardar sesiones completadas:', error);
+    return false;
+  }
+}
+
+/**
+ * Obtiene la sesión activa desde el backend
+ * @returns {Promise<Object>} Objeto de sesión activa o {} si falla
+ */
+async function getSesionActiva() {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/sesion/activa`);
+    if (!response.ok) {
+      console.error(`Error al obtener sesión activa: ${response.status}`);
+      return {};
+    }
+    const data = await response.json();
+    return typeof data === 'object' ? data : {};
+  } catch (error) {
+    console.error('Error de red al obtener sesión activa:', error);
+    return {};
+  }
+}
+
+/**
+ * Guarda la sesión activa en el backend
+ * @param {Object} data - Objeto de sesión activa
+ * @returns {Promise<boolean>} true si tuvo éxito, false si falló
+ */
+async function setSesionActiva(data) {
+  try {
+    const response = await fetch(`http://${SERVER_IP}:8000/datos/sesion/activa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) {
+      console.error(`Error al guardar sesión activa: ${response.status}`);
+      return false;
+    }
+    const result = await response.json();
+    return result.ok === true;
+  } catch (error) {
+    console.error('Error de red al guardar sesión activa:', error);
+    return false;
+  }
+}
+
 function App() {
   const [selectedMenu, setSelectedMenu] = useState('inicio')
   const [rutaActual, setRutaActual] = useState('')
@@ -526,6 +662,14 @@ function App() {
   // Ref para el editor de notas
   const editorRef = useRef(null)
 
+  // Estados para calendario de repasos (evitar localStorage directo en JSX)
+  const [datosCalendarioRepasos, setDatosCalendarioRepasos] = useState({
+    flashcards: [],
+    notas: [],
+    practicas: [],
+    examenes: []
+  });
+
   // Detectar automáticamente la URL del API
   // Si accedes desde otra IP (móvil/tablet), usa esa IP para el backend
   // Si accedes desde localhost, usa localhost
@@ -576,9 +720,32 @@ function App() {
 
   // Cargar prácticas desde localStorage al iniciar y cuando cambia el menú
   useEffect(() => {
-    const practicasGuardadas = localStorage.getItem('practicas');
-    if (practicasGuardadas) {
-      setPracticas(JSON.parse(practicasGuardadas));
+    const cargarPracticasIniciales = async () => {
+      const practicasGuardadas = await getDatos('practicas');
+      if (practicasGuardadas && practicasGuardadas.length > 0) {
+        setPracticas(practicasGuardadas);
+      }
+    };
+    cargarPracticasIniciales();
+  }, [selectedMenu]);
+
+  // Cargar datos para el calendario de repasos cuando se entra a historial
+  useEffect(() => {
+    if (selectedMenu === 'historial') {
+      const cargarDatosCalendario = async () => {
+        const flashcards = await getDatos('flashcards');
+        const notas = await getDatos('notas');
+        const practicas = await getDatos('practicas');
+        const examenes = JSON.parse(localStorage.getItem('examenes') || '[]'); // examenes aún usa localStorage
+        
+        setDatosCalendarioRepasos({
+          flashcards,
+          notas,
+          practicas,
+          examenes
+        });
+      };
+      cargarDatosCalendario();
     }
   }, [selectedMenu]);
 
@@ -726,12 +893,12 @@ function App() {
 
   // Event listener para clicks en enlaces de referencia a notas
   useEffect(() => {
-    const handleNotaClick = (e) => {
+    const handleNotaClick = async (e) => {
       const link = e.target.closest('a[data-nota-id]');
       if (link) {
         e.preventDefault();
         const notaId = parseInt(link.getAttribute('data-nota-id'));
-        const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]');
+        const notasActuales = await getDatos('notas');
         const nota = notasActuales.find(n => n.id === notaId);
         if (nota) {
           // Actualizar el estado de notas guardadas primero
@@ -1511,6 +1678,28 @@ function App() {
     }
     return () => clearInterval(intervaloDescanso);
   }, [sesionActiva, sesionPausada, enDescanso, tiempoHastaDescanso]);
+
+  // Sincronizar estado de la sesión con el backend cada 5 segundos (para red)
+  useEffect(() => {
+    let intervaloSincronizacion;
+    if (sesionActiva) {
+      intervaloSincronizacion = setInterval(async () => {
+        try {
+          // Guardar estado ligero para sincronización en red
+          const estadoSincronizado = {
+            timer: tiempoRestante,
+            fase: faseActual,
+            pausada: sesionPausada,
+            timestamp: Date.now()
+          };
+          await setSesionActiva(estadoSincronizado);
+        } catch (error) {
+          console.error('Error sincronizando timer:', error);
+        }
+      }, 5000); // Cada 5 segundos
+    }
+    return () => clearInterval(intervaloSincronizacion);
+  }, [sesionActiva, tiempoRestante, faseActual, sesionPausada]);
   
   const iniciarDescanso = (duracion) => {
     setEnDescanso(true);
@@ -1675,11 +1864,10 @@ function App() {
       setErroresActuales(errores);
       setIndiceErrorActual(0);
       
-      // Cargar flashcards desde localStorage
-      const flashcardsGuardadas = localStorage.getItem('flashcards');
-      if (flashcardsGuardadas) {
+      // Cargar flashcards desde archivo
+      const cargarFlashcardsAsync = async () => {
         try {
-          const todasFlashcards = JSON.parse(flashcardsGuardadas);
+          const todasFlashcards = await getDatos('flashcards');
           
           // Filtrar flashcards que necesitan repaso (según repetición espaciada)
           const flashcardsParaRepasar = filtrarItemsParaRepasar(todasFlashcards);
@@ -1703,9 +1891,8 @@ function App() {
           console.error('Error parseando flashcards:', error);
           setFlashcardsSesion([]);
         }
-      } else {
-        setFlashcardsSesion([]);
-      }
+      };
+      cargarFlashcardsAsync();
       
     } catch (error) {
       console.error('Error cargando datos de sesión:', error);
@@ -1893,10 +2080,10 @@ function App() {
    * @param {String} rutaCarpeta - Ruta de la carpeta
    * @returns {Object} Estadísticas de rendimiento
    */
-  const calcularRendimientoCarpeta = (rutaCarpeta) => {
-    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
-    const notas = JSON.parse(localStorage.getItem('notas') || '[]');
-    const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+  const calcularRendimientoCarpeta = async (rutaCarpeta) => {
+    const flashcards = await getDatos('flashcards');
+    const notas = await getDatos('notas');
+    const practicas = await getDatos('practicas');
     
     const itemsCarpeta = [
       ...flashcards.filter(f => f.carpeta && f.carpeta.includes(rutaCarpeta)),
@@ -1997,12 +2184,12 @@ function App() {
   // 🎴 FUNCIONES FASE 3 - FLASHCARDS
   // ============================================
   
-  const evaluarFlashcard = (dificultad) => {
+  const evaluarFlashcard = async (dificultad) => {
     // dificultad: 'facil', 'medio', 'dificil'
     const flashcardActual = flashcardsSesion[indiceFlashcardActual];
     
     // Actualizar flashcard con algoritmo SM-2 (SuperMemo 2)
-    const flashcardsGuardadas = JSON.parse(localStorage.getItem('flashcards') || '[]');
+    const flashcardsGuardadas = await getDatos('flashcards');
     const flashcardsActualizadas = flashcardsGuardadas.map(f => {
       if (f.id === flashcardActual.id) {
         return calcularProximaRevision(f, dificultad);
@@ -2010,8 +2197,8 @@ function App() {
       return f;
     });
     
-    // Guardar en localStorage
-    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas));
+    // Guardar en archivo
+    await setDatos('flashcards', flashcardsActualizadas);
     setFlashcardsActuales(flashcardsActualizadas);
     
     console.log('📊 Flashcard evaluada:', {
@@ -2059,9 +2246,11 @@ function App() {
   // Cargar carpetas para fase de calentamiento
   const cargarCarpetasCalentamiento = async (ruta = '') => {
     try {
-      const url = `${API_URL}/api/cursos/carpetas?ruta=${encodeURIComponent(ruta)}`
+      const url = `${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`
+      console.log('🔥 Cargando carpetas de calentamiento desde:', url);
       const response = await fetch(url)
       const data = await response.json()
+      console.log('✅ Carpetas de calentamiento cargadas:', data.carpetas?.length || 0);
       setCarpetasCalentamiento(data.carpetas || [])
       setRutaCalentamientoActual(ruta)
     } catch (error) {
@@ -2242,10 +2431,10 @@ function App() {
           estadoRevision: 'nueva'
         }
         
-        // Guardar en localStorage con la clave correcta 'notas'
-        const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]')
-        notasActuales.push(nuevaNota)
-        localStorage.setItem('notas', JSON.stringify(notasActuales))
+        // Guardar en archivo con la nueva API
+        const notasActuales = await getDatos('notas');
+        notasActuales.push(nuevaNota);
+        await setDatos('notas', notasActuales);
         
         // Actualizar el estado de notas guardadas
         setNotasGuardadas(notasActuales)
@@ -2660,9 +2849,9 @@ function App() {
       }
       
       // Guardar flashcards (en producción: POST /api/flashcards/bulk-create)
-      const flashcardsExistentes = JSON.parse(localStorage.getItem('flashcards') || '[]');
+      const flashcardsExistentes = await getDatos('flashcards');
       const todasFlashcards = [...flashcardsExistentes, ...flashcardsNuevas];
-      localStorage.setItem('flashcards', JSON.stringify(todasFlashcards));
+      await setDatos('flashcards', todasFlashcards);
       
       setMensaje({
         tipo: 'success',
@@ -3049,10 +3238,10 @@ function App() {
         }
       };
       
-      // Guardar en localStorage (en producción: POST /api/session/finalize)
-      const sesionesGuardadas = JSON.parse(localStorage.getItem('sesiones_completadas') || '[]');
+      // Guardar en archivo (en producción: POST /api/session/finalize)
+      const sesionesGuardadas = await getSesionesCompletadas();
       sesionesGuardadas.push(payload);
-      localStorage.setItem('sesiones_completadas', JSON.stringify(sesionesGuardadas));
+      await setSesionesCompletadas(sesionesGuardadas);
       
       // Simular delay de red
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -3166,7 +3355,7 @@ function App() {
   // FUNCIONES DE PERSISTENCIA DE SESIÓN
   // ============================================
   
-  const guardarEstadoSesion = () => {
+  const guardarEstadoSesion = async () => {
     if (!sesionActiva) return;
     
     const estadoCompleto = {
@@ -3240,7 +3429,7 @@ function App() {
     };
     
     try {
-      localStorage.setItem('examinator_sesion_activa', JSON.stringify(estadoCompleto));
+      await setSesionActiva(estadoCompleto);
       setEstadoGuardado(true);
       setTimeout(() => setEstadoGuardado(false), 2000);
       console.log('✅ Estado de sesión guardado correctamente');
@@ -3249,17 +3438,15 @@ function App() {
     }
   };
   
-  const cargarEstadoSesion = () => {
+  const cargarEstadoSesion = async () => {
     try {
-      const datosGuardados = localStorage.getItem('examinator_sesion_activa');
-      if (!datosGuardados) return null;
-      
-      const estado = JSON.parse(datosGuardados);
+      const estado = await getSesionActiva();
+      if (!estado || Object.keys(estado).length === 0) return null;
       
       // Verificar expiración (24 horas)
       if (Date.now() > estado.expiracion) {
         console.log('⏰ Sesión expirada, eliminando...');
-        localStorage.removeItem('examinator_sesion_activa');
+        await setSesionActiva({});
         return null;
       }
       
@@ -6051,7 +6238,7 @@ JSON:`
         console.log('✅ ResultadoExamen guardado:', data);
         
         // Guardar progreso de práctica si viene de una práctica
-        const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+        const practicas = await getDatos('practicas');
         
         // Buscar práctica activa (la más reciente sin completar o con mismas preguntas)
         const practicaIndex = practicas.findIndex(p => {
@@ -6073,7 +6260,7 @@ JSON:`
             porcentaje: data.porcentaje,
             resultados: data.resultados
           };
-          localStorage.setItem('practicas', JSON.stringify(practicas));
+          await setDatos('practicas', practicas);
           setPracticas([...practicas]); // Actualizar estado con nueva referencia para forzar re-render
           console.log('✅ Práctica actualizada a completada');
         } else {
@@ -6206,10 +6393,10 @@ JSON:`
   }
   
   // Cerrar examen
-  const cerrarExamen = () => {
+  const cerrarExamen = async () => {
     // Guardar progreso de práctica si no está completada
     if (!examenCompletado && preguntasExamen.length > 0) {
-      const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+      const practicas = await getDatos('practicas');
       const practicaIndex = practicas.findIndex(p => 
         p.preguntas.length === preguntasExamen.length &&
         JSON.stringify(p.preguntas) === JSON.stringify(preguntasExamen)
@@ -6218,7 +6405,7 @@ JSON:`
       if (practicaIndex !== -1) {
         // Actualizar respuestas parciales
         practicas[practicaIndex].respuestas = respuestasUsuario;
-        localStorage.setItem('practicas', JSON.stringify(practicas));
+        await setDatos('practicas', practicas);
         console.log('✅ Progreso guardado automáticamente');
       }
     }
@@ -6953,10 +7140,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           }
         };
         
-        // Guardar en localStorage
-        const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+        // Guardar en archivo
+        const practicas = await getDatos('practicas');
         practicas.push(nuevaPractica);
-        localStorage.setItem('practicas', JSON.stringify(practicas));
+        await setDatos('practicas', practicas);
         setPracticas(practicas); // Actualizar estado para forzar re-render
         
         // 🔥 ESTABLECER CARPETA DE PRÁCTICA (no examen)
@@ -7043,10 +7230,22 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
   // Cargar notas al iniciar
   useEffect(() => {
-    const notasGuardadas = localStorage.getItem('notas')
-    if (notasGuardadas) {
-      setNotasGuardadas(JSON.parse(notasGuardadas))
-    }
+    const cargarNotasIniciales = async () => {
+      try {
+        console.log('📓 Cargando notas iniciales...')
+        const notasGuardadas = await getDatos('notas');
+        console.log('✅ Notas cargadas:', notasGuardadas?.length || 0)
+        if (notasGuardadas && notasGuardadas.length > 0) {
+          setNotasGuardadas(notasGuardadas);
+        } else {
+          setNotasGuardadas([]);
+        }
+      } catch (error) {
+        console.error('❌ Error cargando notas:', error)
+        setNotasGuardadas([]);
+      }
+    };
+    cargarNotasIniciales();
   }, [])
 
   // Cargar carpetas cuando cambia la ruta de notas
@@ -7063,7 +7262,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       if (target.tagName === 'A' && target.hasAttribute('data-nota-id')) {
         e.preventDefault();
         const notaId = parseInt(target.getAttribute('data-nota-id'));
-        const nota = notasGuardadas.find(n => n.id === notaId);
+        const nota = (notasGuardadas || []).find(n => n.id === notaId);
         if (nota) {
           abrirNota(nota);
         } else {
@@ -7231,7 +7430,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
   // Función para insertar enlace a nota desde menú contextual
   const insertarEnlaceNota = (notaId) => {
-    const notaRef = notasGuardadas.find(n => n.id === notaId);
+    const notaRef = (notasGuardadas || []).find(n => n.id === notaId);
     if (!notaRef) return;
     
     restaurarSeleccion();
@@ -7274,7 +7473,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   };
 
   const seleccionarNotaReferencia = (notaId) => {
-    const notaRef = notasGuardadas.find(n => n.id === notaId);
+    const notaRef = (notasGuardadas || []).find(n => n.id === notaId);
     if (!notaRef) return;
     
     restaurarSeleccion();
@@ -7296,7 +7495,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       setContenidoNota(editorRef.current.innerHTML);
     } else if (tipoHipervinculo === 'nota' && notaReferenciaId) {
       // Insertar referencia a nota con atributo especial
-      const notaRef = notasGuardadas.find(n => n.id === notaReferenciaId);
+      const notaRef = (notasGuardadas || []).find(n => n.id === notaReferenciaId);
       if (notaRef) {
         const link = `<a href="#nota-${notaReferenciaId}" data-nota-id="${notaReferenciaId}" style="color: #22c55e; text-decoration: underline; padding: 0; margin: 0; cursor: pointer;" title="Referencia a: ${notaRef.titulo}">${textoSeleccionado} 📝</a>`;
         document.execCommand('insertHTML', false, link);
@@ -7320,12 +7519,12 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     }
   };
 
-  const moverPractica = (practicaId, nuevaRuta) => {
-    const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+  const moverPractica = async (practicaId, nuevaRuta) => {
+    const practicas = await getDatos('practicas');
     const index = practicas.findIndex(p => p.id === practicaId);
     if (index !== -1) {
       practicas[index].carpeta = nuevaRuta;
-      localStorage.setItem('practicas', JSON.stringify(practicas));
+      await setDatos('practicas', practicas);
       setPracticas(practicas); // Actualizar estado
       setMensaje({
         tipo: 'success',
@@ -7335,6 +7534,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   };
 
   const crearNuevaNota = () => {
+    console.log('📝 Creando nueva nota en carpeta:', rutaNotasActual);
     setNotaActual(null)
     setTituloNota('')
     setContenidoNota('')
@@ -7407,7 +7607,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
       const notasActualizadas = [...notasGuardadas, notaNueva]
       setNotasGuardadas(notasActualizadas)
-      localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+      await setDatos('notas', notasActualizadas);
       
       setMensaje({
         tipo: 'success',
@@ -7448,11 +7648,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     setEditorNotaAbierto(true)
   }
 
-  const guardarNota = () => {
+  const guardarNota = async () => {
     if (!tituloNota.trim()) {
       alert('⚠️ Debes escribir un título para la nota')
       return
     }
+
+    console.log('💾 Guardando nota en carpeta:', carpetaNota);
 
     const notaNueva = {
       id: notaActual?.id || Date.now(),
@@ -7472,14 +7674,14 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     let notasActualizadas
     if (notaActual) {
       // Editar nota existente
-      notasActualizadas = notasGuardadas.map(n => n.id === notaActual.id ? notaNueva : n)
+      notasActualizadas = (notasGuardadas || []).map(n => n.id === notaActual.id ? notaNueva : n)
     } else {
       // Crear nota nueva
-      notasActualizadas = [...notasGuardadas, notaNueva]
+      notasActualizadas = [...(notasGuardadas || []), notaNueva]
     }
 
     setNotasGuardadas(notasActualizadas)
-    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    await setDatos('notas', notasActualizadas);
     
     setMensaje({
       tipo: 'success',
@@ -7489,12 +7691,12 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     setEditorNotaAbierto(false)
   }
 
-  const eliminarNota = (idNota) => {
+  const eliminarNota = async (idNota) => {
     if (!confirm('¿Estás seguro de eliminar esta nota?')) return
     
-    const notasActualizadas = notasGuardadas.filter(n => n.id !== idNota)
+    const notasActualizadas = (notasGuardadas || []).filter(n => n.id !== idNota)
     setNotasGuardadas(notasActualizadas)
-    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    await setDatos('notas', notasActualizadas);
     
     setMensaje({
       tipo: 'success',
@@ -7503,8 +7705,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
   
   // Evaluar comprensión de nota con repetición espaciada
-  const evaluarNota = (idNota, dificultad) => {
-    const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]');
+  const evaluarNota = async (idNota, dificultad) => {
+    const notasActuales = await getDatos('notas');
     const notasActualizadas = notasActuales.map(nota => {
       if (nota.id === idNota) {
         return calcularProximaRevision(nota, dificultad);
@@ -7512,7 +7714,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       return nota;
     });
     
-    localStorage.setItem('notas', JSON.stringify(notasActualizadas));
+    await setDatos('notas', notasActualizadas);
     setNotasGuardadas(notasActualizadas);
     
     console.log('📝 Nota evaluada:', {
@@ -7527,8 +7729,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   };
   
   // Evaluar práctica con repetición espaciada
-  const evaluarPractica = (idPractica, dificultad) => {
-    const practicasActuales = JSON.parse(localStorage.getItem('practicas') || '[]');
+  const evaluarPractica = async (idPractica, dificultad) => {
+    const practicasActuales = await getDatos('practicas');
     const practicasActualizadas = practicasActuales.map(practica => {
       if (practica.id === idPractica) {
         return calcularProximaRevision(practica, dificultad);
@@ -7536,7 +7738,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       return practica;
     });
     
-    localStorage.setItem('practicas', JSON.stringify(practicasActualizadas));
+    await setDatos('practicas', practicasActualizadas);
     setPracticas(practicasActualizadas);
     
     console.log('🎯 Práctica evaluada:', {
@@ -7592,12 +7794,22 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
   const cargarCarpetasNotas = async (ruta = '') => {
     try {
+      console.log('🔍 Cargando carpetas de notas, ruta:', ruta)
       const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
+      
+      if (!response.ok) {
+        console.error('❌ Error en respuesta:', response.status, response.statusText)
+        setCarpetasNotas([])
+        return
+      }
+      
       const data = await response.json()
+      console.log('✅ Carpetas cargadas:', data.carpetas?.length || 0)
       setCarpetasNotas(data.carpetas || [])
       setRutaNotasActual(ruta)
     } catch (error) {
-      console.error('Error cargando carpetas:', error)
+      console.error('❌ Error cargando carpetas:', error)
+      setCarpetasNotas([])
     }
   }
 
@@ -7605,17 +7817,20 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // FUNCIONES DEL SISTEMA DE FLASHCARDS
   // ============================================
 
-  // Cargar flashcards del localStorage
+  // Cargar flashcards del archivo
   useEffect(() => {
-    const flashcardsGuardadas = localStorage.getItem('flashcards')
-    if (flashcardsGuardadas) {
+    const cargarFlashcardsIniciales = async () => {
       try {
-        setFlashcardsActuales(JSON.parse(flashcardsGuardadas))
+        const flashcardsGuardadas = await getDatos('flashcards');
+        if (flashcardsGuardadas && flashcardsGuardadas.length > 0) {
+          setFlashcardsActuales(flashcardsGuardadas);
+        }
       } catch (error) {
-        console.error('Error cargando flashcards:', error)
-        setFlashcardsActuales([])
+        console.error('Error cargando flashcards:', error);
+        setFlashcardsActuales([]);
       }
-    }
+    };
+    cargarFlashcardsIniciales();
   }, [])
 
   // Cargar carpetas cuando entras a la sección de flashcards
@@ -7716,34 +7931,91 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     setResultadosBusqueda([]);
 
     try {
-      const response = await fetch('http://localhost:5001/api/buscar', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: queryBusqueda,
-          tipo: filtroBusquedaTipo === 'todos' ? null : filtroBusquedaTipo,
-          max_resultados: 20
-        })
-      });
+      const startTime = Date.now();
+      const resultados = [];
+      const query = queryBusqueda.toLowerCase();
 
-      if (!response.ok) {
-        throw new Error('Error en la búsqueda');
+      // Buscar en notas
+      if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'nota') {
+        const notas = await getDatos('notas');
+        console.log('🔍 Buscando en notas:', notas.length, 'notas cargadas');
+        console.log('🔍 Query:', query, '| Filtro:', filtroBusquedaTipo);
+        notas.forEach(nota => {
+          const tituloMatch = nota.titulo?.toLowerCase().includes(query);
+          const contenidoMatch = nota.contenido?.toLowerCase().includes(query);
+          
+          if (tituloMatch || contenidoMatch) {
+            console.log('✅ Nota encontrada:', nota.titulo);
+            resultados.push({
+              tipo: 'nota',
+              titulo: nota.titulo,
+              contenido: nota.contenido?.substring(0, 200) + '...',
+              ruta: nota.carpeta || 'Raíz',
+              id: nota.id,
+              relevancia: tituloMatch ? 10 : 5
+            });
+          }
+        });
       }
 
-      const data = await response.json();
-      setResultadosBusqueda(data.resultados || []);
+      // Buscar en flashcards
+      if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'flashcard') {
+        const flashcards = await getDatos('flashcards');
+        console.log('🔍 Buscando en flashcards:', flashcards.length, 'flashcards cargadas');
+        flashcards.forEach(fc => {
+          const preguntaMatch = fc.pregunta?.toLowerCase().includes(query);
+          const respuestaMatch = fc.respuesta?.toLowerCase().includes(query);
+          
+          if (preguntaMatch || respuestaMatch) {
+            console.log('✅ Flashcard encontrada:', fc.pregunta);
+            resultados.push({
+              tipo: 'flashcard',
+              titulo: fc.pregunta,
+              contenido: fc.respuesta?.substring(0, 200),
+              ruta: fc.carpeta || 'Raíz',
+              id: fc.id,
+              relevancia: preguntaMatch ? 10 : 5
+            });
+          }
+        });
+      }
+
+      // Buscar en documentos usando el API existente
+      try {
+        const response = await fetch(`${API_URL}/api/buscar?q=${encodeURIComponent(queryBusqueda)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.resultados) {
+            data.resultados.forEach(doc => {
+              resultados.push({
+                tipo: 'documento',
+                titulo: doc.nombre,
+                contenido: doc.preview || '',
+                ruta: doc.ruta,
+                relevancia: doc.score || 5
+              });
+            });
+          }
+        }
+      } catch (err) {
+        console.log('Búsqueda en documentos no disponible:', err);
+      }
+
+      // Ordenar por relevancia
+      resultados.sort((a, b) => b.relevancia - a.relevancia);
+
+      const tiempo = ((Date.now() - startTime) / 1000).toFixed(2);
+      setResultadosBusqueda(resultados);
       setMensaje({ 
         tipo: 'exito', 
-        texto: `✅ ${data.total} resultados en ${data.tiempo}s` 
+        texto: `✅ ${resultados.length} resultados encontrados en ${tiempo}s` 
       });
 
     } catch (error) {
       console.error('Error buscando:', error);
       setMensaje({ 
         tipo: 'error', 
-        texto: '❌ Error al buscar. Asegúrate de que el servidor esté corriendo (python api_buscador.py)' 
+        texto: '❌ Error al buscar. Verifica que el backend esté corriendo' 
       });
     } finally {
       setBuscando(false);
@@ -7801,6 +8073,102 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       }
     } catch (error) {
       console.error('Error cargando estado:', error);
+    }
+  };
+
+  const abrirResultadoBusqueda = async (resultado) => {
+    console.log('🔍 Abriendo resultado:', resultado);
+    console.log('🔍 Tipo de resultado:', resultado.tipo);
+    
+    switch(resultado.tipo) {
+      case 'nota':
+        console.log('📝 Procesando nota...');
+        // Buscar la nota por ID
+        const nota = (notasGuardadas || []).find(n => n.id === resultado.id);
+        console.log('📝 Nota encontrada en estado:', nota);
+        if (nota) {
+          // Cambiar a sección Notas y abrir
+          console.log('📝 Cambiando a sección notas...');
+          setSelectedMenu('notas');
+          setTimeout(() => {
+            console.log('📝 Abriendo nota...');
+            abrirNota(nota);
+          }, 100);
+        } else {
+          console.error('❌ Nota no encontrada en notasGuardadas');
+          setMensaje({ tipo: 'error', texto: '❌ Nota no encontrada' });
+        }
+        break;
+        
+      case 'flashcard':
+        console.log('🃏 Procesando flashcard...');
+        // Buscar la flashcard por ID  
+        const allFlashcards = await getDatos('flashcards');
+        console.log('🃏 Flashcards cargadas:', allFlashcards.length);
+        const flashcard = allFlashcards.find(f => f.id === resultado.id);
+        console.log('🃏 Flashcard encontrada:', flashcard);
+        if (flashcard) {
+          // Cambiar a sección Flashcards y abrir
+          console.log('🃏 Cambiando a sección flashcards...');
+          setSelectedMenu('flashcards');
+          setTimeout(() => {
+            console.log('🃏 Abriendo flashcard...');
+            setFlashcardSeleccionada(flashcard);
+            setMostrandoRespuesta(false);
+          }, 100);
+        } else {
+          console.error('❌ Flashcard no encontrada');
+          setMensaje({ tipo: 'error', texto: '❌ Flashcard no encontrada' });
+        }
+        break;
+        
+      case 'documento':
+        console.log('📄 Procesando documento...');
+        // Cambiar a Mis Cursos y abrir
+        setSelectedMenu('cursos');
+        setTimeout(() => {
+          console.log('📄 Abriendo documento...');
+          abrirArchivoBusqueda(resultado.ruta);
+        }, 100);
+        break;
+        
+      default:
+        console.warn('⚠️ Tipo no soportado:', resultado.tipo);
+        setMensaje({ tipo: 'info', texto: '📄 Tipo de archivo no soportado' });
+    }
+  };
+
+  const irARutaResultado = (resultado) => {
+    console.log('📍 Navegando a ruta:', resultado);
+    switch(resultado.tipo) {
+      case 'nota':
+        console.log('📝 Navegando a sección Notas, ruta:', resultado.ruta);
+        setSelectedMenu('notas');
+        if (resultado.ruta && resultado.ruta !== 'Raíz') {
+          setRutaNotasActual(resultado.ruta);
+        }
+        setMensaje({ tipo: 'exito', texto: '📝 Navegando a Notas...' });
+        break;
+        
+      case 'flashcard':
+        console.log('🃏 Navegando a sección Flashcards, ruta:', resultado.ruta);
+        setSelectedMenu('flashcards');
+        if (resultado.ruta && resultado.ruta !== 'Raíz') {
+          setCarpetaFlashcardActual(resultado.ruta);
+        }
+        setMensaje({ tipo: 'exito', texto: '🃏 Navegando a Flashcards...' });
+        break;
+        
+      case 'documento':
+        console.log('📄 Navegando a sección Mis Cursos, ruta:', resultado.ruta);
+        setSelectedMenu('cursos');
+        // Extraer la ruta de la carpeta del path completo
+        const rutaDoc = resultado.ruta.split('\\').slice(0, -1).join('\\');
+        if (rutaDoc) {
+          setRutaActual(rutaDoc);
+        }
+        setMensaje({ tipo: 'exito', texto: '📚 Navegando a Mis Cursos...' });
+        break;
     }
   };
 
@@ -7958,8 +8326,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
 
-  const guardarFlashcard = (flashcard) => {
-    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+  const guardarFlashcard = async (flashcard) => {
+    const flashcards = await getDatos('flashcards');
     
     const carpetaDestino = carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '';
     console.log('💾 Guardando flashcard:', {
@@ -8042,8 +8410,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       console.log('➕ Nueva flashcard agregada');
     }
 
-    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
-    console.log('💾 Guardado en localStorage:', {
+    await setDatos('flashcards', flashcardsActualizadas);
+    console.log('💾 Guardado en archivo:', {
       total: flashcardsActualizadas.length,
       ultimaFlashcard: nuevaFlashcard
     });
@@ -8063,13 +8431,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     })
   }
 
-  const eliminarFlashcard = (id) => {
+  const eliminarFlashcard = async (id) => {
     if (!confirm('¿Eliminar esta flashcard?')) return
     
-    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+    const flashcards = await getDatos('flashcards');
     const flashcardsActualizadas = flashcards.filter(f => f.id !== id)
     
-    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
+    await setDatos('flashcards', flashcardsActualizadas);
     setFlashcardsActuales(flashcardsActualizadas)
     
     // Recargar carpetas para actualizar el conteo
@@ -8089,11 +8457,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
   const moverNota = async (idNota, nuevaCarpeta) => {
-    const notasActualizadas = notasGuardadas.map(n => 
+    const notasActualizadas = (notasGuardadas || []).map(n => 
       n.id === idNota ? { ...n, carpeta: nuevaCarpeta } : n
     )
     setNotasGuardadas(notasActualizadas)
-    localStorage.setItem('notas', JSON.stringify(notasActualizadas))
+    await setDatos('notas', notasActualizadas);
     
     setMensaje({
       tipo: 'success',
@@ -11452,11 +11820,8 @@ Shortcuts:
               <h2>🔔 Próximos Repasos Programados</h2>
               
               {(() => {
-                // Obtener todos los items (con o sin próxima revisión)
-                const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
-                const notas = JSON.parse(localStorage.getItem('notas') || '[]');
-                const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
-                const examenes = JSON.parse(localStorage.getItem('examenes') || '[]');
+                // Usar datos del estado cargados por useEffect
+                const { flashcards, notas, practicas, examenes } = datosCalendarioRepasos;
                 
                 // IMPORTANTE: Mostrar estadísticas de TODOS los items
                 const totalFlashcards = flashcards.length;
@@ -11923,42 +12288,69 @@ Shortcuts:
                 
                 <div className="resultados-lista">
                   {resultadosBusqueda.map((resultado, idx) => {
-                    // Extraer nombre del archivo sin extensión
-                    const nombreArchivo = resultado.nombre_archivo?.replace(/\.(txt|md|pdf)$/i, '') || 'Documento';
+                    // Determinar el tipo y emoji
+                    const tipoConfig = {
+                      'nota': { emoji: '📝', color: '#22c55e', nombre: 'Nota' },
+                      'flashcard': { emoji: '🃏', color: '#667eea', nombre: 'Flashcard' },
+                      'documento': { emoji: '📄', color: '#3b82f6', nombre: 'Documento' }
+                    };
+                    const config = tipoConfig[resultado.tipo] || tipoConfig['documento'];
                     
-                    // Extraer ruta relativa desde extracciones/
-                    const rutaCompleta = resultado.ruta || '';
-                    const rutaRelativa = rutaCompleta.includes('extracciones') 
-                      ? rutaCompleta.split('extracciones')[1]?.replace(/\\/g, '/').substring(1) || rutaCompleta
-                      : rutaCompleta.replace(/\\/g, '/');
+                    // Título
+                    const titulo = resultado.titulo || resultado.nombre || 'Sin título';
                     
-                    // Limpiar contenido
-                    const contenidoLimpio = resultado.contenido
-                      ?.replace(/^\{.*?\}\s*/s, '') // Quitar JSON al inicio
-                      .replace(/^[\s\n]+/, '') // Quitar espacios iniciales
-                      .substring(0, 200) || '';
+                    // Contenido preview
+                    const contenidoLimpio = resultado.contenido?.substring(0, 200) || '';
                     
                     return (
-                      <div key={idx} className="resultado-busqueda-card" onClick={() => abrirArchivoBusqueda(resultado.ruta)}>
-                        {/* Título del archivo */}
-                        <div className="resultado-titulo-archivo">
-                          📄 {nombreArchivo}
+                      <div 
+                        key={idx} 
+                        className="resultado-busqueda-card" 
+                        onClick={() => abrirResultadoBusqueda(resultado)}
+                        style={{ cursor: 'pointer', borderLeft: `4px solid ${config.color}` }}
+                      >
+                        {/* Tipo y Título */}
+                        <div className="resultado-titulo-archivo" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '1.5rem' }}>{config.emoji}</span>
+                          <span style={{ fontWeight: '600' }}>{titulo}</span>
+                          <span style={{ 
+                            background: config.color, 
+                            color: 'white', 
+                            padding: '0.2rem 0.6rem', 
+                            borderRadius: '12px', 
+                            fontSize: '0.75rem',
+                            marginLeft: 'auto'
+                          }}>
+                            {config.nombre}
+                          </span>
                         </div>
                         
-                        {/* Párrafo/Contenido relevante con resaltado */}
+                        {/* Contenido con resaltado */}
                         <div className="resultado-parrafo">
                           {resaltarTexto(contenidoLimpio, queryBusqueda)}...
                         </div>
                         
-                        {/* Ruta del archivo */}
-                        <div className="resultado-ruta-completa">
-                          📁 {rutaRelativa}
+                        {/* Ruta con botón de navegación */}
+                        <div className="resultado-ruta-completa" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                          <span>📁 {resultado.ruta || resultado.carpeta || 'Sin carpeta'}</span>
+                          <button
+                            className="btn-secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              irARutaResultado(resultado);
+                            }}
+                            style={{ fontSize: '0.85rem', padding: '0.3rem 0.8rem' }}
+                          >
+                            📍 Ir a esta ruta
+                          </button>
                         </div>
                         
-                        {/* Score */}
-                        <div className="resultado-score-badge">
-                          Relevancia: {(resultado.score * 100).toFixed(0)}%
-                        </div>
+                        {/* Relevancia */}
+                        {resultado.relevancia && (
+                          <div className="resultado-score-badge">
+                            Relevancia: {resultado.relevancia * 10}%
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -12020,7 +12412,14 @@ Shortcuts:
           </div>
         )}
 
-        {selectedMenu === 'notas' && (
+        {selectedMenu === 'notas' && (() => {
+          console.log('🎯 RENDERIZANDO SECCIÓN DE NOTAS');
+          console.log('📊 Estado actual:', {
+            notasGuardadas: notasGuardadas?.length || 0,
+            carpetasNotas: carpetasNotas?.length || 0,
+            rutaNotasActual: rutaNotasActual
+          });
+          return (
           <div className="content-section">
             <div className="section-header">
               <h1>📓 Mis Notas</h1>
@@ -12089,7 +12488,7 @@ Shortcuts:
 
             {/* Notas filtradas por carpeta actual */}
             {(() => {
-              const notasFiltradas = notasGuardadas.filter(nota => 
+              const notasFiltradas = (notasGuardadas || []).filter(nota => 
                 (nota.carpeta || '') === rutaNotasActual
               );
 
@@ -12211,7 +12610,8 @@ Shortcuts:
               );
             })()}
           </div>
-        )}
+          );
+        })()}
 
         {selectedMenu === 'practicas' && (
           <div className="content-section">
@@ -12282,7 +12682,7 @@ Shortcuts:
             )}
 
             {(() => {
-              const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+              // Usar el estado 'practicas' que ya se carga con getDatos
               const practicasFiltradas = practicas.filter(p => (p.carpeta || '') === rutaPracticasActual);
               
               // Separar por completadas y sin completar
@@ -12395,10 +12795,10 @@ Shortcuts:
                               </button>
                               <button 
                                 className="btn-eliminar"
-                                onClick={() => {
+                                onClick={async () => {
                                   if (confirm(`¿Eliminar esta práctica?`)) {
                                     const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
-                                    localStorage.setItem('practicas', JSON.stringify(nuevasPracticas));
+                                    await setDatos('practicas', nuevasPracticas);
                                     setPracticas(nuevasPracticas); // Actualizar estado
                                   }
                                 }}
@@ -12542,10 +12942,10 @@ Shortcuts:
                               </button>
                               <button 
                                 className="btn-eliminar"
-                                onClick={() => {
+                                onClick={async () => {
                                   if (confirm(`¿Eliminar esta práctica?`)) {
                                     const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
-                                    localStorage.setItem('practicas', JSON.stringify(nuevasPracticas));
+                                    await setDatos('practicas', nuevasPracticas);
                                     setPracticas(nuevasPracticas); // Actualizar estado
                                   }
                                 }}
@@ -12570,7 +12970,7 @@ Shortcuts:
           <div className="content-section">
             <div className="section-header">
               <h1>🃏 Mis Flashcards</h1>
-              {rutaFlashcardsActual && (
+              {(rutaFlashcardsActual || carpetaFlashcardActual) && (
                 <button className="btn-primary" onClick={crearNuevaFlashcard}>
                   ➕ Nueva Flashcard
                 </button>
@@ -12619,7 +13019,7 @@ Shortcuts:
               </div>
             )}
 
-            {/* Barra de filtros por tipo (solo si hay carpeta abierta) */}
+            {/* Filtro dropdown por tipo (solo si hay carpeta abierta) */}
             {carpetaFlashcardActual && (() => {
               const flashcards = flashcardsActuales.filter(f => f.carpeta === carpetaFlashcardActual.ruta);
               const contadores = {
@@ -12652,48 +13052,88 @@ Shortcuts:
                 arte: flashcards.filter(f => f.tipo === 'arte').length
               };
 
+              const tiposFlashcard = [
+                {id: 'todas', nombre: 'Todas las flashcards', icon: '🃏'},
+                {id: 'clasica', nombre: 'Clásica', icon: '📇'},
+                {id: 'reconocimiento', nombre: 'Reconocimiento', icon: '👁️'},
+                {id: 'cloze', nombre: 'Cloze', icon: '🔤'},
+                {id: 'escenario', nombre: 'Escenario', icon: '🎬'},
+                {id: 'mcq', nombre: 'Opción Múltiple', icon: '☑️'},
+                {id: 'visual', nombre: 'Visual', icon: '🖼️'},
+                {id: 'auditiva', nombre: 'Auditiva', icon: '🔊'},
+                {id: 'produccion', nombre: 'Producción', icon: '✍️'},
+                {id: 'invertida', nombre: 'Invertida', icon: '🔄'},
+                {id: 'jerarquia', nombre: 'Jerarquía', icon: '🏗️'},
+                {id: 'error', nombre: 'Error', icon: '❌'},
+                {id: 'comparacion', nombre: 'Comparación', icon: '⚖️'},
+                {id: 'matematica', nombre: 'Matemática', icon: '🔢'},
+                {id: 'archivo', nombre: 'Archivo', icon: '📎'},
+                {id: 'programacion', nombre: 'Programación', icon: '</>'},
+                {id: 'quimica', nombre: 'Química', icon: '🧪'},
+                {id: 'fisica', nombre: 'Física', icon: '⚛️'},
+                {id: 'ingenieria', nombre: 'Ingeniería', icon: '🔧'},
+                {id: 'programacion-avanzada', nombre: 'Programación Avanzada', icon: '💻'},
+                {id: 'logica-discreta', nombre: 'Lógica/Discreta', icon: '🔮'},
+                {id: 'linguistica', nombre: 'Linguística', icon: '🗣️'},
+                {id: 'musica', nombre: 'Música', icon: '🎼'},
+                {id: 'geometria', nombre: 'Geometría', icon: '📐'},
+                {id: 'quimica-avanzada', nombre: 'Química Avanzada', icon: '🧬'},
+                {id: 'probabilidad', nombre: 'Probabilidad', icon: '🎲'},
+                {id: 'arte', nombre: 'Arte', icon: '🎨'}
+              ];
+
+              const tipoActual = tiposFlashcard.find(t => t.id === filtroTipoFlashcard) || tiposFlashcard[0];
+
               return (
-                <div className="flashcard-filters">
-                  {[
-                    {id: 'todas', nombre: 'Todas', icon: '🃏'},
-                    {id: 'clasica', nombre: 'Clásica', icon: '📇'},
-                    {id: 'reconocimiento', nombre: 'Reconocimiento', icon: '👁️'},
-                    {id: 'cloze', nombre: 'Cloze', icon: '🔤'},
-                    {id: 'escenario', nombre: 'Escenario', icon: '🎬'},
-                    {id: 'mcq', nombre: 'Opción Múltiple', icon: '☑️'},
-                    {id: 'visual', nombre: 'Visual', icon: '🖼️'},
-                    {id: 'auditiva', nombre: 'Auditiva', icon: '🔊'},
-                    {id: 'produccion', nombre: 'Producción', icon: '✍️'},
-                    {id: 'invertida', nombre: 'Invertida', icon: '🔄'},
-                    {id: 'jerarquia', nombre: 'Jerarquía', icon: '🏗️'},
-                    {id: 'error', nombre: 'Error', icon: '❌'},
-                    {id: 'comparacion', nombre: 'Comparación', icon: '⚖️'},
-                    {id: 'matematica', nombre: 'Matemática', icon: '🔢'},
-                    {id: 'archivo', nombre: 'Archivo', icon: '📎'},
-                    {id: 'programacion', nombre: 'Programación', icon: '</>'},
-                    {id: 'quimica', nombre: 'Química', icon: '🧪'},
-                    {id: 'fisica', nombre: 'Física', icon: '⚛️'},
-                    {id: 'ingenieria', nombre: 'Ingeniería', icon: '🔧'},
-                    {id: 'programacion-avanzada', nombre: 'Programación Avanzada', icon: '💻'},
-                    {id: 'logica-discreta', nombre: 'Lógica/Discreta', icon: '🔮'},
-                    {id: 'linguistica', nombre: 'Linguística', icon: '🗣️'},
-                    {id: 'musica', nombre: 'Música', icon: '🎼'},
-                    {id: 'geometria', nombre: 'Geometría', icon: '📐'},
-                    {id: 'quimica-avanzada', nombre: 'Química Avanzada', icon: '🧬'},
-                    {id: 'probabilidad', nombre: 'Probabilidad', icon: '🎲'},
-                    {id: 'arte', nombre: 'Arte', icon: '🎨'}
-                  ].map(tipo => (
-                    <button
-                      key={tipo.id}
-                      className={`filter-chip ${filtroTipoFlashcard === tipo.id ? 'active' : ''}`}
-                      onClick={() => setFiltroTipoFlashcard(tipo.id)}
-                      disabled={contadores[tipo.id] === 0 && tipo.id !== 'todas'}
-                    >
-                      <span className="filter-icon">{tipo.icon}</span>
-                      <span className="filter-name">{tipo.nombre}</span>
-                      <span className="filter-count">({contadores[tipo.id]})</span>
-                    </button>
-                  ))}
+                <div className="flashcard-filter-dropdown" style={{marginBottom: '1.5rem'}}>
+                  <label style={{
+                    display: 'block',
+                    color: 'rgba(255,255,255,0.7)',
+                    fontSize: '0.9rem',
+                    marginBottom: '0.5rem',
+                    fontWeight: '500'
+                  }}>
+                    🔍 Filtrar por tipo:
+                  </label>
+                  <select 
+                    value={filtroTipoFlashcard}
+                    onChange={(e) => setFiltroTipoFlashcard(e.target.value)}
+                    style={{
+                      width: '100%',
+                      maxWidth: '400px',
+                      padding: '0.75rem 1rem',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '2px solid rgba(102, 126, 234, 0.3)',
+                      borderRadius: '12px',
+                      color: 'white',
+                      fontSize: '1rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      outline: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.borderColor = 'rgba(102, 126, 234, 0.6)';
+                      e.target.style.background = 'rgba(255, 255, 255, 0.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.borderColor = 'rgba(102, 126, 234, 0.3)';
+                      e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                    }}
+                  >
+                    {tiposFlashcard.map(tipo => (
+                      <option 
+                        key={tipo.id} 
+                        value={tipo.id}
+                        disabled={contadores[tipo.id] === 0 && tipo.id !== 'todas'}
+                        style={{
+                          background: '#1a1a2e',
+                          color: contadores[tipo.id] === 0 && tipo.id !== 'todas' ? '#666' : 'white'
+                        }}
+                      >
+                        {tipo.icon} {tipo.nombre} ({contadores[tipo.id]})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               );
             })()}
@@ -12702,23 +13142,16 @@ Shortcuts:
             {!carpetaFlashcardActual && flashcardsCarpetas.length > 0 && (
               <div className="carpetas-grid">
                 {flashcardsCarpetas.map((carpeta, idx) => (
-                  <div key={idx} className="carpeta-card flashcard-folder">
-                    <div className="carpeta-header" onClick={() => abrirCarpetaFlashcards(carpeta)}>
+                  <div 
+                    key={idx} 
+                    className="carpeta-card flashcard-folder"
+                    onClick={() => verFlashcardsDeCarpeta(carpeta)}
+                    style={{cursor: 'pointer'}}
+                  >
+                    <div className="carpeta-header">
                       <span className="carpeta-icon">📚</span>
                       <span className="carpeta-nombre">{carpeta.nombre}</span>
                       <span className="carpeta-count">{carpeta.totalFlashcards || 0} flashcards</span>
-                    </div>
-                    <div className="carpeta-actions">
-                      <button 
-                        className="btn-ver-flashcards"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          verFlashcardsDeCarpeta(carpeta);
-                        }}
-                        title="Ver flashcards de esta carpeta"
-                      >
-                        🃏 Ver Flashcards
-                      </button>
                     </div>
                   </div>
                 ))}
@@ -19271,13 +19704,13 @@ Shortcuts:
                 {/* Notas en la carpeta actual */}
                 <div>
                   <h3 style={{color: '#22c55e', marginBottom: '0.8rem', fontSize: '1rem'}}>📝 Notas</h3>
-                  {notasGuardadas.filter(n => (n.carpeta || '') === rutaModalNotaRef).length === 0 ? (
+                  {(notasGuardadas || []).filter(n => (n.carpeta || '') === rutaModalNotaRef).length === 0 ? (
                     <p style={{color: 'rgba(255,255,255,0.6)', textAlign: 'center', padding: '2rem'}}>
                       No hay notas en esta carpeta
                     </p>
                   ) : (
                     <div style={{display: 'grid', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto'}}>
-                      {notasGuardadas
+                      {(notasGuardadas || [])
                         .filter(n => (n.carpeta || '') === rutaModalNotaRef)
                         .map(nota => (
                           <button
@@ -19700,7 +20133,7 @@ Shortcuts:
                           No hay notas guardadas
                         </p>
                       )}
-                      {notasGuardadas.map(nota => (
+                      {(notasGuardadas || []).map(nota => (
                         <button
                           key={nota.id}
                           type="button"
