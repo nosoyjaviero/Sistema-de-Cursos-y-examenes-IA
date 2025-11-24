@@ -1,8 +1,102 @@
-# Examinator - Sistema de Extracción y Exámenes con IA
+# Examinator - Sistema de Gestión de Cursos y Exámenes con IA
 
-Sistema completo para extraer texto de PDFs y generar exámenes inteligentes con evaluación automática usando IA local.
+> **Sistema completo de gestión educativa con búsqueda semántica acelerada por GPU**
 
-## Características
+---
+
+## 🚀 Inicio Rápido (NUEVO)
+
+### Para Nuevas Instalaciones
+
+Si es tu **primera vez** instalando el proyecto, **NO sigas las instrucciones antiguas de abajo**.  
+Usa el nuevo sistema automatizado:
+
+```powershell
+# 1. Instalar todo automáticamente
+.\INSTALACION_COMPLETA.ps1
+
+# 2. Verificar instalación
+.\VERIFICAR_ENTORNO.ps1
+
+# 3. Iniciar sistema completo
+.\INICIAR_BUSCADOR_TODO.ps1
+```
+
+**📚 Documentación completa:** Ver [INDICE_DOCUMENTACION.md](INDICE_DOCUMENTACION.md)
+
+---
+
+## ✨ Nuevas Características (v2.0)
+
+### 🔍 Sistema de Búsqueda IA con GPU
+
+- **Búsqueda semántica híbrida** (70% significado + 30% palabras clave)
+- **Aceleración GPU** (5-10x más rápida que CPU)
+- **Resultados inteligentes** con metadata extraída (títulos, preguntas, contexto)
+- **Interfaz React integrada** con actualización de índices en tiempo real
+
+### 📊 Gestión Completa de Contenido
+
+- Organización de cursos por carpetas
+- Notas con búsqueda avanzada
+- Flashcards con repetición espaciada
+- Generación de exámenes con IA
+- Estadísticas de progreso
+
+---
+
+## 📖 Documentación
+
+| Documento | Propósito |
+|-----------|-----------|
+| **[INDICE_DOCUMENTACION.md](INDICE_DOCUMENTACION.md)** | Índice completo de toda la documentación |
+| **[README_INSTALACION.md](README_INSTALACION.md)** | Guía de instalación del sistema de búsqueda |
+| **[GUIA_INSTALACION.md](GUIA_INSTALACION.md)** | Instalación paso a paso detallada |
+| **[SOLUCIONES_PROBLEMAS.md](SOLUCIONES_PROBLEMAS.md)** | Errores comunes y soluciones |
+| **[ARQUITECTURA_BUSQUEDA.md](ARQUITECTURA_BUSQUEDA.md)** | Documentación técnica del sistema |
+| **[CHECKLIST_INSTALACION.md](CHECKLIST_INSTALACION.md)** | Lista de verificación de instalación |
+
+---
+
+## 🛠️ Scripts Disponibles
+
+| Script | Descripción |
+|--------|-------------|
+| `INSTALACION_COMPLETA.ps1` | Instala todas las dependencias automáticamente |
+| `VERIFICAR_ENTORNO.ps1` | Verifica que todo está instalado correctamente |
+| `INICIAR_BUSCADOR_TODO.ps1` | Inicia el sistema completo (servidor + frontend) |
+| `DETENER_BUSCADOR.ps1` | Detiene todos los servicios |
+
+---
+
+## 🎯 Requisitos del Sistema
+
+### Software
+- Python 3.8+
+- Node.js 16+
+- Git (opcional)
+
+### Hardware Recomendado
+- GPU NVIDIA con CUDA (RTX 4050, 3060, etc.) - Opcional pero mejora velocidad 5-10x
+- 16GB RAM
+- 15GB espacio en disco
+
+---
+
+## 🆘 Solución Rápida de Problemas
+
+```powershell
+# Si algo no funciona
+.\VERIFICAR_ENTORNO.ps1
+
+# Ver SOLUCIONES_PROBLEMAS.md para errores específicos
+```
+
+---
+
+# Características Originales (v1.0)
+
+## Extracción de Texto y Generación de Exámenes con Ollama
 
 ### 1. Extracción de Texto (examinator.py)
 - Extrae texto de PDFs y archivos de texto

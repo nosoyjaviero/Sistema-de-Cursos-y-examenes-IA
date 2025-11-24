@@ -59,7 +59,16 @@ if %errorLevel% equ 0 (
     timeout /t 2 >nul
 )
 
-echo ✅ Puertos disponibles
+netstat -an | findstr ":5001" >nul
+if %errorLevel% equ 0 (
+    echo ⚠️  Puerto 5001 en uso, liberando...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5001"') do (
+        taskkill /F /PID %%a >nul 2>&1
+    )
+    timeout /t 2 >nul
+)
+
+echo ✅ Puertos verificados
 echo.
 
 :: Configurar firewall (solo si es admin)

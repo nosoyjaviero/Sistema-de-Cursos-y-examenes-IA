@@ -1,3 +1,14 @@
+# ============================================================================
+# REQUIREMENTS.TXT - EXAMINATOR CON BÚSQUEDA IA
+# ============================================================================
+# Versiones exactas usadas en desarrollo y producción
+# Última actualización: 23 nov 2025
+# Python: 3.8+
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# DEPENDENCIAS ORIGINALES (Ollama/FastAPI)
+# ----------------------------------------------------------------------------
 pypdf>=3.0.0
 llama-cpp-python>=0.2.0
 fastapi>=0.104.0
@@ -10,3 +21,61 @@ ddgs>=9.0.0
 # Para usar Ollama (alternativa con GPU automática)
 # No requiere pip install, solo tener Ollama instalado
 # Descargar desde: https://ollama.com/download
+
+# ----------------------------------------------------------------------------
+# PYTORCH CON CUDA (Para búsqueda IA - Instalar con comando especial)
+# ----------------------------------------------------------------------------
+# IMPORTANTE: Instalar PRIMERO con este comando:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# Versiones instaladas:
+# torch==2.7.1+cu118
+# torchvision==0.20.1+cu118
+# torchaudio==2.7.1+cu118
+
+# ----------------------------------------------------------------------------
+# BÚSQUEDA IA CON GPU
+# ----------------------------------------------------------------------------
+sentence-transformers==3.3.1
+    # Genera embeddings semánticos
+    # Modelo: BAAI/bge-small-en-v1.5
+
+faiss-cpu==1.9.0
+    # Búsqueda vectorial FAISS
+    # GPU para embeddings, no para FAISS
+
+rank-bm25==0.2.2
+    # Búsqueda por palabras clave
+
+# ----------------------------------------------------------------------------
+# SERVIDOR BÚSQUEDA IA
+# ----------------------------------------------------------------------------
+Flask==3.1.0
+Flask-Cors==5.0.0
+waitress==3.0.2
+    # Servidor WSGI estable en Windows
+
+# ----------------------------------------------------------------------------
+# UTILIDADES
+# ----------------------------------------------------------------------------
+numpy==2.2.1
+tqdm==4.67.1
+PyPDF2==3.0.1
+python-docx==1.1.2
+
+# ============================================================================
+# INSTRUCCIONES DE INSTALACIÓN
+# ============================================================================
+#
+# OPCIÓN 1 - Script automático (RECOMENDADO):
+# .\INSTALACION_COMPLETA.ps1
+#
+# OPCIÓN 2 - Manual:
+# 1. python -m venv venv
+# 2. .\venv\Scripts\Activate.ps1
+# 3. python -m pip install --upgrade pip
+# 4. pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# 5. pip install -r requirements.txt
+# 6. python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+#
+# Ver: GUIA_INSTALACION.md y SOLUCIONES_PROBLEMAS.md

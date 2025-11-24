@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import './ModalGuardarTxt.css';
 import './ModoSesion.css';
+import './EditorNotion.css';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import MathEditor from './components/MathEditor';
@@ -110,15 +111,24 @@ function App() {
   const [modalSesionAbierto, setModalSesionAbierto] = useState(false)
   const [modalConfigSesion, setModalConfigSesion] = useState(false)
   const [tiempoSesion, setTiempoSesion] = useState(30) // minutos
+  const [tiempoPersonalizado, setTiempoPersonalizado] = useState('') // input personalizado
+  const [modoLibreActivo, setModoLibreActivo] = useState(false) // sin límite de tiempo
   const [prioridadSesion, setPrioridadSesion] = useState('errores') // 'errores', 'flashcards', 'contenido'
   const [sesionActiva, setSesionActiva] = useState(false)
+  const [sesionPersistente, setSesionPersistente] = useState(null) // datos de sesión guardada
+  const [estadoGuardado, setEstadoGuardado] = useState(false) // indicador de guardado
   const [sesionPausada, setSesionPausada] = useState(false)
-  const [faseActual, setFaseActual] = useState(null) // null, 'calentamiento', 'errores', 'flashcards', 'contenido', 'cierre'
+  const [tiempoPausaRestante, setTiempoPausaRestante] = useState(0) // segundos de pausa
+  const [tiempoHastaDescanso, setTiempoHastaDescanso] = useState(1500) // 25 minutos según Pomodoro (1500 seg)
+  const [intervaloDescansoInicial, setIntervaloDescansoInicial] = useState(1500) // Guardar valor inicial para reiniciar
+  const [faseActual, setFaseActual] = useState(null) // null, 'calentamiento', 'errores', 'flashcards', 'contenido', 'cierre', 'descanso'
   const [fasesSesion, setFasesSesion] = useState([]) // Array de fases planificadas
   const [indiceFaseActual, setIndiceFaseActual] = useState(0)
   const [tiempoRestante, setTiempoRestante] = useState(0) // segundos
   const [tiempoFaseActual, setTiempoFaseActual] = useState(0)
   const [tiempoTotalEfectivo, setTiempoTotalEfectivo] = useState(0) // tiempo real estudiado
+  const [tiempoAcumuladoEstudio, setTiempoAcumuladoEstudio] = useState(0) // tiempo acumulado sin descanso
+  const [enDescanso, setEnDescanso] = useState(false)
   const [estadisticasSesion, setEstadisticasSesion] = useState({
     erroresReforzados: 0,
     flashcardsRepasadas: 0,
@@ -134,15 +144,30 @@ function App() {
   const [notaSesion, setNotaSesion] = useState('')
   const [reflexionSesion, setReflexionSesion] = useState('')
   const [timerMinimizado, setTimerMinimizado] = useState(false)
+  const [selectorCursosAbierto, setSelectorCursosAbierto] = useState(false) // panel lateral de cursos
+  const [busquedaCursos, setBusquedaCursos] = useState('') // búsqueda en el selector de cursos
+  const [headerCompacto, setHeaderCompacto] = useState(false) // header en modo compacto
+  const [editorInlineActivo, setEditorInlineActivo] = useState(false) // editor de notas inline
+  const [fuentePracticaSeleccionada, setFuentePracticaSeleccionada] = useState('documento') // documento, carpeta, curso, pegado, actual
+  const [textoPegadoPractica, setTextoPegadoPractica] = useState('') // para generar desde texto pegado
   
   // Estados para Fase 4 - Contenido Nuevo
-  const [tabContenidoActivo, setTabContenidoActivo] = useState(0) // 0: Lectura, 1: Práctica, 2: Notas
-  const [documentoActual, setDocumentoActual] = useState(null)
+  const [tabContenidoActivo, setTabContenidoActivo] = useState(0) // 0: Lectura, 1: Notas, 2: Flashcards
   const [notasVinculadas, setNotasVinculadas] = useState([])
   const [cursoActual, setCursoActual] = useState(null)
   const [drawerNotaAbierto, setDrawerNotaAbierto] = useState(false)
   const [notaEnDrawer, setNotaEnDrawer] = useState(null)
   const [sidebarNotasColapsado, setSidebarNotasColapsado] = useState(false)
+  const [carpetasContenido, setCarpetasContenido] = useState([])
+  const [rutaContenidoActual, setRutaContenidoActual] = useState('')
+  const [navegacionHistorial, setNavegacionHistorial] = useState([])
+  const [mostrandoSelectorCarpetas, setMostrandoSelectorCarpetas] = useState(false)
+  
+  // Estados para explorador de calentamiento
+  const [carpetasCalentamiento, setCarpetasCalentamiento] = useState([])
+  const [rutaCalentamientoActual, setRutaCalentamientoActual] = useState('')
+  const [modalNuevaCarpetaCalentamiento, setModalNuevaCarpetaCalentamiento] = useState(false)
+  
   const [practicaGenerada, setPracticaGenerada] = useState(null)
   const [generandoPractica, setGenerandoPractica] = useState(false)
   const [tipoPractica, setTipoPractica] = useState('mcq') // mcq, short_answer, open_question
@@ -165,6 +190,12 @@ function App() {
   const [scrollPositions, setScrollPositions] = useState({ 0: 0, 1: 0, 2: 0 })
   const [autoSaveTimer, setAutoSaveTimer] = useState(null)
   
+  // Estados para menú de comandos estilo Notion
+  const [menuComandosAbierto, setMenuComandosAbierto] = useState(false)
+  const [posicionMenuComandos, setPosicionMenuComandos] = useState({ top: 0, left: 0 })
+  const [comandoSeleccionado, setComandoSeleccionado] = useState(0)
+  const [cursorPosition, setCursorPosition] = useState(0)
+  
   // Estados para Fase 5 - Cierre/Resumen
   const [resumenSesion, setResumenSesion] = useState(null)
   const [reflexionDificil, setReflexionDificil] = useState('')
@@ -175,6 +206,7 @@ function App() {
   const [tiempoFinSesion, setTiempoFinSesion] = useState(null)
   const [tiempoPausaTotal, setTiempoPausaTotal] = useState(0)
   const [timestampInicioPausa, setTimestampInicioPausa] = useState(null)
+  const [contadorPausaActualizado, setContadorPausaActualizado] = useState(0) // Para forzar re-render del contador
   
   const [carpetaExamen, setCarpetaExamen] = useState(null)
   const [esPractica, setEsPractica] = useState(false) // 🔥 Flag para distinguir prácticas de exámenes
@@ -208,6 +240,7 @@ function App() {
   const [flashcardsCarpetas, setFlashcardsCarpetas] = useState([])
   const [flashcardsActuales, setFlashcardsActuales] = useState([])
   const [carpetaFlashcardActual, setCarpetaFlashcardActual] = useState(null)
+  const [rutaFlashcardsActual, setRutaFlashcardsActual] = useState('')
   const [filtroTipoFlashcard, setFiltroTipoFlashcard] = useState('todas')
   const [modalNuevaFlashcard, setModalNuevaFlashcard] = useState(false)
   const [flashcardEditando, setFlashcardEditando] = useState(null)
@@ -249,6 +282,22 @@ function App() {
   })
 
   const [promptSistema, setPromptSistema] = useState('')
+  
+  // Estados para filtros de historial
+  const [filtroTipoHistorial, setFiltroTipoHistorial] = useState('todos')
+  const [rangoVistaHistorial, setRangoVistaHistorial] = useState(30)
+  
+  // Estado para modal de mapa de repetición espaciada
+  const [itemMapaRepeticion, setItemMapaRepeticion] = useState(null)
+  
+  // Estados para Buscador IA
+  const [queryBusqueda, setQueryBusqueda] = useState('')
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([])
+  const [buscando, setBuscando] = useState(false)
+  const [filtroBusquedaTipo, setFiltroBusquedaTipo] = useState('todos')
+  const [estadoIndice, setEstadoIndice] = useState(null)
+  const [actualizandoIndice, setActualizandoIndice] = useState(false)
+  
   const [rutaExploracion, setRutaExploracion] = useState('')
   const [carpetasExploracion, setCarpetasExploracion] = useState([])
   
@@ -295,6 +344,13 @@ function App() {
   const [tituloNota, setTituloNota] = useState('')
   const [contenidoNota, setContenidoNota] = useState('')
   const [carpetaNota, setCarpetaNota] = useState('')
+  
+  // Estados para explorador de guardado en fase contenido
+  const [modalGuardarContenido, setModalGuardarContenido] = useState(false)
+  const [tipoGuardado, setTipoGuardado] = useState('txt') // 'txt' o 'nota'
+  const [carpetasGuardado, setCarpetasGuardado] = useState([])
+  const [rutaGuardadoActual, setRutaGuardadoActual] = useState('')
+  const [modalNuevaCarpetaGuardado, setModalNuevaCarpetaGuardado] = useState(false)
   const [modoSoloLectura, setModoSoloLectura] = useState(false)
   const [modalCarpetasNotaAbierto, setModalCarpetasNotaAbierto] = useState(false)
   const [menuContextual, setMenuContextual] = useState({ visible: false, x: 0, y: 0 })
@@ -568,6 +624,105 @@ function App() {
       }
     }
   }, []);
+
+  // 🔥 RESTAURAR SESIÓN AL MONTAR O VOLVER A LA VISTA DE SESIÓN
+  useEffect(() => {
+    const estadoGuardado = cargarEstadoSesion();
+    if (estadoGuardado && estadoGuardado.estado?.sesionActiva) {
+      console.log('🔄 Sesión guardada detectada al montar componente');
+      // Solo restaurar si no hay una sesión activa ya
+      if (!sesionActiva) {
+        restaurarSesion(estadoGuardado);
+      }
+    }
+  }, []); // Solo al montar
+
+  // 🔥 MANTENER SESIÓN ACTIVA AL CAMBIAR DE MENÚ
+  useEffect(() => {
+    // Si hay una sesión activa guardada en localStorage y volvemos al menú de sesión
+    if (selectedMenu === 'sesion' && !sesionActiva) {
+      const estadoGuardado = cargarEstadoSesion();
+      if (estadoGuardado && estadoGuardado.estado?.sesionActiva) {
+        console.log('🔄 Detectada sesión activa al volver al menú, restaurando...');
+        // Restaurar sin cambiar el menú (ya estamos en 'sesion')
+        try {
+          // Restaurar configuración
+          setTiempoSesion(estadoGuardado.configuracion.tiempoSesion);
+          setTiempoPersonalizado(estadoGuardado.configuracion.tiempoPersonalizado || '');
+          setModoLibreActivo(estadoGuardado.configuracion.modoLibreActivo || false);
+          setPrioridadSesion(estadoGuardado.configuracion.prioridadSesion);
+          
+          // Restaurar estado de sesión
+          setSesionActiva(estadoGuardado.estado.sesionActiva);
+          setSesionPausada(estadoGuardado.estado.sesionPausada);
+          setFaseActual(estadoGuardado.estado.faseActual);
+          setIndiceFaseActual(estadoGuardado.estado.indiceFaseActual);
+          setTiempoRestante(estadoGuardado.estado.tiempoRestante);
+          setTiempoFaseActual(estadoGuardado.estado.tiempoFaseActual);
+          setTiempoTotalEfectivo(estadoGuardado.estado.tiempoTotalEfectivo);
+          setTiempoPausaTotal(estadoGuardado.estado.tiempoPausaTotal || 0);
+          setTiempoInicioSesion(estadoGuardado.estado.tiempoInicioSesion);
+          setTimestampInicioPausa(estadoGuardado.estado.timestampInicioPausa);
+          
+          // Restaurar fases
+          setFasesSesion(estadoGuardado.fases || []);
+          
+          // Restaurar estadísticas
+          setEstadisticasSesion(estadoGuardado.estadisticas || {
+            erroresReforzados: 0,
+            flashcardsRepasadas: 0,
+            practicasHechas: 0,
+            notasTomadas: 0
+          });
+          
+          // Restaurar datos de fases
+          if (estadoGuardado.datos) {
+            setDatosCalentamiento(estadoGuardado.datos.calentamiento);
+            
+            if (estadoGuardado.datos.errores) {
+              setErroresActuales(estadoGuardado.datos.errores.lista || []);
+              setIndiceErrorActual(estadoGuardado.datos.errores.indiceActual || 0);
+            }
+            
+            if (estadoGuardado.datos.flashcards) {
+              setFlashcardsSesion(estadoGuardado.datos.flashcards.lista || []);
+              setIndiceFlashcardActual(estadoGuardado.datos.flashcards.indiceActual || 0);
+            }
+            
+            if (estadoGuardado.datos.contenido) {
+              setTabContenidoActivo(estadoGuardado.datos.contenido.tab || 0);
+              setDocumentoActual(estadoGuardado.datos.contenido.documento);
+              setCursoActual(estadoGuardado.datos.contenido.curso);
+              setNotasVinculadas(estadoGuardado.datos.contenido.notasVinculadas || []);
+              setPracticaGenerada(estadoGuardado.datos.contenido.practicaGenerada);
+              setHistorialPracticas(estadoGuardado.datos.contenido.historialPracticas || []);
+              setProgresoDocumento(estadoGuardado.datos.contenido.progresoDocumento || 0);
+              setScrollPositions(estadoGuardado.datos.contenido.scrollPositions || { 0: 0, 1: 0, 2: 0 });
+            }
+            
+            if (estadoGuardado.datos.cierre) {
+              setResumenSesion(estadoGuardado.datos.cierre.resumen);
+              setReflexionDificil(estadoGuardado.datos.cierre.reflexionDificil || '');
+              setReflexionManana(estadoGuardado.datos.cierre.reflexionManana || '');
+              setRecomendacionesSesion(estadoGuardado.datos.cierre.recomendaciones || []);
+            }
+          }
+          
+          // Restaurar notas en progreso
+          if (estadoGuardado.notasEnProgreso) {
+            setEditorNotaTitulo(estadoGuardado.notasEnProgreso.titulo || '');
+            setEditorNotaContenido(estadoGuardado.notasEnProgreso.contenido || '');
+            setEditorNotaTags(estadoGuardado.notasEnProgreso.tags || '');
+          }
+          
+          setSesionPersistente(estadoGuardado);
+          console.log('✅ Sesión restaurada al volver al menú');
+        } catch (error) {
+          console.error('❌ Error restaurando sesión:', error);
+        }
+      }
+    }
+  }, [selectedMenu, sesionActiva]);
 
   // Event listener para clicks en enlaces de referencia a notas
   useEffect(() => {
@@ -1170,26 +1325,85 @@ function App() {
   
   // ========== FUNCIONES PARA SESIÓN DE ESTUDIO ==========
   
+  // Calcular tiempo de descanso óptimo según la ciencia
+  const calcularTiempoDescanso = (tiempoTotalMinutos) => {
+    // Basado en estudios de neurociencia y técnica Pomodoro
+    
+    if (tiempoTotalMinutos <= 0 || !isFinite(tiempoTotalMinutos)) {
+      // Modo infinito: usar máximo recomendado (90 min = límite de atención)
+      return 5400; // 90 minutos en segundos
+    }
+    
+    if (tiempoTotalMinutos <= 25) {
+      // Sesión corta (≤25 min): 1 descanso al final
+      return tiempoTotalMinutos * 60; // Todo el tiempo sin interrupciones
+    } else if (tiempoTotalMinutos <= 50) {
+      // Sesión media (26-50 min): Pomodoro estándar - descanso a los 25 min
+      return 1500; // 25 minutos
+    } else if (tiempoTotalMinutos <= 90) {
+      // Sesión larga (51-90 min): Ultradian rhythm - descanso cada 30-35 min
+      return 1800; // 30 minutos
+    } else if (tiempoTotalMinutos <= 120) {
+      // Sesión muy larga (91-120 min): descanso cada 40 min
+      return 2400; // 40 minutos
+    } else {
+      // Sesión extensa (>120 min): descanso cada 50 min (máximo recomendado)
+      return 3000; // 50 minutos
+    }
+  };
+  
   const iniciarSesion = () => {
     const tiempoEnSegundos = tiempoSesion * 60;
+    const tiempoDescansoOptimo = calcularTiempoDescanso(tiempoSesion);
+    
     setTiempoRestante(tiempoEnSegundos);
     setTiempoFaseActual(tiempoEnSegundos / 3); // Dividir en 3 fases
     setFaseActual('repaso');
     setSesionActiva(true);
+    setTiempoHastaDescanso(tiempoDescansoOptimo); // Calcular según tiempo total
+    setIntervaloDescansoInicial(tiempoDescansoOptimo); // Guardar para reiniciar
     setModalSesionAbierto(false);
   };
   
   const detenerSesion = () => {
+    // Limpiar estado de sesión
     setSesionActiva(false);
     setTiempoRestante(0);
-    setFaseActual('repaso');
+    setFaseActual(null);
+    setIndiceFaseActual(0);
+    setSesionPausada(false);
+    setTiempoHastaDescanso(1500); // Resetear contador de descanso
+    
+    // Limpiar estadísticas
+    setEstadisticasSesion({
+      erroresReforzados: 0,
+      flashcardsRepasadas: 0,
+      practicasHechas: 0,
+      notasTomadas: 0
+    });
+    
+    // Limpiar datos de fases
+    setErroresActuales([]);
+    setFlashcardsSesion([]);
+    setDocumentoActual(null);
+    setCursoActual(null);
+    setNotasVinculadas([]);
+    
+    // 🔥 ELIMINAR SESIÓN GUARDADA DE LOCALSTORAGE Y ESTADO
+    localStorage.removeItem('examinator_sesion_activa');
+    setSesionPersistente(null);
+    console.log('⏹️ Sesión detenida y eliminada del localStorage');
+    
+    // Volver a inicio
+    setSelectedMenu('inicio');
   };
   
   const obtenerNombreFase = (fase) => {
     const fases = {
       'repaso': 'Repaso de Flashcards 📚',
       'practica': 'Práctica Activa ✍️',
-      'examen': 'Evaluación Final 🎯'
+      'examen': 'Evaluación Final 🎯',
+      'descanso': 'Descanso 🧘'
     };
     return fases[fase] || fase;
   };
@@ -1203,13 +1417,23 @@ function App() {
     return fases[faseActual] || '';
   };
   
-  // Timer de la sesión
+  // Timer de la sesión con descansos automáticos basados en ciencia
   useEffect(() => {
     let intervalo;
     if (sesionActiva && !sesionPausada && tiempoRestante > 0) {
       intervalo = setInterval(() => {
         setTiempoRestante(prev => {
           if (prev <= 1) {
+            // Si estamos en descanso, volver al estudio
+            if (enDescanso) {
+              setEnDescanso(false);
+              setFaseActual(fasesSesion[indiceFaseActual]?.tipo || 'calentamiento');
+              const tiempoFase = fasesSesion[indiceFaseActual]?.duracion || 1500; // 25 min por defecto
+              setTiempoRestante(tiempoFase);
+              setTiempoFaseActual(tiempoFase);
+              return tiempoFase;
+            }
+            
             // Tiempo de fase terminado, avanzar automáticamente
             avanzarFase();
             return 0;
@@ -1217,12 +1441,89 @@ function App() {
           return prev - 1;
         });
         
-        // Incrementar tiempo total efectivo
-        setTiempoTotalEfectivo(prev => prev + 1);
+        // Solo incrementar tiempo efectivo si no estamos en descanso
+        if (!enDescanso) {
+          setTiempoTotalEfectivo(prev => prev + 1);
+          setTiempoAcumuladoEstudio(prev => {
+            const nuevoTiempo = prev + 1;
+            
+            // Técnica Pomodoro basada en ciencia:
+            // - Cada 25 minutos (1500 seg) → 5 min descanso
+            // - Cada 2 horas (7200 seg) → 15-20 min descanso
+            
+            if (nuevoTiempo >= 7200) { // 2 horas
+              // Descanso largo (15 min)
+              iniciarDescanso(900);
+              return 0;
+            } else if (nuevoTiempo >= 1500) { // 25 minutos
+              // Descanso corto (5 min)
+              iniciarDescanso(300);
+              return 0;
+            }
+            
+            return nuevoTiempo;
+          });
+        }
       }, 1000);
     }
     return () => clearInterval(intervalo);
-  }, [sesionActiva, sesionPausada, tiempoRestante, indiceFaseActual]);
+  }, [sesionActiva, sesionPausada, tiempoRestante, indiceFaseActual, enDescanso]);
+  
+  // Contador de tiempo de pausa (cuenta regresiva)
+  useEffect(() => {
+    let intervaloPausa;
+    if (sesionPausada && tiempoPausaRestante > 0) {
+      intervaloPausa = setInterval(() => {
+        setTiempoPausaRestante(prev => {
+          if (prev <= 1) {
+            // Pausa terminada, reanudar automáticamente
+            setSesionPausada(false);
+            setMensaje({ tipo: 'info', texto: '⏰ Pausa terminada. ¡Continuemos!' });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(intervaloPausa);
+  }, [sesionPausada, tiempoPausaRestante]);
+  
+  // Contador hasta el próximo descanso (independiente del timer principal)
+  useEffect(() => {
+    let intervaloDescanso;
+    if (sesionActiva && !sesionPausada && !enDescanso && tiempoHastaDescanso > 0) {
+      intervaloDescanso = setInterval(() => {
+        setTiempoHastaDescanso(prev => {
+          if (prev <= 1) {
+            // Tiempo de descanso alcanzado - AUTO-PAUSA
+            setSesionPausada(true);
+            setTiempoPausaRestante(300); // 5 minutos de pausa
+            setMensaje({ 
+              tipo: 'warning', 
+              texto: '⏸️ ¡Tiempo de descanso! Levántate, estírate, ve al baño. Pausa de 5 minutos.' 
+            });
+            // Reiniciar contador usando el valor inicial calculado
+            return intervaloDescansoInicial;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(intervaloDescanso);
+  }, [sesionActiva, sesionPausada, enDescanso, tiempoHastaDescanso]);
+  
+  const iniciarDescanso = (duracion) => {
+    setEnDescanso(true);
+    setFaseActual('descanso');
+    setTiempoRestante(duracion);
+    setTiempoFaseActual(duracion);
+    
+    // Notificar al usuario
+    setMensaje({
+      tipo: 'info',
+      texto: `🧘 Momento de descansar ${duracion === 900 ? '15' : '5'} minutos según la ciencia del aprendizaje`
+    });
+  };
   
   // ============================================
   // 🎯 FUNCIONES DEL MODO SESIÓN DE ESTUDIO
@@ -1233,9 +1534,27 @@ function App() {
   };
   
   const iniciarSesionEstudio = async () => {
-    // Calcular distribución de fases según tiempo y prioridad
-    const tiempoEnSegundos = tiempoSesion * 60;
-    const fases = calcularFasesSesion(tiempoSesion, prioridadSesion);
+    // Calcular tiempo de descanso óptimo según el tiempo de sesión
+    const tiempoDescansoOptimo = modoLibreActivo 
+      ? 5400 // Modo libre: 90 min (límite máximo de atención)
+      : calcularTiempoDescanso(tiempoSesion);
+    
+    // Si es modo libre, configurar fases sin límite de tiempo
+    let fases;
+    
+    if (modoLibreActivo) {
+      // Modo libre: todas las fases disponibles, sin tiempo límite
+      fases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Infinity, emoji: '🔥' },
+        { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Infinity, emoji: '🎯' },
+        { tipo: 'flashcards', nombre: 'Flashcards', duracion: Infinity, emoji: '🃏' },
+        { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Infinity, emoji: '📚' },
+        { tipo: 'cierre', nombre: 'Cierre', duracion: Infinity, emoji: '✅' }
+      ];
+    } else {
+      // Modo con tiempo: calcular distribución según prioridad
+      fases = calcularFasesSesion(tiempoSesion, prioridadSesion);
+    }
     
     setFasesSesion(fases);
     setIndiceFaseActual(0);
@@ -1245,6 +1564,8 @@ function App() {
     setTiempoTotalEfectivo(0);
     setSesionActiva(true);
     setSesionPausada(false);
+    setTiempoHastaDescanso(tiempoDescansoOptimo); // Usar tiempo calculado según sesión
+    setIntervaloDescansoInicial(tiempoDescansoOptimo); // Guardar para reiniciar
     setModalConfigSesion(false);
     setModalSesionAbierto(false);
     setEstadisticasSesion({
@@ -1257,8 +1578,14 @@ function App() {
     // Cargar datos para cada fase
     await cargarDatosSesion();
     
+    // Cargar carpetas para fase de calentamiento
+    await cargarCarpetasCalentamiento('');
+    
     // Cambiar a la vista de sesión
     setSelectedMenu('sesion');
+    
+    // Guardar estado inicial
+    setTimeout(() => guardarEstadoSesion(), 1000);
   };
   
   const calcularFasesSesion = (minutos, prioridad) => {
@@ -1353,12 +1680,24 @@ function App() {
       if (flashcardsGuardadas) {
         try {
           const todasFlashcards = JSON.parse(flashcardsGuardadas);
-          // Filtrar por carpeta actual si existe, sino tomar todas
-          const flashcardsFiltradas = rutaActual 
-            ? todasFlashcards.filter(f => f.carpeta === rutaActual)
-            : todasFlashcards;
           
-          setFlashcardsSesion(flashcardsFiltradas.length > 0 ? flashcardsFiltradas : todasFlashcards);
+          // Filtrar flashcards que necesitan repaso (según repetición espaciada)
+          const flashcardsParaRepasar = filtrarItemsParaRepasar(todasFlashcards);
+          
+          // Filtrar por carpeta actual si existe
+          const flashcardsFiltradas = rutaActual 
+            ? flashcardsParaRepasar.filter(f => f.carpeta === rutaActual)
+            : flashcardsParaRepasar;
+          
+          console.log('📚 Flashcards para repasar:', {
+            total: todasFlashcards.length,
+            paraRepasar: flashcardsParaRepasar.length,
+            enCarpeta: flashcardsFiltradas.length,
+            nuevas: flashcardsParaRepasar.filter(f => !f.fechaRevision).length,
+            enProgreso: flashcardsParaRepasar.filter(f => f.estadoRevision === 'en_progreso').length
+          });
+          
+          setFlashcardsSesion(flashcardsFiltradas.length > 0 ? flashcardsFiltradas : todasFlashcards.slice(0, 10));
           setIndiceFlashcardActual(0);
         } catch (error) {
           console.error('Error parseando flashcards:', error);
@@ -1408,6 +1747,21 @@ function App() {
       setFaseActual(siguienteFase.tipo);
       setTiempoRestante(siguienteFase.duracion);
       setTiempoFaseActual(siguienteFase.duracion);
+      
+      // Si avanzamos desde calentamiento y hay una carpeta seleccionada, establecerla para las siguientes fases
+      if (faseActual === 'calentamiento' && rutaCalentamientoActual) {
+        // Establecer carpeta para flashcards
+        setCarpetaFlashcardActual({
+          nombre: rutaCalentamientoActual.split('\\').pop() || rutaCalentamientoActual,
+          ruta: rutaCalentamientoActual
+        });
+        
+        // Establecer carpeta para notas
+        setRutaNotasActual(rutaCalentamientoActual);
+        
+        // Establecer carpeta para contenido
+        setRutaContenidoActual(rutaCalentamientoActual);
+      }
     } else {
       // Sesión completada
       finalizarSesion();
@@ -1415,6 +1769,10 @@ function App() {
   };
   
   const pausarReanudarSesion = () => {
+    if (!sesionPausada) {
+      // Al pausar, establecer 5 minutos de pausa
+      setTiempoPausaRestante(300);
+    }
     setSesionPausada(!sesionPausada);
   };
   
@@ -1454,8 +1812,213 @@ function App() {
     siguienteError();
   };
   
+  // ============================================
+  // 🧠 ALGORITMO SM-2 DE REPETICIÓN ESPACIADA
+  // ============================================
+  
+  /**
+   * Calcula la próxima revisión según el algoritmo SM-2 (SuperMemo 2)
+   * @param {Object} item - Item a evaluar (flashcard, nota, práctica, etc.)
+   * @param {String} dificultad - 'facil', 'medio', 'dificil'
+   * @returns {Object} Item actualizado con nuevos valores de revisión
+   */
+  const calcularProximaRevision = (item, dificultad) => {
+    let { intervalo, repeticiones, facilidad } = item;
+    let nuevoIntervalo = intervalo || 1;
+    let nuevasRepeticiones = repeticiones || 0;
+    let nuevaFacilidad = facilidad || 2.5;
+    
+    // Calidad de respuesta: facil=5, medio=3, dificil=1
+    const calidad = dificultad === 'facil' ? 5 : dificultad === 'medio' ? 3 : 1;
+    
+    if (calidad >= 3) {
+      // Respuesta correcta
+      if (nuevasRepeticiones === 0) {
+        nuevoIntervalo = 1; // 1 día
+      } else if (nuevasRepeticiones === 1) {
+        nuevoIntervalo = 6; // 6 días
+      } else {
+        nuevoIntervalo = Math.round(intervalo * nuevaFacilidad);
+      }
+      nuevasRepeticiones += 1;
+    } else {
+      // Respuesta incorrecta - reiniciar
+      nuevasRepeticiones = 0;
+      nuevoIntervalo = 1;
+    }
+    
+    // Actualizar factor de facilidad
+    nuevaFacilidad = nuevaFacilidad + (0.1 - (5 - calidad) * (0.08 + (5 - calidad) * 0.02));
+    if (nuevaFacilidad < 1.3) nuevaFacilidad = 1.3;
+    
+    // Calcular próxima fecha de revisión
+    const proximaFecha = new Date();
+    proximaFecha.setDate(proximaFecha.getDate() + nuevoIntervalo);
+    
+    return {
+      ...item,
+      fechaRevision: new Date().toISOString(),
+      proximaRevision: proximaFecha.toISOString(),
+      intervalo: nuevoIntervalo,
+      repeticiones: nuevasRepeticiones,
+      facilidad: nuevaFacilidad,
+      estadoRevision: nuevasRepeticiones >= 3 ? 'dominada' : nuevasRepeticiones > 0 ? 'en_progreso' : 'nueva'
+    };
+  };
+  
+  /**
+   * Filtra items que necesitan repaso según su fecha de próxima revisión
+   * @param {Array} items - Array de items (flashcards, notas, prácticas)
+   * @returns {Array} Items que necesitan repaso ordenados por prioridad
+   */
+  const filtrarItemsParaRepasar = (items) => {
+    const ahora = new Date();
+    const itemsParaRepasar = items.filter(item => {
+      if (!item.proximaRevision) return true; // Nuevo item
+      const fechaRevision = new Date(item.proximaRevision);
+      return fechaRevision <= ahora; // Necesita repaso
+    });
+    
+    // Ordenar por prioridad: nuevos primero, luego por fecha de revisión
+    return itemsParaRepasar.sort((a, b) => {
+      if (!a.proximaRevision && !b.proximaRevision) return 0;
+      if (!a.proximaRevision) return -1; // Nuevos primero
+      if (!b.proximaRevision) return 1;
+      return new Date(a.proximaRevision) - new Date(b.proximaRevision);
+    });
+  };
+  
+  /**
+   * Calcula el rendimiento de una carpeta basado en el estado de sus items
+   * @param {String} rutaCarpeta - Ruta de la carpeta
+   * @returns {Object} Estadísticas de rendimiento
+   */
+  const calcularRendimientoCarpeta = (rutaCarpeta) => {
+    const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
+    const notas = JSON.parse(localStorage.getItem('notas') || '[]');
+    const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+    
+    const itemsCarpeta = [
+      ...flashcards.filter(f => f.carpeta && f.carpeta.includes(rutaCarpeta)),
+      ...notas.filter(n => n.carpeta && n.carpeta.includes(rutaCarpeta)),
+      ...practicas.filter(p => p.carpeta && p.carpeta.includes(rutaCarpeta))
+    ];
+    
+    const total = itemsCarpeta.length;
+    const dominadas = itemsCarpeta.filter(i => i.estadoRevision === 'dominada').length;
+    const enProgreso = itemsCarpeta.filter(i => i.estadoRevision === 'en_progreso').length;
+    const nuevas = itemsCarpeta.filter(i => !i.estadoRevision || i.estadoRevision === 'nueva').length;
+    
+    const porcentajeDominado = total > 0 ? Math.round((dominadas / total) * 100) : 0;
+    
+    return {
+      total,
+      dominadas,
+      enProgreso,
+      nuevas,
+      porcentajeDominado
+    };
+  };
+  
+  /**
+   * Genera un mapa de repeticiones futuras para un item
+   * Simula las próximas 10 repeticiones con diferentes escenarios
+   * @param {Object} item - Item a analizar
+   * @returns {Object} Mapa con escenarios de repetición
+   */
+  const generarMapaRepeticiones = (item) => {
+    const fechaInicial = item.proximaRevision ? new Date(item.proximaRevision) : new Date();
+    const intervaloActual = item.intervalo || 1;
+    const facilidadActual = item.facilidad || 2.5;
+    const repeticionesActuales = item.repeticiones || 0;
+    
+    // Generar 3 escenarios: siempre fácil, siempre medio, siempre difícil
+    const escenarios = {
+      facil: [],
+      medio: [],
+      dificil: []
+    };
+    
+    // Simular cada escenario
+    ['facil', 'medio', 'dificil'].forEach(dificultad => {
+      let fecha = new Date(fechaInicial);
+      let intervalo = intervaloActual;
+      let facilidad = facilidadActual;
+      let repeticiones = repeticionesActuales;
+      
+      for (let i = 0; i < 10; i++) {
+        // Calcular siguiente intervalo según dificultad
+        let nuevoIntervalo;
+        let nuevaFacilidad = facilidad;
+        
+        if (repeticiones === 0) {
+          nuevoIntervalo = 1;
+        } else if (repeticiones === 1) {
+          nuevoIntervalo = 6;
+        } else {
+          if (dificultad === 'facil') {
+            nuevaFacilidad = Math.min(facilidad + 0.15, 2.5);
+            nuevoIntervalo = Math.round(intervalo * nuevaFacilidad);
+          } else if (dificultad === 'medio') {
+            nuevoIntervalo = Math.round(intervalo * facilidad);
+          } else { // difícil
+            nuevaFacilidad = Math.max(facilidad - 0.2, 1.3);
+            nuevoIntervalo = Math.max(1, Math.round(intervalo * 0.5));
+          }
+        }
+        
+        // Calcular próxima fecha
+        const proximaFecha = new Date(fecha.getTime() + nuevoIntervalo * 24 * 60 * 60 * 1000);
+        
+        escenarios[dificultad].push({
+          repeticion: repeticiones + 1,
+          fecha: proximaFecha,
+          intervalo: nuevoIntervalo,
+          facilidad: nuevaFacilidad,
+          diasDesdeHoy: Math.ceil((proximaFecha - new Date()) / (1000 * 60 * 60 * 24))
+        });
+        
+        // Actualizar para siguiente iteración
+        fecha = proximaFecha;
+        intervalo = nuevoIntervalo;
+        facilidad = nuevaFacilidad;
+        repeticiones++;
+      }
+    });
+    
+    return {
+      item,
+      fechaInicial,
+      escenarios
+    };
+  };
+  
+  // ============================================
+  // 🎴 FUNCIONES FASE 3 - FLASHCARDS
+  // ============================================
+  
   const evaluarFlashcard = (dificultad) => {
     // dificultad: 'facil', 'medio', 'dificil'
+    const flashcardActual = flashcardsSesion[indiceFlashcardActual];
+    
+    // Actualizar flashcard con algoritmo SM-2 (SuperMemo 2)
+    const flashcardsGuardadas = JSON.parse(localStorage.getItem('flashcards') || '[]');
+    const flashcardsActualizadas = flashcardsGuardadas.map(f => {
+      if (f.id === flashcardActual.id) {
+        return calcularProximaRevision(f, dificultad);
+      }
+      return f;
+    });
+    
+    // Guardar en localStorage
+    localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas));
+    setFlashcardsActuales(flashcardsActualizadas);
+    
+    console.log('📊 Flashcard evaluada:', {
+      dificultad,
+      flashcard: flashcardsActualizadas.find(f => f.id === flashcardActual.id)
+    });
+    
     setEstadisticasSesion(prev => ({
       ...prev,
       flashcardsRepasadas: prev.flashcardsRepasadas + 1
@@ -1475,6 +2038,273 @@ function App() {
   // ============================================
   // 🎯 FUNCIONES FASE 4 - CONTENIDO NUEVO
   // ============================================
+  
+  // Cargar carpetas disponibles para navegación de contenido
+  const cargarCarpetasContenido = async (ruta = '') => {
+    try {
+      const url = `${API_URL}/api/cursos/carpetas?ruta=${encodeURIComponent(ruta)}`
+      const response = await fetch(url)
+      const data = await response.json()
+      setCarpetasContenido(data.carpetas || [])
+      setRutaContenidoActual(ruta)
+    } catch (error) {
+      console.error('Error cargando carpetas de contenido:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: 'Error al cargar carpetas'
+      })
+    }
+  }
+
+  // Cargar carpetas para fase de calentamiento
+  const cargarCarpetasCalentamiento = async (ruta = '') => {
+    try {
+      const url = `${API_URL}/api/cursos/carpetas?ruta=${encodeURIComponent(ruta)}`
+      const response = await fetch(url)
+      const data = await response.json()
+      setCarpetasCalentamiento(data.carpetas || [])
+      setRutaCalentamientoActual(ruta)
+    } catch (error) {
+      console.error('Error cargando carpetas de calentamiento:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: 'Error al cargar carpetas'
+      })
+    }
+  }
+
+  // Crear nueva carpeta en calentamiento
+  const crearCarpetaCalentamiento = async (nombreCarpeta) => {
+    try {
+      const url = `${API_URL}/api/cursos/crear_carpeta`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ruta: rutaCalentamientoActual,
+          nombre: nombreCarpeta
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Carpeta "${nombreCarpeta}" creada`
+        })
+        // Recargar carpetas
+        cargarCarpetasCalentamiento(rutaCalentamientoActual)
+        setModalNuevaCarpetaCalentamiento(false)
+      } else {
+        setMensaje({
+          tipo: 'error',
+          texto: data.error || 'Error al crear carpeta'
+        })
+      }
+    } catch (error) {
+      console.error('Error creando carpeta:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: 'Error al crear carpeta'
+      })
+    }
+  }
+
+  // Funciones para explorador de guardado en fase contenido
+  const cargarCarpetasGuardado = async (ruta = '') => {
+    try {
+      const url = `${API_URL}/api/cursos/carpetas?ruta=${encodeURIComponent(ruta)}`
+      const response = await fetch(url)
+      const data = await response.json()
+      setCarpetasGuardado(data.carpetas || [])
+      setRutaGuardadoActual(ruta)
+    } catch (error) {
+      console.error('Error cargando carpetas de guardado:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: 'Error al cargar carpetas'
+      })
+    }
+  }
+
+  const crearCarpetaGuardado = async (nombreCarpeta) => {
+    try {
+      const url = `${API_URL}/api/cursos/crear_carpeta`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ruta: rutaGuardadoActual,
+          nombre: nombreCarpeta
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ Carpeta "${nombreCarpeta}" creada`
+        })
+        cargarCarpetasGuardado(rutaGuardadoActual)
+        setModalNuevaCarpetaGuardado(false)
+      } else {
+        setMensaje({
+          tipo: 'error',
+          texto: data.error || 'Error al crear carpeta'
+        })
+      }
+    } catch (error) {
+      console.error('Error creando carpeta:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: 'Error al crear carpeta'
+      })
+    }
+  }
+
+  const guardarContenidoComoTXT = async (rutaDestino) => {
+    // Generar título automático si está vacío
+    const titulo = editorNotaTitulo.trim() || `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`
+    
+    try {
+      const nombreArchivo = `${titulo.replace(/[^a-z0-9áéíóúñ\s]/gi, '_')}_${Date.now()}.txt`
+      const contenidoTxt = `${titulo}\n${'='.repeat(titulo.length)}\n\n${editorNotaContenido}\n\n---\nTags: ${editorNotaTags}\nFecha: ${new Date().toLocaleString('es-ES')}`
+      
+      const response = await fetch(`${API_URL}/api/guardar-nota-txt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: rutaDestino,
+          nombreArchivo: nombreArchivo,
+          contenido: contenidoTxt
+        })
+      })
+      
+      if (response.ok) {
+        setMensaje({
+          tipo: 'success',
+          texto: `📄 TXT guardado en: ${rutaDestino}/${nombreArchivo}`
+        })
+        setModalGuardarContenido(false)
+      } else {
+        throw new Error('Error al guardar')
+      }
+    } catch (error) {
+      console.error('Error guardando TXT:', error)
+      setMensaje({ tipo: 'error', texto: 'Error al guardar TXT' })
+    }
+  }
+
+  const guardarContenidoComoNota = async (rutaDestino) => {
+    // Generar título automático si está vacío
+    const titulo = editorNotaTitulo.trim() || `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`
+    
+    try {
+      const ahora = new Date().toISOString()
+      
+      // Extraer texto plano del HTML si es necesario
+      let textoPlano = editorNotaContenido
+      if (editorNotaContenido && editorNotaContenido.includes('<')) {
+        const tempDiv = document.createElement('div')
+        tempDiv.innerHTML = editorNotaContenido
+        textoPlano = tempDiv.textContent || tempDiv.innerText
+      }
+      
+      // Preparar contenido en formato TXT legible
+      const contenidoTxt = `${titulo}\n${'='.repeat(titulo.length)}\n\n${textoPlano}\n\n---\nTags: ${editorNotaTags}\nFecha: ${new Date(ahora).toLocaleString('es-ES')}`
+      
+      // Guardar archivo físico en el servidor
+      const nombreArchivo = `${titulo.replace(/[^a-z0-9áéíóúñ\s]/gi, '_')}.txt`
+      
+      const response = await fetch(`${API_URL}/api/guardar-nota-txt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: rutaDestino,
+          nombreArchivo: nombreArchivo,
+          contenido: contenidoTxt
+        })
+      })
+      
+      if (response.ok) {
+        // Crear objeto de nota
+        const nuevaNota = {
+          id: Date.now(),
+          titulo: titulo,
+          contenido: editorNotaContenido,
+          carpeta: rutaDestino,
+          tags: editorNotaTags.split(',').map(t => t.trim()).filter(t => t),
+          fecha: ahora,
+          fechaModificacion: ahora,
+          // Repetición espaciada
+          proximaRevision: new Date().toISOString(),
+          intervalo: 1,
+          repeticiones: 0,
+          facilidad: 2.5,
+          estadoRevision: 'nueva'
+        }
+        
+        // Guardar en localStorage con la clave correcta 'notas'
+        const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]')
+        notasActuales.push(nuevaNota)
+        localStorage.setItem('notas', JSON.stringify(notasActuales))
+        
+        // Actualizar el estado de notas guardadas
+        setNotasGuardadas(notasActuales)
+        
+        setMensaje({
+          tipo: 'success',
+          texto: `📝 Nota guardada: ${rutaDestino}/${nombreArchivo}`
+        })
+        setModalGuardarContenido(false)
+        
+        setEstadisticasSesion(prev => ({
+          ...prev,
+          notasTomadas: prev.notasTomadas + 1
+        }))
+      } else {
+        throw new Error(`Error ${response.status}`)
+      }
+    } catch (error) {
+      console.error('Error guardando nota:', error)
+      setMensaje({ tipo: 'error', texto: `Error al guardar: ${error.message}` })
+    }
+  }
+
+  // Navegar a una carpeta
+  const navegarACarpetaContenido = (carpeta) => {
+    const nuevaRuta = rutaContenidoActual 
+      ? `${rutaContenidoActual}/${carpeta.nombre}`
+      : carpeta.nombre
+    
+    // Agregar al historial
+    setNavegacionHistorial([...navegacionHistorial, rutaContenidoActual])
+    cargarCarpetasContenido(nuevaRuta)
+  }
+
+  // Volver atrás en la navegación
+  const volverAtrasContenido = () => {
+    if (navegacionHistorial.length > 0) {
+      const rutaAnterior = navegacionHistorial[navegacionHistorial.length - 1]
+      setNavegacionHistorial(navegacionHistorial.slice(0, -1))
+      cargarCarpetasContenido(rutaAnterior)
+    } else {
+      // Si no hay historial, volver a raíz
+      cargarCarpetasContenido('')
+    }
+  }
+
+  // Seleccionar carpeta para trabajar
+  const seleccionarCarpetaContenido = (carpeta) => {
+    setCursoActual({
+      ...cursoActual,
+      carpeta_trabajo: rutaContenidoActual ? `${rutaContenidoActual}/${carpeta.nombre}` : carpeta.nombre,
+      nombre: carpeta.nombre
+    })
+    setMostrandoSelectorCarpetas(false)
+    setMensaje({
+      tipo: 'success',
+      texto: `📁 Carpeta seleccionada: ${carpeta.nombre}`
+    })
+  }
   
   const cargarContenidoFase4 = async () => {
     try {
@@ -1673,7 +2503,13 @@ function App() {
       id: practicaGenerada.id,
       tipo: tipoPractica,
       resultado: resultadoPractica,
-      fecha: new Date().toISOString()
+      fecha: new Date().toISOString(),
+      // Repetición espaciada
+      proximaRevision: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      intervalo: 1,
+      repeticiones: 0,
+      facilidad: 2.5,
+      estadoRevision: 'nueva'
     };
     
     setHistorialPracticas([...historialPracticas, nuevaPractica]);
@@ -1692,7 +2528,7 @@ function App() {
     if (!editorNotaTitulo.trim()) {
       setMensaje({
         tipo: 'warning',
-        texto: 'Debes agregar un título a la nota'
+        texto: '⚠️ Debes agregar un título a la nota'
       });
       return;
     }
@@ -1700,29 +2536,50 @@ function App() {
     setGuardandoNota(true);
     
     try {
+      const ahora = new Date().toISOString();
+      
       const nuevaNota = {
         id: `nota_${Date.now()}`,
         titulo: editorNotaTitulo,
         contenido: editorNotaContenido,
         tags: editorNotaTags.split(',').map(t => t.trim()).filter(t => t),
         vinculado_a_documento: vincularADocumento ? documentoActual?.id : null,
-        fecha_creacion: new Date().toISOString(),
-        sesion_id: `session_${Date.now()}`
+        carpeta: rutaNotasActual || '',
+        fecha_creacion: ahora,
+        sesion_id: sesionActual?.id || `session_${Date.now()}`
       };
       
-      // Guardar en localStorage (en producción: POST /api/notes/create)
+      // 1. Guardar en localStorage
       const notasGuardadas = JSON.parse(localStorage.getItem('notas_vinculadas') || '[]');
       notasGuardadas.push(nuevaNota);
       localStorage.setItem('notas_vinculadas', JSON.stringify(notasGuardadas));
       
-      // Actualizar notas vinculadas si corresponde
+      // 2. Guardar como archivo .txt en el servidor
+      const nombreArchivo = `${editorNotaTitulo.replace(/[^a-z0-9áéíóúñ\s]/gi, '_')}_${Date.now()}.txt`;
+      const contenidoTxt = `${editorNotaTitulo}\n${'='.repeat(editorNotaTitulo.length)}\n\n${editorNotaContenido}\n\n---\nTags: ${editorNotaTags}\nFecha: ${new Date(ahora).toLocaleString('es-ES')}\nSesión: ${nuevaNota.sesion_id}`;
+      
+      const response = await fetch(`${API_URL}/api/guardar-nota-txt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: rutaNotasActual || 'notas',
+          nombreArchivo: nombreArchivo,
+          contenido: contenidoTxt
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Error al guardar en el servidor');
+      }
+      
+      // 3. Actualizar notas vinculadas si corresponde
       if (vincularADocumento && documentoActual) {
         setNotasVinculadas([...notasVinculadas, nuevaNota]);
       }
       
       setMensaje({
         tipo: 'success',
-        texto: '✅ Nota guardada exitosamente'
+        texto: `✅ Nota guardada en: ${rutaNotasActual || 'notas'}/${nombreArchivo}`
       });
       
       setEstadisticasSesion(prev => ({
@@ -1739,7 +2596,7 @@ function App() {
       console.error('Error guardando nota:', error);
       setMensaje({
         tipo: 'error',
-        texto: 'Error al guardar nota'
+        texto: '❌ Error al guardar nota: ' + error.message
       });
     } finally {
       setGuardandoNota(false);
@@ -1843,6 +2700,156 @@ function App() {
       console.log(`Documento ${documentoActual.id} marcado como en progreso (${scrollPercentage}%)`);
     }
   };
+
+  // 🎯 FUNCIONES DEL MENÚ DE COMANDOS ESTILO NOTION
+  const comandosDisponibles = [
+    { id: 'text', nombre: 'Text', icono: 'T', descripcion: 'Texto simple' },
+    { id: 'h1', nombre: 'Heading 1', icono: 'H1', descripcion: '#' },
+    { id: 'h2', nombre: 'Heading 2', icono: 'H2', descripcion: '##' },
+    { id: 'h3', nombre: 'Heading 3', icono: 'H3', descripcion: '###' },
+    { id: 'bullet', nombre: 'Bulleted list', icono: '•', descripcion: '-' },
+    { id: 'numbered', nombre: 'Numbered list', icono: '1.', descripcion: '1.' },
+    { id: 'todo', nombre: 'To-do list', icono: '☑', descripcion: '[]' },
+    { id: 'toggle', nombre: 'Toggle list', icono: '▸', descripcion: '>' },
+    { id: 'page', nombre: 'Page', icono: '📄', descripcion: 'Subpágina' },
+    { id: 'callout', nombre: 'Callout', icono: '💡', descripcion: 'Nota destacada' },
+    { id: 'quote', nombre: 'Quote', icono: '❝', descripcion: '> Cita' },
+    { id: 'table', nombre: 'Table', icono: '⊞', descripcion: 'Tabla simple' },
+    { id: 'divider', nombre: 'Divider', icono: '—', descripcion: '---' },
+    { id: 'link', nombre: 'Link to page', icono: '🔗', descripcion: 'Enlace' },
+    { id: 'image', nombre: 'Image', icono: '🖼️', descripcion: 'Imagen' },
+    { id: 'video', nombre: 'Video', icono: '▶️', descripcion: 'Video' },
+    { id: 'audio', nombre: 'Audio', icono: '🔊', descripcion: 'Audio' },
+    { id: 'code', nombre: 'Code', icono: '</>', descripcion: '```' },
+    { id: 'file', nombre: 'File', icono: '📎', descripcion: 'Archivo adjunto' },
+    { id: 'bookmark', nombre: 'Web bookmark', icono: '🔖', descripcion: 'URL' },
+    { id: 'equation', nombre: 'Block equation', icono: '∑', descripcion: 'LaTeX' },
+    { id: 'button', nombre: 'Button', icono: '🔘', descripcion: 'Botón' },
+    { id: 'breadcrumb', nombre: 'Breadcrumb', icono: '↗', descripcion: 'Navegación' },
+    { id: 'synced', nombre: 'Synced block', icono: '⟲', descripcion: 'Bloque sincronizado' },
+    { id: 'toggle-h1', nombre: 'Toggle heading 1', icono: 'H1▸', descripcion: '#>' },
+    { id: 'toggle-h2', nombre: 'Toggle heading 2', icono: 'H2▸', descripcion: '##>' },
+    { id: 'toggle-h3', nombre: 'Toggle heading 3', icono: 'H3▸', descripcion: '###>' },
+    { id: 'col2', nombre: '2 columns', icono: '⫴', descripcion: 'Dos columnas' },
+    { id: 'col3', nombre: '3 columns', icono: '⫴⫴', descripcion: 'Tres columnas' },
+  ];
+
+  const insertarBloque = (comando) => {
+    const textarea = document.querySelector('.editor-inline-content');
+    if (!textarea) return;
+
+    const start = cursorPosition;
+    const antes = editorNotaContenido.substring(0, start);
+    const despues = editorNotaContenido.substring(start);
+    
+    let bloqueTexto = '';
+    
+    switch (comando.id) {
+      case 'text':
+        bloqueTexto = '';
+        break;
+      case 'h1':
+        bloqueTexto = '# Título Principal\n';
+        break;
+      case 'h2':
+        bloqueTexto = '## Subtítulo\n';
+        break;
+      case 'h3':
+        bloqueTexto = '### Sección\n';
+        break;
+      case 'bullet':
+        bloqueTexto = '• Elemento de lista\n';
+        break;
+      case 'numbered':
+        bloqueTexto = '1. Primer elemento\n';
+        break;
+      case 'todo':
+        bloqueTexto = '- [ ] Tarea pendiente\n';
+        break;
+      case 'toggle':
+        bloqueTexto = '▸ Click para expandir\n  Contenido oculto aquí\n';
+        break;
+      case 'page':
+        bloqueTexto = '📄 [[Nueva Página]]\n';
+        break;
+      case 'callout':
+        bloqueTexto = '💡 **Nota importante:**\nContenido destacado aquí\n';
+        break;
+      case 'quote':
+        bloqueTexto = '> Cita o referencia importante\n';
+        break;
+      case 'table':
+        bloqueTexto = '| Columna 1 | Columna 2 | Columna 3 |\n|-----------|-----------|--------|\n| Dato 1    | Dato 2    | Dato 3 |\n';
+        break;
+      case 'divider':
+        bloqueTexto = '\n---\n\n';
+        break;
+      case 'link':
+        bloqueTexto = '[Texto del enlace](URL)\n';
+        break;
+      case 'image':
+        bloqueTexto = '![Descripción de imagen](URL_de_imagen)\n';
+        break;
+      case 'video':
+        bloqueTexto = '🎬 [Video: Título](URL_video)\n';
+        break;
+      case 'audio':
+        bloqueTexto = '🔊 [Audio: Título](URL_audio)\n';
+        break;
+      case 'code':
+        bloqueTexto = '```javascript\n// Tu código aquí\nconsole.log("Hello World");\n```\n';
+        break;
+      case 'file':
+        bloqueTexto = '📎 [Nombre del archivo.pdf](ruta/archivo)\n';
+        break;
+      case 'bookmark':
+        bloqueTexto = '🔖 **[Título del sitio](https://ejemplo.com)**\nDescripción del enlace\n';
+        break;
+      case 'equation':
+        bloqueTexto = '$$\nE = mc^2\n$$\n';
+        break;
+      case 'button':
+        bloqueTexto = '[🔘 Botón de Acción](#accion)\n';
+        break;
+      case 'breadcrumb':
+        bloqueTexto = '↗ Inicio > Categoría > Subcategoría\n';
+        break;
+      case 'synced':
+        bloqueTexto = '⟲ [Bloque Sincronizado]\nContenido que se refleja en otros lugares\n';
+        break;
+      case 'toggle-h1':
+        bloqueTexto = '# ▸ Título Expandible\nContenido oculto aquí\n';
+        break;
+      case 'toggle-h2':
+        bloqueTexto = '## ▸ Subtítulo Expandible\nContenido oculto aquí\n';
+        break;
+      case 'toggle-h3':
+        bloqueTexto = '### ▸ Sección Expandible\nContenido oculto aquí\n';
+        break;
+      case 'col2':
+        bloqueTexto = '\n[COLUMNA 1]          [COLUMNA 2]\nContenido izq.       Contenido der.\n\n';
+        break;
+      case 'col3':
+        bloqueTexto = '\n[COL 1]        [COL 2]        [COL 3]\nContenido 1    Contenido 2    Contenido 3\n\n';
+        break;
+      default:
+        bloqueTexto = '';
+    }
+    
+    // Eliminar el "/" que activó el menú
+    const textoSinSlash = antes.endsWith('/') ? antes.slice(0, -1) : antes;
+    setEditorNotaContenido(textoSinSlash + bloqueTexto + despues);
+    
+    // Cerrar menú
+    setMenuComandosAbierto(false);
+    
+    // Enfocar textarea
+    setTimeout(() => {
+      textarea.focus();
+      const newPos = textoSinSlash.length + bloqueTexto.length;
+      textarea.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
   
   const limpiarEditorNotas = () => {
     if (editorNotaContenido.trim() && !window.confirm('¿Seguro que quieres limpiar el editor? Perderás el texto no guardado.')) {
@@ -1852,6 +2859,53 @@ function App() {
     setEditorNotaTitulo('');
     setEditorNotaContenido('');
     setEditorNotaTags('');
+  };
+  
+  // Renderizar contenido estilo Notion
+  const renderizarContenidoNotion = (texto) => {
+    if (!texto) return '';
+    
+    let html = texto;
+    
+    // Headers
+    html = html.replace(/^### (.+)$/gm, '<h3 class="notion-h3">$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2 class="notion-h2">$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h1 class="notion-h1">$1</h1>');
+    
+    // Listas
+    html = html.replace(/^• (.+)$/gm, '<li class="notion-li">$1</li>');
+    html = html.replace(/^- \[ \] (.+)$/gm, '<div class="notion-todo"><input type="checkbox" disabled /> <span>$1</span></div>');
+    html = html.replace(/^- \[x\] (.+)$/gm, '<div class="notion-todo done"><input type="checkbox" checked disabled /> <span>$1</span></div>');
+    html = html.replace(/^\d+\. (.+)$/gm, '<li class="notion-ol">$1</li>');
+    
+    // Callout
+    html = html.replace(/💡 \*\*(.+?):\*\*\n(.+)/g, '<div class="notion-callout"><div class="callout-icon">💡</div><div class="callout-content"><strong>$1</strong><br/>$2</div></div>');
+    
+    // Quote
+    html = html.replace(/^> (.+)$/gm, '<blockquote class="notion-quote">$1</blockquote>');
+    
+    // Divider
+    html = html.replace(/^---$/gm, '<hr class="notion-divider" />');
+    
+    // Code block
+    html = html.replace(/```(\w+)?\n([\s\S]+?)```/g, '<pre class="notion-code"><code>$2</code></pre>');
+    
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="notion-inline-code">$1</code>');
+    
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Links
+    html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="notion-link" target="_blank">$1</a>');
+    
+    // Paragraphs
+    html = html.replace(/^(?!<[h|l|d|b|p])(.+)$/gm, '<p class="notion-p">$1</p>');
+    
+    return html;
   };
   
   // Auto-save de notas cada 30 segundos
@@ -2050,6 +3104,11 @@ function App() {
     setErroresActuales([]);
     setFlashcardsSesion([]);
     
+    // 🔥 ELIMINAR SESIÓN GUARDADA DE LOCALSTORAGE Y ESTADO
+    localStorage.removeItem('examinator_sesion_activa');
+    setSesionPersistente(null);
+    console.log('🗑️ Sesión finalizada y eliminada del localStorage');
+    
     // Redirect a inicio
     setSelectedMenu('inicio');
   };
@@ -2068,6 +3127,23 @@ function App() {
     }
   }, [sesionPausada]);
   
+  // Actualizar contador de pausa cada segundo
+  useEffect(() => {
+    if (sesionPausada && timestampInicioPausa) {
+      const intervalo = setInterval(() => {
+        setContadorPausaActualizado(Date.now());
+      }, 1000);
+      return () => clearInterval(intervalo);
+    }
+  }, [sesionPausada, timestampInicioPausa]);
+
+  // Cargar estado del índice del buscador al inicio
+  useEffect(() => {
+    if (selectedMenu === 'buscar') {
+      cargarEstadoIndice();
+    }
+  }, [selectedMenu]);
+  
   // Preparar resumen al entrar en Fase 5
   useEffect(() => {
     if (faseActual === 'cierre' && !resumenSesion) {
@@ -2084,6 +3160,248 @@ function App() {
   
   // ============================================
   // FIN FUNCIONES FASE 5
+  // ============================================
+  
+  // ============================================
+  // FUNCIONES DE PERSISTENCIA DE SESIÓN
+  // ============================================
+  
+  const guardarEstadoSesion = () => {
+    if (!sesionActiva) return;
+    
+    const estadoCompleto = {
+      version: '1.0',
+      timestamp: Date.now(),
+      expiracion: Date.now() + (24 * 60 * 60 * 1000), // 24 horas
+      
+      // Configuración básica
+      configuracion: {
+        tiempoSesion,
+        tiempoPersonalizado,
+        modoLibreActivo,
+        prioridadSesion
+      },
+      
+      // Estado de la sesión
+      estado: {
+        sesionActiva,
+        sesionPausada,
+        faseActual,
+        indiceFaseActual,
+        tiempoRestante,
+        tiempoFaseActual,
+        tiempoTotalEfectivo,
+        tiempoPausaTotal,
+        tiempoInicioSesion,
+        timestampInicioPausa
+      },
+      
+      // Fases planificadas
+      fases: fasesSesion,
+      
+      // Estadísticas
+      estadisticas: estadisticasSesion,
+      
+      // Datos de cada fase
+      datos: {
+        calentamiento: datosCalentamiento,
+        errores: {
+          lista: erroresActuales,
+          indiceActual: indiceErrorActual
+        },
+        flashcards: {
+          lista: flashcardsSesion,
+          indiceActual: indiceFlashcardActual
+        },
+        contenido: {
+          tab: tabContenidoActivo,
+          documento: documentoActual,
+          curso: cursoActual,
+          notasVinculadas,
+          practicaGenerada,
+          historialPracticas,
+          progresoDocumento,
+          scrollPositions
+        },
+        cierre: {
+          resumen: resumenSesion,
+          reflexionDificil,
+          reflexionManana,
+          recomendaciones: recomendacionesSesion
+        }
+      },
+      
+      // Notas en progreso
+      notasEnProgreso: {
+        titulo: editorNotaTitulo,
+        contenido: editorNotaContenido,
+        tags: editorNotaTags
+      }
+    };
+    
+    try {
+      localStorage.setItem('examinator_sesion_activa', JSON.stringify(estadoCompleto));
+      setEstadoGuardado(true);
+      setTimeout(() => setEstadoGuardado(false), 2000);
+      console.log('✅ Estado de sesión guardado correctamente');
+    } catch (error) {
+      console.error('❌ Error guardando estado de sesión:', error);
+    }
+  };
+  
+  const cargarEstadoSesion = () => {
+    try {
+      const datosGuardados = localStorage.getItem('examinator_sesion_activa');
+      if (!datosGuardados) return null;
+      
+      const estado = JSON.parse(datosGuardados);
+      
+      // Verificar expiración (24 horas)
+      if (Date.now() > estado.expiracion) {
+        console.log('⏰ Sesión expirada, eliminando...');
+        localStorage.removeItem('examinator_sesion_activa');
+        return null;
+      }
+      
+      return estado;
+    } catch (error) {
+      console.error('❌ Error cargando estado de sesión:', error);
+      return null;
+    }
+  };
+  
+  const restaurarSesion = (estado) => {
+    if (!estado) return;
+    
+    try {
+      // Restaurar configuración
+      setTiempoSesion(estado.configuracion.tiempoSesion);
+      setTiempoPersonalizado(estado.configuracion.tiempoPersonalizado || '');
+      setModoLibreActivo(estado.configuracion.modoLibreActivo || false);
+      setPrioridadSesion(estado.configuracion.prioridadSesion);
+      
+      // Restaurar estado de sesión
+      setSesionActiva(estado.estado.sesionActiva);
+      setSesionPausada(estado.estado.sesionPausada);
+      setFaseActual(estado.estado.faseActual);
+      setIndiceFaseActual(estado.estado.indiceFaseActual);
+      setTiempoRestante(estado.estado.tiempoRestante);
+      setTiempoFaseActual(estado.estado.tiempoFaseActual);
+      setTiempoTotalEfectivo(estado.estado.tiempoTotalEfectivo);
+      setTiempoPausaTotal(estado.estado.tiempoPausaTotal || 0);
+      setTiempoInicioSesion(estado.estado.tiempoInicioSesion);
+      setTimestampInicioPausa(estado.estado.timestampInicioPausa);
+      
+      // Restaurar fases
+      setFasesSesion(estado.fases || []);
+      
+      // Restaurar estadísticas
+      setEstadisticasSesion(estado.estadisticas || {
+        erroresReforzados: 0,
+        flashcardsRepasadas: 0,
+        practicasHechas: 0,
+        notasTomadas: 0
+      });
+      
+      // Restaurar datos de fases
+      if (estado.datos) {
+        setDatosCalentamiento(estado.datos.calentamiento);
+        
+        if (estado.datos.errores) {
+          setErroresActuales(estado.datos.errores.lista || []);
+          setIndiceErrorActual(estado.datos.errores.indiceActual || 0);
+        }
+        
+        if (estado.datos.flashcards) {
+          setFlashcardsSesion(estado.datos.flashcards.lista || []);
+          setIndiceFlashcardActual(estado.datos.flashcards.indiceActual || 0);
+        }
+        
+        if (estado.datos.contenido) {
+          setTabContenidoActivo(estado.datos.contenido.tab || 0);
+          setDocumentoActual(estado.datos.contenido.documento);
+          setCursoActual(estado.datos.contenido.curso);
+          setNotasVinculadas(estado.datos.contenido.notasVinculadas || []);
+          setPracticaGenerada(estado.datos.contenido.practicaGenerada);
+          setHistorialPracticas(estado.datos.contenido.historialPracticas || []);
+          setProgresoDocumento(estado.datos.contenido.progresoDocumento || 0);
+          setScrollPositions(estado.datos.contenido.scrollPositions || { 0: 0, 1: 0, 2: 0 });
+        }
+        
+        if (estado.datos.cierre) {
+          setResumenSesion(estado.datos.cierre.resumen);
+          setReflexionDificil(estado.datos.cierre.reflexionDificil || '');
+          setReflexionManana(estado.datos.cierre.reflexionManana || '');
+          setRecomendacionesSesion(estado.datos.cierre.recomendaciones || []);
+        }
+      }
+      
+      // Restaurar notas en progreso
+      if (estado.notasEnProgreso) {
+        setEditorNotaTitulo(estado.notasEnProgreso.titulo || '');
+        setEditorNotaContenido(estado.notasEnProgreso.contenido || '');
+        setEditorNotaTags(estado.notasEnProgreso.tags || '');
+      }
+      
+      // Cambiar a vista de sesión
+      setSelectedMenu('sesion');
+      setSesionPersistente(estado);
+      
+      console.log('✅ Sesión restaurada correctamente');
+      
+    } catch (error) {
+      console.error('❌ Error restaurando sesión:', error);
+    }
+  };
+  
+  const eliminarSesionGuardada = () => {
+    localStorage.removeItem('examinator_sesion_activa');
+    setSesionPersistente(null);
+    console.log('🗑️ Sesión guardada eliminada');
+  };
+  
+  // Auto-guardado cada 2 minutos cuando hay sesión activa
+  useEffect(() => {
+    let intervalo;
+    
+    if (sesionActiva && !sesionPausada) {
+      intervalo = setInterval(() => {
+        guardarEstadoSesion();
+      }, 120000); // 120000ms = 2 minutos
+    }
+    
+    return () => {
+      if (intervalo) clearInterval(intervalo);
+    };
+  }, [sesionActiva, sesionPausada, faseActual, tiempoRestante, estadisticasSesion]);
+  
+  // Guardar estado cuando cambia de fase o se pausa
+  useEffect(() => {
+    if (sesionActiva) {
+      guardarEstadoSesion();
+    }
+  }, [faseActual, sesionPausada]);
+
+  // 🔥 GUARDAR ESTADO AL CAMBIAR DE MENÚ (para no perder progreso)
+  useEffect(() => {
+    if (sesionActiva && selectedMenu !== 'sesion') {
+      console.log('💾 Guardando sesión antes de cambiar de menú...');
+      guardarEstadoSesion();
+    }
+  }, [selectedMenu]);
+  
+  // Detectar sesión guardada al montar el componente
+  useEffect(() => {
+    const sesionGuardada = cargarEstadoSesion();
+    if (sesionGuardada) {
+      setSesionPersistente(sesionGuardada);
+      // Mostrar modal de confirmación en el UI
+      console.log('🔄 Sesión guardada detectada');
+    }
+  }, []);
+  
+  // ============================================
+  // FIN FUNCIONES DE PERSISTENCIA
   // ============================================
   
   // ============================================
@@ -4959,7 +6277,7 @@ JSON:`
   const [modalPracticaAbierto, setModalPracticaAbierto] = useState(false);
   const [promptPractica, setPromptPractica] = useState('');
   const [carpetaPractica, setCarpetaPractica] = useState(null);
-  const [tipoPractica, setTipoPractica] = useState('carpeta'); // 'carpeta' o 'documento'
+  const [tipoFuentePractica, setTipoFuentePractica] = useState('carpeta'); // 'carpeta' o 'documento'
   
   // Configuración de tipos de práctica - Generales
   const [numFlashcards, setNumFlashcards] = useState(0);
@@ -5014,7 +6332,7 @@ JSON:`
     setFlashcardsVolteadas({});
     
     setCarpetaPractica(ruta);
-    setTipoPractica(tipo);
+    setTipoFuentePractica(tipo);
     setPromptPractica(''); 
     setModalPracticaAbierto(true);
   };
@@ -5589,7 +6907,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         
         // Extraer carpeta de la ruta
         let carpetaPracticaGuardar = '';
-        if (tipoPractica === 'carpeta') {
+        if (tipoFuentePractica === 'carpeta') {
           carpetaPracticaGuardar = carpetaPractica;
         } else {
           // Es un documento, extraer la carpeta padre
@@ -5602,7 +6920,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           id: practicaId,
           ruta: carpetaPractica,
           carpeta: carpetaPracticaGuardar,
-          tipo: tipoPractica,
+          tipo: tipoFuentePractica,
           prompt: promptPractica,
           preguntas: data.preguntas || [],
           respuestas: {},
@@ -5677,9 +6995,51 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     }
   };
 
-  // ============================================
-  // FUNCIONES DEL SISTEMA DE NOTAS
-  // ============================================
+  // =============================
+  // SINCRONIZACIÓN GLOBAL DEL TIMER Y PAUSA
+  // =============================
+  useEffect(() => {
+    // Cambia esta IP por la de tu servidor si accedes desde otra PC
+    const SERVER_IP = window.location.hostname;
+    const fetchTimerSync = async () => {
+      try {
+        const res = await fetch(`http://${SERVER_IP}:8000/timer_sync`);
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.timer === 'number') setTiempoRestante(data.timer);
+          if (typeof data.enPausa === 'boolean') setEnDescanso(data.enPausa);
+          if (typeof data.pausaRestante === 'number') setTiempoPausaRestante(data.pausaRestante);
+        }
+      } catch (e) {}
+    };
+    fetchTimerSync();
+    const interval = setInterval(fetchTimerSync, 3000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  useEffect(() => {
+    // Solo sincronizar si eres el "dueño" del timer (puedes mejorar esta lógica)
+    const SERVER_IP = window.location.hostname;
+    const syncTimer = async () => {
+      try {
+        await fetch(`http://${SERVER_IP}:8000/timer_sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            timer: tiempoRestante,
+            enPausa: enDescanso,
+            pausaRestante: tiempoPausaRestante,
+            ultimoUpdate: Date.now()
+          })
+        });
+      } catch (e) {}
+    };
+    syncTimer();
+  }, [tiempoRestante, enDescanso, tiempoPausaRestante]);
+  
+    // ============================================
+    // FUNCIONES DEL SISTEMA DE NOTAS
+    // ============================================
 
   // Cargar notas al iniciar
   useEffect(() => {
@@ -6100,7 +7460,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       contenido: contenidoNota,
       carpeta: carpetaNota,
       fecha: notaActual?.fecha || new Date().toISOString(),
-      fechaModificacion: new Date().toISOString()
+      fechaModificacion: new Date().toISOString(),
+      // Repetición espaciada (mantener valores existentes si es edición)
+      proximaRevision: notaActual?.proximaRevision || new Date().toISOString(),
+      intervalo: notaActual?.intervalo || 1,
+      repeticiones: notaActual?.repeticiones || 0,
+      facilidad: notaActual?.facilidad || 2.5,
+      estadoRevision: notaActual?.estadoRevision || 'nueva'
     }
 
     let notasActualizadas
@@ -6135,6 +7501,54 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       texto: '🗑️ Nota eliminada'
     })
   }
+  
+  // Evaluar comprensión de nota con repetición espaciada
+  const evaluarNota = (idNota, dificultad) => {
+    const notasActuales = JSON.parse(localStorage.getItem('notas') || '[]');
+    const notasActualizadas = notasActuales.map(nota => {
+      if (nota.id === idNota) {
+        return calcularProximaRevision(nota, dificultad);
+      }
+      return nota;
+    });
+    
+    localStorage.setItem('notas', JSON.stringify(notasActualizadas));
+    setNotasGuardadas(notasActualizadas);
+    
+    console.log('📝 Nota evaluada:', {
+      dificultad,
+      nota: notasActualizadas.find(n => n.id === idNota)
+    });
+    
+    setMensaje({
+      tipo: 'success',
+      texto: `✅ Revisión registrada: ${dificultad === 'facil' ? 'Dominado' : dificultad === 'medio' ? 'En progreso' : 'Necesita repaso'}`
+    });
+  };
+  
+  // Evaluar práctica con repetición espaciada
+  const evaluarPractica = (idPractica, dificultad) => {
+    const practicasActuales = JSON.parse(localStorage.getItem('practicas') || '[]');
+    const practicasActualizadas = practicasActuales.map(practica => {
+      if (practica.id === idPractica) {
+        return calcularProximaRevision(practica, dificultad);
+      }
+      return practica;
+    });
+    
+    localStorage.setItem('practicas', JSON.stringify(practicasActualizadas));
+    setPracticas(practicasActualizadas);
+    
+    console.log('🎯 Práctica evaluada:', {
+      dificultad,
+      practica: practicasActualizadas.find(p => p.id === idPractica)
+    });
+    
+    setMensaje({
+      tipo: 'success',
+      texto: `✅ Práctica evaluada: ${dificultad === 'facil' ? 'Excelente' : dificultad === 'medio' ? 'Bien' : 'Necesita más práctica'}`
+    });
+  };
 
   const exportarNotaTXT = (nota) => {
     // Extraer texto plano del HTML
@@ -6204,6 +7618,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     }
   }, [])
 
+  // Cargar carpetas cuando entras a la sección de flashcards
+  useEffect(() => {
+    if (selectedMenu === 'flashcards') {
+      cargarCarpetasFlashcards('')
+    }
+  }, [selectedMenu])
+
   const cargarCarpetasFlashcards = async (ruta = '') => {
     try {
       const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
@@ -6217,6 +7638,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       })
       
       setFlashcardsCarpetas(carpetasConConteo)
+      setRutaFlashcardsActual(ruta)
     } catch (error) {
       console.error('Error cargando carpetas de flashcards:', error)
       setFlashcardsCarpetas([])
@@ -6224,14 +7646,259 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
   const abrirCarpetaFlashcards = (carpeta) => {
+    // Cargar subcarpetas de esta carpeta
+    cargarCarpetasFlashcards(carpeta.ruta)
+    setCarpetaFlashcardActual(null) // Resetear para mostrar subcarpetas
+    setFiltroTipoFlashcard('todas')
+  }
+  
+  const verFlashcardsDeCarpeta = (carpeta) => {
+    // Mostrar flashcards de esta carpeta específica
     setCarpetaFlashcardActual(carpeta)
     setFiltroTipoFlashcard('todas')
   }
 
   const volverListaFlashcards = () => {
     setCarpetaFlashcardActual(null)
-    cargarCarpetasFlashcards()
+    // Mantener la ruta actual para mostrar subcarpetas
   }
+  
+  const navegarRutaFlashcards = (ruta) => {
+    cargarCarpetasFlashcards(ruta)
+    setCarpetaFlashcardActual(null)
+  }
+  
+  const volverAtrasFlashcards = () => {
+    if (rutaFlashcardsActual) {
+      const partesRuta = rutaFlashcardsActual.split('/')
+      partesRuta.pop()
+      const rutaPadre = partesRuta.join('/')
+      cargarCarpetasFlashcards(rutaPadre)
+      setCarpetaFlashcardActual(null)
+    }
+  }
+
+  // ============================================
+  // FUNCIONES BUSCADOR IA
+  // ============================================
+
+  // Función para resaltar términos de búsqueda en el texto
+  const resaltarTexto = (texto, query) => {
+    if (!query || !texto) return texto;
+    
+    // Dividir query en palabras
+    const palabras = query.toLowerCase().split(/\s+/).filter(p => p.length > 2);
+    
+    if (palabras.length === 0) return texto;
+    
+    // Crear regex para buscar todas las palabras
+    const regex = new RegExp(`(${palabras.join('|')})`, 'gi');
+    
+    // Dividir texto en partes y resaltar
+    const partes = texto.split(regex);
+    
+    return partes.map((parte, idx) => {
+      // Si la parte coincide con alguna palabra de búsqueda
+      if (palabras.some(p => parte.toLowerCase().includes(p.toLowerCase()))) {
+        return <mark key={idx} className="highlight-search">{parte}</mark>;
+      }
+      return parte;
+    });
+  };
+
+  const buscarConIA = async () => {
+    if (!queryBusqueda.trim()) {
+      setMensaje({ tipo: 'error', texto: 'Escribe algo para buscar' });
+      return;
+    }
+
+    setBuscando(true);
+    setResultadosBusqueda([]);
+
+    try {
+      const response = await fetch('http://localhost:5001/api/buscar', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: queryBusqueda,
+          tipo: filtroBusquedaTipo === 'todos' ? null : filtroBusquedaTipo,
+          max_resultados: 20
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error en la búsqueda');
+      }
+
+      const data = await response.json();
+      setResultadosBusqueda(data.resultados || []);
+      setMensaje({ 
+        tipo: 'exito', 
+        texto: `✅ ${data.total} resultados en ${data.tiempo}s` 
+      });
+
+    } catch (error) {
+      console.error('Error buscando:', error);
+      setMensaje({ 
+        tipo: 'error', 
+        texto: '❌ Error al buscar. Asegúrate de que el servidor esté corriendo (python api_buscador.py)' 
+      });
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  const actualizarIndice = async (completo = false) => {
+    if (actualizandoIndice) return;
+
+    setActualizandoIndice(true);
+    setMensaje({ 
+      tipo: 'info', 
+      texto: completo ? '🔄 Reindexando todo...' : '🔄 Actualizando índice...' 
+    });
+
+    try {
+      const response = await fetch('http://localhost:5001/api/actualizar_indice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ completo })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error actualizando índice');
+      }
+
+      const data = await response.json();
+      setMensaje({ 
+        tipo: 'exito', 
+        texto: `✅ Índice actualizado: ${data.archivos_procesados} archivos, ${data.chunks_indexados} chunks. Total: ${data.total_chunks}` 
+      });
+
+      cargarEstadoIndice();
+
+    } catch (error) {
+      console.error('Error actualizando índice:', error);
+      setMensaje({ 
+        tipo: 'error', 
+        texto: '❌ Error al actualizar índice. Servidor no disponible.' 
+      });
+    } finally {
+      setActualizandoIndice(false);
+    }
+  };
+
+  const cargarEstadoIndice = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/estado');
+      
+      if (response.ok) {
+        const data = await response.json();
+        setEstadoIndice(data);
+      }
+    } catch (error) {
+      console.error('Error cargando estado:', error);
+    }
+  };
+
+  const abrirArchivoBusqueda = (ruta) => {
+    const rutaLower = ruta.toLowerCase();
+    
+    // Detectar tipo de archivo por la ruta
+    if (rutaLower.includes('extracciones')) {
+      // Archivos en extracciones/ - navegar a Contenido
+      setSelectedMenu('contenido');
+      setTabContenidoActivo(0); // Tab "Contenido de estudio"
+      
+      // Intentar cargar el archivo
+      const carpeta = ruta.split('\\').slice(0, -1).join('\\');
+      const subcarpeta = carpeta.includes('extracciones') 
+        ? carpeta.split('extracciones\\')[1] || '' 
+        : '';
+      
+      if (subcarpeta) {
+        setRutaContenidoActual(subcarpeta);
+        cargarCarpetaContenido(subcarpeta);
+      }
+      
+      setMensaje({ 
+        tipo: 'success', 
+        texto: `📄 Navegando a: ${ruta.split('\\').pop()}` 
+      });
+      
+    } else if (rutaLower.includes('flashcard')) {
+      setSelectedMenu('flashcards');
+      const carpeta = ruta.split('\\').slice(0, -1).join('\\');
+      cargarCarpetasFlashcards(carpeta.split('flashcards\\')[1] || '');
+    } else if (rutaLower.includes('nota')) {
+      setSelectedMenu('notas');
+      const carpeta = ruta.split('\\').slice(0, -1).join('\\');
+      cargarCarpetasNotas(carpeta.split('notas\\')[1] || '');
+    } else if (rutaLower.includes('curso')) {
+      setSelectedMenu('cursos');
+      const carpeta = ruta.split('\\').slice(0, -1).join('\\');
+      cargarCarpeta(carpeta.split('cursos\\')[1] || '');
+    } else {
+      setMensaje({ tipo: 'info', texto: `📁 Archivo: ${ruta}` });
+    }
+  };
+
+  const extraerInfoRelevante = (resultado) => {
+    // Extraer información útil del contenido según el tipo
+    const contenido = resultado.contenido || resultado.texto_completo || '';
+    const info = { titulo: '', subtitulo: '', carpeta: '', textoReal: '' };
+    
+    // Obtener carpeta legible
+    const partes = resultado.ruta.split('\\');
+    if (partes.length > 2) {
+      info.carpeta = partes.slice(-3, -1).join(' › ');
+    }
+    
+    // Extraer snippet del texto real (primeras líneas limpias)
+    const lineas = contenido.split('\n').filter(l => l.trim().length > 0);
+    if (lineas.length > 0) {
+      // Primer línea como título si es corta
+      const primeraLinea = lineas[0].trim().replace(/[#*_"{}\[\]]/g, '').trim();
+      if (primeraLinea.length > 0 && primeraLinea.length < 150) {
+        info.titulo = primeraLinea;
+        // Siguiente línea como snippet
+        if (lineas.length > 1) {
+          info.textoReal = lineas.slice(1, 3).join(' ').substring(0, 200) + '...';
+        }
+      } else {
+        // Si primera línea es larga, usarla como snippet
+        info.textoReal = primeraLinea.substring(0, 250) + '...';
+      }
+    }
+    
+    // Intentar parsear JSON para extraer info estructurada
+    try {
+      // Buscar patrones comunes en el texto
+      
+      // Para exámenes
+      if (resultado.tipo === 'examen') {
+        const preguntaMatch = contenido.match(/"texto":\s*"([^"]+)"/);
+        const carpetaMatch = contenido.match(/"carpeta_nombre":\s*"([^"]+)"/);
+        
+        if (preguntaMatch) info.titulo = preguntaMatch[1];
+        if (carpetaMatch) info.subtitulo = `Carpeta: ${carpetaMatch[1]}`;
+      }
+      
+      // Para notas y documentos generales
+      const primeraLinea = contenido.split('\n')[0].trim();
+      if (primeraLinea && primeraLinea.length > 0 && primeraLinea.length < 100) {
+        info.titulo = primeraLinea.replace(/[#*_]/g, '').trim();
+      }
+      
+    } catch (e) {
+      // Si falla el parseo, usar snippet directo
+    }
+    
+    return info;
+  };
 
   const crearNuevaFlashcard = () => {
     setFlashcardEditando(null)
@@ -6294,6 +7961,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   const guardarFlashcard = (flashcard) => {
     const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
     
+    const carpetaDestino = carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '';
+    console.log('💾 Guardando flashcard:', {
+      titulo: flashcard.titulo,
+      carpetaFlashcardActual: carpetaFlashcardActual,
+      rutaFlashcardsActual: rutaFlashcardsActual,
+      carpetaDestino: carpetaDestino,
+      totalFlashcards: flashcards.length
+    });
+    
     const nuevaFlashcard = {
       id: flashcard.id || Date.now(),
       tipo: flashcard.tipo,
@@ -6304,10 +7980,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       explicacion: flashcard.explicacion,
       tema: flashcard.tema,
       subtema: flashcard.subtema || '',
-      carpeta: carpetaFlashcardActual?.ruta || '',
+      carpeta: carpetaDestino,
       fecha: flashcard.fecha || new Date().toISOString(),
-      fechaRevision: null,
-      estadoRevision: 'nueva',
+      // Campos de repetición espaciada (SM-2)
+      fechaRevision: flashcard.fechaRevision || null,
+      proximaRevision: flashcard.proximaRevision || new Date().toISOString(),
+      intervalo: flashcard.intervalo || 1, // días hasta próxima revisión
+      repeticiones: flashcard.repeticiones || 0, // veces que se ha recordado correctamente
+      facilidad: flashcard.facilidad || 2.5, // factor de facilidad (1.3-2.5)
+      estadoRevision: flashcard.estadoRevision || 'nueva',
       archivos: flashcard.archivos || [],
       imagenes: flashcard.imagenes || [],
       latex: flashcard.latex || false,
@@ -6354,14 +8035,27 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     if (flashcard.id) {
       // Editar existente
       flashcardsActualizadas = flashcards.map(f => f.id === flashcard.id ? nuevaFlashcard : f)
+      console.log('✏️ Flashcard editada');
     } else {
       // Nueva flashcard
       flashcardsActualizadas = [...flashcards, nuevaFlashcard]
+      console.log('➕ Nueva flashcard agregada');
     }
 
     localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
+    console.log('💾 Guardado en localStorage:', {
+      total: flashcardsActualizadas.length,
+      ultimaFlashcard: nuevaFlashcard
+    });
+    
     setFlashcardsActuales(flashcardsActualizadas)
     setModalNuevaFlashcard(false)
+    
+    // Recargar carpetas para actualizar el conteo
+    if (selectedMenu === 'flashcards') {
+      console.log('🔄 Recargando carpetas desde:', rutaFlashcardsActual);
+      cargarCarpetasFlashcards(rutaFlashcardsActual)
+    }
     
     setMensaje({
       tipo: 'success',
@@ -6377,6 +8071,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     
     localStorage.setItem('flashcards', JSON.stringify(flashcardsActualizadas))
     setFlashcardsActuales(flashcardsActualizadas)
+    
+    // Recargar carpetas para actualizar el conteo
+    if (selectedMenu === 'flashcards') {
+      cargarCarpetasFlashcards(rutaFlashcardsActual)
+    }
     
     setMensaje({
       tipo: 'success',
@@ -6667,6 +8366,186 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             <span className="icon">🃏</span>
             <span>Flashcards</span>
           </button>
+          
+          <button 
+            className={`nav-item ${selectedMenu === 'buscar' ? 'active' : ''}`}
+            onClick={() => { 
+              setSelectedMenu('buscar'); 
+              setMenuMovilAbierto(false);
+            }}
+          >
+            <span className="icon">🔍</span>
+            <span>Buscar</span>
+          </button>
+          
+          {/* 🔥 BOTÓN DE SESIÓN - Mostrar cuando hay sesión activa */}
+          {sesionActiva && (
+            <>
+              <button 
+                className={`nav-item ${selectedMenu === 'sesion' ? 'active' : ''} sesion-activa-indicator`}
+                onClick={() => { 
+                  setSelectedMenu('sesion'); 
+                  setMenuMovilAbierto(false); 
+                }}
+                title="Volver a tu sesión activa"
+              >
+                <span className="icon">🎯</span>
+                <span>Sesión Activa</span>
+                <span className="pulse-dot"></span>
+              </button>
+
+              {/* CONTROLES DE SESIÓN EN SIDEBAR */}
+              <div className="sidebar-sesion-controls">
+                {/* Contador de pausa */}
+                {sesionPausada && timestampInicioPausa && (
+                  <div className="contador-pausa">
+                    <div className="contador-pausa-header">
+                      <span className="pausa-icono">⏸️</span>
+                      <span className="pausa-texto">Sesión en Pausa</span>
+                    </div>
+                    <div className="contador-pausa-timer">
+                      {(() => {
+                        const tiempoPausaSegundos = Math.floor((Date.now() - timestampInicioPausa) / 1000);
+                        const minutos = Math.floor(tiempoPausaSegundos / 60);
+                        const segundos = tiempoPausaSegundos % 60;
+                        return (
+                          <>
+                            <span className="pausa-tiempo">
+                              {minutos}:{String(segundos).padStart(2, '0')}
+                            </span>
+                            <div className="pausa-recomendacion">
+                              {minutos < 5 ? (
+                                <span className="recomendacion-verde">✅ Pausa ideal: 5-10 min</span>
+                              ) : minutos < 10 ? (
+                                <span className="recomendacion-verde">✅ Tiempo óptimo de descanso</span>
+                              ) : minutos < 15 ? (
+                                <span className="recomendacion-amarillo">⚠️ Considera reanudar pronto</span>
+                              ) : (
+                                <span className="recomendacion-rojo">🔴 Mucho tiempo pausado</span>
+                              )}
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Timer y fase actual */}
+                <div className="sidebar-sesion-info">
+                  <div className="sidebar-fase-badge">
+                    <span className="fase-emoji">
+                      {faseActual === 'calentamiento' ? '🔥' :
+                       faseActual === 'errores' ? '❌' :
+                       faseActual === 'flashcards' ? '🎴' :
+                       faseActual === 'contenido' ? '📚' :
+                       faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
+                       '📊'}
+                    </span>
+                    <span className="fase-texto">{obtenerNombreFase(faseActual)}</span>
+                  </div>
+                  
+                  {/* Timer */}
+                  {!modoLibreActivo ? (
+                    <div className="sidebar-timer">
+                      {faseActual === 'descanso' ? (
+                        <div className="timer-display timer-descanso">
+                          <div className="timer-descanso-label">
+                            Descanso en {Math.floor(tiempoRestante / 60)} min
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="timer-display">
+                          <span className="timer-minutos">{Math.floor(tiempoRestante / 60)}</span>
+                          <span className="timer-separador">:</span>
+                          <span className="timer-segundos">{String(tiempoRestante % 60).padStart(2, '0')}</span>
+                        </div>
+                      )}
+                      <div className="timer-progreso">
+                        <div 
+                          className="timer-progreso-barra"
+                          style={{width: `${(tiempoRestante / tiempoFaseActual) * 100}%`}}
+                        ></div>
+                      </div>
+                      
+                      {/* Contador de descanso - siempre visible */}
+                      {!enDescanso && (
+                        <div className="contador-descanso">
+                          <span className="descanso-label">Descanso en:</span>
+                          <span className="descanso-tiempo">
+                            {Math.floor(tiempoHastaDescanso / 60)}:{String(tiempoHastaDescanso % 60).padStart(2, '0')}
+                          </span>
+                          <div className="descanso-progreso">
+                            <div 
+                              className="descanso-progreso-barra"
+                              style={{width: `${(tiempoHastaDescanso / intervaloDescansoInicial) * 100}%`}}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="sidebar-modo-libre">
+                      <span>♾️</span>
+                      <span>Modo Libre</span>
+                    </div>
+                  )}
+                  
+                  {/* Indicador de siguiente fase o contador de pausa */}
+                  {sesionPausada && tiempoPausaRestante > 0 ? (
+                    <div className="sidebar-siguiente-fase pausa-activa">
+                      <span className="siguiente-label">⏸️ Pausa:</span>
+                      <span className="siguiente-nombre pausa-contador">
+                        {Math.floor(tiempoPausaRestante / 60)}:{String(tiempoPausaRestante % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                  ) : enDescanso ? (
+                    <div className="sidebar-siguiente-fase">
+                      <span className="siguiente-label">Después del descanso:</span>
+                      <span className="siguiente-nombre">
+                        {fasesSesion[indiceFaseActual]?.tipo === 'calentamiento' ? '🔥 Calentamiento' :
+                         fasesSesion[indiceFaseActual]?.tipo === 'errores' ? '❌ Errores' :
+                         fasesSesion[indiceFaseActual]?.tipo === 'flashcards' ? '🎴 Flashcards' :
+                         fasesSesion[indiceFaseActual]?.tipo === 'contenido' ? '📚 Contenido' :
+                         '🎯 ' + (fasesSesion[indiceFaseActual]?.tipo || 'Continuar')}
+                      </span>
+                    </div>
+                  ) : !enDescanso && indiceFaseActual < fasesSesion.length - 1 ? (
+                    <div className="sidebar-siguiente-fase">
+                      <span className="siguiente-label">Siguiente:</span>
+                      <span className="siguiente-nombre">
+                        {fasesSesion[indiceFaseActual + 1]?.tipo === 'calentamiento' ? '🔥 Calentamiento' :
+                         fasesSesion[indiceFaseActual + 1]?.tipo === 'errores' ? '❌ Errores' :
+                         fasesSesion[indiceFaseActual + 1]?.tipo === 'flashcards' ? '🎴 Flashcards' :
+                         fasesSesion[indiceFaseActual + 1]?.tipo === 'contenido' ? '📚 Contenido' :
+                         '🎯 ' + (fasesSesion[indiceFaseActual + 1]?.tipo || 'Siguiente')}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Botones de control */}
+                <div className="sidebar-sesion-buttons">
+                  <button
+                    className="btn-sidebar-sesion btn-pausar"
+                    onClick={() => setSesionPausada(!sesionPausada)}
+                    title={sesionPausada ? 'Reanudar' : 'Pausar'}
+                  >
+                    {sesionPausada ? '▶️' : '⏸️'}
+                  </button>
+                  
+                  <button
+                    className="btn-sidebar-sesion btn-detener"
+                    onClick={detenerSesion}
+                    title="Detener sesión"
+                  >
+                    ⏹️
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          
           <button 
             className={`nav-item ${selectedMenu === 'historial' ? 'active' : ''}`}
             onClick={() => { 
@@ -6674,8 +8553,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               setMenuMovilAbierto(false); 
             }}
           >
-            <span className="icon">📋</span>
-            <span>Historial</span>
+            <span className="icon">📅</span>
+            <span>Calendario</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'chat' ? 'active' : ''}`}
@@ -6698,26 +8577,54 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             <span>Configuración</span>
           </button>
         </nav>
+
+        {/* Info de conexión al final del sidebar */}
+        {window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+          <div style={{
+            marginTop: 'auto',
+            padding: '1rem',
+            background: 'rgba(102, 126, 234, 0.1)',
+            borderTop: '1px solid rgba(102, 126, 234, 0.2)',
+            fontSize: '0.75rem',
+            color: '#a0aec0',
+            lineHeight: '1.6'
+          }}>
+            <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🌐</span>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Accediendo desde:</div>
+                <div style={{ 
+                  fontWeight: '600', 
+                  color: '#667eea',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {window.location.hostname}:{window.location.port}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>🔌</span>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>API Backend:</div>
+                <div style={{ 
+                  fontWeight: '600', 
+                  color: '#764ba2',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {API_URL}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Main Content */}
       <main className="main-content">
-        {/* Banner de debug para verificar la URL del API */}
-        {window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
-          <div style={{
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            padding: '0.75rem 1rem',
-            borderRadius: '8px',
-            marginBottom: '1rem',
-            fontSize: '0.85rem',
-            fontFamily: 'monospace'
-          }}>
-            🌐 Accediendo desde: <strong>{window.location.hostname}:{window.location.port}</strong><br/>
-            🔌 API Backend: <strong>{API_URL}</strong>
-          </div>
-        )}
-        
         {mensaje && (
           <div className={`mensaje ${mensaje.tipo}`}>
             {mensaje.texto}
@@ -6750,33 +8657,61 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               <div className="seccion-carpetas">
                 <h2 className="titulo-seccion">📚 Cursos</h2>
                 <div className="cursos-recientes-grid">
-                  {cursosRecientes.map(curso => (
-                    <div 
-                      key={curso.ruta} 
-                      className="curso-card"
-                      onClick={() => {
-                        setSelectedMenu('cursos');
-                        cargarCarpeta(curso.ruta);
-                      }}
-                    >
-                      <div className="curso-icon">📁</div>
-                      <div className="curso-nombre">{curso.nombre}</div>
-                      <div className="curso-rendimiento">
-                        <span className="rendimiento-label">Rendimiento</span>
-                      </div>
-                      <div className="curso-stats">
-                        <div className="stat-item">
-                          <div className="stat-value">{curso.num_documentos}</div>
-                          <div className="stat-label">Documentos</div>
+                  {cursosRecientes.map(curso => {
+                    const rendimiento = calcularRendimientoCarpeta(curso.ruta);
+                    
+                    return (
+                      <div 
+                        key={curso.ruta} 
+                        className="curso-card"
+                        onClick={() => {
+                          setSelectedMenu('cursos');
+                          cargarCarpeta(curso.ruta);
+                        }}
+                      >
+                        <div className="curso-icon">📁</div>
+                        <div className="curso-nombre">{curso.nombre}</div>
+                        <div className="curso-rendimiento">
+                          <div className="rendimiento-barra-container">
+                            <div className="rendimiento-barra-bg">
+                              <div 
+                                className="rendimiento-barra-fill"
+                                style={{
+                                  width: `${rendimiento.porcentajeDominado}%`,
+                                  background: rendimiento.porcentajeDominado >= 80 ? '#4caf50' : 
+                                             rendimiento.porcentajeDominado >= 50 ? '#3b82f6' : 
+                                             rendimiento.porcentajeDominado >= 25 ? '#f59e0b' : '#ef4444'
+                                }}
+                              ></div>
+                            </div>
+                            <span className="rendimiento-porcentaje">{rendimiento.porcentajeDominado}%</span>
+                          </div>
+                          <div className="rendimiento-detalles">
+                            {rendimiento.total > 0 ? (
+                              <>
+                                <span className="detalle-item">✅ {rendimiento.dominadas}</span>
+                                <span className="detalle-item">📖 {rendimiento.enProgreso}</span>
+                                <span className="detalle-item">🆕 {rendimiento.nuevas}</span>
+                              </>
+                            ) : (
+                              <span className="sin-datos">Sin datos</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="stat-divider"></div>
-                        <div className="stat-item">
-                          <div className="stat-value">{curso.num_subcarpetas}</div>
-                          <div className="stat-label">Carpetas</div>
+                        <div className="curso-stats">
+                          <div className="stat-item">
+                            <div className="stat-value">{curso.num_documentos}</div>
+                            <div className="stat-label">Documentos</div>
+                          </div>
+                          <div className="stat-divider"></div>
+                          <div className="stat-item">
+                            <div className="stat-value">{curso.num_subcarpetas}</div>
+                            <div className="stat-label">Carpetas</div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -6912,9 +8847,114 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         {/* 🎯 VISTA DEL MODO SESIÓN DE ESTUDIO */}
         {/* ============================================ */}
         {selectedMenu === 'sesion' && sesionActiva && (
-          <div className="sesion-estudio-container">
-            {/* Header fijo con cronómetro */}
-            <div className="sesion-header-fixed">
+          <div className="sesion-estudio-container-wrapper">
+            {/* SELECTOR DE CURSOS LATERAL */}
+            {selectorCursosAbierto && (
+              <div className="selector-cursos-panel">
+                <div className="selector-header">
+                  <h3>📚 Explorar Cursos</h3>
+                  <button
+                    className="btn-cerrar-selector"
+                    onClick={() => setSelectorCursosAbierto(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="selector-busqueda">
+                  <input
+                    type="text"
+                    placeholder="Buscar curso, capítulo, lección..."
+                    className="input-buscar-curso"
+                    value={busquedaCursos}
+                    onChange={(e) => setBusquedaCursos(e.target.value)}
+                  />
+                  {busquedaCursos && (
+                    <button 
+                      className="btn-limpiar-busqueda"
+                      onClick={() => setBusquedaCursos('')}
+                      title="Limpiar búsqueda"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                
+                <div className="selector-contenido">
+                  {/* Árbol de cursos */}
+                  <div className="arbol-cursos">
+                    {carpetasCursos
+                      .filter(carpeta => {
+                        // Filtrar por búsqueda
+                        if (!busquedaCursos.trim()) return true;
+                        
+                        const busqueda = busquedaCursos.toLowerCase();
+                        const nombreCarpeta = carpeta.nombre.toLowerCase();
+                        
+                        // Buscar en el nombre de la carpeta
+                        if (nombreCarpeta.includes(busqueda)) return true;
+                        
+                        // Buscar en subcarpetas
+                        if (carpeta.subcarpetas) {
+                          return carpeta.subcarpetas.some(sub => 
+                            sub.nombre.toLowerCase().includes(busqueda)
+                          );
+                        }
+                        
+                        return false;
+                      })
+                      .map((carpeta) => (
+                      <div key={carpeta.nombre} className="curso-item">
+                        <div className="curso-header">
+                          <span className="curso-icono">📁</span>
+                          <span className="curso-nombre">{carpeta.nombre}</span>
+                        </div>
+                        {carpeta.subcarpetas && carpeta.subcarpetas
+                          .filter(subcarpeta => {
+                            if (!busquedaCursos.trim()) return true;
+                            return subcarpeta.nombre.toLowerCase().includes(busquedaCursos.toLowerCase());
+                          })
+                          .map((subcarpeta) => (
+                          <div key={subcarpeta.nombre} className="subcarpeta-item">
+                            <span className="subcarpeta-icono">📂</span>
+                            <span className="subcarpeta-nombre">{subcarpeta.nombre}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {carpetasCursos.filter(carpeta => {
+                    if (!busquedaCursos.trim()) return true;
+                    const busqueda = busquedaCursos.toLowerCase();
+                    const nombreCarpeta = carpeta.nombre.toLowerCase();
+                    if (nombreCarpeta.includes(busqueda)) return true;
+                    if (carpeta.subcarpetas) {
+                      return carpeta.subcarpetas.some(sub => 
+                        sub.nombre.toLowerCase().includes(busqueda)
+                      );
+                    }
+                    return false;
+                  }).length === 0 && (
+                    <div className="selector-vacio">
+                      <div className="vacio-icon">🔍</div>
+                      <p>No se encontraron resultados para "{busquedaCursos}"</p>
+                      <button 
+                        className="btn-limpiar-busqueda-vacio"
+                        onClick={() => setBusquedaCursos('')}
+                      >
+                        ✕ Limpiar búsqueda
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* CONTENEDOR PRINCIPAL DE SESIÓN */}
+            <div className={`sesion-estudio-container ${selectorCursosAbierto ? 'con-selector' : ''}`}>
+              {/* Header fijo con cronómetro (ANTIGUO - AHORA REEMPLAZADO POR HEADER SUPERIOR) */}
+              <div className="sesion-header-fixed oculto">{/* Mantener por compatibilidad pero ocultar */}
               <div className="sesion-info">
                 <div className="sesion-fase-actual">
                   <span className="fase-emoji">{fasesSesion[indiceFaseActual]?.emoji}</span>
@@ -6999,7 +9039,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </div>
                     <div className="highlight-content">
                       <h3 className="curso-destacado">
-                        📚 {rutaActual ? rutaActual.split('/').pop() : 'Tu material de estudio'}
+                        📚 {rutaCalentamientoActual || rutaActual || 'Selecciona tu carpeta de trabajo'}
                       </h3>
                       <div className="contexto-sesion">
                         <div className="contexto-item">
@@ -7125,7 +9165,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             <div className="stat-info">
                               <span className="stat-label">Tiempo total</span>
                               <span className="stat-value">
-                                {Math.floor(tiempoTotalEfectivo / 60)}h {tiempoTotalEfectivo % 60}m
+                                {Math.floor(tiempoTotalEfectivo / 3600)}h {Math.floor((tiempoTotalEfectivo % 3600) / 60)}m
                               </span>
                             </div>
                           </div>
@@ -7155,21 +9195,126 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </div>
                   </div>
 
+                  {/* Explorador de carpetas - Compacto */}
+                  <div className="calentamiento-highlight calentamiento-highlight-compacto">
+                    <div className="highlight-header">
+                      <h2>📁 Selecciona tu Carpeta</h2>
+                    </div>
+                    
+                    <div className="explorador-carpetas-calentamiento">
+                      {/* Breadcrumb navigation */}
+                      <div className="breadcrumb-explorador">
+                        <button 
+                          onClick={() => cargarCarpetasCalentamiento('')}
+                          className="breadcrumb-btn-explorador"
+                        >
+                          🏠 Inicio
+                        </button>
+                        {rutaCalentamientoActual && rutaCalentamientoActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                          const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                          return (
+                            <span key={idx}>
+                              <span className="breadcrumb-separador">/</span>
+                              <button 
+                                onClick={() => cargarCarpetasCalentamiento(rutaParcial)}
+                                className="breadcrumb-btn-explorador"
+                              >
+                                {parte}
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {/* Controles de navegación */}
+                      <div className="explorador-controles">
+                        <button
+                          className="btn-explorador btn-volver"
+                          onClick={() => {
+                            if (rutaCalentamientoActual) {
+                              const partes = rutaCalentamientoActual.split('\\');
+                              partes.pop();
+                              const rutaPadre = partes.join('\\');
+                              cargarCarpetasCalentamiento(rutaPadre);
+                            }
+                          }}
+                          disabled={!rutaCalentamientoActual}
+                        >
+                          ⬅️ Volver Atrás
+                        </button>
+                        
+                        <button
+                          className="btn-explorador btn-nueva-carpeta"
+                          onClick={() => setModalNuevaCarpetaCalentamiento(true)}
+                        >
+                          ➕ Nueva Carpeta
+                        </button>
+                      </div>
+
+                      {/* Carpeta actual seleccionada */}
+                      <div className="carpeta-seleccionada-info">
+                        <div className="info-icon">📂</div>
+                        <div className="info-texto">
+                          <span className="info-label">Carpeta seleccionada:</span>
+                          <span className="info-valor">{rutaCalentamientoActual || 'Raíz'}</span>
+                        </div>
+                      </div>
+
+                      {/* Lista de carpetas */}
+                      <div className="carpetas-grid">
+                        {carpetasCalentamiento.length > 0 ? (
+                          carpetasCalentamiento.map((carpeta, idx) => (
+                            <button
+                              key={idx}
+                              className="carpeta-card"
+                              onClick={() => {
+                                const nuevaRuta = rutaCalentamientoActual 
+                                  ? `${rutaCalentamientoActual}\\${carpeta.nombre}`
+                                  : carpeta.nombre;
+                                cargarCarpetasCalentamiento(nuevaRuta);
+                              }}
+                            >
+                              <div className="carpeta-icono">📁</div>
+                              <div className="carpeta-nombre">{carpeta.nombre}</div>
+                              <div className="carpeta-info">
+                                {carpeta.archivos > 0 && (
+                                  <span className="carpeta-stat">📄 {carpeta.archivos}</span>
+                                )}
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="carpetas-vacio">
+                            <p className="vacio-icon">📭</p>
+                            <p className="vacio-texto">No hay subcarpetas aquí</p>
+                            <p className="vacio-hint">Puedes crear una nueva carpeta con el botón de arriba</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Botón de continuar */}
                   <div className="calentamiento-footer">
                     <button 
                       className="btn-continuar-fase"
-                      onClick={avanzarFase}
+                      onClick={() => {
+                        // Guardar la carpeta seleccionada si hay una
+                        if (rutaCalentamientoActual) {
+                          setRutaActual(rutaCalentamientoActual);
+                          setCursoActual({
+                            ...cursoActual,
+                            carpeta_trabajo: rutaCalentamientoActual
+                          });
+                        }
+                        avanzarFase();
+                      }}
                     >
                       <span className="btn-icon">✅</span>
                       <span className="btn-text">Listo, Continuar</span>
                       <span className="btn-arrow">→</span>
                     </button>
                   </div>
-
-                  <button className="btn-continuar" onClick={avanzarFase}>
-                    Continuar a la siguiente fase →
-                  </button>
                 </div>
               )}
 
@@ -7400,6 +9545,57 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <span className="progreso-total">{flashcardsSesion.length}</span>
                         </div>
                       </div>
+                      
+                      {/* Botones de Acceso Rápido */}
+                      <div className="accesos-rapidos-fase">
+                        <div className="accesos-rapidos-titulo">
+                          <span>🔗 Accesos Rápidos</span>
+                          {flashcardsSesion[indiceFlashcardActual]?.carpeta ? (
+                            <span className="carpeta-actual">📁 {flashcardsSesion[indiceFlashcardActual].carpeta}</span>
+                          ) : (
+                            <span className="carpeta-actual">📁 Raíz</span>
+                          )}
+                        </div>
+                        <div className="accesos-rapidos-botones">
+                          <button
+                            className="btn-acceso-rapido btn-cursos"
+                            onClick={() => {
+                              const carpeta = flashcardsSesion[indiceFlashcardActual]?.carpeta || '';
+                              setRutaActual(carpeta);
+                              setSelectedMenu('cursos');
+                              cargarCarpeta(carpeta);
+                            }}
+                            title="Ver documentos en esta carpeta"
+                          >
+                            📚 Ver en Mis Cursos
+                          </button>
+                          <button
+                            className="btn-acceso-rapido btn-notas"
+                            onClick={() => {
+                              const carpeta = flashcardsSesion[indiceFlashcardActual]?.carpeta || '';
+                              setRutaNotasActual(carpeta);
+                              setSelectedMenu('notas');
+                              cargarCarpetasNotas(carpeta);
+                            }}
+                            title="Ver notas de esta carpeta"
+                          >
+                            📝 Ver Notas
+                          </button>
+                          <button
+                            className="btn-acceso-rapido btn-flashcards"
+                            onClick={() => {
+                              const carpeta = flashcardsSesion[indiceFlashcardActual]?.carpeta || '';
+                              setRutaFlashcardsActual(carpeta);
+                              setCarpetaFlashcardActual({ ruta: carpeta });
+                              setSelectedMenu('flashcards');
+                              cargarCarpetasFlashcards(carpeta);
+                            }}
+                            title="Ver todas las flashcards de esta carpeta"
+                          >
+                            🎴 Ver Flashcards
+                          </button>
+                        </div>
+                      </div>
 
                       {/* Barra de progreso */}
                       <div className="flashcards-progress-bar">
@@ -7573,16 +9769,64 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               {/* FASE 4: CONTENIDO NUEVO */}
               {faseActual === 'contenido' && (
                 <div className="fase-contenido">
-                  {/* Header de Fase 4 */}
-                  <div className="contenido-header-fase4">
-                    <div className="breadcrumb-fase4">
-                      <span className="breadcrumb-curso">{cursoActual?.nombre || 'Curso'}</span>
-                      <span className="breadcrumb-separator">›</span>
-                      <span className="breadcrumb-tema">{cursoActual?.tema_actual || 'Tema'}</span>
-                      <span className="breadcrumb-separator">›</span>
-                      <span className="breadcrumb-doc">{documentoActual?.titulo || 'Documento'}</span>
-                    </div>
-                  </div>
+                  {/* Modal Selector de Carpetas */}
+                  {mostrandoSelectorCarpetas && (
+                    <>
+                      <div className="modal-backdrop" onClick={() => setMostrandoSelectorCarpetas(false)}></div>
+                      <div className="modal-selector-carpetas">
+                        <div className="modal-header">
+                          <h2>📁 Seleccionar Carpeta de Trabajo</h2>
+                          <button 
+                            className="btn-cerrar-modal"
+                            onClick={() => setMostrandoSelectorCarpetas(false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        {/* Navegación */}
+                        <div className="navegacion-carpetas">
+                          {(rutaContenidoActual || navegacionHistorial.length > 0) && (
+                            <button 
+                              className="btn-volver-atras"
+                              onClick={volverAtrasContenido}
+                            >
+                              ← Volver atrás
+                            </button>
+                          )}
+                          <div className="ruta-actual">
+                            📂 {rutaContenidoActual || 'Mis Cursos'}
+                          </div>
+                        </div>
+
+                        {/* Lista de carpetas */}
+                        <div className="lista-carpetas-selector">
+                          {carpetasContenido.length > 0 ? (
+                            carpetasContenido.map((carpeta, idx) => (
+                              <div key={idx} className="carpeta-item-selector">
+                                <button
+                                  className="btn-navegar-carpeta"
+                                  onClick={() => navegarACarpetaContenido(carpeta)}
+                                >
+                                  📁 {carpeta.nombre}
+                                </button>
+                                <button
+                                  className="btn-seleccionar-carpeta"
+                                  onClick={() => seleccionarCarpetaContenido(carpeta)}
+                                >
+                                  ✓ Seleccionar
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="no-carpetas">
+                              <p>No hay carpetas disponibles en esta ubicación</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   {/* Sistema de Tabs */}
                   <div className="content-tabs-sistema">
@@ -7598,15 +9842,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         className={`tab-button-contenido ${tabContenidoActivo === 1 ? 'activo' : ''}`}
                         onClick={() => setTabContenidoActivo(1)}
                       >
-                        <span className="tab-icon">🎯</span>
-                        <span className="tab-label">Práctica</span>
+                        <span className="tab-icon">📝</span>
+                        <span className="tab-label">Notas</span>
                       </button>
                       <button 
                         className={`tab-button-contenido ${tabContenidoActivo === 2 ? 'activo' : ''}`}
                         onClick={() => setTabContenidoActivo(2)}
                       >
-                        <span className="tab-icon">📝</span>
-                        <span className="tab-label">Notas</span>
+                        <span className="tab-icon">🎴</span>
+                        <span className="tab-label">Flashcards</span>
                       </button>
                     </div>
 
@@ -7651,43 +9895,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             )}
                           </div>
 
-                          {/* Sidebar de notas vinculadas */}
-                          <div className={`notas-vinculadas-sidebar ${sidebarNotasColapsado ? 'colapsado' : ''}`}>
-                            <div className="sidebar-header">
-                              <button 
-                                className="toggle-sidebar-btn"
-                                onClick={() => setSidebarNotasColapsado(!sidebarNotasColapsado)}
-                              >
-                                {sidebarNotasColapsado ? '📌' : '✕'}
-                              </button>
-                              {!sidebarNotasColapsado && (
-                                <h3>📌 Notas vinculadas ({notasVinculadas.length})</h3>
-                              )}
-                            </div>
-                            
-                            {!sidebarNotasColapsado && (
-                              <div className="sidebar-notas-lista">
-                                {notasVinculadas.length > 0 ? (
-                                  notasVinculadas.map(nota => (
-                                    <div 
-                                      key={nota.id} 
-                                      className="nota-card-sidebar"
-                                      onClick={() => abrirNotaEnDrawer(nota)}
-                                    >
-                                      <div className="nota-titulo">{nota.titulo}</div>
-                                      <div className="nota-preview">{nota.contenido.substring(0, 80)}...</div>
-                                      <div className="nota-icon">↗️</div>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className="no-notas-vinculadas">
-                                    <p>No hay notas vinculadas.</p>
-                                    <p>Crea una en la pestaña Notas 📝</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
                         </div>
 
                         {/* Drawer de nota individual */}
@@ -7718,403 +9925,462 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       </div>
                     )}
 
-                    {/* Tab 2: Práctica Rápida */}
+                    {/* Tab 2: Notas Rápidas - EDITOR ESTILO NOTION CON VISTA PREVIA */}
                     {tabContenidoActivo === 1 && (
-                      <div className="tab-practica-contenido">
-                        <div className="practica-layout">
-                          {/* Panel de configuración (izquierda) */}
-                          <div className="practica-config-panel">
-                            <h3>🎯 Generador de Práctica Instantánea</h3>
+                      <div className="tab-notas-contenido">
+                        {/* Botones de Acceso Rápido */}
+                        <div className="accesos-rapidos-fase">
+                          <div className="accesos-rapidos-titulo">
+                            <span>🔗 Accesos Rápidos</span>
+                            <span className="carpeta-actual">📁 {rutaNotasActual || 'Raíz'}</span>
+                          </div>
+                          <div className="accesos-rapidos-botones">
+                            <button
+                              className="btn-acceso-rapido btn-cursos"
+                              onClick={() => {
+                                setRutaActual(rutaNotasActual || '');
+                                setSelectedMenu('cursos');
+                                cargarCarpeta(rutaNotasActual || '');
+                              }}
+                              title="Ver documentos en esta carpeta"
+                            >
+                              📚 Ver en Mis Cursos
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-notas"
+                              onClick={() => {
+                                setSelectedMenu('notas');
+                                cargarCarpetasNotas(rutaNotasActual || '');
+                              }}
+                              title="Ver todas las notas de esta carpeta"
+                            >
+                              📝 Ver Todas las Notas
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-flashcards"
+                              onClick={() => {
+                                setRutaFlashcardsActual(rutaNotasActual || '');
+                                setCarpetaFlashcardActual({ ruta: rutaNotasActual || '' });
+                                setSelectedMenu('flashcards');
+                                cargarCarpetasFlashcards(rutaNotasActual || '');
+                              }}
+                              title="Ver flashcards de esta carpeta"
+                            >
+                              🎴 Ver Flashcards
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="notas-editor-notion-layout">
+                          {/* Sidebar izquierdo - Selector de carpeta y opciones */}
+                          <div className="editor-sidebar-izq">
+                            <div className="sidebar-section">
+                              <h4>📁 Destino</h4>
+                              <div 
+                                className="carpeta-selector"
+                                onClick={() => {
+                                  const carpeta = prompt('📁 Carpeta para guardar:\n(Ejemplo: Biologia/Unidad1)', rutaNotasActual || 'notas');
+                                  if (carpeta !== null) {
+                                    setRutaNotasActual(carpeta);
+                                    setMensaje({
+                                      tipo: 'info',
+                                      texto: `📁 Carpeta: ${carpeta || 'notas'}`
+                                    });
+                                  }
+                                }}
+                              >
+                                <span className="carpeta-icon">📂</span>
+                                <span className="carpeta-path">{rutaNotasActual || 'notas'}</span>
+                                <span className="carpeta-edit">✏️</span>
+                              </div>
+                            </div>
                             
-                            <div className="config-grupo">
-                              <label>📄 Documento seleccionado:</label>
-                              <div className="documento-seleccionado">
-                                {documentoActual?.titulo || 'No hay documento cargado'}
-                              </div>
+                            <div className="sidebar-section">
+                              <h4>⚙️ Opciones</h4>
+                              <label className="checkbox-opcion">
+                                <input 
+                                  type="checkbox"
+                                  checked={vincularADocumento}
+                                  onChange={(e) => setVincularADocumento(e.target.checked)}
+                                />
+                                <span>🔗 Vincular a documento</span>
+                              </label>
                             </div>
-
-                            <div className="config-grupo">
-                              <label>🎲 Tipo de práctica:</label>
-                              <div className="radio-group">
-                                <label className="radio-option">
-                                  <input 
-                                    type="radio" 
-                                    value="mcq" 
-                                    checked={tipoPractica === 'mcq'}
-                                    onChange={(e) => setTipoPractica(e.target.value)}
-                                  />
-                                  <span>Examen corto (MCQ)</span>
-                                </label>
-                                <label className="radio-option">
-                                  <input 
-                                    type="radio" 
-                                    value="short_answer" 
-                                    checked={tipoPractica === 'short_answer'}
-                                    onChange={(e) => setTipoPractica(e.target.value)}
-                                  />
-                                  <span>Preguntas cortas</span>
-                                </label>
-                              </div>
+                            
+                            <div className="sidebar-actions sidebar-actions-fixed">
+                              <button 
+                                className="btn-sidebar-action secondary"
+                                onClick={() => {
+                                  setEditorNotaTitulo('');
+                                  setEditorNotaContenido('');
+                                  setEditorNotaTags('');
+                                }}
+                              >
+                                🗑️ Limpiar
+                              </button>
+                              
+                              <button 
+                                className="btn-sidebar-action primary"
+                                onClick={() => {
+                                  // Si no hay título, generar uno automático
+                                  if (!editorNotaTitulo.trim()) {
+                                    const tituloAuto = `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`;
+                                    setEditorNotaTitulo(tituloAuto);
+                                  }
+                                  setTipoGuardado('txt');
+                                  setRutaGuardadoActual(rutaNotasActual || rutaCalentamientoActual || '');
+                                  cargarCarpetasGuardado(rutaNotasActual || rutaCalentamientoActual || '');
+                                  setModalGuardarContenido(true);
+                                }}
+                              >
+                                📄 Guardar TXT
+                              </button>
+                              
+                              <button 
+                                className="btn-sidebar-action primary"
+                                onClick={() => {
+                                  // Si no hay título, generar uno automático
+                                  if (!editorNotaTitulo.trim()) {
+                                    const tituloAuto = `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`;
+                                    setEditorNotaTitulo(tituloAuto);
+                                  }
+                                  setTipoGuardado('nota');
+                                  setRutaGuardadoActual(rutaNotasActual || rutaCalentamientoActual || '');
+                                  cargarCarpetasGuardado(rutaNotasActual || rutaCalentamientoActual || '');
+                                  setModalGuardarContenido(true);
+                                }}
+                              >
+                                📝 Guardar Nota
+                              </button>
+                              
+                              <button 
+                                className="btn-sidebar-action generar-ejercicio"
+                                onClick={async () => {
+                                  if (!editorNotaContenido.trim()) {
+                                    setMensaje({
+                                      tipo: 'error',
+                                      texto: '⚠️ No hay contenido para generar ejercicios'
+                                    });
+                                    return;
+                                  }
+                                  
+                                  // Establecer la carpeta de trabajo para la práctica
+                                  const carpetaDestino = cursoActual?.carpeta_trabajo || rutaContenidoActual || rutaNotasActual || 'contexto_ejercicios';
+                                  setCarpetaPractica(carpetaDestino);
+                                  setTipoFuentePractica('carpeta');
+                                  
+                                  // Abrir modal inmediatamente
+                                  setModalPracticaAbierto(true);
+                                  
+                                  // Intentar guardar contexto en segundo plano
+                                  try {
+                                    const nombreArchivo = editorNotaTitulo.trim() || `contexto_${new Date().toISOString().slice(0,10)}`;
+                                    
+                                    const response = await fetch(`${API_URL}/api/guardar_contexto_ejercicio`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        contenido: editorNotaContenido,
+                                        titulo: nombreArchivo,
+                                        carpeta: carpetaDestino,
+                                        tags: editorNotaTags
+                                      })
+                                    });
+                                    
+                                    if (response.ok) {
+                                      const data = await response.json();
+                                      console.log('✅ Contexto guardado:', data.ruta);
+                                    }
+                                  } catch (error) {
+                                    console.error('⚠️ No se pudo guardar el contexto:', error);
+                                  }
+                                }}
+                                disabled={!editorNotaContenido.trim()}
+                              >
+                                🎯 Generar Ejercicio
+                              </button>
                             </div>
+                          </div>
 
-                            <div className="config-grupo">
-                              <label>⚙️ Dificultad:</label>
-                              <div className="radio-group horizontal">
-                                <label className="radio-option">
-                                  <input 
-                                    type="radio" 
-                                    value="facil" 
-                                    checked={dificultadPractica === 'facil'}
-                                    onChange={(e) => setDificultadPractica(e.target.value)}
-                                  />
-                                  <span>Fácil</span>
-                                </label>
-                                <label className="radio-option">
-                                  <input 
-                                    type="radio" 
-                                    value="media" 
-                                    checked={dificultadPractica === 'media'}
-                                    onChange={(e) => setDificultadPractica(e.target.value)}
-                                  />
-                                  <span>Media</span>
-                                </label>
-                                <label className="radio-option">
-                                  <input 
-                                    type="radio" 
-                                    value="dificil" 
-                                    checked={dificultadPractica === 'dificil'}
-                                    onChange={(e) => setDificultadPractica(e.target.value)}
-                                  />
-                                  <span>Difícil</span>
-                                </label>
-                              </div>
-                            </div>
-
-                            <div className="config-grupo">
-                              <label>📊 Número de preguntas:</label>
+                          {/* Área principal - Editor + Preview */}
+                          <div className="editor-area-principal">
+                            {/* Header */}
+                            <div className="editor-header-compact">
                               <input 
-                                type="number" 
-                                min="1" 
-                                max="10"
-                                value={numPreguntasPractica}
-                                onChange={(e) => setNumPreguntasPractica(parseInt(e.target.value))}
-                                className="input-num-preguntas"
+                                type="text"
+                                className="nota-titulo-compact"
+                                placeholder="✏️ Título de la nota..."
+                                value={editorNotaTitulo}
+                                onChange={(e) => setEditorNotaTitulo(e.target.value)}
+                              />
+                              <input 
+                                type="text"
+                                className="nota-tags-compact"
+                                placeholder="🏷️ Tags (separados por coma)"
+                                value={editorNotaTags}
+                                onChange={(e) => setEditorNotaTags(e.target.value)}
                               />
                             </div>
 
-                            <button 
-                              className="btn-generar-practica"
-                              onClick={generarPracticaRapida}
-                              disabled={generandoPractica || !documentoActual}
-                            >
-                              {generandoPractica ? (
-                                <>
-                                  <span className="spinner-small"></span>
-                                  Generando...
-                                </>
-                              ) : (
-                                <>🚀 Generar Práctica</>
-                              )}
-                            </button>
+                            {/* Vista dividida: Editor | Preview */}
+                            <div className="editor-split-view">
+                              {/* Editor de texto */}
+                              <div className="editor-panel" style={{position: 'relative'}}>
+                                <div className="panel-label">✍️ Editor (Markdown)</div>
+                                <textarea
+                                  className="editor-textarea-notion"
+                                  placeholder="Escribe aquí... Presiona / para abrir menú de bloques
 
-                            {historialPracticas.length > 0 && (
-                              <div className="historial-practicas">
-                                <h4>📊 Historial hoy:</h4>
-                                {historialPracticas.map((practica, idx) => (
-                                  <div key={idx} className="historial-item">
-                                    <span>• Práctica {idx + 1}:</span>
-                                    <span className={practica.resultado.porcentaje >= 70 ? 'resultado-bueno' : 'resultado-regular'}>
-                                      {practica.resultado.correctas}/{practica.resultado.total} 
-                                      {practica.resultado.porcentaje >= 70 ? ' ✅' : ' ⚠️'}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Panel de práctica/resultados (derecha) */}
-                          <div className="practica-viewer-panel">
-                            {!practicaGenerada && !resultadoPractica && (
-                              <div className="practica-empty">
-                                <div className="empty-icon">💡</div>
-                                <p>Genera una práctica para ver preguntas aquí</p>
-                              </div>
-                            )}
-
-                            {practicaGenerada && !resultadoPractica && (
-                              <div className="practica-activa">
-                                <div className="practica-header-viewer">
-                                  <h3>Pregunta {preguntaActualPractica + 1} de {practicaGenerada.preguntas.length}</h3>
-                                  <div className="progreso-practica">
-                                    <div 
-                                      className="progreso-barra-practica"
-                                      style={{ width: `${((preguntaActualPractica + 1) / practicaGenerada.preguntas.length) * 100}%` }}
-                                    ></div>
-                                  </div>
-                                </div>
-
-                                {practicaGenerada.preguntas[preguntaActualPractica] && (
-                                  <div className="pregunta-card-practica">
-                                    <p className="pregunta-texto">
-                                      {practicaGenerada.preguntas[preguntaActualPractica].pregunta}
-                                    </p>
-
-                                    {practicaGenerada.preguntas[preguntaActualPractica].tipo === 'mcq' && (
-                                      <div className="opciones-practica">
-                                        {practicaGenerada.preguntas[preguntaActualPractica].opciones.map(opcion => (
-                                          <button
-                                            key={opcion.id}
-                                            className={`opcion-btn-practica ${
-                                              mostrandoFeedback 
-                                                ? (opcion.id === practicaGenerada.preguntas[preguntaActualPractica].respuesta_correcta 
-                                                    ? 'correcta' 
-                                                    : respuestasPractica[preguntaActualPractica]?.respuesta === opcion.id 
-                                                      ? 'incorrecta' 
-                                                      : '')
-                                                : ''
-                                            }`}
-                                            onClick={() => !mostrandoFeedback && responderPreguntaPractica(opcion.id)}
-                                            disabled={mostrandoFeedback}
-                                          >
-                                            <span className="opcion-id">{opcion.id}</span>
-                                            <span className="opcion-texto">{opcion.texto}</span>
-                                          </button>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {mostrandoFeedback && (
-                                      <div className="feedback-practica">
-                                        <div className={`feedback-resultado ${respuestasPractica[preguntaActualPractica]?.correcta ? 'correcto' : 'incorrecto'}`}>
-                                          {respuestasPractica[preguntaActualPractica]?.correcta ? (
-                                            <>
-                                              <span className="feedback-icon">✅</span>
-                                              <span>¡Correcto!</span>
-                                            </>
-                                          ) : (
-                                            <>
-                                              <span className="feedback-icon">❌</span>
-                                              <span>Incorrecto</span>
-                                            </>
-                                          )}
-                                        </div>
-                                        <div className="feedback-explicacion">
-                                          <strong>Explicación:</strong>
-                                          <p>{practicaGenerada.preguntas[preguntaActualPractica].explicacion}</p>
-                                        </div>
-                                        <button 
-                                          className="btn-siguiente-practica"
-                                          onClick={siguientePreguntaPractica}
+Shortcuts:
+• # Título grande
+• ## Título mediano  
+• ### Título pequeño
+• **negrita**
+• *cursiva*
+• \`código\`
+• - [ ] tarea
+• • lista
+• > cita
+• --- divisor"
+                                  value={editorNotaContenido}
+                                  onChange={(e) => {
+                                    setEditorNotaContenido(e.target.value);
+                                    
+                                    const value = e.target.value;
+                                    const cursorPos = e.target.selectionStart;
+                                    const lastChar = value[cursorPos - 1];
+                                    
+                                    if (lastChar === '/' && (cursorPos === 1 || value[cursorPos - 2] === '\n' || value[cursorPos - 2] === ' ')) {
+                                      const wrapper = e.target.closest('.editor-panel');
+                                      if (wrapper) {
+                                        const wrapperRect = wrapper.getBoundingClientRect();
+                                        const rect = e.target.getBoundingClientRect();
+                                        setPosicionMenuComandos({
+                                          top: rect.top - wrapperRect.top + 60,
+                                          left: rect.left - wrapperRect.left + 40
+                                        });
+                                        setMenuComandosAbierto(true);
+                                        setComandoSeleccionado(0);
+                                        setCursorPosition(cursorPos);
+                                      }
+                                    } else if (menuComandosAbierto && lastChar !== '/') {
+                                      setMenuComandosAbierto(false);
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (menuComandosAbierto) {
+                                      if (e.key === 'ArrowDown') {
+                                        e.preventDefault();
+                                        setComandoSeleccionado(prev => prev < comandosDisponibles.length - 1 ? prev + 1 : 0);
+                                      } else if (e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        setComandoSeleccionado(prev => prev > 0 ? prev - 1 : comandosDisponibles.length - 1);
+                                      } else if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        insertarBloque(comandosDisponibles[comandoSeleccionado]);
+                                      } else if (e.key === 'Escape') {
+                                        e.preventDefault();
+                                        setMenuComandosAbierto(false);
+                                      }
+                                      return;
+                                    }
+                                    
+                                    if (e.ctrlKey || e.metaKey) {
+                                      if (e.key === 's') {
+                                        e.preventDefault();
+                                        if (editorNotaTitulo.trim()) guardarNotaRapida();
+                                      }
+                                    }
+                                  }}
+                                />
+                                
+                                {/* Menú de comandos */}
+                                {menuComandosAbierto && (
+                                  <div 
+                                    className="menu-comandos-notion"
+                                    style={{
+                                      position: 'absolute',
+                                      top: `${posicionMenuComandos.top}px`,
+                                      left: `${posicionMenuComandos.left}px`,
+                                      zIndex: 10000
+                                    }}
+                                  >
+                                    <div className="menu-comandos-header">
+                                      <span className="menu-titulo">🎯 Bloques</span>
+                                      <button onClick={() => setMenuComandosAbierto(false)} className="btn-cerrar-menu">✕</button>
+                                    </div>
+                                    <div className="menu-comandos-lista">
+                                      {comandosDisponibles.map((comando, index) => (
+                                        <div
+                                          key={comando.id}
+                                          className={`comando-item ${index === comandoSeleccionado ? 'seleccionado' : ''}`}
+                                          onClick={() => insertarBloque(comando)}
+                                          onMouseEnter={() => setComandoSeleccionado(index)}
                                         >
-                                          {preguntaActualPractica < practicaGenerada.preguntas.length - 1 
-                                            ? 'Siguiente pregunta →' 
-                                            : 'Ver resultados →'}
-                                        </button>
-                                      </div>
-                                    )}
+                                          <div className="comando-icono">{comando.icono}</div>
+                                          <div className="comando-info">
+                                            <div className="comando-nombre">{comando.nombre}</div>
+                                            <div className="comando-descripcion">{comando.descripcion}</div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 )}
                               </div>
-                            )}
 
-                            {resultadoPractica && (
-                              <div className="resultados-practica">
-                                <div className="resultados-header">
-                                  <div className="resultados-icon">🎉</div>
-                                  <h2>¡Práctica completada!</h2>
-                                </div>
-                                <div className="resultados-stats">
-                                  <div className="stat-grande">
-                                    <div className="stat-valor">{resultadoPractica.porcentaje}%</div>
-                                    <div className="stat-label">Resultado</div>
-                                  </div>
-                                  <div className="stats-grid">
-                                    <div className="stat-item">
-                                      <div className="stat-numero correctas">✅ {resultadoPractica.correctas}</div>
-                                      <div className="stat-texto">Correctas</div>
-                                    </div>
-                                    <div className="stat-item">
-                                      <div className="stat-numero incorrectas">❌ {resultadoPractica.total - resultadoPractica.correctas}</div>
-                                      <div className="stat-texto">Incorrectas</div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="resultados-acciones">
-                                  <button className="btn-guardar-resultados" onClick={guardarResultadosPractica}>
-                                    💾 Guardar resultados
-                                  </button>
-                                  <button className="btn-nueva-practica" onClick={() => {
-                                    setPracticaGenerada(null);
-                                    setResultadoPractica(null);
-                                  }}>
-                                    🔄 Nueva práctica
-                                  </button>
-                                </div>
+                              {/* Vista previa renderizada */}
+                              <div className="preview-panel">
+                                <div className="panel-label">👁️ Vista Previa (Estilo Notion)</div>
+                                <div 
+                                  className="preview-content-notion"
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: renderizarContenidoNotion(editorNotaContenido) || '<p class="placeholder-preview">La vista previa aparecerá aquí...</p>'
+                                  }}
+                                />
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* Tab 3: Notas Rápidas */}
+                    {/* Tab 3: Flashcards */}
                     {tabContenidoActivo === 2 && (
-                      <div className="tab-notas-contenido">
-                        <div className="notas-editor-container">
-                          <h3>📝 Editor de Notas Rápidas</h3>
-                          
-                          <div className="form-grupo-nota">
-                            <label>📄 Título de la nota:</label>
-                            <input 
-                              type="text"
-                              className="input-titulo-nota"
-                              placeholder="Mis apuntes de..."
-                              value={editorNotaTitulo}
-                              onChange={(e) => setEditorNotaTitulo(e.target.value)}
-                            />
+                      <div className="tab-flashcards-contenido">
+                        {/* Botones de Acceso Rápido */}
+                        <div className="accesos-rapidos-fase">
+                          <div className="accesos-rapidos-titulo">
+                            <span>🔗 Accesos Rápidos</span>
+                            <span className="carpeta-actual">📁 {rutaNotasActual || carpetaFlashcardActual?.ruta || 'Raíz'}</span>
                           </div>
-
-                          <div className="form-grupo-nota">
-                            <label>🏷️ Tags (separados por comas):</label>
-                            <input 
-                              type="text"
-                              className="input-tags-nota"
-                              placeholder="UX, Nielsen, Heurísticas"
-                              value={editorNotaTags}
-                              onChange={(e) => setEditorNotaTags(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="form-grupo-nota">
-                            <label>✍️ Contenido:</label>
-                            <textarea
-                              className="textarea-contenido-nota"
-                              placeholder="Escribe tus apuntes aquí..."
-                              value={editorNotaContenido}
-                              onChange={(e) => setEditorNotaContenido(e.target.value)}
-                              rows={15}
-                            />
-                          </div>
-
-                          <div className="form-grupo-nota checkbox-grupo">
-                            <label>
-                              <input 
-                                type="checkbox"
-                                checked={vincularADocumento}
-                                onChange={(e) => setVincularADocumento(e.target.checked)}
-                              />
-                              <span>🔗 Vincular a documento: {documentoActual?.titulo || 'N/A'}</span>
-                            </label>
-                          </div>
-
-                          <div className="acciones-editor-nota">
-                            <button 
-                              className="btn-guardar-nota"
-                              onClick={guardarNotaRapida}
-                              disabled={guardandoNota || !editorNotaTitulo.trim()}
-                            >
-                              {guardandoNota ? (
-                                <>
-                                  <span className="spinner-small"></span>
-                                  Guardando...
-                                </>
-                              ) : (
-                                <>💾 Guardar nota</>
-                              )}
-                            </button>
-                            
-                            <button 
-                              className="btn-convertir-flashcards"
+                          <div className="accesos-rapidos-botones">
+                            <button
+                              className="btn-acceso-rapido btn-cursos"
                               onClick={() => {
-                                if (editorNotaContenido.trim()) {
-                                  setTextoSeleccionadoFlashcard(editorNotaContenido);
-                                  setModalFlashcardCreator(true);
-                                } else {
-                                  setMensaje({
-                                    tipo: 'warning',
-                                    texto: 'Escribe contenido para convertir en flashcards'
-                                  });
-                                }
+                                const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                                setRutaActual(carpeta);
+                                setSelectedMenu('cursos');
+                                cargarCarpeta(carpeta);
                               }}
-                              disabled={!editorNotaContenido.trim()}
+                              title="Ver documentos en esta carpeta"
                             >
-                              🎴 Convertir en flashcards
+                              📚 Ver en Mis Cursos
                             </button>
-                            
-                            <button 
-                              className="btn-limpiar-editor"
-                              onClick={limpiarEditorNotas}
+                            <button
+                              className="btn-acceso-rapido btn-notas"
+                              onClick={() => {
+                                const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                                setRutaNotasActual(carpeta);
+                                setSelectedMenu('notas');
+                                cargarCarpetasNotas(carpeta);
+                              }}
+                              title="Ver notas de esta carpeta"
                             >
-                              🗑️ Limpiar
+                              📝 Ver Notas
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-flashcards"
+                              onClick={() => {
+                                const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                                setRutaFlashcardsActual(carpeta);
+                                setCarpetaFlashcardActual({ ruta: carpeta });
+                                setSelectedMenu('flashcards');
+                                cargarCarpetasFlashcards(carpeta);
+                              }}
+                              title="Ver todas las flashcards de esta carpeta"
+                            >
+                              🎴 Ver Todas las Flashcards
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="flashcards-layout">
+                          <div className="flashcards-header">
+                            <h2>🎴 Repaso con Flashcards</h2>
+                            <p className="flashcards-subtitle">Practica con flashcards basadas en tus notas y documentos</p>
+                          </div>
+
+                          {/* Botón para agregar flashcard */}
+                          <div className="flashcards-actions">
+                            <button 
+                              className="btn-nueva-flashcard"
+                              onClick={() => {
+                                setFormDataFlashcard({
+                                  tipo: 'clasica',
+                                  titulo: '',
+                                  contenido: '',
+                                  opciones: [],
+                                  respuestaCorrecta: '',
+                                  explicacion: '',
+                                  tema: '',
+                                  carpeta: carpetaFlashcardActual?.ruta || rutaNotasActual || '',
+                                  estadoRevision: 'nueva',
+                                  archivos: [],
+                                  imagenes: [],
+                                  latex: false,
+                                  subtema: '',
+                                  lenguaje: 'javascript',
+                                  dificultad: 'medio',
+                                  patronCodigo: 'comprension',
+                                  subtipoQuimica: 'estructura',
+                                  nivelQuimica: 'basico',
+                                  rama: 'organica',
+                                  subtipoFisica: 'ecuacion',
+                                  nivelFisica: 'basico',
+                                  ramaFisica: 'mecanica',
+                                  subtipoIngenieria: 'circuito',
+                                  nivelIngenieria: 'basico',
+                                  ramaIngenieria: 'electrica'
+                                });
+                                setModalNuevaFlashcard(true);
+                              }}
+                            >
+                              <span className="btn-icon">➕</span>
+                              Nueva Flashcard
                             </button>
                           </div>
 
-                          <div className="info-autosave">
-                            <p>💡 Auto-guardado cada 30 segundos en local</p>
+                          <div className="flashcards-placeholder">
+                            <div className="placeholder-icon">🎴</div>
+                            <h3>Crea tu primera Flashcard</h3>
+                            <p>Haz clic en el botón "Nueva Flashcard" para comenzar</p>
+                            <div className="features-preview">
+                              <div className="feature-item">✅ Creación rápida y fácil</div>
+                              <div className="feature-item">✅ Múltiples tipos de tarjetas</div>
+                              <div className="feature-item">✅ Soporte para LaTeX y código</div>
+                              <div className="feature-item">✅ Organización por carpetas</div>
+                            </div>
                           </div>
                         </div>
                       </div>
                     )}
                   </div>
-
-                  {/* Modal para crear flashcards desde nota */}
-                  {modalFlashcardCreator && (
-                    <div className="modal-overlay" onClick={() => setModalFlashcardCreator(false)}>
-                      <div className="modal-flashcard-creator" onClick={(e) => e.stopPropagation()}>
-                        <div className="modal-header">
-                          <h2>🎴 Crear Flashcards desde Nota</h2>
-                          <button className="btn-cerrar-modal" onClick={() => setModalFlashcardCreator(false)}>✕</button>
-                        </div>
-                        
-                        <div className="modal-body">
-                          <div className="texto-seleccionado-preview">
-                            <label>Texto seleccionado:</label>
-                            <div className="preview-box">
-                              {textoSeleccionadoFlashcard.substring(0, 200)}
-                              {textoSeleccionadoFlashcard.length > 200 && '...'}
-                            </div>
-                          </div>
-
-                          <div className="modo-conversion-opciones">
-                            <label>¿Cómo dividir en flashcards?</label>
-                            <div className="radio-group">
-                              <label className="radio-option">
-                                <input 
-                                  type="radio" 
-                                  value="linea" 
-                                  checked={modoConversionFlashcard === 'linea'}
-                                  onChange={(e) => setModoConversionFlashcard(e.target.value)}
-                                />
-                                <span>Una flashcard por línea (numerada)</span>
-                              </label>
-                              <label className="radio-option">
-                                <input 
-                                  type="radio" 
-                                  value="parrafo" 
-                                  checked={modoConversionFlashcard === 'parrafo'}
-                                  onChange={(e) => setModoConversionFlashcard(e.target.value)}
-                                />
-                                <span>Una flashcard por párrafo</span>
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="modal-footer">
-                          <button className="btn-cancelar-modal" onClick={() => setModalFlashcardCreator(false)}>
-                            ❌ Cancelar
-                          </button>
-                          <button className="btn-crear-flashcards-modal" onClick={convertirTextoEnFlashcards}>
-                            ✅ Crear flashcards
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botón para continuar a Fase 5 */}
-                  <div className="footer-fase-contenido">
+                  
+                  {/* Botón para volver a calentamiento y seleccionar otra carpeta */}
+                  <div className="footer-fase-contenido" style={{display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap'}}>
+                    <button 
+                      className="btn-volver-calentamiento" 
+                      onClick={() => {
+                        if (confirm('¿Quieres volver al calentamiento para seleccionar otra carpeta? Se reiniciará la sesión.')) {
+                          setFaseActual('calentamiento');
+                          setIndiceFaseActual(0);
+                          setDocumentoActual(null);
+                          setDocumentosSesion([]);
+                          setErroresSesion([]);
+                          setFlashcardsSesion([]);
+                          setContenidoHTML('');
+                          setTabContenidoActivo(0);
+                          setMensaje({
+                            tipo: 'info',
+                            texto: '🔥 Volviendo a calentamiento para seleccionar nueva carpeta'
+                          });
+                        }
+                      }}
+                      title="Volver a selección de carpeta"
+                    >
+                      🔄 Cambiar Carpeta
+                    </button>
                     <button className="btn-continuar-fase" onClick={avanzarFase}>
                       Continuar a Cierre →
                     </button>
@@ -8122,7 +10388,76 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 </div>
               )}
 
-              {/* FASE 5: CIERRE / RESUMEN */}
+              {/* ============================================ */}
+              {/* FASE - DESCANSO (Pomodoro) */}
+              {/* ============================================ */}
+              {faseActual === 'descanso' && (
+                <div className="fase-descanso">
+                  <div className="descanso-container">
+                    <div className="descanso-icon-main">
+                      {tiempoRestante > 600 ? '🧘' : '☕'}
+                    </div>
+                    
+                    <h1 className="descanso-titulo">
+                      {tiempoRestante > 600 ? 'Descanso Largo' : 'Descanso Corto'}
+                    </h1>
+                    
+                    <p className="descanso-subtitulo">
+                      {tiempoRestante > 600 
+                        ? 'Llevas 2 horas estudiando. Toma 15 minutos para recuperarte.' 
+                        : 'Completaste 25 minutos de estudio. Toma 5 minutos de descanso.'}
+                    </p>
+                    
+                    <div className="descanso-etiqueta">
+                      Descanso en:
+                    </div>
+                    
+                    <div className="descanso-tiempo-grande">
+                      {Math.floor(tiempoRestante / 60)} {Math.floor(tiempoRestante / 60) === 1 ? 'minuto' : 'minutos'}
+                    </div>
+                    
+                    <div className="descanso-recomendaciones">
+                      <h3>💡 Recomendaciones basadas en ciencia:</h3>
+                      <ul>
+                        <li>🚶 Levántate y camina un poco</li>
+                        <li>💧 Hidrata tu cerebro (bebe agua)</li>
+                        <li>👀 Mira hacia un punto lejano (20-20-20)</li>
+                        <li>🧘 Respira profundo 3 veces</li>
+                        {tiempoRestante > 600 && <li>🍎 Come algo ligero y saludable</li>}
+                      </ul>
+                    </div>
+                    
+                    <div className="descanso-progreso">
+                      <div className="progreso-bar-descanso">
+                        <div 
+                          className="progreso-fill-descanso"
+                          style={{
+                            width: `${((tiempoFaseActual - tiempoRestante) / tiempoFaseActual) * 100}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      className="btn-saltar-descanso"
+                      onClick={() => {
+                        setEnDescanso(false);
+                        setTiempoAcumuladoEstudio(0);
+                        setFaseActual(fasesSesion[indiceFaseActual]?.tipo || 'contenido');
+                        const tiempoFase = fasesSesion[indiceFaseActual]?.duracion || 1500;
+                        setTiempoRestante(tiempoFase);
+                        setTiempoFaseActual(tiempoFase);
+                      }}
+                    >
+                      ⏭️ Saltar descanso
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ============================================ */}
+              {/* FASE 5 - CIERRE/RESUMEN */}
+              {/* ============================================ */}
               {faseActual === 'cierre' && (
                 <div className="fase-cierre">
                   {/* Header de Celebración */}
@@ -8260,6 +10595,62 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Modal para crear flashcards desde nota - FUERA de las fases */}
+            {modalFlashcardCreator && (
+              <div className="modal-overlay" onClick={() => setModalFlashcardCreator(false)}>
+                <div className="modal-flashcard-creator" onClick={(e) => e.stopPropagation()}>
+                  <div className="modal-header">
+                    <h2>🎴 Crear Flashcards desde Nota</h2>
+                    <button className="btn-cerrar-modal" onClick={() => setModalFlashcardCreator(false)}>✕</button>
+                  </div>
+                  
+                  <div className="modal-body">
+                    <div className="texto-seleccionado-preview">
+                      <label>Texto seleccionado:</label>
+                      <div className="preview-box">
+                        {textoSeleccionadoFlashcard.substring(0, 200)}
+                        {textoSeleccionadoFlashcard.length > 200 && '...'}
+                      </div>
+                    </div>
+
+                    <div className="modo-conversion-opciones">
+                      <label>¿Cómo dividir en flashcards?</label>
+                      <div className="radio-group">
+                        <label className="radio-option">
+                          <input 
+                            type="radio" 
+                            value="linea" 
+                            checked={modoConversionFlashcard === 'linea'}
+                            onChange={(e) => setModoConversionFlashcard(e.target.value)}
+                          />
+                          <span>Una flashcard por línea (numerada)</span>
+                        </label>
+                        <label className="radio-option">
+                          <input 
+                            type="radio" 
+                            value="parrafo" 
+                            checked={modoConversionFlashcard === 'parrafo'}
+                            onChange={(e) => setModoConversionFlashcard(e.target.value)}
+                          />
+                          <span>Una flashcard por párrafo</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button className="btn-cancelar-modal" onClick={() => setModalFlashcardCreator(false)}>
+                      ❌ Cancelar
+                    </button>
+                    <button className="btn-crear-flashcards-modal" onClick={convertirTextoEnFlashcards}>
+                      ✅ Crear flashcards
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             </div>
           </div>
         )}
@@ -9054,8 +11445,578 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
         {selectedMenu === 'historial' && (
           <div className="content-section">
-            <h1>Historial</h1>
+            <h1>📅 Calendario de Repasos</h1>
+            
+            {/* Calendario de Repasos */}
+            <div className="calendario-repasos">
+              <h2>🔔 Próximos Repasos Programados</h2>
+              
+              {(() => {
+                // Obtener todos los items (con o sin próxima revisión)
+                const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]');
+                const notas = JSON.parse(localStorage.getItem('notas') || '[]');
+                const practicas = JSON.parse(localStorage.getItem('practicas') || '[]');
+                const examenes = JSON.parse(localStorage.getItem('examenes') || '[]');
+                
+                // IMPORTANTE: Mostrar estadísticas de TODOS los items
+                const totalFlashcards = flashcards.length;
+                const totalNotas = notas.length;
+                const totalPracticas = practicas.length;
+                const totalExamenes = examenes.length;
+                const totalItems = totalFlashcards + totalNotas + totalPracticas + totalExamenes;
+                
+                // Separar items CON próxima revisión de los NUEVOS (sin revisión programada)
+                const flashcardsConRevision = flashcards.filter(f => f.proximaRevision);
+                const notasConRevision = notas.filter(n => n.proximaRevision);
+                const practicasConRevision = practicas.filter(p => p.proximaRevision);
+                const examenesConRevision = examenes.filter(e => e.proximaRevision);
+                
+                const flashcardsNuevas = flashcards.filter(f => !f.proximaRevision);
+                const notasNuevas = notas.filter(n => !n.proximaRevision);
+                const practicasNuevas = practicas.filter(p => !p.proximaRevision);
+                const examenesNuevos = examenes.filter(e => !e.proximaRevision);
+                
+                // Combinar y mapear a formato común - INCLUIR TODOS
+                let todosLosItems = [
+                  ...flashcards.map(f => ({ ...f, tipo: '🎴 Flashcard', tipoInterno: 'flashcard' })),
+                  ...notas.map(n => ({ ...n, tipo: '📝 Nota', tipoInterno: 'nota' })),
+                  ...practicas.map(p => ({ ...p, tipo: '🎯 Práctica', tipoInterno: 'practica' })),
+                  ...examenes.map(e => ({ ...e, tipo: '📋 Examen', tipoInterno: 'examen' }))
+                ];
+                
+                // Aplicar filtro por tipo
+                if (filtroTipoHistorial !== 'todos') {
+                  todosLosItems = todosLosItems.filter(item => item.tipoInterno === filtroTipoHistorial);
+                }
+                
+                // Separar items con revisión programada vs items nuevos
+                const itemsConRevision = todosLosItems.filter(item => item.proximaRevision);
+                const itemsNuevos = todosLosItems.filter(item => !item.proximaRevision);
+                
+                // Agrupar items CON REVISIÓN por fecha
+                const itemsPorFecha = itemsConRevision.reduce((acc, item) => {
+                  const fecha = new Date(item.proximaRevision);
+                  const fechaKey = fecha.toLocaleDateString('es-ES', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  });
+                  
+                  if (!acc[fechaKey]) {
+                    acc[fechaKey] = {
+                      fecha: fecha,
+                      fechaTexto: fechaKey,
+                      items: []
+                    };
+                  }
+                  acc[fechaKey].items.push(item);
+                  return acc;
+                }, {});
+                
+                // Ordenar por fecha según el rango seleccionado
+                const ahora = new Date();
+                const fechaLimite = new Date(ahora.getTime() + rangoVistaHistorial * 24 * 60 * 60 * 1000);
+                
+                const diasOrdenados = Object.values(itemsPorFecha)
+                  .filter(dia => dia.fecha >= ahora && dia.fecha <= fechaLimite)
+                  .sort((a, b) => a.fecha - b.fecha);
+                
+                // Estadísticas generales (solo items con revisión programada)
+                const estadisticas = {
+                  hoy: itemsConRevision.filter(i => {
+                    const fecha = new Date(i.proximaRevision);
+                    return fecha.toDateString() === ahora.toDateString();
+                  }).length,
+                  estaSemana: itemsConRevision.filter(i => {
+                    const fecha = new Date(i.proximaRevision);
+                    const diff = Math.ceil((fecha - ahora) / (1000 * 60 * 60 * 24));
+                    return diff >= 0 && diff <= 7;
+                  }).length,
+                  esteMes: itemsConRevision.filter(i => {
+                    const fecha = new Date(i.proximaRevision);
+                    const diff = Math.ceil((fecha - ahora) / (1000 * 60 * 60 * 24));
+                    return diff >= 0 && diff <= 30;
+                  }).length,
+                  proximos90Dias: itemsConRevision.filter(i => {
+                    const fecha = new Date(i.proximaRevision);
+                    const diff = Math.ceil((fecha - ahora) / (1000 * 60 * 60 * 24));
+                    return diff >= 0 && diff <= 90;
+                  }).length,
+                  nuevos: itemsNuevos.length,
+                  conRevision: itemsConRevision.length
+                };
+                
+                // Calcular distribución por semana (para gráfico)
+                const distribucionSemanal = [];
+                for (let semana = 0; semana < Math.ceil(rangoVistaHistorial / 7); semana++) {
+                  const inicioSemana = new Date(ahora.getTime() + semana * 7 * 24 * 60 * 60 * 1000);
+                  const finSemana = new Date(inicioSemana.getTime() + 7 * 24 * 60 * 60 * 1000);
+                  
+                  const itemsEnSemana = itemsConRevision.filter(i => {
+                    const fecha = new Date(i.proximaRevision);
+                    return fecha >= inicioSemana && fecha < finSemana;
+                  }).length;
+                  
+                  distribucionSemanal.push({
+                    semana: semana + 1,
+                    items: itemsEnSemana,
+                    inicio: inicioSemana,
+                    fin: finSemana
+                  });
+                }
+                
+                return (
+                  <>
+                    {/* Información sobre el sistema */}
+                    <div className="info-calendario">
+                      <div className="info-icono">📚</div>
+                      <div className="info-contenido">
+                        <h3>Total de Items en el Sistema</h3>
+                        <p>
+                          <strong>🎴 Flashcards:</strong> {totalFlashcards} total ({flashcardsConRevision.length} con revisión programada, {flashcardsNuevas.length} nuevas) • 
+                          <strong>📝 Notas:</strong> {totalNotas} total ({notasConRevision.length} con revisión, {notasNuevas.length} nuevas) • 
+                          <strong>🎯 Prácticas:</strong> {totalPracticas} total ({practicasConRevision.length} con revisión, {practicasNuevas.length} nuevas)
+                        </p>
+                        <p className="info-nota">
+                          💡 Los items nuevos (sin revisión programada) aparecerán en el calendario después de su primera evaluación.
+                          Ve a la pestaña correspondiente (Flashcards/Notas/Prácticas) para evaluarlos y programar su repetición espaciada.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Controles de Filtro */}
+                    <div className="controles-calendario">
+                      <div className="filtro-tipo">
+                        <label>📋 Tipo de Contenido:</label>
+                        <div className="botones-filtro">
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'todos' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('todos')}
+                          >
+                            Todos ({totalItems})
+                          </button>
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'flashcard' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('flashcard')}
+                          >
+                            🎴 Flashcards ({totalFlashcards})
+                          </button>
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'nota' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('nota')}
+                          >
+                            📝 Notas ({totalNotas})
+                          </button>
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'practica' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('practica')}
+                          >
+                            🎯 Prácticas ({totalPracticas})
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="filtro-rango">
+                        <label>📆 Rango de Tiempo:</label>
+                        <div className="botones-filtro">
+                          <button 
+                            className={`btn-filtro ${rangoVistaHistorial === 30 ? 'activo' : ''}`}
+                            onClick={() => setRangoVistaHistorial(30)}
+                          >
+                            30 días
+                          </button>
+                          <button 
+                            className={`btn-filtro ${rangoVistaHistorial === 60 ? 'activo' : ''}`}
+                            onClick={() => setRangoVistaHistorial(60)}
+                          >
+                            60 días
+                          </button>
+                          <button 
+                            className={`btn-filtro ${rangoVistaHistorial === 90 ? 'activo' : ''}`}
+                            onClick={() => setRangoVistaHistorial(90)}
+                          >
+                            90 días
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Resumen de Estadísticas */}
+                    <div className="resumen-repasos">
+                      <div className="stat-repaso">
+                        <div className="stat-repaso-icon">🆕</div>
+                        <div className="stat-repaso-content">
+                          <div className="stat-repaso-value">{estadisticas.nuevos}</div>
+                          <div className="stat-repaso-label">Sin Programar</div>
+                        </div>
+                      </div>
+                      <div className="stat-repaso">
+                        <div className="stat-repaso-icon">⏰</div>
+                        <div className="stat-repaso-content">
+                          <div className="stat-repaso-value">{estadisticas.hoy}</div>
+                          <div className="stat-repaso-label">Para Hoy</div>
+                        </div>
+                      </div>
+                      <div className="stat-repaso">
+                        <div className="stat-repaso-icon">📅</div>
+                        <div className="stat-repaso-content">
+                          <div className="stat-repaso-value">{estadisticas.estaSemana}</div>
+                          <div className="stat-repaso-label">Esta Semana</div>
+                        </div>
+                      </div>
+                      <div className="stat-repaso">
+                        <div className="stat-repaso-icon">📆</div>
+                        <div className="stat-repaso-content">
+                          <div className="stat-repaso-value">{estadisticas.esteMes}</div>
+                          <div className="stat-repaso-label">Este Mes</div>
+                        </div>
+                      </div>
+                      <div className="stat-repaso">
+                        <div className="stat-repaso-icon">🎯</div>
+                        <div className="stat-repaso-content">
+                          <div className="stat-repaso-value">{estadisticas.proximos90Dias}</div>
+                          <div className="stat-repaso-label">Próximos 90 Días</div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Gráfico de Distribución Semanal */}
+                    <div className="distribucion-semanal">
+                      <h3>📊 Distribución de Repasos por Semana</h3>
+                      <div className="grafico-barras">
+                        {distribucionSemanal.map((sem, idx) => {
+                          const maxItems = Math.max(...distribucionSemanal.map(s => s.items), 1);
+                          const alturaPorcentaje = (sem.items / maxItems) * 100;
+                          
+                          return (
+                            <div key={idx} className="barra-semana">
+                              <div className="barra-contenido">
+                                <div 
+                                  className="barra-fill" 
+                                  style={{ height: `${alturaPorcentaje}%` }}
+                                  title={`Semana ${sem.semana}: ${sem.items} items`}
+                                >
+                                  {sem.items > 0 && <span className="barra-valor">{sem.items}</span>}
+                                </div>
+                              </div>
+                              <div className="barra-label">S{sem.semana}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    {/* Lista de Días con Repasos */}
+                    {diasOrdenados.length > 0 ? (
+                      <div className="lista-dias-repaso">
+                        {diasOrdenados.map((dia, idx) => {
+                          const esHoy = dia.fecha.toDateString() === ahora.toDateString();
+                          const diasHasta = Math.ceil((dia.fecha - ahora) / (1000 * 60 * 60 * 24));
+                          
+                          return (
+                            <div key={idx} className={`dia-repaso ${esHoy ? 'dia-repaso-hoy' : ''}`}>
+                              <div className="dia-repaso-header">
+                                <h3>{esHoy ? '⏰ HOY' : dia.fechaTexto}</h3>
+                                {!esHoy && (
+                                  <span className="dias-hasta">En {diasHasta} día{diasHasta !== 1 ? 's' : ''}</span>
+                                )}
+                                <span className="total-items">{dia.items.length} item{dia.items.length !== 1 ? 's' : ''}</span>
+                              </div>
+                              
+                              <div className="items-repaso-lista">
+                                {dia.items.slice(0, 10).map((item, itemIdx) => {
+                                  // Calcular intervalo de repetición
+                                  const intervaloTexto = item.intervalo ? 
+                                    (item.intervalo === 1 ? '1 día' : 
+                                     item.intervalo < 7 ? `${item.intervalo} días` :
+                                     item.intervalo < 30 ? `${Math.round(item.intervalo / 7)} semanas` :
+                                     `${Math.round(item.intervalo / 30)} meses`) : 
+                                    'Primera vez';
+                                  
+                                  return (
+                                    <div 
+                                      key={itemIdx} 
+                                      className="item-repaso item-repaso-clickable"
+                                      onClick={() => setItemMapaRepeticion(item)}
+                                      title="Clic para ver mapa de repeticiones"
+                                    >
+                                      <span className="item-repaso-tipo">{item.tipo}</span>
+                                      <span className="item-repaso-titulo">{item.titulo || 'Sin título'}</span>
+                                      <div className="item-repaso-info">
+                                        <span className="item-repaso-intervalo" title="Intervalo de repetición">
+                                          🔁 {intervaloTexto}
+                                        </span>
+                                        <span className={`item-repaso-estado estado-${item.estadoRevision || 'nueva'}`}>
+                                          {item.estadoRevision === 'nueva' && '🆕'}
+                                          {item.estadoRevision === 'en_progreso' && '📖'}
+                                          {item.estadoRevision === 'dominada' && '✅'}
+                                          {' '}
+                                          {item.repeticiones || 0}× visto
+                                        </span>
+                                        <span className="item-repaso-facilidad" title="Factor de facilidad">
+                                          ⚡ {(item.facilidad || 2.5).toFixed(1)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {dia.items.length > 10 && (
+                                  <div className="items-mas">
+                                    + {dia.items.length - 10} más...
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="empty-state">
+                        <div className="empty-icon">📅</div>
+                        <h3>Sin Repasos Programados</h3>
+                        <p>No hay items con revisión programada para los próximos {rangoVistaHistorial} días</p>
+                      </div>
+                    )}
+                    
+                    {/* Sección de Items Nuevos (sin revisión programada) */}
+                    {itemsNuevos.length > 0 && (
+                      <div className="items-nuevos-seccion">
+                        <h3>🆕 Items Pendientes de Primera Evaluación ({itemsNuevos.length})</h3>
+                        <p className="items-nuevos-descripcion">
+                          Estos items aún no han sido evaluados. Ve a la pestaña correspondiente para revisarlos
+                          y programar su repetición espaciada.
+                        </p>
+                        <div className="lista-items-nuevos">
+                          {itemsNuevos.slice(0, 20).map((item, idx) => (
+                            <div 
+                              key={idx} 
+                              className="item-nuevo-card"
+                              onClick={() => setItemMapaRepeticion(item)}
+                              title="Clic para ver proyección de repeticiones"
+                            >
+                              <span className="item-nuevo-tipo">{item.tipo}</span>
+                              <span className="item-nuevo-titulo">{item.titulo || item.contenido?.substring(0, 50) || 'Sin título'}...</span>
+                              <span className="item-nuevo-badge">Nuevo</span>
+                            </div>
+                          ))}
+                          {itemsNuevos.length > 20 && (
+                            <div className="items-nuevos-mas">
+                              + {itemsNuevos.length - 20} items más sin evaluar
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            
+            <div style={{height: '2rem'}}></div>
+            <hr style={{border: 'none', borderTop: '1px solid rgba(100, 108, 255, 0.2)', margin: '2rem 0'}} />
+            
+            <h2>📚 Historial de Exámenes</h2>
             <p>Revisa los exámenes generados anteriormente...</p>
+          </div>
+        )}
+
+        {selectedMenu === 'buscar' && (
+          <div className="content-section buscador-container">
+            <h1>🔍 Búsqueda Inteligente con IA</h1>
+            
+            {/* Estado del Sistema */}
+            {estadoIndice && (
+              <div className="buscador-estado">
+                <div className="estado-item">
+                  <span className="estado-label">📊 Estado:</span>
+                  <span className={`estado-valor ${estadoIndice.indexado ? 'online' : 'offline'}`}>
+                    {estadoIndice.indexado ? '✅ Listo' : '⚠️ Sin indexar'}
+                  </span>
+                </div>
+                <div className="estado-item">
+                  <span className="estado-label">📁 Archivos:</span>
+                  <span className="estado-valor">{estadoIndice.total_archivos || 0}</span>
+                </div>
+                <div className="estado-item">
+                  <span className="estado-label">📄 Fragmentos:</span>
+                  <span className="estado-valor">{estadoIndice.total_chunks || 0}</span>
+                </div>
+                <div className="estado-item">
+                  <span className="estado-label">🤖 Modelo:</span>
+                  <span className="estado-valor">{estadoIndice.modelo || 'bge-small-en-v1.5'}</span>
+                </div>
+                <div className="estado-item">
+                  <span className="estado-label">⚡ GPU:</span>
+                  <span className="estado-valor">{estadoIndice.gpu_disponible ? '✅ Activa' : '❌ CPU'}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de búsqueda */}
+            <div className="buscador-barra">
+              <input
+                type="text"
+                value={queryBusqueda}
+                onChange={(e) => setQueryBusqueda(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && buscarConIA()}
+                placeholder="🔎 Busca en tus notas, flashcards, exámenes, prácticas..."
+                className="buscador-input"
+                disabled={buscando}
+              />
+              <button 
+                onClick={buscarConIA} 
+                className="btn-primary"
+                disabled={buscando || !queryBusqueda.trim()}
+              >
+                {buscando ? '🔄 Buscando...' : '🔍 Buscar'}
+              </button>
+            </div>
+
+            {/* Filtros */}
+            <div className="buscador-filtros">
+              <label style={{marginRight: '1rem', fontWeight: 'bold'}}>🏷️ Tipo de documento:</label>
+              {['todos', 'nota', 'flashcard', 'examen', 'practica', 'curso', 'documento'].map(tipo => (
+                <button
+                  key={tipo}
+                  onClick={() => setFiltroBusquedaTipo(tipo)}
+                  className={`filtro-tipo ${filtroBusquedaTipo === tipo ? 'active' : ''}`}
+                >
+                  {tipo === 'todos' ? '🌐 Todos' :
+                   tipo === 'nota' ? '📝 Notas' :
+                   tipo === 'flashcard' ? '🎴 Flashcards' :
+                   tipo === 'examen' ? '📋 Exámenes' :
+                   tipo === 'practica' ? '🎯 Prácticas' :
+                   tipo === 'curso' ? '📚 Cursos' : '📄 Documentos'}
+                </button>
+              ))}
+            </div>
+
+            {/* Acciones del índice */}
+            <div className="buscador-acciones">
+              <button 
+                onClick={() => actualizarIndice(false)} 
+                className="btn-secondary"
+                disabled={actualizandoIndice}
+              >
+                {actualizandoIndice ? '⏳ Actualizando...' : '🔄 Actualizar Índice'}
+              </button>
+              <button 
+                onClick={() => actualizarIndice(true)} 
+                className="btn-secondary"
+                disabled={actualizandoIndice}
+              >
+                {actualizandoIndice ? '⏳ Reindexando...' : '♻️ Reindexar Todo'}
+              </button>
+              
+              <div style={{flex: 1}}></div>
+              
+              <span style={{fontSize: '0.9rem', color: '#888'}}>
+                💡 Búsqueda semántica + palabras clave (híbrida)
+              </span>
+            </div>
+
+            {/* Resultados */}
+            {resultadosBusqueda.length > 0 && (
+              <div className="resultados-buscador">
+                <h2>📋 Resultados ({resultadosBusqueda.length})</h2>
+                
+                <div className="resultados-lista">
+                  {resultadosBusqueda.map((resultado, idx) => {
+                    // Extraer nombre del archivo sin extensión
+                    const nombreArchivo = resultado.nombre_archivo?.replace(/\.(txt|md|pdf)$/i, '') || 'Documento';
+                    
+                    // Extraer ruta relativa desde extracciones/
+                    const rutaCompleta = resultado.ruta || '';
+                    const rutaRelativa = rutaCompleta.includes('extracciones') 
+                      ? rutaCompleta.split('extracciones')[1]?.replace(/\\/g, '/').substring(1) || rutaCompleta
+                      : rutaCompleta.replace(/\\/g, '/');
+                    
+                    // Limpiar contenido
+                    const contenidoLimpio = resultado.contenido
+                      ?.replace(/^\{.*?\}\s*/s, '') // Quitar JSON al inicio
+                      .replace(/^[\s\n]+/, '') // Quitar espacios iniciales
+                      .substring(0, 200) || '';
+                    
+                    return (
+                      <div key={idx} className="resultado-busqueda-card" onClick={() => abrirArchivoBusqueda(resultado.ruta)}>
+                        {/* Título del archivo */}
+                        <div className="resultado-titulo-archivo">
+                          📄 {nombreArchivo}
+                        </div>
+                        
+                        {/* Párrafo/Contenido relevante con resaltado */}
+                        <div className="resultado-parrafo">
+                          {resaltarTexto(contenidoLimpio, queryBusqueda)}...
+                        </div>
+                        
+                        {/* Ruta del archivo */}
+                        <div className="resultado-ruta-completa">
+                          📁 {rutaRelativa}
+                        </div>
+                        
+                        {/* Score */}
+                        <div className="resultado-score-badge">
+                          Relevancia: {(resultado.score * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Estado vacío */}
+            {!buscando && resultadosBusqueda.length === 0 && queryBusqueda.trim() === '' && (
+              <div className="buscador-vacio">
+                <div style={{fontSize: '4rem', marginBottom: '1rem'}}>🔍</div>
+                <h3>Búsqueda Inteligente con IA</h3>
+                <p>Encuentra cualquier contenido en tus documentos usando lenguaje natural.</p>
+                
+                <div className="ejemplos-busqueda">
+                  <h4>💡 Ejemplos de búsqueda:</h4>
+                  <ul>
+                    <li>"¿Qué es una función recursiva?"</li>
+                    <li>"Conceptos de machine learning"</li>
+                    <li>"Ejercicios de cálculo diferencial"</li>
+                    <li>"Notas sobre React hooks"</li>
+                    <li>"Flashcards de historia del arte"</li>
+                  </ul>
+                </div>
+
+                <div className="info-tecnica">
+                  <h4>🤖 Tecnología:</h4>
+                  <ul>
+                    <li>✅ Búsqueda semántica con embeddings locales</li>
+                    <li>✅ Búsqueda por palabras clave (BM25)</li>
+                    <li>✅ Híbrido: combina ambos métodos</li>
+                    <li>✅ GPU acelerada (RTX 4050)</li>
+                    <li>✅ 100% local, sin APIs de pago</li>
+                    <li>✅ Actualización incremental del índice</li>
+                  </ul>
+                </div>
+
+                {!estadoIndice?.indexado && (
+                  <div className="alerta-info">
+                    ⚠️ <strong>Primera vez:</strong> Debes crear el índice inicial.
+                    <br/>
+                    Ejecuta en terminal: <code>python crear_indice_inicial.py</code>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Sin resultados */}
+            {!buscando && resultadosBusqueda.length === 0 && queryBusqueda.trim() !== '' && (
+              <div className="buscador-sin-resultados">
+                <div style={{fontSize: '3rem', marginBottom: '1rem'}}>😕</div>
+                <h3>No se encontraron resultados</h3>
+                <p>Intenta con otras palabras clave o asegúrate de que el contenido esté indexado.</p>
+                <button onClick={() => actualizarIndice(false)} className="btn-primary">
+                  🔄 Actualizar Índice
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -9609,7 +12570,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           <div className="content-section">
             <div className="section-header">
               <h1>🃏 Mis Flashcards</h1>
-              {carpetaFlashcardActual && (
+              {rutaFlashcardsActual && (
                 <button className="btn-primary" onClick={crearNuevaFlashcard}>
                   ➕ Nueva Flashcard
                 </button>
@@ -9617,14 +12578,42 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             </div>
 
             {/* Breadcrumb de navegación */}
-            {carpetaFlashcardActual && (
+            {(rutaFlashcardsActual || carpetaFlashcardActual) && (
               <div className="breadcrumb-nav">
-                <button onClick={volverListaFlashcards} className="breadcrumb-btn">
+                <button onClick={() => navegarRutaFlashcards('')} className="breadcrumb-btn">
                   🏠 Inicio
                 </button>
-                <span className="breadcrumb-separator">/</span>
-                <span className="breadcrumb-current">{carpetaFlashcardActual.nombre}</span>
-                <button onClick={volverListaFlashcards} className="btn-volver" style={{marginLeft: '1rem'}}>
+                {rutaFlashcardsActual && (
+                  <>
+                    <span className="breadcrumb-separator">/</span>
+                    {rutaFlashcardsActual.split('/').map((parte, idx, arr) => {
+                      const rutaParcial = arr.slice(0, idx + 1).join('/');
+                      const esUltimo = idx === arr.length - 1;
+                      return (
+                        <React.Fragment key={idx}>
+                          {esUltimo && !carpetaFlashcardActual ? (
+                            <span className="breadcrumb-current">{parte}</span>
+                          ) : (
+                            <>
+                              <button onClick={() => navegarRutaFlashcards(rutaParcial)} className="breadcrumb-btn">
+                                {parte}
+                              </button>
+                              <span className="breadcrumb-separator">/</span>
+                            </>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </>
+                )}
+                {carpetaFlashcardActual && (
+                  <span className="breadcrumb-current">🃏 {carpetaFlashcardActual.nombre}</span>
+                )}
+                <button 
+                  onClick={carpetaFlashcardActual ? volverListaFlashcards : volverAtrasFlashcards} 
+                  className="btn-volver" 
+                  style={{marginLeft: '1rem'}}
+                >
                   ← Volver
                 </button>
               </div>
@@ -9713,15 +12702,25 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             {!carpetaFlashcardActual && flashcardsCarpetas.length > 0 && (
               <div className="carpetas-grid">
                 {flashcardsCarpetas.map((carpeta, idx) => (
-                  <button
-                    key={idx}
-                    className="carpeta-card flashcard-folder"
-                    onClick={() => abrirCarpetaFlashcards(carpeta)}
-                  >
-                    <span className="carpeta-icon">📚</span>
-                    <span className="carpeta-nombre">{carpeta.nombre}</span>
-                    <span className="carpeta-count">{carpeta.count} flashcards</span>
-                  </button>
+                  <div key={idx} className="carpeta-card flashcard-folder">
+                    <div className="carpeta-header" onClick={() => abrirCarpetaFlashcards(carpeta)}>
+                      <span className="carpeta-icon">📚</span>
+                      <span className="carpeta-nombre">{carpeta.nombre}</span>
+                      <span className="carpeta-count">{carpeta.totalFlashcards || 0} flashcards</span>
+                    </div>
+                    <div className="carpeta-actions">
+                      <button 
+                        className="btn-ver-flashcards"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          verFlashcardsDeCarpeta(carpeta);
+                        }}
+                        title="Ver flashcards de esta carpeta"
+                      >
+                        🃏 Ver Flashcards
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -10118,6 +13117,26 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 📌 {flashcard.subtema}
                               </span>
                             )}
+                            {/* Indicador de próxima revisión */}
+                            {flashcard.proximaRevision && (() => {
+                              const ahora = new Date();
+                              const proxima = new Date(flashcard.proximaRevision);
+                              const diff = Math.ceil((proxima - ahora) / (1000 * 60 * 60 * 24));
+                              const necesitaRepaso = diff <= 0;
+                              
+                              return (
+                                <span style={{
+                                  color: necesitaRepaso ? '#fbbf24' : '#94a3b8',
+                                  fontSize: '0.7rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}>
+                                  {necesitaRepaso ? '⏰ Repasar ahora' : `📅 Repaso en ${diff} día${diff !== 1 ? 's' : ''}`}
+                                  {flashcard.repeticiones > 0 && ` (${flashcard.repeticiones}× visto)`}
+                                </span>
+                              );
+                            })()}
                           </div>
                           <span 
                             className="flashcard-estado"
@@ -14860,7 +17879,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   <div className="info-icon">ℹ️</div>
                   <div className="info-content">
                     <p><strong>Total:</strong> {numFlashcards + numMCQ + numVerdaderoFalso + numCloze + numRespuestaCorta + numOpenQuestion + numCasoEstudio + numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail} preguntas</p>
-                    <p><strong>Fuente:</strong> {tipoPractica === 'documento' ? 'Documento' : 'Carpeta + subcarpetas'}</p>
+                    <p><strong>Fuente:</strong> {tipoFuentePractica === 'documento' ? 'Documento' : 'Carpeta + subcarpetas'}</p>
                     <p><strong>Carpeta:</strong> {carpetaPractica || 'Raíz'}</p>
                   </div>
                 </div>
@@ -14946,7 +17965,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       type="button"
                       onClick={() => {
                         setModalCarpetasNotaAbierto(true)
-                        cargarCarpetasNotas('')
+                        // Iniciar desde la carpeta actual más relevante
+                        const carpetaInicial = carpetaNota || 
+                                              cursoActual?.carpeta_trabajo || 
+                                              rutaContenidoActual || 
+                                              rutaNotasActual || 
+                                              '';
+                        cargarCarpetasNotas(carpetaInicial)
                       }}
                       className="btn-primary"
                       style={{whiteSpace: 'nowrap'}}
@@ -16295,6 +19320,243 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           </div>
         )}
 
+        {/* Modal de Explorador para Guardar Contenido */}
+        {modalGuardarContenido && (
+          <div className="modal-overlay" onClick={() => setModalGuardarContenido(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>{tipoGuardado === 'txt' ? '📄 Guardar como TXT' : '📝 Guardar como Nota'}</h2>
+                <button onClick={() => setModalGuardarContenido(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                {/* Breadcrumb */}
+                <div className="breadcrumb-explorador">
+                  <button 
+                    onClick={() => cargarCarpetasGuardado('')}
+                    className="breadcrumb-btn-explorador"
+                  >
+                    🏠 Inicio
+                  </button>
+                  {rutaGuardadoActual && rutaGuardadoActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                    const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                    return (
+                      <span key={idx}>
+                        <span className="breadcrumb-separador">/</span>
+                        <button 
+                          onClick={() => cargarCarpetasGuardado(rutaParcial)}
+                          className="breadcrumb-btn-explorador"
+                        >
+                          {parte}
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+
+                {/* Controles */}
+                <div className="explorador-controles" style={{marginTop: '1rem'}}>
+                  <button
+                    className="btn-explorador btn-volver"
+                    onClick={() => {
+                      if (rutaGuardadoActual) {
+                        const partes = rutaGuardadoActual.split('\\');
+                        partes.pop();
+                        const rutaPadre = partes.join('\\');
+                        cargarCarpetasGuardado(rutaPadre);
+                      }
+                    }}
+                    disabled={!rutaGuardadoActual}
+                  >
+                    ⬅️ Volver Atrás
+                  </button>
+                  
+                  <button
+                    className="btn-explorador btn-nueva-carpeta"
+                    onClick={() => setModalNuevaCarpetaGuardado(true)}
+                  >
+                    ➕ Nueva Carpeta
+                  </button>
+                </div>
+
+                {/* Info carpeta actual */}
+                <div className="carpeta-seleccionada-info" style={{marginTop: '1rem'}}>
+                  <div className="info-icon">📂</div>
+                  <div className="info-texto">
+                    <span className="info-label">Guardar en:</span>
+                    <span className="info-valor">{rutaGuardadoActual || 'Raíz'}</span>
+                  </div>
+                </div>
+
+                {/* Lista de carpetas */}
+                <div className="carpetas-grid" style={{marginTop: '1rem', maxHeight: '250px'}}>
+                  {carpetasGuardado.length > 0 ? (
+                    carpetasGuardado.map((carpeta, idx) => (
+                      <button
+                        key={idx}
+                        className="carpeta-card"
+                        onClick={() => {
+                          const nuevaRuta = rutaGuardadoActual 
+                            ? `${rutaGuardadoActual}\\${carpeta.nombre}`
+                            : carpeta.nombre;
+                          cargarCarpetasGuardado(nuevaRuta);
+                        }}
+                      >
+                        <div className="carpeta-icono">📁</div>
+                        <div className="carpeta-nombre">{carpeta.nombre}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="carpetas-vacio">
+                      <p className="vacio-icon">📭</p>
+                      <p className="vacio-texto">No hay subcarpetas</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  onClick={() => setModalGuardarContenido(false)} 
+                  className="btn-cancelar"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    if (tipoGuardado === 'txt') {
+                      guardarContenidoComoTXT(rutaGuardadoActual);
+                    } else {
+                      guardarContenidoComoNota(rutaGuardadoActual);
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  ✅ Guardar Aquí
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Nueva Carpeta - Guardado */}
+        {modalNuevaCarpetaGuardado && (
+          <div className="modal-overlay" onClick={() => setModalNuevaCarpetaGuardado(false)}>
+            <div className="modal-content modal-small" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>➕ Nueva Carpeta</h2>
+                <button onClick={() => setModalNuevaCarpetaGuardado(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="label-icon">📁</span>
+                    <span>Nombre de la carpeta</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-nombre-carpeta-guardado"
+                    placeholder="Ej: Apuntes, Resúmenes, etc."
+                    className="input-text"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        const nombre = e.target.value.trim();
+                        if (nombre) {
+                          crearCarpetaGuardado(nombre);
+                        }
+                      }
+                    }}
+                  />
+                  <div className="form-hint">
+                    📍 Se creará en: {rutaGuardadoActual || 'Raíz'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  onClick={() => setModalNuevaCarpetaGuardado(false)} 
+                  className="btn-cancelar"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    const input = document.getElementById('input-nombre-carpeta-guardado');
+                    const nombre = input?.value.trim();
+                    if (nombre) {
+                      crearCarpetaGuardado(nombre);
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  ✅ Crear Carpeta
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Nueva Carpeta - Calentamiento */}
+        {modalNuevaCarpetaCalentamiento && (
+          <div className="modal-overlay" onClick={() => setModalNuevaCarpetaCalentamiento(false)}>
+            <div className="modal-content modal-small" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>➕ Nueva Carpeta</h2>
+                <button onClick={() => setModalNuevaCarpetaCalentamiento(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">
+                    <span className="label-icon">📁</span>
+                    <span>Nombre de la carpeta</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="input-nombre-carpeta-calentamiento"
+                    placeholder="Ej: Matemáticas, Historia, etc."
+                    className="input-text"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        const nombre = e.target.value.trim();
+                        if (nombre) {
+                          crearCarpetaCalentamiento(nombre);
+                        }
+                      }
+                    }}
+                  />
+                  <div className="form-hint">
+                    📍 Se creará en: {rutaCalentamientoActual || 'Raíz'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button 
+                  onClick={() => setModalNuevaCarpetaCalentamiento(false)} 
+                  className="btn-cancelar"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    const input = document.getElementById('input-nombre-carpeta-calentamiento');
+                    const nombre = input?.value.trim();
+                    if (nombre) {
+                      crearCarpetaCalentamiento(nombre);
+                    }
+                  }}
+                  className="btn-primary"
+                >
+                  ✅ Crear Carpeta
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal de Selección de Carpetas para Notas */}
         {modalCarpetasNotaAbierto && (
           <div className="modal-overlay" onClick={() => setModalCarpetasNotaAbierto(false)}>
@@ -16865,7 +20127,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               <div className="modal-header">
                 <div>
                   <h2>{flashcardEditando ? '✏️ Editar Flashcard' : '➕ Nueva Flashcard'}</h2>
-                  {carpetaFlashcardActual && (
+                  {(carpetaFlashcardActual || rutaFlashcardsActual) && (
                     <p style={{
                       margin: '0.5rem 0 0 0',
                       fontSize: '0.85rem',
@@ -16874,7 +20136,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       alignItems: 'center',
                       gap: '0.5rem'
                     }}>
-                      📁 {carpetaFlashcardActual.nombre}
+                      📁 {carpetaFlashcardActual?.nombre || rutaFlashcardsActual.split('/').pop() || 'Raíz'}
                     </p>
                   )}
                 </div>
@@ -21521,19 +24783,95 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               </div>
 
               <div className="sesion-body">
+                {/* RESTAURAR SESIÓN SI EXISTE */}
+                {sesionPersistente && !sesionActiva && (
+                  <div className="restaurar-sesion-banner">
+                    <div className="banner-icon">🔄</div>
+                    <div className="banner-content">
+                      <h3>Sesión Anterior Detectada</h3>
+                      <p>Tienes una sesión de {sesionPersistente.configuracion?.tiempoSesion || '?'} minutos guardada. Continúa donde lo dejaste.</p>
+                      <div className="banner-acciones">
+                        <button 
+                          className="btn-restaurar"
+                          onClick={() => {
+                            restaurarSesion(sesionPersistente);
+                            setModalConfigSesion(false);
+                          }}
+                        >
+                          ▶️ Continuar Sesión
+                        </button>
+                        <button 
+                          className="btn-nueva"
+                          onClick={() => {
+                            eliminarSesionGuardada();
+                            setModalConfigSesion(false);
+                            setTimeout(() => setModalConfigSesion(true), 100);
+                          }}
+                        >
+                          🆕 Nueva Sesión
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="config-section">
                   <label className="config-label">⏱️ ¿Cuánto tiempo tienes hoy?</label>
                   <div className="tiempo-opciones">
                     {[15, 25, 30, 45, 60].map(minutos => (
                       <button
                         key={minutos}
-                        className={`tiempo-opcion ${tiempoSesion === minutos ? 'active' : ''}`}
-                        onClick={() => setTiempoSesion(minutos)}
+                        className={`tiempo-opcion ${tiempoSesion === minutos && !modoLibreActivo ? 'active' : ''}`}
+                        onClick={() => {
+                          setTiempoSesion(minutos);
+                          setModoLibreActivo(false);
+                          setTiempoPersonalizado('');
+                        }}
                       >
                         <span className="tiempo-valor">{minutos}</span>
                         <span className="tiempo-label">min</span>
                       </button>
                     ))}
+                  </div>
+                  
+                  {/* TIEMPO PERSONALIZADO */}
+                  <div className="tiempo-personalizado-container">
+                    <div className="tiempo-personalizado-input">
+                      <input
+                        type="number"
+                        min="1"
+                        max="999"
+                        placeholder="Ej: 90"
+                        value={tiempoPersonalizado}
+                        onChange={(e) => {
+                          const valor = e.target.value;
+                          setTiempoPersonalizado(valor);
+                          if (valor && !isNaN(valor)) {
+                            setTiempoSesion(parseInt(valor));
+                            setModoLibreActivo(false);
+                          }
+                        }}
+                        className="input-tiempo-custom"
+                      />
+                      <span className="input-tiempo-label">minutos</span>
+                    </div>
+                    
+                    <div className="modo-libre-toggle">
+                      <label className="toggle-container">
+                        <input
+                          type="checkbox"
+                          checked={modoLibreActivo}
+                          onChange={(e) => {
+                            setModoLibreActivo(e.target.checked);
+                            if (e.target.checked) {
+                              setTiempoPersonalizado('');
+                            }
+                          }}
+                        />
+                        <span className="toggle-slider"></span>
+                        <span className="toggle-label">♾️ Modo Libre (sin límite)</span>
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -21567,29 +24905,42 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   </div>
                 </div>
 
-                <div className="fases-preview">
-                  <h3>📋 Plan de tu Sesión ({tiempoSesion} min)</h3>
-                  <div className="fases-lista">
-                    {calcularFasesSesion(tiempoSesion, prioridadSesion).map((fase, index) => (
-                      <React.Fragment key={fase.tipo}>
-                        <div className="fase-preview-item">
-                          <div className="fase-preview-emoji">{fase.emoji}</div>
-                          <div className="fase-preview-info">
-                            <h4>Fase {index + 1}: {fase.nombre}</h4>
-                            <p>{Math.floor(fase.duracion / 60)} min - {fase.tipo === 'calentamiento' ? 'Contexto y preparación' : 
-                                fase.tipo === 'errores' ? 'Repaso de preguntas falladas' :
-                                fase.tipo === 'flashcards' ? 'Repaso espaciado' :
-                                fase.tipo === 'contenido' ? 'Nuevo material y prácticas' :
-                                'Resumen y reflexión'}</p>
+                {!modoLibreActivo && (
+                  <div className="fases-preview">
+                    <h3>📋 Plan de tu Sesión ({tiempoSesion} min)</h3>
+                    <div className="fases-lista">
+                      {calcularFasesSesion(tiempoSesion, prioridadSesion).map((fase, index) => (
+                        <React.Fragment key={fase.tipo}>
+                          <div className="fase-preview-item">
+                            <div className="fase-preview-emoji">{fase.emoji}</div>
+                            <div className="fase-preview-info">
+                              <h4>Fase {index + 1}: {fase.nombre}</h4>
+                              <p>{Math.floor(fase.duracion / 60)} min - {fase.tipo === 'calentamiento' ? 'Contexto y preparación' : 
+                                  fase.tipo === 'errores' ? 'Repaso de preguntas falladas' :
+                                  fase.tipo === 'flashcards' ? 'Repaso espaciado' :
+                                  fase.tipo === 'contenido' ? 'Nuevo material y prácticas' :
+                                  'Resumen y reflexión'}</p>
+                            </div>
                           </div>
-                        </div>
-                        {index < calcularFasesSesion(tiempoSesion, prioridadSesion).length - 1 && (
-                          <div className="fase-preview-arrow">↓</div>
-                        )}
-                      </React.Fragment>
-                    ))}
+                          {index < calcularFasesSesion(tiempoSesion, prioridadSesion).length - 1 && (
+                            <div className="fase-preview-arrow">↓</div>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {modoLibreActivo && (
+                  <div className="modo-libre-info">
+                    <div className="info-icon">♾️</div>
+                    <div className="info-content">
+                      <h3>Modo Libre Activado</h3>
+                      <p>Sin límite de tiempo. Avanza por las fases a tu ritmo. Puedes pausar y retomar cuando quieras.</p>
+                      <p className="info-destacada">✨ Tu progreso se guardará automáticamente cada 2 minutos</p>
+                    </div>
+                  </div>
+                )}
 
                 <button 
                   className="btn-iniciar-sesion"
@@ -21604,97 +24955,312 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           </div>
         )}
 
-        {/* TIMER DE SESIÓN ACTIVA */}
-        {sesionActiva && (
-          <div className={`timer-flotante ${timerMinimizado ? 'minimizado' : ''}`}>
-            <div className="timer-contenido">
-              {!timerMinimizado ? (
-                <>
-                  <button 
-                    className="btn-minimizar-timer"
-                    onClick={() => setTimerMinimizado(true)}
-                    title="Minimizar"
-                  >
-                    ➖
-                  </button>
-                  
-                  <div className="timer-fase">
-                    <span className="fase-label">Fase Actual</span>
-                    <h3 className="fase-nombre">{obtenerNombreFase(faseActual)}</h3>
-                  </div>
-                  
-                  <div className="timer-reloj">
-                    <div className="tiempo-circular">
-                      <svg className="progreso-circular" viewBox="0 0 100 100">
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          fill="none"
-                          stroke="rgba(100, 108, 255, 0.2)"
-                          strokeWidth="8"
-                        />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
-                          fill="none"
-                          stroke="#646cff"
-                          strokeWidth="8"
-                          strokeLinecap="round"
-                          strokeDasharray={`${(tiempoRestante / (tiempoFaseActual)) * 283} 283`}
-                          transform="rotate(-90 50 50)"
-                          style={{transition: 'stroke-dasharray 1s linear'}}
-                        />
-                      </svg>
-                      <div className="tiempo-texto">
-                        <span className="minutos">{Math.floor(tiempoRestante / 60)}</span>
-                        <span className="separador">:</span>
-                        <span className="segundos">{String(tiempoRestante % 60).padStart(2, '0')}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="timer-siguiente">
-                    <span className="siguiente-label">Después:</span>
-                    <span className="siguiente-fase">{obtenerSiguienteFase(faseActual)}</span>
-                  </div>
-
-                  <button 
-                    className="btn-detener-sesion"
-                    onClick={detenerSesion}
-                  >
-                    ⏹️ Detener Sesión
-                  </button>
-                </>
-              ) : (
-                <div 
-                  className="timer-mini"
-                  onClick={() => setTimerMinimizado(false)}
-                  title="Expandir timer"
-                >
-                  <div className="timer-mini-icon">
+        {/* HEADER FIJO DE SESIÓN ACTIVA - OCULTO, MOVIDO AL SIDEBAR */}
+        {false && sesionActiva && (
+          <div className={`header-sesion-fijo ${headerCompacto ? 'compacto' : ''}`}>
+            <div className="header-sesion-content">
+              {/* Izquierda: Info de sesión */}
+              <div className="header-sesion-left">
+                <div className="sesion-fase-badge">
+                  <span className="fase-emoji">
                     {faseActual === 'calentamiento' ? '🔥' :
                      faseActual === 'errores' ? '❌' :
                      faseActual === 'flashcards' ? '🎴' :
                      faseActual === 'contenido' ? '📚' :
+                     faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
                      '📊'}
-                  </div>
-                  <div className="timer-mini-tiempo">
-                    {Math.floor(tiempoRestante / 60)}:{String(tiempoRestante % 60).padStart(2, '0')}
-                  </div>
-                  <div className="timer-mini-progreso">
-                    <div 
-                      className="timer-mini-barra"
-                      style={{width: `${(tiempoRestante / tiempoFaseActual) * 100}%`}}
-                    ></div>
-                  </div>
+                  </span>
+                  <span className="fase-texto">{obtenerNombreFase(faseActual)}</span>
                 </div>
-              )}
+                
+                {!headerCompacto && (
+                  <div className="sesion-siguiente-info">
+                    <span className="siguiente-label">Después:</span>
+                    <span className="siguiente-nombre">{obtenerSiguienteFase(faseActual)}</span>
+                  </div>
+                )}
+                
+                {estadoGuardado && (
+                  <div className="sesion-guardado-indicator">
+                    <span className="guardado-icon">💾</span>
+                    <span className="guardado-texto">Guardado</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Centro: Botones de acción */}
+              <div className="header-sesion-center">
+                <button
+                  className="btn-header-sesion btn-pausar"
+                  onClick={() => setSesionPausada(!sesionPausada)}
+                  title={sesionPausada ? 'Reanudar' : 'Pausar'}
+                >
+                  {sesionPausada ? '▶️' : '⏸️'}
+                  <span className="btn-text">{sesionPausada ? 'Reanudar' : 'Pausar'}</span>
+                </button>
+                
+                <button
+                  className="btn-header-sesion btn-cursos"
+                  onClick={() => setSelectorCursosAbierto(!selectorCursosAbierto)}
+                  title="Explorar cursos"
+                >
+                  📚
+                  <span className="btn-text">Cursos</span>
+                </button>
+                
+                <button
+                  className="btn-header-sesion btn-detener"
+                  onClick={detenerSesion}
+                  title="Detener sesión"
+                >
+                  ⏹️
+                  <span className="btn-text">Detener</span>
+                </button>
+              </div>
+              
+              {/* Derecha: Timer */}
+              <div className="header-sesion-right">
+                {!modoLibreActivo ? (
+                  <div className="timer-compacto">
+                    <div className="timer-icono">⏱️</div>
+                    <div className="timer-display">
+                      <span className="timer-minutos">{Math.floor(tiempoRestante / 60)}</span>
+                      <span className="timer-separador">:</span>
+                      <span className="timer-segundos">{String(tiempoRestante % 60).padStart(2, '0')}</span>
+                    </div>
+                    <div className="timer-progreso-mini">
+                      <div 
+                        className="timer-progreso-barra"
+                        style={{width: `${(tiempoRestante / tiempoFaseActual) * 100}%`}}
+                      ></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="modo-libre-badge">
+                    <span className="modo-libre-icon">♾️</span>
+                    <span className="modo-libre-texto">Modo Libre</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
       </main>
+      
+      {/* Modal de Mapa de Repetición Espaciada */}
+      {itemMapaRepeticion && (
+        <div className="modal-overlay" onClick={() => setItemMapaRepeticion(null)}>
+          <div className="modal-mapa-repeticion" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-mapa-header">
+              <h2>📊 Mapa de Repetición Espaciada</h2>
+              <button 
+                className="btn-close-modal"
+                onClick={() => setItemMapaRepeticion(null)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-mapa-body">
+              {(() => {
+                const mapa = generarMapaRepeticiones(itemMapaRepeticion);
+                const ahora = new Date();
+                
+                return (
+                  <>
+                    {/* Información del Item */}
+                    <div className="mapa-item-info">
+                      <div className="mapa-item-header">
+                        <span className="mapa-item-tipo">{itemMapaRepeticion.tipo || '📄'}</span>
+                        <h3>{itemMapaRepeticion.titulo || 'Sin título'}</h3>
+                      </div>
+                      <div className="mapa-item-stats">
+                        <div className="stat">
+                          <span className="stat-label">Estado:</span>
+                          <span className={`stat-value estado-${itemMapaRepeticion.estadoRevision || 'nueva'}`}>
+                            {itemMapaRepeticion.estadoRevision === 'nueva' && '🆕 Nueva'}
+                            {itemMapaRepeticion.estadoRevision === 'en_progreso' && '📖 En Progreso'}
+                            {itemMapaRepeticion.estadoRevision === 'dominada' && '✅ Dominada'}
+                            {!itemMapaRepeticion.estadoRevision && '🆕 Nueva'}
+                          </span>
+                        </div>
+                        <div className="stat">
+                          <span className="stat-label">Repeticiones:</span>
+                          <span className="stat-value">{itemMapaRepeticion.repeticiones || 0}×</span>
+                        </div>
+                        <div className="stat">
+                          <span className="stat-label">Facilidad:</span>
+                          <span className="stat-value">⚡ {(itemMapaRepeticion.facilidad || 2.5).toFixed(1)}</span>
+                        </div>
+                        <div className="stat">
+                          <span className="stat-label">Intervalo Actual:</span>
+                          <span className="stat-value">
+                            {itemMapaRepeticion.intervalo ? 
+                              (itemMapaRepeticion.intervalo === 1 ? '1 día' :
+                               itemMapaRepeticion.intervalo < 7 ? `${itemMapaRepeticion.intervalo} días` :
+                               itemMapaRepeticion.intervalo < 30 ? `${Math.round(itemMapaRepeticion.intervalo / 7)} semanas` :
+                               `${Math.round(itemMapaRepeticion.intervalo / 30)} meses`) :
+                              'Primera vez'}
+                          </span>
+                        </div>
+                        {itemMapaRepeticion.proximaRevision && (
+                          <div className="stat">
+                            <span className="stat-label">Próxima Revisión:</span>
+                            <span className="stat-value">
+                              {new Date(itemMapaRepeticion.proximaRevision).toLocaleDateString('es-ES', {
+                                weekday: 'short',
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Explicación del sistema */}
+                    <div className="mapa-explicacion">
+                      <h4>📚 Cómo funciona la Repetición Espaciada</h4>
+                      <p>
+                        El sistema SM-2 programa automáticamente tus repasos basándose en qué tan bien recuerdas el contenido.
+                        A continuación se muestran 3 escenarios simulados de las próximas 10 repeticiones:
+                      </p>
+                    </div>
+                    
+                    {/* Escenarios de Repetición */}
+                    <div className="mapa-escenarios">
+                      {/* Escenario Fácil */}
+                      <div className="escenario escenario-facil">
+                        <div className="escenario-header">
+                          <span className="escenario-icono">😊</span>
+                          <h4>Si siempre evalúas como FÁCIL</h4>
+                          <p>Los intervalos se extienden rápidamente</p>
+                        </div>
+                        <div className="escenario-timeline">
+                          {mapa.escenarios.facil.map((rep, idx) => (
+                            <div key={idx} className="timeline-item">
+                              <div className="timeline-numero">#{rep.repeticion}</div>
+                              <div className="timeline-info">
+                                <div className="timeline-fecha">
+                                  {rep.fecha.toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                                <div className="timeline-dias">
+                                  En {rep.diasDesdeHoy} día{rep.diasDesdeHoy !== 1 ? 's' : ''}
+                                </div>
+                                <div className="timeline-intervalo">
+                                  Intervalo: {rep.intervalo === 1 ? '1 día' :
+                                    rep.intervalo < 7 ? `${rep.intervalo} días` :
+                                    rep.intervalo < 30 ? `~${Math.round(rep.intervalo / 7)} semanas` :
+                                    `~${Math.round(rep.intervalo / 30)} meses`}
+                                </div>
+                                <div className="timeline-facilidad">
+                                  Factor: {rep.facilidad.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Escenario Medio */}
+                      <div className="escenario escenario-medio">
+                        <div className="escenario-header">
+                          <span className="escenario-icono">😐</span>
+                          <h4>Si siempre evalúas como MEDIO</h4>
+                          <p>Los intervalos crecen moderadamente</p>
+                        </div>
+                        <div className="escenario-timeline">
+                          {mapa.escenarios.medio.map((rep, idx) => (
+                            <div key={idx} className="timeline-item">
+                              <div className="timeline-numero">#{rep.repeticion}</div>
+                              <div className="timeline-info">
+                                <div className="timeline-fecha">
+                                  {rep.fecha.toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                                <div className="timeline-dias">
+                                  En {rep.diasDesdeHoy} día{rep.diasDesdeHoy !== 1 ? 's' : ''}
+                                </div>
+                                <div className="timeline-intervalo">
+                                  Intervalo: {rep.intervalo === 1 ? '1 día' :
+                                    rep.intervalo < 7 ? `${rep.intervalo} días` :
+                                    rep.intervalo < 30 ? `~${Math.round(rep.intervalo / 7)} semanas` :
+                                    `~${Math.round(rep.intervalo / 30)} meses`}
+                                </div>
+                                <div className="timeline-facilidad">
+                                  Factor: {rep.facilidad.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Escenario Difícil */}
+                      <div className="escenario escenario-dificil">
+                        <div className="escenario-header">
+                          <span className="escenario-icono">😰</span>
+                          <h4>Si siempre evalúas como DIFÍCIL</h4>
+                          <p>Los intervalos se mantienen cortos para refuerzo</p>
+                        </div>
+                        <div className="escenario-timeline">
+                          {mapa.escenarios.dificil.map((rep, idx) => (
+                            <div key={idx} className="timeline-item">
+                              <div className="timeline-numero">#{rep.repeticion}</div>
+                              <div className="timeline-info">
+                                <div className="timeline-fecha">
+                                  {rep.fecha.toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                                <div className="timeline-dias">
+                                  En {rep.diasDesdeHoy} día{rep.diasDesdeHoy !== 1 ? 's' : ''}
+                                </div>
+                                <div className="timeline-intervalo">
+                                  Intervalo: {rep.intervalo === 1 ? '1 día' :
+                                    rep.intervalo < 7 ? `${rep.intervalo} días` :
+                                    rep.intervalo < 30 ? `~${Math.round(rep.intervalo / 7)} semanas` :
+                                    `~${Math.round(rep.intervalo / 30)} meses`}
+                                </div>
+                                <div className="timeline-facilidad">
+                                  Factor: {rep.facilidad.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Resumen */}
+                    <div className="mapa-resumen">
+                      <h4>💡 Resumen</h4>
+                      <ul>
+                        <li><strong>Fácil:</strong> Después de 10 repeticiones → Intervalo de ~{Math.round(mapa.escenarios.facil[9].intervalo / 30)} meses</li>
+                        <li><strong>Medio:</strong> Después de 10 repeticiones → Intervalo de ~{Math.round(mapa.escenarios.medio[9].intervalo / 30)} meses</li>
+                        <li><strong>Difícil:</strong> Después de 10 repeticiones → Intervalo de ~{mapa.escenarios.dificil[9].intervalo} días</li>
+                      </ul>
+                      <p className="mapa-nota">
+                        ✨ El sistema se adapta a tu rendimiento real. Mezclar evaluaciones diferentes es completamente normal y esperado.
+                      </p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

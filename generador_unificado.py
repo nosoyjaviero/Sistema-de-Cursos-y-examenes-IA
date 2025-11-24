@@ -525,11 +525,12 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
         
         # Crear prompt
         contenido_corto = contenido_documento[:8000]
-        total = sum(num_preguntas.values())
         
-        # IMPORTANTE: Si hay casos de estudio, SIEMPRE usar _crear_prompt
-        # porque necesita las instrucciones detalladas del tipo de caso
+        # Mantener tipos originales para el prompt (case_study necesita su formato especial)
+        num_preguntas_prompt = num_preguntas.copy()
         tiene_casos = num_preguntas.get('case_study', 0) > 0 or num_preguntas.get('caso_estudio', 0) > 0
+        
+        total = sum(num_preguntas.values())
         
         if tiene_casos:
             # CASOS DE ESTUDIO: Usar SIEMPRE el formato estructurado detallado
@@ -540,7 +541,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
                 if len(partes) > 1:
                     contenido_corto = partes[1].strip()[:8000]
             
-            prompt = self._crear_prompt(contenido_corto, num_preguntas, total, tipo_caso)
+            prompt = self._crear_prompt(contenido_corto, num_preguntas_prompt, total, tipo_caso)
             print(f"🎯 CASOS DE ESTUDIO DETECTADOS: Usando prompt estructurado con tipo '{tipo_caso}'")
             print(f"   Contenido extraído: {len(contenido_corto)} caracteres")
         elif sin_prompt_sistema:
@@ -549,7 +550,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             print(f"🎯 MODO PROMPT PERSONALIZADO: Usando prompt del usuario directamente")
         else:
             # Modo normal: agregar formato del sistema
-            prompt = self._crear_prompt(contenido_corto, num_preguntas, total, tipo_caso)
+            prompt = self._crear_prompt(contenido_corto, num_preguntas_prompt, total, tipo_caso)
         
         # Registrar prompt
         self._agregar_log('prompt_enviado', prompt)
@@ -678,27 +679,28 @@ CONTENIDO A EVALUAR:
 🔥 DISTRIBUCIÓN OBLIGATORIA - GENERA {total} PREGUNTAS ASI:
 {tipos_str}
 
-⚠️ ATENCIÓN ESPECIAL: Si la distribución incluye "open_question" o "desarrollo", DEBES generarla. Es el tipo más importante.
+⚠️ ATENCIÓN ESPECIAL: Si la distribución incluye "open_question", "caso de estudio" o "desarrollo", DEBES generarla. Son los tipos más importantes.
 
 ⚠️ REGLAS CRÍTICAS - LEE CON ATENCIÓN:
 1. Genera EXACTAMENTE {total} preguntas COMPLETAS con contenido REAL
 2. RESPETA LA DISTRIBUCIÓN DE TIPOS especificada arriba - CADA TIPO ES OBLIGATORIO
-3. Los tipos válidos son SOLAMENTE: "mcq", "true_false", "short_answer", "open_question"
-4. NO uses placeholders como "...", "[...]", "puntos: ..."
-5. NO REPITAS preguntas - cada una debe ser ÚNICA con texto diferente
-6. ⚠️ IMPORTANTE: Cada pregunta debe ser AUTOCONTENIDA - incluye el contexto necesario en el texto de la pregunta
+3. Los tipos válidos son: "mcq", "true_false", "short_answer", "open_question", "case_study"
+4. Para "case_study": DEBES incluir TODOS los campos del formato especificado arriba (contexto, descripcion, etc.)
+5. NO uses placeholders como "...", "[...]", "puntos: ..."
+6. NO REPITAS preguntas - cada una debe ser ÚNICA con texto diferente
+7. ⚠️ IMPORTANTE: Cada pregunta debe ser AUTOCONTENIDA - incluye el contexto necesario en el texto de la pregunta
    - En lugar de: "¿Cómo utiliza el diseño gráfico esta ley?" → "¿Cómo utiliza el diseño gráfico la Ley de Continuidad de Gestalt?"
    - En lugar de: "¿Qué significa esto?" → "¿Qué significa el término 'diseño basado en valores'?"
    - La pregunta debe entenderse SIN necesidad de ver el contenido original
-7. CADA pregunta debe estar COMPLETAMENTE llena con:
-   - "tipo": uno de estos valores exactos: "mcq", "true_false", "short_answer", "open_question"
+8. CADA pregunta debe estar COMPLETAMENTE llena con:
+   - "tipo": uno de estos valores exactos: "mcq", "true_false", "short_answer", "open_question", "case_study"
    - "pregunta": texto completo y autocontenido de la pregunta (mínimo 10 palabras, con contexto incluido)
    - Para "mcq": "opciones" debe ser un array de 4 strings completos (ej: ["A) opción real 1", "B) opción real 2", "C) opción real 3", "D) opción real 4"])
    - "respuesta_correcta": la respuesta correcta REAL (para MCQ: letra A/B/C/D, para otros: texto completo)
-   - "puntos": número entero (3 para mcq, 2 para true_false, 3 para short_answer, 5 para open_question)
-8. Todas las preguntas deben basarse en información del contenido proporcionado
-9. NO inventes información que no esté en el texto
-10. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
+   - "puntos": número entero (3 para mcq, 2 para true_false, 3 para short_answer, 5 para open_question, 10 para case_study)
+9. Todas las preguntas deben basarse en información del contenido proporcionado
+10. NO inventes información que no esté en el texto
+11. Responde SOLO con JSON válido, sin código markdown, sin explicaciones adicionales
 
 FORMATO JSON VÁLIDO (con datos REALES, NO placeholders):
 {{
@@ -781,6 +783,15 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
             print(f"  🔍 Pregunta tipo='{pregunta.tipo}' (repr: {repr(pregunta.tipo)})")
             tipo_normalizado = mapeo_tipos.get(pregunta.tipo, pregunta.tipo)
             print(f"     → Normalizado a: '{tipo_normalizado}'")
+            
+            # 🔥 LÓGICA ESPECIAL: Si generamos open_question pero se solicitó case_study, aceptarla
+            # Esto maneja el caso donde el modelo no genera el formato completo de case_study
+            if tipo_normalizado == 'open_question' and num_preguntas.get('case_study', 0) > 0:
+                # Si hay case_study solicitados y no se han cumplido, usar esta open_question
+                if contador_por_tipo.get('case_study', 0) < num_preguntas.get('case_study', 0):
+                    tipo_normalizado = 'case_study'
+                    print(f"     → 🔄 Reasignado a case_study (case_study solicitados no cumplidos)")
+            
             cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
             print(f"     → Cantidad solicitada de '{tipo_normalizado}': {cantidad_solicitada}")
             

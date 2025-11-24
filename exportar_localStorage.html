@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exportar Flashcards y Notas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #resultado {
+            margin-top: 20px;
+            padding: 15px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            white-space: pre-wrap;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <h1>📤 Exportar Flashcards y Notas</h1>
+    <p>Este exportador guarda tus flashcards y notas del navegador en archivos .txt para que el buscador IA pueda encontrarlas.</p>
+    
+    <button onclick="exportarFlashcards()">💾 Exportar Flashcards</button>
+    <button onclick="exportarNotas()">📝 Exportar Notas</button>
+    <button onclick="exportarTodo()">📦 Exportar Todo</button>
+    
+    <div id="resultado"></div>
+
+    <script>
+        const resultado = document.getElementById('resultado');
+
+        function mostrarMensaje(msg, tipo = 'success') {
+            resultado.innerHTML = `<span class="${tipo}">${msg}</span>`;
+        }
+
+        function descargarArchivo(contenido, nombre) {
+            const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombre;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportarFlashcards() {
+            try {
+                const flashcardsJSON = localStorage.getItem('flashcards');
+                if (!flashcardsJSON) {
+                    mostrarMensaje('❌ No hay flashcards guardadas en el navegador', 'error');
+                    return;
+                }
+
+                const flashcards = JSON.parse(flashcardsJSON);
+                let contenido = '='.repeat(60) + '\n';
+                contenido += 'FLASHCARDS EXPORTADAS\n';
+                contenido += 'Exportado: ' + new Date().toLocaleString('es-ES') + '\n';
+                contenido += '='.repeat(60) + '\n\n';
+
+                flashcards.forEach((fc, idx) => {
+                    contenido += `[${idx + 1}] ${fc.pregunta}\n`;
+                    contenido += `Respuesta: ${fc.respuesta}\n`;
+                    if (fc.categoria) contenido += `Categoría: ${fc.categoria}\n`;
+                    if (fc.dificultad) contenido += `Dificultad: ${fc.dificultad}\n`;
+                    contenido += '\n' + '-'.repeat(60) + '\n\n';
+                });
+
+                const fecha = new Date().toISOString().split('T')[0];
+                descargarArchivo(contenido, `flashcards_${fecha}.txt`);
+                mostrarMensaje(`✅ Exportadas ${flashcards.length} flashcards a flashcards_${fecha}.txt\n\n💡 Guarda el archivo en: extracciones/flashcards/`);
+            } catch (error) {
+                mostrarMensaje(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function exportarNotas() {
+            try {
+                const notasJSON = localStorage.getItem('notas');
+                if (!notasJSON) {
+                    mostrarMensaje('❌ No hay notas guardadas en el navegador', 'error');
+                    return;
+                }
+
+                const notas = JSON.parse(notasJSON);
+                let contenido = '='.repeat(60) + '\n';
+                contenido += 'NOTAS EXPORTADAS\n';
+                contenido += 'Exportado: ' + new Date().toLocaleString('es-ES') + '\n';
+                contenido += '='.repeat(60) + '\n\n';
+
+                notas.forEach((nota, idx) => {
+                    contenido += `[${idx + 1}] ${nota.titulo || 'Sin título'}\n`;
+                    contenido += `Fecha: ${nota.fecha || 'Sin fecha'}\n`;
+                    contenido += `\n${nota.contenido}\n`;
+                    if (nota.tags && nota.tags.length > 0) {
+                        contenido += `\nEtiquetas: ${nota.tags.join(', ')}\n`;
+                    }
+                    contenido += '\n' + '-'.repeat(60) + '\n\n';
+                });
+
+                const fecha = new Date().toISOString().split('T')[0];
+                descargarArchivo(contenido, `notas_${fecha}.txt`);
+                mostrarMensaje(`✅ Exportadas ${notas.length} notas a notas_${fecha}.txt\n\n💡 Guarda el archivo en: extracciones/notas/`);
+            } catch (error) {
+                mostrarMensaje(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function exportarTodo() {
+            exportarFlashcards();
+            setTimeout(() => exportarNotas(), 500);
+        }
+    </script>
+</body>
+</html>

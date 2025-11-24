@@ -1,0 +1,23 @@
+{
+  "id": "20251123_103114",
+  "archivo": "examen_20251123_103114.json",
+  "fecha_completado": "2025-11-23T10:31:14.756882",
+  "carpeta_ruta": "Platzi\\Prueba\\leee eee eee",
+  "carpeta_nombre": "leee eee eee",
+  "puntos_obtenidos": 0.0,
+  "puntos_totales": 10,
+  "porcentaje": 0.0,
+  "resultados": [
+    {
+      "pregunta": "¿Cómo utiliza el diseñador gráfico la Ley de Figura-Fondo en este caso?",
+      "tipo": "case_study",
+      "opciones": [],
+      "respuesta_usuario": "jrebnf;vbeo;unv\\anekvjaebk\\fnld ,.vmerq",
+      "respuesta_correcta": "Utilizando un fondo claro con una imagen oscura del planeta tierra, destacando así la importancia de proteger nuestro medio ambiente.",
+      "puntos": 0.0,
+      "puntos_maximos": 10,
+      "feedback": "Evaluación automática: 0.0/10 puntos basado en similitud de conceptos."
+    }
+  ],
+  "tipo": "completado"
+}

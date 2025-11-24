@@ -28,6 +28,19 @@ echo    🚀 INICIANDO SERVIDORES
 echo ════════════════════════════════════════════════════════════════
 echo.
 
+echo 🔄 Liberando puertos 5001, 8000 y 5173...
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5001.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+timeout /t 1 /nobreak >nul
+echo ✓ Puertos liberados
+echo.
+
+:: Iniciar Buscador IA
+echo 🔍 Iniciando Buscador IA con GPU (puerto 5001)...
+start "Buscador IA - GPU" cmd /k "title Buscador IA GPU && cd /d %~dp0 && echo 🔍 Servidor Buscador corriendo en puerto 5001... && venv\Scripts\activate.bat && python api_buscador.py"
+timeout /t 3 >nul
+
 :: Iniciar Backend
 echo 🔥 Iniciando Backend API (puerto 8000)...
 start "Examinator Backend" cmd /k "title Backend API && echo Backend corriendo en puerto 8000... && python api_server.py"
