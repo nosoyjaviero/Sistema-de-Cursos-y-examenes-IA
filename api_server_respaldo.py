@@ -42,7 +42,7 @@ progreso_generacion = {}  # {session_id: {progreso, mensaje, completado}}
 
 
 def cargar_config():
-    """Carga la configuración guardada"""
+    """Carga la configuraci├│n guardada"""
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -60,13 +60,13 @@ def cargar_config():
 
 
 def guardar_config(config: dict):
-    """Guarda la configuración"""
+    """Guarda la configuraci├│n"""
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
 def inicializar_modelo():
-    """Carga automáticamente el modelo configurado al iniciar el servidor"""
+    """Carga autom├íticamente el modelo configurado al iniciar el servidor"""
     global generador_actual
     try:
         config = cargar_config()
@@ -75,10 +75,10 @@ def inicializar_modelo():
         usar_ollama = config.get("usar_ollama", True)
         
         print(f"\n{'='*60}")
-        print(f"🚀 Iniciando Examinator API con Ollama + GPU...")
+        print(f"­ƒÜÇ Iniciando Examinator API con Ollama + GPU...")
         print(f"{'='*60}\n")
         
-        # Intentar usar Ollama primero (GPU automática)
+        # Intentar usar Ollama primero (GPU autom├ítica)
         if usar_ollama:
             try:
                 generador_actual = GeneradorUnificado(
@@ -87,23 +87,23 @@ def inicializar_modelo():
                     modelo_path_gguf=modelo_path,
                     n_gpu_layers=35
                 )
-                print(f"✅ Ollama cargado - Usando GPU automáticamente")
-                print(f"🎮 Modelo activo: {modelo_ollama}")
+                print(f"Ô£à Ollama cargado - Usando GPU autom├íticamente")
+                print(f"­ƒÄ« Modelo activo: {modelo_ollama}")
                 print(f"{'='*60}\n")
             except Exception as e:
-                print(f"⚠️  Ollama no disponible: {e}")
-                print(f"💡 Intentando con modelo GGUF...\n")
+                print(f"ÔÜá´©Å  Ollama no disponible: {e}")
+                print(f"­ƒÆí Intentando con modelo GGUF...\n")
                 
                 # Fallback a GeneradorDosPasos si Ollama falla
                 if modelo_path and Path(modelo_path).exists():
                     ajustes = config.get("ajustes_avanzados", {})
                     gpu_layers = ajustes.get('n_gpu_layers', 35)
                     generador_actual = GeneradorDosPasos(modelo_path=modelo_path, n_gpu_layers=gpu_layers)
-                    print(f"✅ Modelo GGUF cargado: {modelo_path}")
+                    print(f"Ô£à Modelo GGUF cargado: {modelo_path}")
                     print(f"{'='*60}\n")
                 else:
-                    print("\n⚠️ No hay modelo configurado o no existe el archivo")
-                    print("💡 Ve a Configuración para seleccionar un modelo\n")
+                    print("\nÔÜá´©Å No hay modelo configurado o no existe el archivo")
+                    print("­ƒÆí Ve a Configuraci├│n para seleccionar un modelo\n")
         else:
             # Usar modelo GGUF
             if modelo_path and Path(modelo_path).exists():
@@ -114,19 +114,19 @@ def inicializar_modelo():
                     modelo_path_gguf=modelo_path,
                     n_gpu_layers=gpu_layers
                 )
-                print(f"✅ Modelo GGUF cargado: {modelo_path}")
+                print(f"Ô£à Modelo GGUF cargado: {modelo_path}")
                 print(f"{'='*60}\n")
             else:
-                print("\n⚠️ No hay modelo configurado o no existe el archivo")
-                print("💡 Ve a Configuración para seleccionar un modelo\n")
+                print("\nÔÜá´©Å No hay modelo configurado o no existe el archivo")
+                print("­ƒÆí Ve a Configuraci├│n para seleccionar un modelo\n")
     except Exception as e:
-        print(f"\n❌ Error al cargar modelo inicial: {e}")
-        print("💡 Puedes configurar el modelo desde la interfaz web\n")
+        print(f"\nÔØî Error al cargar modelo inicial: {e}")
+        print("­ƒÆí Puedes configurar el modelo desde la interfaz web\n")
 
 
-# Función para verificar y arrancar Ollama
+# Funci├│n para verificar y arrancar Ollama
 def verificar_y_arrancar_ollama():
-    """Verifica si Ollama está corriendo y lo arranca si no lo está"""
+    """Verifica si Ollama est├í corriendo y lo arranca si no lo est├í"""
     import subprocess
     import platform
     
@@ -134,10 +134,10 @@ def verificar_y_arrancar_ollama():
         # Verificar si Ollama responde
         response = requests.get("http://localhost:11434/api/tags", timeout=2)
         if response.status_code == 200:
-            print("✅ Ollama ya está corriendo")
+            print("Ô£à Ollama ya est├í corriendo")
             return True
     except:
-        print("⚠️ Ollama no está corriendo, iniciando...")
+        print("ÔÜá´©Å Ollama no est├í corriendo, iniciando...")
         
     try:
         # Arrancar Ollama en segundo plano
@@ -162,15 +162,15 @@ def verificar_y_arrancar_ollama():
             try:
                 response = requests.get("http://localhost:11434/api/tags", timeout=1)
                 if response.status_code == 200:
-                    print("✅ Ollama iniciado correctamente")
+                    print("Ô£à Ollama iniciado correctamente")
                     return True
             except:
                 continue
         
-        print("⚠️ Ollama no pudo iniciarse automáticamente")
+        print("ÔÜá´©Å Ollama no pudo iniciarse autom├íticamente")
         return False
     except Exception as e:
-        print(f"❌ Error al iniciar Ollama: {e}")
+        print(f"ÔØî Error al iniciar Ollama: {e}")
         return False
 
 
@@ -179,17 +179,17 @@ def verificar_y_arrancar_ollama():
 async def startup_event():
     """Se ejecuta cuando arranca el servidor"""
     print("\n" + "="*60)
-    print("🚀 INICIANDO EXAMINATOR API SERVER")
+    print("­ƒÜÇ INICIANDO EXAMINATOR API SERVER")
     print("="*60)
     
-    # Verificar y arrancar Ollama automáticamente
+    # Verificar y arrancar Ollama autom├íticamente
     verificar_y_arrancar_ollama()
     
     # Inicializar modelo
     inicializar_modelo()
     
     print("="*60)
-    print("✅ Servidor listo en http://localhost:8000")
+    print("Ô£à Servidor listo en http://localhost:8000")
     print("="*60 + "\n")
 
 
@@ -231,55 +231,55 @@ async def root():
 
 @app.get("/api/modelos")
 async def listar_modelos():
-    """Lista todos los modelos disponibles con información detallada"""
+    """Lista todos los modelos disponibles con informaci├│n detallada"""
     modelos_dir = Path("modelos")
     modelos_dir.mkdir(exist_ok=True)
     
-    # Información sobre diferentes tipos de modelos
+    # Informaci├│n sobre diferentes tipos de modelos
     info_modelos = {
         "3B": {
             "parametros": "3 mil millones",
-            "velocidad": "Muy rápida",
-            "calidad": "Buena para tareas básicas",
+            "velocidad": "Muy r├ípida",
+            "calidad": "Buena para tareas b├ísicas",
             "ram_necesaria": "4-6 GB",
-            "descripcion": "Ideal para respuestas rápidas y preguntas simples. Perfecto para equipos con recursos limitados."
+            "descripcion": "Ideal para respuestas r├ípidas y preguntas simples. Perfecto para equipos con recursos limitados."
         },
         "7B": {
             "parametros": "7 mil millones",
-            "velocidad": "Rápida",
+            "velocidad": "R├ípida",
             "calidad": "Excelente balance calidad/velocidad",
             "ram_necesaria": "8-12 GB",
-            "descripcion": "Mejor opción para uso general. Genera preguntas más elaboradas manteniendo buena velocidad."
+            "descripcion": "Mejor opci├│n para uso general. Genera preguntas m├ís elaboradas manteniendo buena velocidad."
         },
         "13B": {
             "parametros": "13 mil millones",
             "velocidad": "Media",
             "calidad": "Muy buena calidad",
             "ram_necesaria": "16-20 GB",
-            "descripcion": "Para exámenes complejos que requieren razonamiento profundo y preguntas más sofisticadas."
+            "descripcion": "Para ex├ímenes complejos que requieren razonamiento profundo y preguntas m├ís sofisticadas."
         },
         "70B": {
             "parametros": "70 mil millones",
             "velocidad": "Lenta",
-            "calidad": "Máxima calidad",
+            "calidad": "M├íxima calidad",
             "ram_necesaria": "32+ GB",
-            "descripcion": "Calidad profesional para evaluaciones críticas. Requiere hardware potente."
+            "descripcion": "Calidad profesional para evaluaciones cr├¡ticas. Requiere hardware potente."
         }
     }
     
     modelos = []
     for archivo in modelos_dir.glob("*.gguf"):
-        tamaño = archivo.stat().st_size / (1024 * 1024 * 1024)  # GB
+        tama├▒o = archivo.stat().st_size / (1024 * 1024 * 1024)  # GB
         nombre = archivo.stem
         
-        # Detectar tamaño del modelo
-        tamaño_modelo = "3B"
+        # Detectar tama├▒o del modelo
+        tama├▒o_modelo = "3B"
         for key in ["70B", "13B", "7B", "3B"]:
             if key in nombre.upper():
-                tamaño_modelo = key
+                tama├▒o_modelo = key
                 break
         
-        info = info_modelos.get(tamaño_modelo, {
+        info = info_modelos.get(tama├▒o_modelo, {
             "parametros": "Desconocido",
             "velocidad": "Variable",
             "calidad": "A evaluar",
@@ -290,8 +290,8 @@ async def listar_modelos():
         modelos.append({
             "nombre": nombre,
             "ruta": str(archivo),
-            "tamaño_gb": round(tamaño, 2),
-            "tamaño_modelo": tamaño_modelo,
+            "tama├▒o_gb": round(tama├▒o, 2),
+            "tama├▒o_modelo": tama├▒o_modelo,
             **info
         })
     
@@ -307,13 +307,13 @@ async def listar_modelos_disponibles():
             "nombre": "Llama 3.2 3B Instruct",
             "archivo": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
             "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
-            "tamaño_gb": 1.88,
-            "tamaño_modelo": "3B",
+            "tama├▒o_gb": 1.88,
+            "tama├▒o_modelo": "3B",
             "parametros": "3 mil millones",
-            "velocidad": "Muy rápida",
-            "calidad": "Buena para tareas básicas",
+            "velocidad": "Muy r├ípida",
+            "calidad": "Buena para tareas b├ísicas",
             "ram_necesaria": "4-6 GB",
-            "descripcion": "Modelo pequeño y rápido, ideal para generar preguntas y evaluar respuestas. Perfecto para equipos con recursos limitados.",
+            "descripcion": "Modelo peque├▒o y r├ípido, ideal para generar preguntas y evaluar respuestas. Perfecto para equipos con recursos limitados.",
             "recomendado": True,
             "requiere_auth": False
         },
@@ -322,13 +322,13 @@ async def listar_modelos_disponibles():
             "nombre": "Llama 3.3 70B Instruct",
             "archivo": "Llama-3.3-70B-Instruct-Q4_K_M.gguf",
             "url": "https://huggingface.co/bartowski/Llama-3.3-70B-Instruct-GGUF/resolve/main/Llama-3.3-70B-Instruct-Q4_K_M.gguf",
-            "tamaño_gb": 40.2,
-            "tamaño_modelo": "70B",
+            "tama├▒o_gb": 40.2,
+            "tama├▒o_modelo": "70B",
             "parametros": "70 mil millones",
             "velocidad": "Lenta",
             "calidad": "Calidad excepcional",
             "ram_necesaria": "48-64 GB",
-            "descripcion": "El modelo más avanzado de Meta, liberado en diciembre 2024. Excelente razonamiento y generación de contenido educativo de la más alta calidad.",
+            "descripcion": "El modelo m├ís avanzado de Meta, liberado en diciembre 2024. Excelente razonamiento y generaci├│n de contenido educativo de la m├ís alta calidad.",
             "recomendado": False,
             "requiere_auth": False
         },
@@ -337,13 +337,13 @@ async def listar_modelos_disponibles():
             "nombre": "Qwen 2.5 7B Instruct",
             "archivo": "qwen2.5-7b-instruct-q4_k_m.gguf",
             "url": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf",
-            "tamaño_gb": 4.4,
-            "tamaño_modelo": "7B",
+            "tama├▒o_gb": 4.4,
+            "tama├▒o_modelo": "7B",
             "parametros": "7 mil millones",
-            "velocidad": "Rápida",
-            "calidad": "Excelente, especialmente multilingüe",
+            "velocidad": "R├ípida",
+            "calidad": "Excelente, especialmente multiling├╝e",
             "ram_necesaria": "8-12 GB",
-            "descripcion": "De Alibaba Cloud, septiembre 2024. Excelente en español y múltiples idiomas. Muy bueno para contenido educativo y razonamiento.",
+            "descripcion": "De Alibaba Cloud, septiembre 2024. Excelente en espa├▒ol y m├║ltiples idiomas. Muy bueno para contenido educativo y razonamiento.",
             "recomendado": True,
             "requiere_auth": False
         },
@@ -352,10 +352,10 @@ async def listar_modelos_disponibles():
             "nombre": "Mistral 7B Instruct v0.3",
             "archivo": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
             "url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
-            "tamaño_gb": 4.4,
-            "tamaño_modelo": "7B",
+            "tama├▒o_gb": 4.4,
+            "tama├▒o_modelo": "7B",
             "parametros": "7 mil millones",
-            "velocidad": "Rápida",
+            "velocidad": "R├ípida",
             "calidad": "Excelente balance",
             "ram_necesaria": "8-12 GB",
             "descripcion": "De Mistral AI, 2024. Modelo europeo con excelente rendimiento general y seguimiento de instrucciones precisas.",
@@ -367,13 +367,13 @@ async def listar_modelos_disponibles():
             "nombre": "Phi-3 Mini 3.8B Instruct",
             "archivo": "Phi-3-mini-4k-instruct-q4.gguf",
             "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
-            "tamaño_gb": 2.2,
-            "tamaño_modelo": "3.8B",
+            "tama├▒o_gb": 2.2,
+            "tama├▒o_modelo": "3.8B",
             "parametros": "3.8 mil millones",
-            "velocidad": "Muy rápida",
-            "calidad": "Sorprendentemente buena para su tamaño",
+            "velocidad": "Muy r├ípida",
+            "calidad": "Sorprendentemente buena para su tama├▒o",
             "ram_necesaria": "4-6 GB",
-            "descripcion": "De Microsoft, mayo 2024. Modelo pequeño pero muy capaz, entrenado con datos de alta calidad. Ideal para equipos limitados.",
+            "descripcion": "De Microsoft, mayo 2024. Modelo peque├▒o pero muy capaz, entrenado con datos de alta calidad. Ideal para equipos limitados.",
             "recomendado": False,
             "requiere_auth": False
         },
@@ -382,10 +382,10 @@ async def listar_modelos_disponibles():
             "nombre": "Gemma 2 9B Instruct",
             "archivo": "gemma-2-9b-it-Q4_K_M.gguf",
             "url": "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf",
-            "tamaño_gb": 5.4,
-            "tamaño_modelo": "9B",
+            "tama├▒o_gb": 5.4,
+            "tama├▒o_modelo": "9B",
             "parametros": "9 mil millones",
-            "velocidad": "Rápida",
+            "velocidad": "R├ípida",
             "calidad": "Excelente calidad",
             "ram_necesaria": "10-14 GB",
             "descripcion": "De Google DeepMind, junio 2024. Rendimiento excepcional y seguro. Excelente para tareas educativas complejas.",
@@ -397,10 +397,10 @@ async def listar_modelos_disponibles():
             "nombre": "Llama 3.1 8B Instruct",
             "archivo": "Llama-3.1-8B-Instruct-Q4_K_M.gguf",
             "url": "https://huggingface.co/bartowski/Llama-3.1-8B-Instruct-GGUF/resolve/main/Llama-3.1-8B-Instruct-Q4_K_M.gguf",
-            "tamaño_gb": 4.92,
-            "tamaño_modelo": "8B",
+            "tama├▒o_gb": 4.92,
+            "tama├▒o_modelo": "8B",
             "parametros": "8 mil millones",
-            "velocidad": "Rápida",
+            "velocidad": "R├ípida",
             "calidad": "Excelente balance calidad/velocidad",
             "ram_necesaria": "8-12 GB",
             "descripcion": "De Meta, julio 2024. Modelo equilibrado con buen rendimiento general y capacidad de razonamiento.",
@@ -412,19 +412,19 @@ async def listar_modelos_disponibles():
             "nombre": "Qwen 2.5 14B Instruct",
             "archivo": "qwen2.5-14b-instruct-q4_k_m.gguf",
             "url": "https://huggingface.co/Qwen/Qwen2.5-14B-Instruct-GGUF/resolve/main/qwen2.5-14b-instruct-q4_k_m.gguf",
-            "tamaño_gb": 8.7,
-            "tamaño_modelo": "14B",
+            "tama├▒o_gb": 8.7,
+            "tama├▒o_modelo": "14B",
             "parametros": "14 mil millones",
             "velocidad": "Media",
-            "calidad": "Muy alta, excelente en español",
+            "calidad": "Muy alta, excelente en espa├▒ol",
             "ram_necesaria": "16-20 GB",
-            "descripcion": "De Alibaba Cloud, septiembre 2024. Versión más potente de Qwen 2.5, sobresaliente en múltiples idiomas y razonamiento complejo.",
+            "descripcion": "De Alibaba Cloud, septiembre 2024. Versi├│n m├ís potente de Qwen 2.5, sobresaliente en m├║ltiples idiomas y razonamiento complejo.",
             "recomendado": False,
             "requiere_auth": False
         }
     ]
     
-    # Verificar cuáles ya están descargados
+    # Verificar cu├íles ya est├ín descargados
     modelos_dir = Path("modelos")
     modelos_dir.mkdir(exist_ok=True)
     
@@ -438,10 +438,10 @@ async def listar_modelos_disponibles():
 
 @app.get("/api/config")
 async def obtener_config():
-    """Obtiene la configuración actual"""
+    """Obtiene la configuraci├│n actual"""
     config = cargar_config()
     
-    # Añadir información del modelo cargado en memoria
+    # A├▒adir informaci├│n del modelo cargado en memoria
     global generador_actual
     if generador_actual:
         if hasattr(generador_actual, 'modelo_ollama') and generador_actual.usar_ollama:
@@ -452,7 +452,7 @@ async def obtener_config():
             # Para Ollama, gpu_activa depende de n_gpu_layers
             gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 35
             config["gpu_activa"] = gpu_layers > 0
-            print(f"📊 GET /api/config - Ollama detectado:")
+            print(f"­ƒôè GET /api/config - Ollama detectado:")
             print(f"   usar_ollama={config['usar_ollama']}, gpu_activa={config['gpu_activa']}, n_gpu_layers={gpu_layers}")
         elif hasattr(generador_actual, 'modelo_path_gguf') and generador_actual.modelo_path_gguf:
             config["modelo_cargado"] = generador_actual.modelo_path_gguf
@@ -479,7 +479,7 @@ async def obtener_config():
 
 @app.post("/api/config")
 async def actualizar_config(config: dict):
-    """Actualiza la configuración"""
+    """Actualiza la configuraci├│n"""
     guardar_config(config)
     
     # Recargar generador con nuevo modelo
@@ -488,7 +488,7 @@ async def actualizar_config(config: dict):
         try:
             # Liberar modelo anterior si existe
             if generador_actual and generador_actual.llm:
-                print("🔄 Liberando modelo anterior...")
+                print("­ƒöä Liberando modelo anterior...")
                 del generador_actual.llm
                 generador_actual.llm = None
                 del generador_actual
@@ -497,23 +497,23 @@ async def actualizar_config(config: dict):
                 # Forzar garbage collection
                 import gc
                 gc.collect()
-                print("✅ Modelo anterior liberado")
+                print("Ô£à Modelo anterior liberado")
             
             # Cargar nuevo modelo
-            print(f"🔄 Cargando nuevo modelo: {config['modelo_path']}")
+            print(f"­ƒöä Cargando nuevo modelo: {config['modelo_path']}")
             generador_actual = GeneradorDosPasos(modelo_path=config["modelo_path"])
-            print("✅ Nuevo modelo cargado exitosamente")
-            return {"message": "Configuración actualizada y modelo cargado", "success": True}
+            print("Ô£à Nuevo modelo cargado exitosamente")
+            return {"message": "Configuraci├│n actualizada y modelo cargado", "success": True}
         except Exception as e:
-            print(f"❌ Error al cargar modelo: {e}")
+            print(f"ÔØî Error al cargar modelo: {e}")
             return {"message": f"Error al cargar modelo: {str(e)}", "success": False}
     
-    return {"message": "Configuración actualizada", "success": True}
+    return {"message": "Configuraci├│n actualizada", "success": True}
 
 
 @app.get("/api/diagnostico/ollama")
 async def diagnostico_ollama():
-    """Verifica el estado de Ollama y devuelve información de diagnóstico"""
+    """Verifica el estado de Ollama y devuelve informaci├│n de diagn├│stico"""
     try:
         response = requests.get("http://localhost:11434/api/tags", timeout=2)
         if response.status_code == 200:
@@ -521,7 +521,7 @@ async def diagnostico_ollama():
             return {
                 "estado": "ok",
                 "corriendo": True,
-                "mensaje": "Ollama está funcionando correctamente",
+                "mensaje": "Ollama est├í funcionando correctamente",
                 "modelos_disponibles": len(modelos.get("models", [])),
                 "puerto": 11434
             }
@@ -529,14 +529,14 @@ async def diagnostico_ollama():
             return {
                 "estado": "error",
                 "corriendo": False,
-                "mensaje": f"Ollama responde pero con error (código {response.status_code})",
+                "mensaje": f"Ollama responde pero con error (c├│digo {response.status_code})",
                 "puerto": 11434
             }
     except requests.exceptions.ConnectionError:
         return {
             "estado": "error",
             "corriendo": False,
-            "mensaje": "Ollama no está corriendo. Usa el botón 'Reparar' para iniciarlo.",
+            "mensaje": "Ollama no est├í corriendo. Usa el bot├│n 'Reparar' para iniciarlo.",
             "puerto": 11434
         }
     except Exception as e:
@@ -550,18 +550,18 @@ async def diagnostico_ollama():
 
 @app.post("/api/diagnostico/reparar-ollama")
 async def reparar_ollama():
-    """Intenta reparar Ollama arrancándolo automáticamente"""
+    """Intenta reparar Ollama arranc├índolo autom├íticamente"""
     import subprocess
     import platform
     import time
     
-    # Primero verificar si ya está corriendo
+    # Primero verificar si ya est├í corriendo
     try:
         response = requests.get("http://localhost:11434/api/tags", timeout=2)
         if response.status_code == 200:
             return {
                 "success": True,
-                "mensaje": "✅ Ollama ya está funcionando correctamente",
+                "mensaje": "Ô£à Ollama ya est├í funcionando correctamente",
                 "accion": "ninguna"
             }
     except:
@@ -569,7 +569,7 @@ async def reparar_ollama():
     
     # Intentar arrancar Ollama
     try:
-        print("\n🔧 Intentando reparar Ollama...")
+        print("\n­ƒöº Intentando reparar Ollama...")
         
         if platform.system() == "Windows":
             subprocess.Popen(
@@ -585,86 +585,86 @@ async def reparar_ollama():
                 stderr=subprocess.DEVNULL
             )
         
-        # Esperar a que Ollama arranque (máximo 15 segundos)
+        # Esperar a que Ollama arranque (m├íximo 15 segundos)
         for i in range(15):
             time.sleep(1)
             try:
                 response = requests.get("http://localhost:11434/api/tags", timeout=1)
                 if response.status_code == 200:
-                    print("✅ Ollama reparado exitosamente")
+                    print("Ô£à Ollama reparado exitosamente")
                     return {
                         "success": True,
-                        "mensaje": "✅ Ollama iniciado correctamente. El chatbot ya está disponible.",
+                        "mensaje": "Ô£à Ollama iniciado correctamente. El chatbot ya est├í disponible.",
                         "accion": "iniciado",
                         "tiempo_arranque": f"{i+1} segundos"
                     }
             except:
                 continue
         
-        # Si llegamos aquí, no arrancó
+        # Si llegamos aqu├¡, no arranc├│
         return {
             "success": False,
-            "mensaje": "⚠️ Ollama no pudo iniciarse automáticamente. Intenta manualmente: ollama serve",
+            "mensaje": "ÔÜá´©Å Ollama no pudo iniciarse autom├íticamente. Intenta manualmente: ollama serve",
             "accion": "fallido"
         }
         
     except FileNotFoundError:
         return {
             "success": False,
-            "mensaje": "❌ Ollama no está instalado en el sistema. Descárgalo de https://ollama.ai",
+            "mensaje": "ÔØî Ollama no est├í instalado en el sistema. Desc├írgalo de https://ollama.ai",
             "accion": "no_instalado"
         }
     except Exception as e:
-        print(f"❌ Error al reparar Ollama: {e}")
+        print(f"ÔØî Error al reparar Ollama: {e}")
         return {
             "success": False,
-            "mensaje": f"❌ Error al iniciar Ollama: {str(e)}",
+            "mensaje": f"ÔØî Error al iniciar Ollama: {str(e)}",
             "accion": "error"
         }
 
 
 @app.post("/api/chat")
 async def chat_con_modelo(data: dict):
-    """Endpoint para chatear con el modelo (soporta Ollama y GGUF con fallback automático)"""
+    """Endpoint para chatear con el modelo (soporta Ollama y GGUF con fallback autom├ítico)"""
     global generador_actual
     
     mensaje = data.get("mensaje", "").strip()
     if not mensaje:
-        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vac├¡o")
     
     print(f"\n{'='*70}")
-    print(f"💬 CHAT REQUEST RECIBIDA")
+    print(f"­ƒÆ¼ CHAT REQUEST RECIBIDA")
     print(f"{'='*70}")
-    print(f"📝 Mensaje: {mensaje[:100]}...")
+    print(f"­ƒôØ Mensaje: {mensaje[:100]}...")
     
     # Verificar si hay modelo cargado
     if generador_actual is None:
-        print("❌ generador_actual es None")
-        return {"respuesta": "❌ No hay modelo inicializado. Ve a Configuración para seleccionar uno."}
+        print("ÔØî generador_actual es None")
+        return {"respuesta": "ÔØî No hay modelo inicializado. Ve a Configuraci├│n para seleccionar uno."}
     
-    print(f"✅ Generador actual existe")
-    print(f"🔧 Tipo configurado: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
+    print(f"Ô£à Generador actual existe")
+    print(f"­ƒöº Tipo configurado: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
     
-    # Si está configurado para Ollama, intentar usarlo con fallback a GGUF
+    # Si est├í configurado para Ollama, intentar usarlo con fallback a GGUF
     usar_ollama_exitoso = False
     if generador_actual.usar_ollama:
         try:
-            # Verificar si Ollama está disponible
+            # Verificar si Ollama est├í disponible
             import requests
             response = requests.get("http://localhost:11434/api/tags", timeout=2)
             if response.status_code == 200:
                 usar_ollama_exitoso = True
-                print("✅ Ollama disponible - usando Ollama")
+                print("Ô£à Ollama disponible - usando Ollama")
             else:
-                print(f"⚠️ Ollama no responde (status {response.status_code}) - fallback a GGUF")
+                print(f"ÔÜá´©Å Ollama no responde (status {response.status_code}) - fallback a GGUF")
         except Exception as e:
-            print(f"⚠️ Ollama no disponible ({str(e)}) - fallback a GGUF")
+            print(f"ÔÜá´©Å Ollama no disponible ({str(e)}) - fallback a GGUF")
     
-    # Si no usa Ollama o falló, verificar GGUF
+    # Si no usa Ollama o fall├│, verificar GGUF
     if not usar_ollama_exitoso:
         if generador_actual.llm is None:
-            return {"respuesta": "❌ Ollama no está disponible y no hay modelo GGUF cargado. Por favor:\n\n1. Inicia Ollama con: ollama serve\n2. O carga un modelo GGUF desde Configuración"}
-        print(f"✅ LLM GGUF cargado correctamente - usando fallback")
+            return {"respuesta": "ÔØî Ollama no est├í disponible y no hay modelo GGUF cargado. Por favor:\n\n1. Inicia Ollama con: ollama serve\n2. O carga un modelo GGUF desde Configuraci├│n"}
+        print(f"Ô£à LLM GGUF cargado correctamente - usando fallback")
     
     try:
         # Obtener ajustes avanzados del frontend
@@ -673,61 +673,61 @@ async def chat_con_modelo(data: dict):
         max_tokens = ajustes.get("max_tokens", 768)
         
         print(f"\n{'='*60}")
-        print(f"💬 Solicitud de chat")
-        print(f"⚙️ Temperatura: {temperature} | Max tokens: {max_tokens}")
+        print(f"­ƒÆ¼ Solicitud de chat")
+        print(f"ÔÜÖ´©Å Temperatura: {temperature} | Max tokens: {max_tokens}")
         print(f"{'='*60}\n")
         
         # Preparar el contexto si existe
         contexto = data.get("contexto", None)
         buscar_web = data.get("buscar_web", False)
         mensaje_completo = mensaje
-        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español."
+        system_prompt = "Eres un asistente educativo ├║til y respondes de manera clara y concisa en espa├▒ol."
         
-        # Si se solicita búsqueda web
+        # Si se solicita b├║squeda web
         if buscar_web:
             try:
-                print(f"🌐 Realizando búsqueda web para: {mensaje}")
+                print(f"­ƒîÉ Realizando b├║squeda web para: {mensaje}")
                 resultado_busqueda = buscar_y_resumir(mensaje, max_resultados=3)
                 
                 if resultado_busqueda.get('exito', False) and resultado_busqueda.get('resultados'):
                     contexto_web = resultado_busqueda['resumen']
-                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder."
-                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la información de búsqueda web proporcionada."""
+                    system_prompt = "Eres un asistente que tiene acceso a informaci├│n de internet. DEBES usar ├ÜNICAMENTE la informaci├│n proporcionada de las b├║squedas web para responder."
+                    mensaje_completo = f"""INFORMACI├ôN DE B├ÜSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la informaci├│n de b├║squeda web proporcionada."""
                 else:
-                    return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema."}
+                    return {"respuesta": "­ƒîÉ No pude encontrar informaci├│n actualizada en internet sobre ese tema."}
             except Exception as e:
-                print(f"❌ Error en búsqueda web: {e}")
-                return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}"}
+                print(f"ÔØî Error en b├║squeda web: {e}")
+                return {"respuesta": f"­ƒîÉ Error al buscar en internet: {str(e)}"}
         
         # Si hay contexto de archivo
         elif contexto:
             contexto_limitado = contexto[:4000] if len(contexto) > 4000 else contexto
-            system_prompt = "Eres un asistente que analiza documentos. Responde basándote ÚNICAMENTE en el contenido del documento proporcionado."
-            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la información del documento."""
+            system_prompt = "Eres un asistente que analiza documentos. Responde bas├índote ├ÜNICAMENTE en el contenido del documento proporcionado."
+            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la informaci├│n del documento."""
         
         # Construir historial de mensajes
         historial = data.get("historial", [])
         messages = [{"role": "system", "content": system_prompt}]
         
         print(f"\n{'='*70}")
-        print(f"📥 HISTORIAL RECIBIDO DEL FRONTEND")
+        print(f"­ƒôÑ HISTORIAL RECIBIDO DEL FRONTEND")
         print(f"{'='*70}")
-        print(f"📊 Total mensajes recibidos: {len(historial)}")
+        print(f"­ƒôè Total mensajes recibidos: {len(historial)}")
         
-        # Agregar historial previo (IMPORTANTE: no incluir el último mensaje porque ya viene en 'mensaje')
+        # Agregar historial previo (IMPORTANTE: no incluir el ├║ltimo mensaje porque ya viene en 'mensaje')
         if historial:
-            # Tomar más mensajes del historial para mejor contexto
-            historial_reciente = historial[-20:]  # Últimos 20 mensajes (10 intercambios)
+            # Tomar m├ís mensajes del historial para mejor contexto
+            historial_reciente = historial[-20:]  # ├Ültimos 20 mensajes (10 intercambios)
             if buscar_web:
-                historial_reciente = historial[-12:]  # 6 intercambios para búsqueda web
+                historial_reciente = historial[-12:]  # 6 intercambios para b├║squeda web
             elif contexto:
                 historial_reciente = historial[-8:]  # 4 intercambios con contexto
             
-            print(f"📌 Mensajes a procesar: {len(historial_reciente)} (filtrados de {len(historial)} totales)")
-            print(f"\n🔍 CONSTRUYENDO CONTEXTO PARA EL MODELO:")
+            print(f"­ƒôî Mensajes a procesar: {len(historial_reciente)} (filtrados de {len(historial)} totales)")
+            print(f"\n­ƒöì CONSTRUYENDO CONTEXTO PARA EL MODELO:")
             print(f"1. [SYSTEM] {system_prompt[:80]}...")
             
-            # Filtrar solo hasta el penúltimo mensaje (el último es el actual)
+            # Filtrar solo hasta el pen├║ltimo mensaje (el ├║ltimo es el actual)
             for i, msg in enumerate(historial_reciente[:-1]):
                 tipo = msg.get('tipo', 'unknown')
                 texto = msg.get('texto', '')
@@ -744,13 +744,13 @@ async def chat_con_modelo(data: dict):
         messages.append({"role": "user", "content": mensaje_completo})
         print(f"{len(messages)}. [USER - ACTUAL] {mensaje_completo[:100]}...")
         
-        print(f"\n📨 TOTAL MENSAJES ENVIADOS AL MODELO: {len(messages)}")
-        print(f"   └─ 1 system + {len(messages)-2} historial + 1 actual")
+        print(f"\n­ƒô¿ TOTAL MENSAJES ENVIADOS AL MODELO: {len(messages)}")
+        print(f"   ÔööÔöÇ 1 system + {len(messages)-2} historial + 1 actual")
         print(f"{'='*70}\n")
         
         # Generar respuesta usando GeneradorUnificado con fallback
-        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
-        print(f"🔧 Usando {'Ollama' if usar_ollama_exitoso else 'GGUF/GPU (fallback)'}")
+        print(f"­ƒñû Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
+        print(f"­ƒöº Usando {'Ollama' if usar_ollama_exitoso else 'GGUF/GPU (fallback)'}")
         
         if usar_ollama_exitoso:
             # Usar Ollama API de chat con historial completo
@@ -774,13 +774,13 @@ async def chat_con_modelo(data: dict):
         if not respuesta_texto:
             respuesta_texto = "Lo siento, no pude generar una respuesta. Intenta de nuevo."
         
-        print(f"✅ Respuesta generada: {len(respuesta_texto)} caracteres")
-        print(f"📝 Preview: {respuesta_texto[:100]}...\n")
+        print(f"Ô£à Respuesta generada: {len(respuesta_texto)} caracteres")
+        print(f"­ƒôØ Preview: {respuesta_texto[:100]}...\n")
         
         return {"respuesta": respuesta_texto}
         
     except Exception as e:
-        print(f"❌ Error en chat: {e}")
+        print(f"ÔØî Error en chat: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generando respuesta: {str(e)}")
@@ -809,7 +809,7 @@ async def guardar_nota_txt(datos: dict):
         
         return {"success": True, "message": f"Nota guardada en {ruta_completa}"}
     except Exception as e:
-        print(f"❌ Error guardando nota: {e}")
+        print(f"ÔØî Error guardando nota: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -844,7 +844,7 @@ async def guardar_contexto_ejercicio(datos: dict):
         with open(ruta_completa, 'w', encoding='utf-8') as f:
             f.write(contenido_completo)
         
-        print(f"✅ Contexto guardado: {ruta_completa}")
+        print(f"Ô£à Contexto guardado: {ruta_completa}")
         
         return {
             "success": True,
@@ -853,7 +853,7 @@ async def guardar_contexto_ejercicio(datos: dict):
             "archivo": nombre_archivo
         }
     except Exception as e:
-        print(f"❌ Error guardando contexto: {e}")
+        print(f"ÔØî Error guardando contexto: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -864,26 +864,26 @@ async def chat_con_modelo(data: dict):
     
     mensaje = data.get("mensaje", "").strip()
     if not mensaje:
-        raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
+        raise HTTPException(status_code=400, detail="El mensaje no puede estar vac├¡o")
     
     print(f"\n{'='*70}")
-    print(f"💬 CHAT REQUEST RECIBIDA")
+    print(f"­ƒÆ¼ CHAT REQUEST RECIBIDA")
     print(f"{'='*70}")
-    print(f"📝 Mensaje: {mensaje[:100]}...")
+    print(f"­ƒôØ Mensaje: {mensaje[:100]}...")
     
     # Verificar si hay modelo cargado
     if generador_actual is None:
-        print("❌ generador_actual es None")
-        return {"respuesta": "❌ No hay modelo inicializado. Ve a Configuración para seleccionar uno."}
+        print("ÔØî generador_actual es None")
+        return {"respuesta": "ÔØî No hay modelo inicializado. Ve a Configuraci├│n para seleccionar uno."}
     
-    print(f"✅ Generador actual existe")
-    print(f"🔧 Tipo: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
+    print(f"Ô£à Generador actual existe")
+    print(f"­ƒöº Tipo: {'Ollama' if generador_actual.usar_ollama else 'GGUF'}")
     
     if not generador_actual.usar_ollama:
         if generador_actual.llm is None:
-            print("❌ generador_actual.llm es None (GGUF no cargado)")
-            return {"respuesta": "❌ Modelo GGUF no está cargado. Ve a Configuración y carga un modelo."}
-        print(f"✅ LLM cargado correctamente")
+            print("ÔØî generador_actual.llm es None (GGUF no cargado)")
+            return {"respuesta": "ÔØî Modelo GGUF no est├í cargado. Ve a Configuraci├│n y carga un modelo."}
+        print(f"Ô£à LLM cargado correctamente")
     
     try:
         # Obtener ajustes avanzados del frontend
@@ -892,37 +892,37 @@ async def chat_con_modelo(data: dict):
         max_tokens = ajustes.get("max_tokens", 768)
         
         print(f"\n{'='*60}")
-        print(f"💬 Solicitud de chat")
-        print(f"⚙️ Temperatura: {temperature} | Max tokens: {max_tokens}")
+        print(f"­ƒÆ¼ Solicitud de chat")
+        print(f"ÔÜÖ´©Å Temperatura: {temperature} | Max tokens: {max_tokens}")
         print(f"{'='*60}\n")
         
         # Preparar el contexto si existe
         contexto = data.get("contexto", None)
         buscar_web = data.get("buscar_web", False)
         mensaje_completo = mensaje
-        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español."
+        system_prompt = "Eres un asistente educativo ├║til y respondes de manera clara y concisa en espa├▒ol."
         
-        # Si se solicita búsqueda web
+        # Si se solicita b├║squeda web
         if buscar_web:
             try:
-                print(f"🌐 Realizando búsqueda web para: {mensaje}")
+                print(f"­ƒîÉ Realizando b├║squeda web para: {mensaje}")
                 resultado_busqueda = buscar_y_resumir(mensaje, max_resultados=3)
                 
                 if resultado_busqueda.get('exito', False) and resultado_busqueda.get('resultados'):
                     contexto_web = resultado_busqueda['resumen']
-                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder."
-                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la información de búsqueda web proporcionada."""
+                    system_prompt = "Eres un asistente que tiene acceso a informaci├│n de internet. DEBES usar ├ÜNICAMENTE la informaci├│n proporcionada de las b├║squedas web para responder."
+                    mensaje_completo = f"""INFORMACI├ôN DE B├ÜSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la informaci├│n de b├║squeda web proporcionada."""
                 else:
-                    return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema."}
+                    return {"respuesta": "­ƒîÉ No pude encontrar informaci├│n actualizada en internet sobre ese tema."}
             except Exception as e:
-                print(f"❌ Error en búsqueda web: {e}")
-                return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}"}
+                print(f"ÔØî Error en b├║squeda web: {e}")
+                return {"respuesta": f"­ƒîÉ Error al buscar en internet: {str(e)}"}
         
         # Si hay contexto de archivo
         elif contexto:
             contexto_limitado = contexto[:4000] if len(contexto) > 4000 else contexto
-            system_prompt = "Eres un asistente que analiza documentos. Responde basándote ÚNICAMENTE en el contenido del documento proporcionado."
-            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la información del documento."""
+            system_prompt = "Eres un asistente que analiza documentos. Responde bas├índote ├ÜNICAMENTE en el contenido del documento proporcionado."
+            mensaje_completo = f"""DOCUMENTO:\n\n---\n{contexto_limitado}\n---\n\nPREGUNTA: {mensaje}\n\nResponde usando SOLO la informaci├│n del documento."""
         
         # Construir historial de mensajes
         historial = data.get("historial", [])
@@ -930,7 +930,7 @@ async def chat_con_modelo(data: dict):
         
         # Agregar historial previo
         if historial:
-            historial_reciente = historial[-10:]  # Últimos 10 mensajes
+            historial_reciente = historial[-10:]  # ├Ültimos 10 mensajes
             if buscar_web:
                 historial_reciente = historial[-6:]
             elif contexto:
@@ -946,8 +946,8 @@ async def chat_con_modelo(data: dict):
         messages.append({"role": "user", "content": mensaje_completo})
         
         # Generar respuesta usando GeneradorUnificado (soporta Ollama y GGUF)
-        print(f"🤖 Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
-        print(f"🔧 Usando {'Ollama' if generador_actual.usar_ollama else 'GGUF/GPU'}")
+        print(f"­ƒñû Generando respuesta con temperatura={temperature}, max_tokens={max_tokens}")
+        print(f"­ƒöº Usando {'Ollama' if generador_actual.usar_ollama else 'GGUF/GPU'}")
         
         if generador_actual.usar_ollama:
             # Usar Ollama para chat
@@ -959,7 +959,7 @@ async def chat_con_modelo(data: dict):
         else:
             # Usar GGUF/llama-cpp (GPU o CPU)
             if generador_actual.llm is None:
-                return {"respuesta": "❌ Modelo GGUF no está cargado. Ve a Configuración y carga un modelo."}
+                return {"respuesta": "ÔØî Modelo GGUF no est├í cargado. Ve a Configuraci├│n y carga un modelo."}
             
             respuesta = generador_actual.llm.create_chat_completion(
                 messages=messages,
@@ -974,24 +974,24 @@ async def chat_con_modelo(data: dict):
         if not respuesta_texto:
             respuesta_texto = "Lo siento, no pude generar una respuesta. Intenta de nuevo."
         
-        print(f"✅ Respuesta generada: {len(respuesta_texto)} caracteres")
-        print(f"📝 Preview: {respuesta_texto[:100]}...\n")
+        print(f"Ô£à Respuesta generada: {len(respuesta_texto)} caracteres")
+        print(f"­ƒôØ Preview: {respuesta_texto[:100]}...\n")
         return {"respuesta": respuesta_texto}
         
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"respuesta": f"❌ Error al generar respuesta: {str(e)}"}
+        return {"respuesta": f"ÔØî Error al generar respuesta: {str(e)}"}
 
 
 @app.post("/api/buscar-web")
 async def buscar_web_endpoint(data: dict):
-    """Endpoint para realizar búsquedas en internet"""
+    """Endpoint para realizar b├║squedas en internet"""
     query = data.get("query", "").strip()
     max_resultados = data.get("max_resultados", 3)
     
     if not query:
-        raise HTTPException(status_code=400, detail="Se requiere un término de búsqueda")
+        raise HTTPException(status_code=400, detail="Se requiere un t├®rmino de b├║squeda")
     
     try:
         resultado = buscar_y_resumir(query, max_resultados)
@@ -1039,9 +1039,9 @@ async def extraer_texto_simple(file: UploadFile = File(...)):
 @app.post("/api/extraer-pdf")
 async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
     """Extrae texto de un PDF subido y lo guarda en la carpeta especificada"""
-    print(f"📄 Procesando archivo: {file.filename}")
+    print(f"­ƒôä Procesando archivo: {file.filename}")
     print(f"   Tipo de contenido: {file.content_type}")
-    print(f"   Carpeta destino: {carpeta or 'raíz'}")
+    print(f"   Carpeta destino: {carpeta or 'ra├¡z'}")
     
     if not file.filename.endswith('.pdf') and not file.filename.endswith('.txt'):
         raise HTTPException(
@@ -1068,13 +1068,13 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
             print(f"   Leyendo archivo TXT...")
             texto = temp_path.read_text(encoding='utf-8')
         
-        print(f"   ✅ Texto extraído: {len(texto)} caracteres")
+        print(f"   Ô£à Texto extra├¡do: {len(texto)} caracteres")
         
         # Determinar carpeta de destino
         if carpeta:
             carpeta_destino = Path("extracciones") / carpeta
         else:
-            # Si no se especifica carpeta, usar la raíz de extracciones
+            # Si no se especifica carpeta, usar la ra├¡z de extracciones
             carpeta_destino = Path("extracciones")
         
         carpeta_destino.mkdir(parents=True, exist_ok=True)
@@ -1082,7 +1082,7 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
         nombre_limpio = temp_path.stem.replace(' ', '_')
         archivo_salida = carpeta_destino / f"{nombre_limpio}.txt"
         
-        # Si ya existe, agregar número
+        # Si ya existe, agregar n├║mero
         contador = 1
         while archivo_salida.exists():
             archivo_salida = carpeta_destino / f"{nombre_limpio}_{contador}.txt"
@@ -1090,7 +1090,7 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
         
         archivo_salida.write_text(texto, encoding='utf-8')
         
-        print(f"   💾 Guardado en: {archivo_salida}")
+        print(f"   ­ƒÆ¥ Guardado en: {archivo_salida}")
         
         return {
             "success": True,
@@ -1099,23 +1099,23 @@ async def extraer_pdf(file: UploadFile = File(...), carpeta: str = Form("")):
             "ruta_completa": str(archivo_salida),
             "caracteres": len(texto),
             "palabras": len(texto.split()),
-            "carpeta": carpeta or "raíz"
+            "carpeta": carpeta or "ra├¡z"
         }
     
     except Exception as e:
-        print(f"   ❌ Error: {str(e)}")
+        print(f"   ÔØî Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al procesar archivo: {str(e)}")
     
     finally:
         # Limpiar archivo temporal
         if temp_path.exists():
             temp_path.unlink()
-            print(f"   🗑️ Archivo temporal eliminado")
+            print(f"   ­ƒùæ´©Å Archivo temporal eliminado")
 
 
 @app.get("/api/documentos")
 async def listar_documentos():
-    """Lista todos los documentos extraídos"""
+    """Lista todos los documentos extra├¡dos"""
     extracciones_dir = Path("extracciones")
     if not extracciones_dir.exists():
         return {"documentos": []}
@@ -1131,17 +1131,17 @@ async def listar_documentos():
                     "nombre": archivo.stem,
                     "ruta": str(archivo),
                     "fecha": carpeta_fecha.name,
-                    "tamaño_kb": round(archivo.stat().st_size / 1024, 2)
+                    "tama├▒o_kb": round(archivo.stat().st_size / 1024, 2)
                 })
     
     return {"documentos": documentos}
 
 
-# ========== ENDPOINTS DE NAVEGACIÓN DE CARPETAS ==========
+# ========== ENDPOINTS DE NAVEGACI├ôN DE CARPETAS ==========
 
 @app.get("/api/carpetas")
 async def listar_carpetas(ruta: str = ""):
-    """Lista todas las carpetas en una ruta específica"""
+    """Lista todas las carpetas en una ruta espec├¡fica"""
     try:
         carpetas = cursos_db.listar_carpetas(ruta)
         documentos = cursos_db.listar_documentos(ruta)
@@ -1192,13 +1192,13 @@ async def renombrar_carpeta(data: dict):
     nuevo_nombre = data.get("nuevo_nombre", "").strip()
     
     if not ruta_actual:
-        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vacía")
+        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vac├¡a")
     
     if not nuevo_nombre:
-        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vac├¡o")
     
     try:
-        # Usar el método de base de datos para renombrar
+        # Usar el m├®todo de base de datos para renombrar
         resultado = cursos_db.renombrar_carpeta(ruta_actual, nuevo_nombre)
         return {"success": True, **resultado}
     except ValueError as e:
@@ -1209,7 +1209,7 @@ async def renombrar_carpeta(data: dict):
 
 @app.post("/api/carpetas/mover")
 async def mover_carpeta(datos: dict):
-    """Mueve una carpeta a otra ubicación"""
+    """Mueve una carpeta a otra ubicaci├│n"""
     ruta_origen = datos.get("ruta_origen")
     ruta_destino = datos.get("ruta_destino", "")
     
@@ -1242,22 +1242,22 @@ async def renombrar_documento(data: dict):
     ruta_actual = data.get("ruta_actual", "").strip()
     nuevo_nombre = data.get("nuevo_nombre", "").strip()
     
-    print(f"🔄 Renombrar documento:")
+    print(f"­ƒöä Renombrar documento:")
     print(f"   Ruta actual: {ruta_actual}")
     print(f"   Nuevo nombre: {nuevo_nombre}")
     
     if not ruta_actual:
-        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vacía")
+        raise HTTPException(status_code=400, detail="La ruta actual no puede estar vac├¡a")
     
     if not nuevo_nombre:
-        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vacío")
+        raise HTTPException(status_code=400, detail="El nuevo nombre no puede estar vac├¡o")
     
     try:
         resultado = cursos_db.renombrar_documento(ruta_actual, nuevo_nombre)
-        print(f"   ✅ Resultado: {resultado}")
+        print(f"   Ô£à Resultado: {resultado}")
         return {"success": True, **resultado}
     except ValueError as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   ÔØî Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1265,7 +1265,7 @@ async def renombrar_documento(data: dict):
 
 @app.get("/api/arbol")
 async def obtener_arbol():
-    """Obtiene el árbol completo de carpetas"""
+    """Obtiene el ├írbol completo de carpetas"""
     try:
         return cursos_db.obtener_arbol()
     except Exception as e:
@@ -1274,7 +1274,7 @@ async def obtener_arbol():
 
 @app.get("/api/carpetas/info")
 async def obtener_info_carpeta(ruta: str = ""):
-    """Obtiene información detallada de una carpeta específica"""
+    """Obtiene informaci├│n detallada de una carpeta espec├¡fica"""
     try:
         # listar_carpetas retorna una lista de dicts, listar_documentos otra lista
         subcarpetas = cursos_db.listar_carpetas(ruta)
@@ -1286,7 +1286,7 @@ async def obtener_info_carpeta(ruta: str = ""):
             "ruta": ruta
         }
     except Exception as e:
-        print(f"❌ Error obteniendo info de carpeta: {e}")
+        print(f"ÔØî Error obteniendo info de carpeta: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1295,19 +1295,19 @@ async def obtener_archivos_recursivos(ruta: str = ""):
     """Obtiene todos los archivos .txt recursivamente de una carpeta y sus subcarpetas"""
     try:
         print(f"\n{'='*70}")
-        print(f"📂 OBTENER ARCHIVOS RECURSIVOS")
+        print(f"­ƒôé OBTENER ARCHIVOS RECURSIVOS")
         print(f"{'='*70}")
-        print(f"📁 Ruta: {ruta}")
+        print(f"­ƒôü Ruta: {ruta}")
         
         archivos = cursos_db.listar_documentos_recursivo(ruta)
-        print(f"📚 Archivos encontrados: {len(archivos)}")
+        print(f"­ƒôÜ Archivos encontrados: {len(archivos)}")
         
         return {
             "archivos": archivos,
             "total": len(archivos)
         }
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"ÔØî Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1315,7 +1315,7 @@ async def obtener_archivos_recursivos(ruta: str = ""):
 async def generar_examen_bloque(datos: dict):
     """Genera preguntas para un bloque de archivos"""
     print(f"\n{'='*70}")
-    print(f"📝 GENERAR EXAMEN POR BLOQUE")
+    print(f"­ƒôØ GENERAR EXAMEN POR BLOQUE")
     print(f"{'='*70}")
     
     archivos = datos.get("archivos", [])
@@ -1326,8 +1326,8 @@ async def generar_examen_bloque(datos: dict):
     num_vf = config.get("num_vf", 1)
     num_desarrollo = config.get("num_desarrollo", 1)
     
-    print(f"📚 Archivos en bloque: {len(archivos)}")
-    print(f"📊 Config: M={num_multiple}, C={num_corta}, VF={num_vf}, D={num_desarrollo}")
+    print(f"­ƒôÜ Archivos en bloque: {len(archivos)}")
+    print(f"­ƒôè Config: M={num_multiple}, C={num_corta}, VF={num_vf}, D={num_desarrollo}")
     
     if not archivos:
         raise HTTPException(status_code=400, detail="No se especificaron archivos")
@@ -1337,7 +1337,7 @@ async def generar_examen_bloque(datos: dict):
     
     try:
         # ESTRATEGIA: Generar preguntas por archivo individualmente
-        # Esto evita que el modelo se quede sin tokens con exámenes grandes
+        # Esto evita que el modelo se quede sin tokens con ex├ímenes grandes
         
         # Leer contenido de cada archivo
         archivos_contenido = []
@@ -1358,28 +1358,28 @@ async def generar_examen_bloque(datos: dict):
                         'contenido': contenido_texto,
                         'chars': len(contenido_texto)
                     })
-                    print(f"  ✅ Leído: {nombre_archivo} ({len(contenido_texto)} chars)")
+                    print(f"  Ô£à Le├¡do: {nombre_archivo} ({len(contenido_texto)} chars)")
             except Exception as e:
-                print(f"  ⚠️  Error leyendo {archivo_obj}: {e}")
+                print(f"  ÔÜá´©Å  Error leyendo {archivo_obj}: {e}")
         
         if not archivos_contenido:
             raise HTTPException(status_code=404, detail="No se pudo leer el contenido de los archivos")
         
         # Calcular total de caracteres
         total_chars = sum(a['chars'] for a in archivos_contenido)
-        print(f"📄 Contenido total: {total_chars} caracteres en {len(archivos_contenido)} archivos")
+        print(f"­ƒôä Contenido total: {total_chars} caracteres en {len(archivos_contenido)} archivos")
         
-        # Calcular distribución proporcional de preguntas por archivo
+        # Calcular distribuci├│n proporcional de preguntas por archivo
         total_preguntas = num_multiple + num_corta + num_vf + num_desarrollo
         
-        print(f"\n🎯 Estrategia: Generar {total_preguntas} preguntas desde {len(archivos_contenido)} archivos")
+        print(f"\n­ƒÄ» Estrategia: Generar {total_preguntas} preguntas desde {len(archivos_contenido)} archivos")
         
         todas_preguntas = []
         
         for idx, archivo_info in enumerate(archivos_contenido, 1):
-            # Calcular proporción de preguntas para este archivo
+            # Calcular proporci├│n de preguntas para este archivo
             proporcion = archivo_info['chars'] / total_chars
-            preguntas_este_archivo = max(3, round(total_preguntas * proporcion * 2.0))  # Generar 100% más (x2)
+            preguntas_este_archivo = max(3, round(total_preguntas * proporcion * 2.0))  # Generar 100% m├ís (x2)
             
             # Distribuir tipos de preguntas proporcionalmente
             num_preguntas_archivo = {
@@ -1393,22 +1393,22 @@ async def generar_examen_bloque(datos: dict):
             if total_calculado < preguntas_este_archivo:
                 num_preguntas_archivo['mcq'] += (preguntas_este_archivo - total_calculado)
             
-            print(f"\n  📝 Archivo {idx}/{len(archivos_contenido)}: {archivo_info['nombre']}")
-            print(f"     Proporción: {proporcion*100:.1f}% ({archivo_info['chars']} chars)")
+            print(f"\n  ­ƒôØ Archivo {idx}/{len(archivos_contenido)}: {archivo_info['nombre']}")
+            print(f"     Proporci├│n: {proporcion*100:.1f}% ({archivo_info['chars']} chars)")
             print(f"     Generando ~{sum(num_preguntas_archivo.values())} preguntas (variedad de tipos)")
             
             # Generar preguntas para este archivo
             contenido_formateado = f"=== {archivo_info['nombre']} ===\n{archivo_info['contenido']}"
             preguntas_archivo = generador_actual.generar_examen(contenido_formateado, num_preguntas_archivo)
             
-            print(f"     ✅ Obtenidas: {len(preguntas_archivo)} preguntas")
+            print(f"     Ô£à Obtenidas: {len(preguntas_archivo)} preguntas")
             todas_preguntas.extend(preguntas_archivo)
         
         # Mezclar todas las preguntas para variedad
         import random
         random.shuffle(todas_preguntas)
         
-        print(f"\n📊 Resumen de generación:")
+        print(f"\n­ƒôè Resumen de generaci├│n:")
         print(f"   Total obtenido: {len(todas_preguntas)} preguntas")
         print(f"   Total solicitado: {total_preguntas}")
         
@@ -1418,9 +1418,9 @@ async def generar_examen_bloque(datos: dict):
             tipo = p.tipo
             contador_tipos[tipo] = contador_tipos.get(tipo, 0) + 1
         
-        print(f"   Distribución obtenida: {contador_tipos}")
+        print(f"   Distribuci├│n obtenida: {contador_tipos}")
         
-        # Seleccionar las necesarias respetando proporción solicitada
+        # Seleccionar las necesarias respetando proporci├│n solicitada
         preguntas_finales = []
         tipos_necesarios = {
             'mcq': num_multiple,
@@ -1429,7 +1429,7 @@ async def generar_examen_bloque(datos: dict):
             'open_question': num_desarrollo
         }
         
-        # Separar por tipo con normalización
+        # Separar por tipo con normalizaci├│n
         preguntas_por_tipo = {
             'mcq': [],
             'short_answer': [],
@@ -1456,9 +1456,9 @@ async def generar_examen_bloque(datos: dict):
             if tipo_normalizado in preguntas_por_tipo:
                 preguntas_por_tipo[tipo_normalizado].append(p)
             else:
-                print(f"   ⚠️  Tipo desconocido ignorado: '{p.tipo}' (no está en el mapeo)")
+                print(f"   ÔÜá´©Å  Tipo desconocido ignorado: '{p.tipo}' (no est├í en el mapeo)")
         
-        print(f"\n📋 Preguntas por tipo (normalizadas):")
+        print(f"\n­ƒôï Preguntas por tipo (normalizadas):")
         for tipo, lista in preguntas_por_tipo.items():
             if lista:
                 print(f"   {tipo}: {len(lista)} disponibles")
@@ -1471,12 +1471,12 @@ async def generar_examen_bloque(datos: dict):
             preguntas_finales.extend(tomadas)
             print(f"   {tipo}: tomadas {len(tomadas)}/{cantidad} (disponibles: {len(disponibles)})")
             if len(tomadas) < cantidad:
-                print(f"      ⚠️  Faltan {cantidad - len(tomadas)} preguntas de tipo '{tipo}'")
+                print(f"      ÔÜá´©Å  Faltan {cantidad - len(tomadas)} preguntas de tipo '{tipo}'")
         
-        # Si aún faltan, completar con las que sobran
+        # Si a├║n faltan, completar con las que sobran
         if len(preguntas_finales) < total_preguntas:
             faltantes = total_preguntas - len(preguntas_finales)
-            print(f"\n  🔄 Completando {faltantes} preguntas faltantes...")
+            print(f"\n  ­ƒöä Completando {faltantes} preguntas faltantes...")
             
             # Tomar de las que sobraron
             usadas = set(id(p) for p in preguntas_finales)
@@ -1490,7 +1490,7 @@ async def generar_examen_bloque(datos: dict):
         # Limitar al total solicitado
         preguntas = preguntas_finales[:total_preguntas]
         
-        print(f"\n✅ Total final: {len(preguntas)} preguntas generadas")
+        print(f"\nÔ£à Total final: {len(preguntas)} preguntas generadas")
         
         # Mapear tipos de pregunta al formato esperado por la UI
         tipo_map = {
@@ -1521,7 +1521,7 @@ async def generar_examen_bloque(datos: dict):
 
 @app.get("/api/arbol_antiguo")
 async def obtener_arbol(ruta: str = "", profundidad: int = 3):
-    """Obtiene el árbol completo de carpetas y documentos"""
+    """Obtiene el ├írbol completo de carpetas y documentos"""
     try:
         arbol = cursos_db.obtener_arbol(ruta, max_depth=profundidad)
         return arbol
@@ -1533,7 +1533,7 @@ async def obtener_arbol(ruta: str = "", profundidad: int = 3):
 async def buscar_documentos(q: str):
     """Busca documentos por nombre"""
     if not q or len(q) < 2:
-        raise HTTPException(status_code=400, detail="La búsqueda debe tener al menos 2 caracteres")
+        raise HTTPException(status_code=400, detail="La b├║squeda debe tener al menos 2 caracteres")
     
     try:
         resultados = cursos_db.buscar_documentos(q)
@@ -1548,7 +1548,7 @@ async def obtener_contenido_documento(ruta: str):
     try:
         # Obtener solo el nombre del archivo
         nombre_archivo = Path(ruta).name
-        print(f"📄 Cargando: {nombre_archivo}")
+        print(f"­ƒôä Cargando: {nombre_archivo}")
         
         contenido = cursos_db.obtener_contenido_documento(ruta)
         return contenido
@@ -1565,7 +1565,7 @@ async def actualizar_contenido_documento(data: dict):
     contenido = data.get("contenido", "")
     
     if not ruta:
-        raise HTTPException(status_code=400, detail="La ruta no puede estar vacía")
+        raise HTTPException(status_code=400, detail="La ruta no puede estar vac├¡a")
     
     try:
         resultado = cursos_db.actualizar_contenido_documento(ruta, contenido)
@@ -1583,7 +1583,7 @@ async def generar_examen(datos: dict):
     
     # DEBUG: Imprimir datos recibidos
     print(f"\n{'='*60}")
-    print(f"🔍 DEBUG - Datos recibidos en /api/generar-examen:")
+    print(f"­ƒöì DEBUG - Datos recibidos en /api/generar-examen:")
     print(f"   Keys: {list(datos.keys())}")
     print(f"   num_multiple: {datos.get('num_multiple')} (tipo: {type(datos.get('num_multiple'))})")
     print(f"   num_corta: {datos.get('num_corta')} (tipo: {type(datos.get('num_corta'))})")
@@ -1613,41 +1613,41 @@ async def generar_examen(datos: dict):
     archivos = re.findall(r'=== (.+?) ===', contenido)
     
     print(f"\n{'='*60}")
-    print(f"📝 Solicitud de generación de examen (Session: {session_id})")
-    print(f"📊 Configuración de preguntas:")
+    print(f"­ƒôØ Solicitud de generaci├│n de examen (Session: {session_id})")
+    print(f"­ƒôè Configuraci├│n de preguntas:")
     if num_multiple > 0:
-        print(f"   • Opción múltiple: {num_multiple}")
+        print(f"   ÔÇó Opci├│n m├║ltiple: {num_multiple}")
     if num_verdadero_falso > 0:
-        print(f"   • Verdadero/Falso: {num_verdadero_falso}")
+        print(f"   ÔÇó Verdadero/Falso: {num_verdadero_falso}")
     if num_corta > 0:
-        print(f"   • Corta: {num_corta}")
+        print(f"   ÔÇó Corta: {num_corta}")
     if num_desarrollo > 0:
-        print(f"   • Desarrollo: {num_desarrollo}")
-    print(f"\n🎮 Motor de IA:")
+        print(f"   ÔÇó Desarrollo: {num_desarrollo}")
+    print(f"\n­ƒÄ« Motor de IA:")
     if generador_actual and hasattr(generador_actual, 'usar_ollama') and generador_actual.usar_ollama:
-        print(f"   ✅ USANDO GPU - Ollama")
-        print(f"   🎯 Modelo: {generador_actual.modelo_ollama}")
-        print(f"   💡 GPU activada automáticamente")
+        print(f"   Ô£à USANDO GPU - Ollama")
+        print(f"   ­ƒÄ» Modelo: {generador_actual.modelo_ollama}")
+        print(f"   ­ƒÆí GPU activada autom├íticamente")
     else:
-        print(f"   ⚠️  Usando llama-cpp-python")
-    print(f"\n⚙️ Configuración del modelo:")
-    print(f"   • Temperatura: {ajustes.get('temperature', 0.7)}")
-    print(f"   • Tokens máximos: {ajustes.get('max_tokens', 512)}")
-    print(f"   • Contexto (n_ctx): {ajustes.get('n_ctx', 4096)} tokens")
-    print(f"   • Top P: 0.9")
-    print(f"   • Repetición: 1.15")
-    print(f"\n📄 Longitud del contenido: {len(contenido) if contenido else 0} caracteres")
+        print(f"   ÔÜá´©Å  Usando llama-cpp-python")
+    print(f"\nÔÜÖ´©Å Configuraci├│n del modelo:")
+    print(f"   ÔÇó Temperatura: {ajustes.get('temperature', 0.7)}")
+    print(f"   ÔÇó Tokens m├íximos: {ajustes.get('max_tokens', 512)}")
+    print(f"   ÔÇó Contexto (n_ctx): {ajustes.get('n_ctx', 4096)} tokens")
+    print(f"   ÔÇó Top P: 0.9")
+    print(f"   ÔÇó Repetici├│n: 1.15")
+    print(f"\n­ƒôä Longitud del contenido: {len(contenido) if contenido else 0} caracteres")
     if archivos:
-        print(f"📚 Archivos cargados en contexto ({len(archivos)}):")
+        print(f"­ƒôÜ Archivos cargados en contexto ({len(archivos)}):")
         for i, archivo in enumerate(archivos, 1):
-            print(f"   {i}. 📄 {archivo}")
+            print(f"   {i}. ­ƒôä {archivo}")
     if prompt_personalizado:
-        print(f"💬 Prompt personalizado: {prompt_personalizado[:100]}...")
+        print(f"­ƒÆ¼ Prompt personalizado: {prompt_personalizado[:100]}...")
     if prompt_sistema:
-        print(f"🎨 Prompt sistema personalizado recibido: {len(prompt_sistema)} caracteres")
+        print(f"­ƒÄ¿ Prompt sistema personalizado recibido: {len(prompt_sistema)} caracteres")
         print(f"   Primeros 100 caracteres: {prompt_sistema[:100]}...")
     else:
-        print(f"📋 Usando prompt del sistema predeterminado")
+        print(f"­ƒôï Usando prompt del sistema predeterminado")
     print(f"{'='*60}\n")
     
     if not contenido:
@@ -1656,7 +1656,7 @@ async def generar_examen(datos: dict):
     # Inicializar progreso
     progreso_generacion[session_id] = {
         'progreso': 0,
-        'mensaje': 'Iniciando generación...',
+        'mensaje': 'Iniciando generaci├│n...',
         'completado': False,
         'error': None
     }
@@ -1669,10 +1669,10 @@ async def generar_examen(datos: dict):
             'completado': False,
             'error': None
         }
-        print(f"📊 Progreso {progreso}%: {mensaje}")
+        print(f"­ƒôè Progreso {progreso}%: {mensaje}")
     
     try:
-        # Recargar generador con la configuración actual
+        # Recargar generador con la configuraci├│n actual
         callback_progreso(5, "Cargando modelo de IA...")
         config = cargar_config()
         modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
@@ -1680,24 +1680,24 @@ async def generar_examen(datos: dict):
         modelo_path = config.get("modelo_path")
         gpu_layers = ajustes.get('n_gpu_layers', 35)
         
-        print(f"📦 Configuración actual:")
-        print(f"   • Usar Ollama: {usar_ollama}")
+        print(f"­ƒôª Configuraci├│n actual:")
+        print(f"   ÔÇó Usar Ollama: {usar_ollama}")
         if usar_ollama:
-            print(f"   • Modelo Ollama: {modelo_ollama}")
+            print(f"   ÔÇó Modelo Ollama: {modelo_ollama}")
         else:
-            print(f"   • Modelo GGUF: {modelo_path}")
-            print(f"   • GPU Layers: {gpu_layers}")
+            print(f"   ÔÇó Modelo GGUF: {modelo_path}")
+            print(f"   ÔÇó GPU Layers: {gpu_layers}")
         
-        # Crear generador con la configuración actual
+        # Crear generador con la configuraci├│n actual
         if usar_ollama:
-            print(f"🔄 Cargando modelo Ollama: {modelo_ollama}")
+            print(f"­ƒöä Cargando modelo Ollama: {modelo_ollama}")
             generador_actual = GeneradorUnificado(
                 usar_ollama=True,
                 modelo_ollama=modelo_ollama,
                 n_gpu_layers=gpu_layers
             )
         else:
-            print(f"🔄 Cargando modelo GGUF: {modelo_path}")
+            print(f"­ƒöä Cargando modelo GGUF: {modelo_path}")
             generador_actual = GeneradorUnificado(
                 usar_ollama=False,
                 modelo_path_gguf=modelo_path,
@@ -1712,8 +1712,8 @@ async def generar_examen(datos: dict):
             'open_question': num_desarrollo
         }
         
-        callback_progreso(10, "Preparando generación de preguntas...")
-        print("🤖 Generando preguntas con IA en DOS PASOS...")
+        callback_progreso(10, "Preparando generaci├│n de preguntas...")
+        print("­ƒñû Generando preguntas con IA en DOS PASOS...")
         preguntas = generador_actual.generar_examen(
             contenido, 
             num_preguntas,
@@ -1722,7 +1722,7 @@ async def generar_examen(datos: dict):
             archivos=archivos,  # Pasar lista de archivos
             session_id=session_id  # Pasar session_id para el log
         )
-        print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
+        print(f"Ô£à Generadas {len(preguntas)} preguntas exitosamente")
         
         # Mapear tipos de pregunta al formato esperado por la UI
         tipo_map = {
@@ -1758,12 +1758,12 @@ async def generar_examen(datos: dict):
             "puntos_totales": sum(p['puntos'] for p in preguntas_json)
         }
         
-        print(f"✅ Examen generado: {resultado['total_preguntas']} preguntas, {resultado['puntos_totales']} puntos totales\n")
+        print(f"Ô£à Examen generado: {resultado['total_preguntas']} preguntas, {resultado['puntos_totales']} puntos totales\n")
         return resultado
         
     except Exception as e:
         import traceback
-        print(f"\n❌ ERROR generando examen:")
+        print(f"\nÔØî ERROR generando examen:")
         print(f"   Tipo: {type(e).__name__}")
         print(f"   Mensaje: {str(e)}")
         print(f"   Traceback:")
@@ -1784,7 +1784,7 @@ async def generar_examen(datos: dict):
 
 @app.get("/api/progreso-examen/{session_id}")
 async def obtener_progreso_examen(session_id: str):
-    """Endpoint SSE para streaming de progreso de generación de examen"""
+    """Endpoint SSE para streaming de progreso de generaci├│n de examen"""
     async def event_generator():
         try:
             while True:
@@ -1801,15 +1801,15 @@ async def obtener_progreso_examen(session_id: str):
                     })
                     yield f"data: {data}\n\n"
                     
-                    # Si está completado (exitoso o error), terminar stream
+                    # Si est├í completado (exitoso o error), terminar stream
                     if progreso['completado']:
-                        # Limpiar progreso después de 5 segundos
+                        # Limpiar progreso despu├®s de 5 segundos
                         await asyncio.sleep(5)
                         if session_id in progreso_generacion:
                             del progreso_generacion[session_id]
                         break
                 else:
-                    # Si no existe la sesión, enviar progreso inicial
+                    # Si no existe la sesi├│n, enviar progreso inicial
                     data = json.dumps({
                         'progreso': 0,
                         'mensaje': 'Esperando inicio...',
@@ -1818,12 +1818,12 @@ async def obtener_progreso_examen(session_id: str):
                     })
                     yield f"data: {data}\n\n"
                 
-                # Esperar un poco antes de la siguiente actualización
+                # Esperar un poco antes de la siguiente actualizaci├│n
                 await asyncio.sleep(0.5)
                 
         except asyncio.CancelledError:
-            # Cliente desconectó
-            print(f"🔌 Cliente desconectado del stream de progreso: {session_id}")
+            # Cliente desconect├│
+            print(f"­ƒöî Cliente desconectado del stream de progreso: {session_id}")
             if session_id in progreso_generacion:
                 del progreso_generacion[session_id]
     
@@ -1840,11 +1840,11 @@ async def obtener_progreso_examen(session_id: str):
 
 @app.post("/api/evaluar-examen")
 async def evaluar_examen(datos: dict):
-    """Evalúa las respuestas de un examen"""
+    """Eval├║a las respuestas de un examen"""
     global generador_unificado
     
     try:
-        # Usar GeneradorUnificado (con GPU/CPU según configuración)
+        # Usar GeneradorUnificado (con GPU/CPU seg├║n configuraci├│n)
         if generador_unificado is None:
             config = cargar_config()
             usar_ollama = config.get("usar_ollama", True)
@@ -1861,28 +1861,28 @@ async def evaluar_examen(datos: dict):
             )
         
         try:
-            # Validar que los datos requeridos estén presentes
+            # Validar que los datos requeridos est├®n presentes
             if not isinstance(datos, dict):
-                raise HTTPException(status_code=400, detail="El cuerpo de la solicitud debe ser un diccionario JSON válido.")
+                raise HTTPException(status_code=400, detail="El cuerpo de la solicitud debe ser un diccionario JSON v├ílido.")
 
             preguntas_data = datos.get("preguntas")
             respuestas = datos.get("respuestas")
             carpeta_path = datos.get("carpeta_path", "")
 
             if not preguntas_data:
-                raise HTTPException(status_code=400, detail="El campo 'preguntas' es obligatorio y no puede estar vacío.")
+                raise HTTPException(status_code=400, detail="El campo 'preguntas' es obligatorio y no puede estar vac├¡o.")
 
             if not isinstance(respuestas, dict):
                 raise HTTPException(status_code=400, detail="El campo 'respuestas' debe ser un diccionario.")
 
-            # Validar que cada respuesta sea una cadena válida
+            # Validar que cada respuesta sea una cadena v├ílida
             for key, value in respuestas.items():
                 if value is None:
                     respuestas[key] = ""
                 elif not isinstance(value, str):
                     raise HTTPException(status_code=400, detail=f"La respuesta para la pregunta {key} debe ser una cadena de texto.")
 
-            # Continuar con la lógica existente
+            # Continuar con la l├│gica existente
             resultados = []
             puntos_obtenidos = 0
             puntos_totales = 0
@@ -1921,10 +1921,10 @@ async def evaluar_examen(datos: dict):
                 # Si no hay carpeta, usar carpeta por defecto
                 if not carpeta_path:
                     carpeta_path = "Examenes_Generales"
-                    carpeta_nombre = "Exámenes Generales"
-                    print(f"💾 Guardando en carpeta por defecto: {carpeta_path}")
+                    carpeta_nombre = "Ex├ímenes Generales"
+                    print(f"­ƒÆ¥ Guardando en carpeta por defecto: {carpeta_path}")
                 else:
-                    print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
+                    print(f"­ƒÆ¥ Guardando resultados para carpeta: {carpeta_path}")
                     carpeta = Path(carpeta_path)
                     if not carpeta.exists():
                         carpeta = Path("extracciones") / carpeta_path
@@ -1953,16 +1953,16 @@ async def evaluar_examen(datos: dict):
                 with open(archivo_resultado, 'w', encoding='utf-8') as f:
                     json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
 
-                print(f"✅ Resultados guardados en: {archivo_resultado}")
+                print(f"Ô£à Resultados guardados en: {archivo_resultado}")
 
-                # Limpiar exámenes en progreso de esta carpeta
+                # Limpiar ex├ímenes en progreso de esta carpeta
                 carpeta_progreso = carpeta_examenes / "examenes_progreso"
                 if carpeta_progreso.exists():
                     for archivo in carpeta_progreso.glob("examen_progreso_*.json"):
                         archivo.unlink()
-                        print(f"🗑️ Examen en progreso eliminado: {archivo.name}")
+                        print(f"­ƒùæ´©Å Examen en progreso eliminado: {archivo.name}")
             except Exception as e:
-                print(f"❌ Error guardando resultados: {e}")
+                print(f"ÔØî Error guardando resultados: {e}")
                 import traceback
                 traceback.print_exc()
 
@@ -1983,15 +1983,15 @@ async def evaluar_examen(datos: dict):
 
 @app.post("/api/examenes/pausar")
 async def pausar_examen(datos: dict):
-    """Guarda el progreso de un examen para continuarlo después"""
+    """Guarda el progreso de un examen para continuarlo despu├®s"""
     try:
         carpeta_ruta = datos.get("carpeta_ruta") or "Examenes_Generales"
-        carpeta_nombre = datos.get("carpeta_nombre") or "Exámenes Generales"
+        carpeta_nombre = datos.get("carpeta_nombre") or "Ex├ímenes Generales"
         preguntas = datos.get("preguntas", [])
         respuestas = datos.get("respuestas", {})
         fecha_inicio = datos.get("fecha_inicio")
         
-        print(f"⏸️ Pausando examen para carpeta: {carpeta_ruta}")
+        print(f"ÔÅ©´©Å Pausando examen para carpeta: {carpeta_ruta}")
         
         # Crear estructura en examenes/
         carpeta_examenes_base = Path("examenes") / carpeta_ruta
@@ -2000,18 +2000,18 @@ async def pausar_examen(datos: dict):
         carpeta_examenes = carpeta_examenes_base / "examenes_progreso"
         carpeta_examenes.mkdir(parents=True, exist_ok=True)
         
-        print(f"   📁 Guardando en: {carpeta_examenes}")
+        print(f"   ­ƒôü Guardando en: {carpeta_examenes}")
         
-        # IMPORTANTE: Eliminar exámenes anteriores de esta misma carpeta
+        # IMPORTANTE: Eliminar ex├ímenes anteriores de esta misma carpeta
         # para evitar duplicados
         for archivo_anterior in carpeta_examenes.glob("examen_progreso_*.json"):
             try:
                 archivo_anterior.unlink()
-                print(f"🗑️ Examen anterior eliminado: {archivo_anterior.name}")
+                print(f"­ƒùæ´©Å Examen anterior eliminado: {archivo_anterior.name}")
             except Exception as e:
-                print(f"⚠️ No se pudo eliminar {archivo_anterior.name}: {e}")
+                print(f"ÔÜá´©Å No se pudo eliminar {archivo_anterior.name}: {e}")
         
-        # Crear archivo único para este examen en progreso
+        # Crear archivo ├║nico para este examen en progreso
         fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
         archivo_progreso = carpeta_examenes / f"examen_progreso_{fecha}.json"
         
@@ -2030,11 +2030,11 @@ async def pausar_examen(datos: dict):
         with open(archivo_progreso, 'w', encoding='utf-8') as f:
             json.dump(datos_progreso, f, ensure_ascii=False, indent=2)
         
-        print(f"✅ Examen pausado guardado en: {archivo_progreso}")
+        print(f"Ô£à Examen pausado guardado en: {archivo_progreso}")
         
         return {"success": True, "message": "Examen pausado correctamente"}
     except Exception as e:
-        print(f"❌ Error pausando examen: {e}")
+        print(f"ÔØî Error pausando examen: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al pausar examen: {str(e)}")
@@ -2042,7 +2042,7 @@ async def pausar_examen(datos: dict):
 
 @app.post("/api/examenes/guardar-temporal")
 async def guardar_examen_temporal(datos: dict):
-    """Guarda el examen en curso localmente para recuperarlo después"""
+    """Guarda el examen en curso localmente para recuperarlo despu├®s"""
     try:
         # Crear carpeta temporal si no existe
         carpeta_temp = Path("temp_examenes")
@@ -2061,11 +2061,11 @@ async def guardar_examen_temporal(datos: dict):
         with open(archivo_temp, 'w', encoding='utf-8') as f:
             json.dump(datos_examen, f, ensure_ascii=False, indent=2)
         
-        print(f"💾 Examen temporal guardado en: {archivo_temp}")
+        print(f"­ƒÆ¥ Examen temporal guardado en: {archivo_temp}")
         
-        return {"success": True, "message": "Guardado automático completado"}
+        return {"success": True, "message": "Guardado autom├ítico completado"}
     except Exception as e:
-        print(f"❌ Error guardando examen temporal: {e}")
+        print(f"ÔØî Error guardando examen temporal: {e}")
         # No lanzar error para que no interrumpa al usuario
         return {"success": False, "message": str(e)}
 
@@ -2082,14 +2082,14 @@ async def cargar_examen_temporal():
         with open(archivo_temp, 'r', encoding='utf-8') as f:
             datos = json.load(f)
         
-        print(f"📂 Examen temporal cargado desde: {archivo_temp}")
+        print(f"­ƒôé Examen temporal cargado desde: {archivo_temp}")
         
         return {
             "success": True,
             "examen": datos
         }
     except Exception as e:
-        print(f"❌ Error cargando examen temporal: {e}")
+        print(f"ÔØî Error cargando examen temporal: {e}")
         return {"success": False, "message": str(e)}
 
 
@@ -2101,17 +2101,17 @@ async def limpiar_examen_temporal():
         
         if archivo_temp.exists():
             archivo_temp.unlink()
-            print(f"🗑️ Examen temporal eliminado")
+            print(f"­ƒùæ´©Å Examen temporal eliminado")
         
         return {"success": True, "message": "Examen temporal eliminado"}
     except Exception as e:
-        print(f"❌ Error eliminando examen temporal: {e}")
+        print(f"ÔØî Error eliminando examen temporal: {e}")
         return {"success": False, "message": str(e)}
 
 
 @app.delete("/api/examenes/carpeta")
 async def eliminar_carpeta_examenes(ruta: str, forzar: bool = False):
-    """Elimina una carpeta de exámenes (forzar=true elimina con contenido)"""
+    """Elimina una carpeta de ex├ímenes (forzar=true elimina con contenido)"""
     try:
         base_examenes = Path("examenes")
         ruta_completa = base_examenes / ruta if ruta else None
@@ -2131,19 +2131,19 @@ async def eliminar_carpeta_examenes(ruta: str, forzar: bool = False):
         # Eliminar carpeta
         import shutil
         shutil.rmtree(ruta_completa)
-        print(f"🗑️ Carpeta de exámenes eliminada: {ruta}")
+        print(f"­ƒùæ´©Å Carpeta de ex├ímenes eliminada: {ruta}")
         
         return {"success": True, "mensaje": "Carpeta eliminada"}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error eliminando carpeta de exámenes: {e}")
+        print(f"ÔØî Error eliminando carpeta de ex├ímenes: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.delete("/api/examenes/examen")
 async def eliminar_examen(ruta: str, archivo: str):
-    """Elimina un examen específico (completado o en progreso)"""
+    """Elimina un examen espec├¡fico (completado o en progreso)"""
     try:
         base_examenes = Path("examenes")
         
@@ -2159,19 +2159,19 @@ async def eliminar_examen(ruta: str, archivo: str):
         
         # Eliminar archivo
         archivo_completo.unlink()
-        print(f"🗑️ Examen eliminado: {archivo}")
+        print(f"­ƒùæ´©Å Examen eliminado: {archivo}")
         
         return {"success": True, "mensaje": "Examen eliminado"}
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error eliminando examen: {e}")
+        print(f"ÔØî Error eliminando examen: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/examenes/carpetas")
 async def listar_carpetas_examenes(ruta: str = ""):
-    """Lista carpetas y exámenes en una ruta de examenes/ (estructura paralela)"""
+    """Lista carpetas y ex├ímenes en una ruta de examenes/ (estructura paralela)"""
     try:
         base_examenes = Path("examenes")
         
@@ -2189,9 +2189,9 @@ async def listar_carpetas_examenes(ruta: str = ""):
         examenes_progreso = []
         examenes_progreso_global = []
         
-        # Si estamos en la raíz, buscar TODOS los exámenes en progreso recursivamente
+        # Si estamos en la ra├¡z, buscar TODOS los ex├ímenes en progreso recursivamente
         if not ruta:
-            print("📊 Buscando todos los exámenes en progreso...")
+            print("­ƒôè Buscando todos los ex├ímenes en progreso...")
             for carpeta in base_examenes.rglob("*"):
                 if carpeta.is_dir() and carpeta.name == "examenes_progreso":
                     for archivo in sorted(carpeta.glob("examen_progreso_*.json"), reverse=True):
@@ -2201,12 +2201,12 @@ async def listar_carpetas_examenes(ruta: str = ""):
                                 examenes_progreso_global.append(examen)
                         except Exception as e:
                             print(f"Error leyendo {archivo}: {e}")
-            print(f"   ✅ Encontrados {len(examenes_progreso_global)} exámenes en progreso")
+            print(f"   Ô£à Encontrados {len(examenes_progreso_global)} ex├ímenes en progreso")
         
         # Listar carpetas
         for item in sorted(ruta_completa.iterdir()):
             if item.is_dir() and item.name != "examenes_progreso":
-                # Contar exámenes en la carpeta
+                # Contar ex├ímenes en la carpeta
                 num_completados = len(list(item.glob("examen_*.json")))
                 num_progreso = 0
                 carpeta_progreso = item / "examenes_progreso"
@@ -2221,7 +2221,7 @@ async def listar_carpetas_examenes(ruta: str = ""):
                     "total_examenes": num_completados + num_progreso
                 })
         
-        # Listar exámenes completados en esta carpeta
+        # Listar ex├ímenes completados en esta carpeta
         for archivo in sorted(ruta_completa.glob("examen_*.json"), reverse=True):
             try:
                 with open(archivo, 'r', encoding='utf-8') as f:
@@ -2231,7 +2231,7 @@ async def listar_carpetas_examenes(ruta: str = ""):
             except Exception as e:
                 print(f"Error leyendo {archivo}: {e}")
         
-        # Listar exámenes en progreso en esta carpeta específica (solo si no es raíz)
+        # Listar ex├ímenes en progreso en esta carpeta espec├¡fica (solo si no es ra├¡z)
         if ruta:
             carpeta_progreso = ruta_completa / "examenes_progreso"
             if carpeta_progreso.exists():
@@ -2248,16 +2248,16 @@ async def listar_carpetas_examenes(ruta: str = ""):
             "carpetas": carpetas,
             "examenes_completados": examenes_completados,
             "examenes_progreso": examenes_progreso,
-            "examenes_progreso_global": examenes_progreso_global  # Solo lleno en raíz
+            "examenes_progreso_global": examenes_progreso_global  # Solo lleno en ra├¡z
         }
     except Exception as e:
-        print(f"Error listando carpetas de exámenes: {e}")
+        print(f"Error listando carpetas de ex├ímenes: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/examenes/listar")
 async def listar_examenes():
-    """Lista todos los exámenes guardados (completados y en progreso) - DEPRECATED"""
+    """Lista todos los ex├ímenes guardados (completados y en progreso) - DEPRECATED"""
     try:
         # Buscar en la carpeta examenes/ con estructura paralela
         carpeta_examenes = Path("examenes")
@@ -2270,7 +2270,7 @@ async def listar_examenes():
                 if not carpeta.is_dir():
                     continue
                 
-                # Buscar exámenes completados directamente en la carpeta
+                # Buscar ex├ímenes completados directamente en la carpeta
                 for archivo in sorted(carpeta.glob("examen_*.json"), reverse=True):
                     try:
                         with open(archivo, 'r', encoding='utf-8') as f:
@@ -2280,7 +2280,7 @@ async def listar_examenes():
                     except Exception as e:
                         print(f"Error leyendo examen completado {archivo}: {e}")
                 
-                # Buscar exámenes en progreso
+                # Buscar ex├ímenes en progreso
                 carpeta_progreso = carpeta / "examenes_progreso"
                 if carpeta_progreso.exists():
                     for archivo in sorted(carpeta_progreso.glob("examen_progreso_*.json"), reverse=True):
@@ -2291,7 +2291,7 @@ async def listar_examenes():
                         except Exception as e:
                             print(f"Error leyendo examen en progreso {archivo}: {e}")
         
-        print(f"📊 Exámenes encontrados: {len(completados)} completados, {len(en_progreso)} en progreso")
+        print(f"­ƒôè Ex├ímenes encontrados: {len(completados)} completados, {len(en_progreso)} en progreso")
         
         return {
             "success": True,
@@ -2299,8 +2299,8 @@ async def listar_examenes():
             "enProgreso": en_progreso
         }
     except Exception as e:
-        print(f"Error listando exámenes: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al listar exámenes: {str(e)}")
+        print(f"Error listando ex├ímenes: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al listar ex├ímenes: {str(e)}")
 
 
 # =============================
@@ -2319,17 +2319,18 @@ def get_timer_sync():
     return JSONResponse(content={"timer": 0, "enPausa": False, "pausaRestante": 0, "ultimoUpdate": None})
 
 @app.post("/timer_sync")
-async def set_timer_sync(request: Request):
+def set_timer_sync(request: Request):
     data = None
     try:
-        data = await request.json()
+        data = asyncio.run(request.json())
     except Exception:
-        return JSONResponse(content={"error": "JSON inválido"}, status_code=400)
+        return JSONResponse(content={"error": "JSON inv├ílido"}, status_code=400)
     if not isinstance(data, dict):
         return JSONResponse(content={"error": "Formato incorrecto"}, status_code=400)
     with open(TIMER_SYNC_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return JSONResponse(content={"ok": True, "data": data})
+
 
 
 

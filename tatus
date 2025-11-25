@@ -1,0 +1,378 @@
+[33mcommit 4587b14291a0ba7194100d77bcb6be59d8e7f3b6[m[33m ([m[1;36mHEAD[m[33m, [m[1;31morigin/Flashcards[m[33m)[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 23 19:49:47 2025 -0600
+
+    contador en red solucionado
+
+[33mcommit 3c5920558dab73df28f10fb0f1e04383a9253a22[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sat Nov 22 18:01:14 2025 -0600
+
+    sistema de estudio  v1
+
+[33mcommit f145bf79690a9707024df23ade93da4f086720ec[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sat Nov 22 15:28:41 2025 -0600
+
+    actualizacion por bloques y numero de preguntas ocrrectas.
+
+[33mcommit 3855477a5e65d7c353f4a6a864236eb3d2a64397[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sat Nov 22 13:34:21 2025 -0600
+
+    aaa
+
+[33mcommit 7228a9e6b8066fa57c6465b6de62866a45955ced[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sat Nov 22 10:11:08 2025 -0600
+
+    reparacion e errores
+
+[33mcommit 7f17c4b653f42871282bff65ed1245cb6a5c565b[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Fri Nov 21 12:12:10 2025 -0600
+
+    flashcards actualizadas.
+    correccion de errores
+
+[33mcommit b323efdcb5330ed07e5816da5e0ff2295ea29e2e[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Thu Nov 20 19:13:26 2025 -0600
+
+    flashcard en generacio de ejercicio
+    flashcarh modulo
+
+[33mcommit 872fa877510b2c5b087fe0eba241231cac815601[m[33m ([m[1;31morigin/master[m[33m, [m[1;32mmaster[m[33m)[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Thu Nov 20 15:35:02 2025 -0600
+
+    flashcard v1 solucionado
+
+[33mcommit a068cbd91cc2d77cff72cd28821eabd71d4b122c[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Thu Nov 20 11:41:13 2025 -0600
+
+    solucion de problemas
+
+[33mcommit 1d9db0bad2ede6f7e41e476e749a01a475c465d6[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Wed Nov 19 12:32:56 2025 -0600
+
+    Resumen de Cambios Desde el Último Commit
+    📋 Archivos Modificados Principales
+    1. generador_unificado.py (🔥 Cambios Masivos)
+    Optimizaciones para DeepSeek-R1:
+    
+    ✅ Timeout adaptativo: 30 minutos para DeepSeek-R1, 10 min para otros
+    ✅ Prompt adaptado: Permite razonamiento pero pide JSON al final
+    ✅ Extractor JSON mejorado: Busca múltiples bloques JSON potenciales y selecciona el correcto
+    ❌ Bug crítico corregido: Eliminado import local de Path (línea 21)
+    Sistema de Logging Detallado:
+    
+    ✅ Logs completos: 7 secciones con toda la información del proceso
+    ✅ Carpetas únicas: Cada práctica en su propia carpeta
+    ✅ Doble formato: .log (legible) + .json (estructurado)
+    ✅ Resumen ejecutivo: Estado, errores, métricas de filtrado
+    Casos de Estudio (12 tipos):
+    
+    ✅ Método _obtener_prompt_caso_estudio(): Plantillas JSON para 12 tipos
+    ✅ Parámetro tipo_caso: En generar_examen() y _crear_prompt()
+    ✅ Prompts detallados: Cada tipo con campos únicos y específicos
+    2. api_server.py
+    Mejoras:
+    
+    ✅ Endpoint mejorado: /api/generar_practica recibe y pasa tipo_caso
+    ✅ Logging detallado: Muestra tipo de caso seleccionado
+    ✅ Bug Path corregido: Línea 2937 con condicional anidado
+    3. Nuevos Archivos Creados
+    Documentación:
+    
+    CASOS_ESTUDIO_CONFIGURABLES.md - Guía completa de 12 tipos de casos
+    LOGS_DETALLADOS.md - Explicación del sistema de logging
+    LOGS_README.md - Guía rápida de uso
+    Scripts PowerShell:
+    
+    check_ultimo.ps1 - Verificar si última práctica funcionó/falló
+    ver_ultimo_log.ps1 - Ver resumen o log completo
+    listar_logs.ps1 - Listar historial de logs
+    Otros:
+    
+    chat_1763558682.json - Historial de chat
+    chat_1763570010.json - Historial de chat
+    🎯 Funcionalidades Clave Agregadas
+    1. DeepSeek-R1 Optimizado
+    Timeout de 30 minutos (vs 10min anterior)
+    Prompt adaptado para modelo de razonamiento
+    Extractor JSON robusto que busca múltiples candidatos
+    Sin reducción de tokens (calidad preservada)
+    2. Sistema de Logs Completo
+    Carpeta única por consulta con timestamp
+    7 secciones detalladas:
+    Request recibido
+    Prompt enviado al modelo
+    Respuesta completa del modelo
+    JSON extraído
+    Preguntas parseadas
+    Proceso de filtrado
+    Resultado final
+    3. 12 Tipos de Casos de Estudio
+    📖 Descriptivo
+    🔬 Analítico-Diagnóstico
+    🔥 Resolución de Problemas
+    🎯 Toma de Decisiones
+    🔄 Comparativo
+    📈 Predictivo
+    🎮 Simulación
+    🔙 Inverso (Reverse)
+    💥 Fallo/Desastre
+    ✨ Creativo/Innovación
+    ⚖️ Ético
+    🔧 Técnico-Operativo
+    Cada tipo tiene campos específicos con prompts de 100-200 palabras.
+    
+    🐛 Bugs Corregidos
+    Path UnboundLocalError (Crítico)
+    
+    generador_unificado.py línea 21: Eliminado import local redundante
+    api_server.py línea 2937: Condicional anidado para evitar Path cuando usar_ollama=True
+    DeepSeek-R1 generaba razonamiento en vez de JSON
+    
+    Estrategia cambiada: Permitir razonamiento + extraer JSON
+    Extractor mejorado busca múltiples bloques JSON
+
+[33mcommit 645b661bb726f6f7c3a34726616e51466c49ba70[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Tue Nov 18 18:30:30 2025 -0600
+
+    📋 Lista de Cambios Implementados
+    🆕 Archivos Nuevos Creados
+    GUIA_INICIO_REPARACION.md - Guía completa para iniciar y reparar Ollama desde la interfaz
+    SISTEMA_ARCHIVOS_CHATBOT.md - Documentación del sistema de archivos adjuntos en el chat
+    ModalGuardarTxt.css - Estilos para el modal de guardar conversaciones como TXT
+    descargar_modelo_chat.ps1 - Script para descargar modelo Qwen pequeño
+    iniciar_todo.ps1 - Script básico para iniciar Ollama + API
+    iniciar_todo_mejorado.ps1 - Script mejorado con mejor manejo de errores
+    reiniciar_servidor.ps1 - Script para reiniciar solo el servidor API
+    📝 Chats Guardados (Nuevos)
+    chat_1763291321.json - Chat sobre IA (carpeta Biologia)
+    chat_1763297520.json - Consulta sobre Lionel Messi
+    chat_1763416274.json - Pruebas de funcionamiento
+    chat_1763419520.json - Pruebas adicionales
+    chat_1763428000.json - Consulta con búsqueda web
+    chat_1763510579.json - Consulta sobre prompt injection
+    chat_1763510682.json - Más sobre prompt injection
+    📊 Exámenes Completados (Nuevos)
+    examen_20251117_125651.json - Diseño UX/UI (100% completado)
+    examen_20251117_165546.json - Heurísticos (15.4% completado)
+    🔧 Archivos Modificados
+    1. examinator_interactivo.py
+    ✅ Agregada función generar_practica_interactiva()
+    ✅ Nuevo argumento --practica para generar prácticas desde carpetas
+    2. generador_dos_pasos.py
+    ✅ Agregado campo metadata a PreguntaExamen para tipos complejos
+    ✅ Mejorado from_dict() para soportar formatos en inglés y español
+    ✅ Agregado parámetro sin_prompt_sistema para prompts personalizados
+    ✅ Filtrado de preguntas por tipo y cantidad solicitada
+    ✅ Soporte para nuevos tipos: flashcard, mcq, true_false, cloze, reading_*, writing_*
+    3. generador_examenes.py
+    ✅ Agregado campo metadata a PreguntaExamen
+    ✅ Mejorado from_dict() con múltiples campos de respaldo
+    ✅ Soporte para conversión de tipos booleanos y listas
+    4. generador_unificado.py
+    ✅ Conversión de path relativo a absoluto para modelos GGUF
+    ✅ Logs detallados en generación con Ollama
+    ✅ Nueva función _generar_ollama_chat() para chat con historial
+    ✅ Mejorado manejo de errores y timeouts
+    ✅ Soporte para sin_prompt_sistema
+    ✅ Reparación automática de JSON incompleto
+    ✅ Filtrado de preguntas por tipo con mapeo extenso
+    ✅ Mejor evaluación de respuestas con soporte para múltiples tipos
+    💬 Funcionalidades del Chat (Frontend)
+    App.jsx - Cambios Principales
+    1. Sistema de Guardado como TXT
+    
+    ✅ Botón "📂 Ir a última carpeta" en chat header
+    ✅ Modal para guardar chat/consulta/respuesta como TXT
+    ✅ Navegación por carpetas de cursos con breadcrumb
+    ✅ 3 modos de guardado:
+    Chat completo
+    Consulta (pregunta + respuesta)
+    Solo respuesta
+    2. Mejoras en Historial de Contexto
+    
+    ✅ Construcción correcta del historial incluyendo mensaje actual
+    ✅ Logs detallados en consola para debugging
+    ✅ Historial ampliado a 20 mensajes (antes 10)
+    3. Conversión de Documentos a Notas
+    
+    ✅ Opción "📝 Convertir a Nota" en menú de documentos
+    ✅ Conversión inteligente de TXT a HTML con detección de:
+    Títulos
+    Listas
+    Párrafos
+    ✅ Apertura automática de la nota creada
+    🔙 Backend (api_server.py)
+    1. Sistema de Historial Mejorado
+    
+    ✅ Procesamiento de hasta 20 mensajes de historial
+    ✅ Logs extremadamente detallados para debugging
+    ✅ Filtrado correcto del último mensaje
+    ✅ Uso de _generar_ollama_chat() con mensajes completos
+    2. Endpoints de Guardado TXT
+    
+    ✅ GET /api/cursos/carpetas - Lista carpetas navegables
+    ✅ POST /api/cursos/guardar-txt - Guarda archivos TXT
+    🎨 Estilos CSS
+    ModalGuardarTxt.css
+    
+    ✅ Todos los selectores con prefijo .modal-guardar-txt
+    ✅ Evita conflictos con estilos del explorador principal
+    ✅ Colores diferenciados (n
+
+[33mcommit c64ab2c46eec7b8db4649885298dc6be24efbeed[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Mon Nov 17 11:50:01 2025 -0600
+
+    soporte para gpu.
+    se añaden nuevos modelos cpu y gpu.
+    cambio en configuraciones. Ahora se puede seleccionar en donde se puede procesar el modelo.
+    ajustar parametro con la tarjteta grafica.
+    
+    compatibilidad con ollama
+
+[33mcommit 619751a126a37565306776728b23309b3447ad0c[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 11:02:09 2025 -0600
+
+    Enhance exam generation logic in GeneradorExamenes.py for improved question quality and evaluation criteria; add new chat history JSON for user interactions regarding AI and Costa Rica football match results.
+
+[33mcommit 087a816f62acc85cd6931fb04b22a1154de6d186[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 08:47:35 2025 -0600
+
+    feat: Agregar funcionalidad para editar y guardar documentos en la interfaz
+
+[33mcommit 9ef3a3c4585a2dc720e92c9e484239c3695e99fe[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 08:33:17 2025 -0600
+
+    feat: Agregar funcionalidad para renombrar documentos en la API y la interfaz
+
+[33mcommit 90612def8429b552722b47137f6e1dd014203ea5[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 08:13:26 2025 -0600
+
+    feat: Agregar funcionalidad para renombrar carpetas y chats en el historial
+
+[33mcommit 359f857f62b191b71b8b9a88eef58996dabe8375[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 07:54:58 2025 -0600
+
+    feat: Agregar funcionalidad para eliminar carpetas de chat y su contenido
+
+[33mcommit fb2637624d1314b63f7038027a091c5f2304aab7[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 07:23:17 2025 -0600
+
+    📋 Cambios desde el último commit
+    Archivos modificados:
+    api_server.py (1029 líneas, +14 cambios principales)
+    
+    ✅ Aumentada ventana de contexto: n_ctx=2048 → n_ctx=4096 (línea 315)
+    ✅ Optimizados hilos: n_threads=4 → n_threads=6 (línea 316)
+    ✅ Historial aumentado: últimos 10 → últimos 20 mensajes (línea 383)
+    ✅ Memoria en búsquedas web: ahora incluye últimos 6 mensajes (líneas 384-386)
+    ✅ Memoria en documentos PDF: ahora incluye últimos 4 mensajes (líneas 387-389)
+    ✅ Tokens de respuesta: max_tokens=512 → max_tokens=768 (línea 398)
+    App.jsx (2235 líneas, +52 estados y funciones nuevas)
+    
+    ✅ Auto-dismiss de alertas: useEffect con timer de 8 segundos (líneas 63-71)
+    ✅ Historial enviado al backend en /api/chat (líneas 349-355, 443)
+    ✅ Sistema completo de carpetas en modal historial (9 funciones nuevas)
+    ✅ Guardado automático silencioso después de cada respuesta (línea 373)
+    ✅ Botón de detener/cancelar con AbortController (líneas 344-346, 367)
+    ✅ Interfaz de chat completa con configuración de modelo (1000+ líneas)
+    ✅ Edición de mensajes con reenvío al backend (líneas 415-466)
+    ✅ Soporte para adjuntar PDFs y búsqueda web (líneas 468-533)
+    App.css (2421 líneas, +1451 líneas nuevas)
+    
+    ✅ Estilos completos para chat (mensaje, input, botones)
+    ✅ Animaciones: pulse, slideIn, typing indicator
+    ✅ Modal historial con breadcrumbs y navegación
+    ✅ Grid de carpetas con hover effects
+    ✅ Configuración de modelos (cards, stats, sliders)
+    busqueda_web.py (archivo nuevo, 120 líneas)
+    
+    ✅ Módulo de búsqueda en DuckDuckGo usando ddgs
+    ✅ Correcciones ortográficas automáticas
+    ✅ Región forzada a español (es-es)
+    ✅ Función buscar_y_resumir() con formato estructurado
+    requirements.txt (+3 dependencias)
+    
+    ✅ requests>=2.31.0
+    ✅ beautifulsoup4>=4.12.0
+    ✅ ddgs>=9.0.0
+    iniciar.bat y detener.bat (archivos nuevos)
+    
+    ✅ Script de inicio automático de backend y frontend
+    ✅ Script de detención de servidores por puerto
+    Chats guardados (3 archivos JSON en chats_historial)
+    
+    ✅ chat_1763291321.json - "Que es la IA" (General/)
+    ✅ chat_1763297520.json - "Lionel messi" (movido a raíz)
+    ✅ chat_1763299035.json - "Chat 16/11/2025" (nuevo)
+
+[33mcommit 5a45bc6985abe8fc35ea0062942e8dfce847c98a[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 04:09:44 2025 -0600
+
+    feat: Implement interactive exam system with AI support
+    
+    - Added `examinator_interactivo.py` for interactive exam functionality.
+    - Introduced `generador_examenes.py` for exam generation and evaluation using AI.
+    - Enhanced `examinator.py` with text cleaning and section division features.
+    - Created `index.css` for styling the frontend application.
+    - Set up Vite configuration in `vite.config.js` for React app.
+    - Updated `main.jsx` to render the React application.
+    - Added PowerShell script `iniciar.ps1` for easy server startup.
+    - Updated `requirements.txt` to include necessary dependencies for AI and web server.
+
+[33mcommit da92e4570847138894ba029ba130a574e505bbcb[m
+Author: nosoyjaviero <58414251+nosoyjaviero@users.noreply.github.com>
+Date:   Sun Nov 16 04:08:44 2025 -0600
+
+    🎯 Funcionalidades Principales Implementadas
+    📚 Sistema de Gestión de Cursos
+    ✅ Navegación completa por carpetas (árbol de directorios)
+    ✅ Crear carpetas y subcarpetas manualmente
+    ✅ Mover carpetas entre ubicaciones (con modal interactivo)
+    ✅ Eliminar carpetas y documentos
+    ✅ Breadcrumb de navegación con botón "Atrás"
+    ✅ Visualización en lista para mostrar nombres completos
+    📄 Gestión de Documentos PDF
+    ✅ Carga de archivos PDF
+    ✅ Extracción automática de texto con limpieza
+    ✅ Guardado en carpeta actual seleccionada
+    ✅ Visor de documentos .txt en modal
+    ✅ Información de tamaño y cantidad de documentos
+    🎨 Interfaz de Usuario (React + Vite)
+    ✅ Diseño moderno con tema oscuro
+    ✅ Sidebar con navegación (Inicio, Mis Cursos, Generar Examen, Historial, Configuración)
+    ✅ Cards/items con hover effects intuitivos
+    ✅ Modal para mover carpetas con navegación
+    ✅ Menú desplegable de tres puntos (⋮) en carpetas
+    ✅ Sistema de mensajes (éxito/error)
+    ✅ Layout responsivo y bien contrastado
+    🔧 Backend (FastAPI + Python)
+    ✅ API REST completa
+    ✅ CORS configurado para React
+    ✅ Endpoints de gestión de carpetas
+    ✅ Endpoints de gestión de documentos
+    ✅ Endpoint de mover carpetas
+    ✅ Extracción de PDF con pypdf
+    ✅ Sistema de archivos como base de datos
+    🛠️ Infraestructura
+    ✅ Proyecto bien estructurado
+    ✅ .gitignore configurado correctamente
+    ✅ Entorno virtual Python
+    ✅ Dependencies management (requirements.txt, package.json)
