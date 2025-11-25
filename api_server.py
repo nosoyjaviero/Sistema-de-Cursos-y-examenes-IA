@@ -5,7 +5,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, AsyncGenerator
+from contextlib import asynccontextmanager
 import json
 import shutil
 from datetime import datetime
@@ -20,19 +21,12 @@ from generador_examenes import guardar_examen
 from cursos_db import CursosDatabase
 from busqueda_web import buscar_y_resumir
 
-app = FastAPI(title="Examinator API")
+# Nota: app se creará después de definir el lifespan
+# Por ahora, definir como None
+_app = None
 
 # Inicializar gestor de carpetas
 cursos_db = CursosDatabase("extracciones")
-
-# Configurar CORS para permitir peticiones desde React y red local
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas las IPs de la red local
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Estado global
 config_path = Path("config.json")
@@ -174,23 +168,53 @@ def verificar_y_arrancar_ollama():
         return False
 
 
-# Inicializar modelo al arrancar
-@app.on_event("startup")
-async def startup_event():
-    """Se ejecuta cuando arranca el servidor"""
+# Lifespan context manager para eventos de startup y shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Maneja el ciclo de vida de la aplicación"""
+    # Startup
     print("\n" + "="*60)
     print("🚀 INICIANDO EXAMINATOR API SERVER")
     print("="*60)
     
     # Verificar y arrancar Ollama automáticamente
-    verificar_y_arrancar_ollama()
+    try:
+        verificar_y_arrancar_ollama()
+    except Exception as e:
+        print(f"⚠️  Error verificando Ollama: {e}")
     
     # Inicializar modelo
-    inicializar_modelo()
+    try:
+        inicializar_modelo()
+    except Exception as e:
+        print(f"⚠️  Error inicializando modelo: {e}")
     
     print("="*60)
     print("✅ Servidor listo en http://localhost:8000")
     print("="*60 + "\n")
+    
+    yield  # Aquí corre la aplicación
+    
+    # Shutdown
+    print("\n" + "="*60)
+    print("🛑 Deteniendo EXAMINATOR API SERVER")
+    print("="*60 + "\n")
+
+
+# Crear app con lifespan después de definir las funciones
+app = FastAPI(title="Examinator API", lifespan=lifespan)
+
+# Inicializar gestor de carpetas
+cursos_db = CursosDatabase("extracciones")
+
+# Configurar CORS para permitir peticiones desde React y red local
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permitir todas las IPs de la red local
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/api/prompt-template")
@@ -2330,6 +2354,148 @@ async def set_timer_sync(request: Request):
     with open(TIMER_SYNC_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return JSONResponse(content={"ok": True, "data": data})
+
+
+# ============================================================
+# ENDPOINTS DE DATOS PERSISTENTES (Notas, Flashcards, Prácticas)
+# ============================================================
+
+# Rutas de almacenamiento de datos
+DATOS_PERSISTENTES = {
+    "notas": Path("datos_persistentes/notas.json"),
+    "flashcards": Path("datos_persistentes/flashcards.json"),
+    "practicas": Path("datos_persistentes/practicas.json"),
+    "sesiones_completadas": Path("datos_persistentes/sesiones_completadas.json"),
+    "sesion_activa": Path("datos_persistentes/sesion_activa.json")
+}
+
+def asegurar_carpeta_datos():
+    """Crea la carpeta de datos persistentes si no existe"""
+    Path("datos_persistentes").mkdir(exist_ok=True)
+
+def cargar_dato(tipo: str):
+    """Carga un tipo de dato persistente"""
+    asegurar_carpeta_datos()
+    ruta = DATOS_PERSISTENTES.get(tipo)
+    
+    if not ruta or not ruta.exists():
+        # Retornar estructura por defecto
+        if tipo == "sesion_activa":
+            return {}
+        return []
+    
+    try:
+        with open(ruta, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        if tipo == "sesion_activa":
+            return {}
+        return []
+
+def guardar_dato(tipo: str, datos):
+    """Guarda un tipo de dato persistente"""
+    asegurar_carpeta_datos()
+    ruta = DATOS_PERSISTENTES.get(tipo)
+    
+    if not ruta:
+        raise ValueError(f"Tipo de dato desconocido: {tipo}")
+    
+    try:
+        with open(ruta, 'w', encoding='utf-8') as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        print(f"Error guardando {tipo}: {e}")
+        return False
+
+
+@app.get("/datos/{tipo}")
+async def obtener_datos(tipo: str):
+    """Obtiene datos persistentes (notas, flashcards, practicas, sesion_activa)"""
+    try:
+        # Validar tipo
+        if tipo not in DATOS_PERSISTENTES:
+            raise HTTPException(status_code=404, detail=f"Tipo de dato no válido: {tipo}")
+        
+        datos = cargar_dato(tipo)
+        return datos
+    except Exception as e:
+        print(f"Error obteniendo {tipo}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/datos/{tipo}")
+async def guardar_datos(tipo: str, data: dict):
+    """Guarda datos persistentes"""
+    try:
+        # Validar tipo
+        if tipo not in DATOS_PERSISTENTES:
+            raise HTTPException(status_code=404, detail=f"Tipo de dato no válido: {tipo}")
+        
+        # Guardar el dato
+        if guardar_dato(tipo, data.get("data", data)):
+            return {"ok": True, "mensaje": f"{tipo} guardado exitosamente"}
+        else:
+            raise HTTPException(status_code=500, detail=f"Error al guardar {tipo}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error guardando {tipo}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/datos/sesiones/completadas")
+async def obtener_sesiones_completadas():
+    """Obtiene las sesiones completadas"""
+    try:
+        sesiones = cargar_dato("sesiones_completadas")
+        return sesiones if isinstance(sesiones, list) else []
+    except Exception as e:
+        print(f"Error obteniendo sesiones completadas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/datos/sesiones/completadas")
+async def guardar_sesiones_completadas(data: dict):
+    """Guarda las sesiones completadas"""
+    try:
+        sesiones = data.get("data", data)
+        if guardar_dato("sesiones_completadas", sesiones):
+            return {"ok": True, "mensaje": "Sesiones guardadas exitosamente"}
+        else:
+            raise HTTPException(status_code=500, detail="Error al guardar sesiones")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error guardando sesiones completadas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/datos/sesion/activa")
+async def obtener_sesion_activa():
+    """Obtiene la sesión activa"""
+    try:
+        sesion = cargar_dato("sesion_activa")
+        return sesion if isinstance(sesion, dict) else {}
+    except Exception as e:
+        print(f"Error obteniendo sesión activa: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/datos/sesion/activa")
+async def guardar_sesion_activa(data: dict):
+    """Guarda la sesión activa"""
+    try:
+        sesion = data.get("data", data)
+        if guardar_dato("sesion_activa", sesion):
+            return {"ok": True, "mensaje": "Sesión activa guardada exitosamente"}
+        else:
+            raise HTTPException(status_code=500, detail="Error al guardar sesión activa")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error guardando sesión activa: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 
