@@ -6461,13 +6461,21 @@ JSON:`
     setGenerandoExamen(true)
     
     try {
+      // Determinar la ruta según si es práctica o examen
+      let carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
+      if (esPractica && carpetaExamen?.tipo === 'practica') {
+        // Para prácticas, usar una carpeta de prácticas
+        carpetaRuta = `Practicas/${carpetaRuta}`
+      }
+      
       const response = await fetch(`${API_URL}/api/evaluar-examen`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
-          carpeta_path: carpetaExamen?.ruta || 'Examenes_Generales'
+          carpeta_path: carpetaRuta,
+          es_practica: esPractica
         })
       })
       
@@ -6553,8 +6561,14 @@ JSON:`
     
     try {
       // Usar carpeta asignada o carpeta por defecto
-      const carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
-      const carpetaNombre = carpetaExamen?.nombre || 'Exámenes Generales'
+      let carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
+      let carpetaNombre = carpetaExamen?.nombre || 'Exámenes Generales'
+      
+      // Para prácticas, usar carpeta de prácticas
+      if (esPractica && carpetaExamen?.tipo === 'practica') {
+        carpetaRuta = `Practicas/${carpetaRuta}`
+        carpetaNombre = `Prácticas - ${carpetaNombre}`
+      }
       
       const response = await fetch(`${API_URL}/api/examenes/pausar`, {
         method: 'POST',
@@ -6564,7 +6578,8 @@ JSON:`
           carpeta_nombre: carpetaNombre,
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
-          fecha_inicio: new Date().toISOString()
+          fecha_inicio: new Date().toISOString(),
+          es_practica: esPractica
         })
       })
       
