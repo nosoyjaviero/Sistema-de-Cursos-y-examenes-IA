@@ -392,7 +392,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             print()
             
             # Timeout más largo para modelos grandes
-            timeout_segundos = 600  # 10 minutos
+            timeout_segundos = 120  # 2 minutos (reducido para evitar cuelgues largos)
             print(f"⏱️  Timeout configurado: {timeout_segundos} segundos")
             print(f"🚀 Enviando request a Ollama API de chat...\n")
             
@@ -400,6 +400,7 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             opciones = {
                 "temperature": temperature,
                 "num_predict": max_tokens,
+                "num_ctx": 8192,  # Contexto amplio para mantener conversaciones largas
                 "stop": ["<|eot_id|>", "<|end_of_text|>"]
             }
             
@@ -408,42 +409,69 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
                 opciones["num_gpu"] = 0
                 print(f"🔷 Modo CPU forzado (num_gpu=0)\n")
             
-            response = requests.post(
-                "http://localhost:11434/api/chat",
-                json={
-                    "model": self.modelo_ollama,
-                    "messages": messages,
-                    "stream": False,
-                    "options": opciones
-                },
-                timeout=timeout_segundos
-            )
+            # Intentar primero con historial completo
+            for intento in range(2):
+                try:
+                    # En el segundo intento, reducir historial si falla
+                    messages_a_enviar = messages
+                    if intento == 1:
+                        print(f"🔄 Reintentando con historial reducido...")
+                        # Mantener solo system + últimos 6 mensajes (3 intercambios)
+                        messages_a_enviar = [messages[0]] + messages[-6:]
+                        opciones["num_ctx"] = 4096  # Mantener contexto razonable en reintento
+                    
+                    response = requests.post(
+                        "http://localhost:11434/api/chat",
+                        json={
+                            "model": self.modelo_ollama,
+                            "messages": messages_a_enviar,
+                            "stream": False,
+                            "options": opciones
+                        },
+                        timeout=timeout_segundos
+                    )
+                    
+                    print(f"📬 Response status: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        print(f"✅ Generación completada ({modo_gpu} y contexto)\n")
+                        respuesta_json = response.json()
+                        
+                        # La API de chat devuelve el mensaje en un formato diferente
+                        mensaje_respuesta = respuesta_json.get('message', {})
+                        respuesta_completa = mensaje_respuesta.get('content', '')
+                        
+                        if not respuesta_completa:
+                            print(f"⚠️ ADVERTENCIA: Respuesta vacía")
+                            print(f"   JSON completo: {respuesta_json}")
+                            if intento == 0:
+                                continue  # Reintentar
+                            return None
+                        
+                        # Debug: Guardar respuesta completa
+                        print(f"📝 Longitud de respuesta: {len(respuesta_completa)} caracteres")
+                        print(f"📄 Primeros 300 caracteres:\n{respuesta_completa[:300]}\n")
+                        
+                        return respuesta_completa
+                    else:
+                        error_detail = response.text if response.text else "Sin detalles"
+                        print(f"❌ Error Ollama {response.status_code}")
+                        print(f"   Detalles: {error_detail[:500]}")
+                        
+                        # Si es error 500 y es el primer intento, reintentar
+                        if response.status_code == 500 and intento == 0:
+                            print(f"🔄 Ollama crasheó, reintentando con configuración reducida...")
+                            continue
+                        return None
+                        
+                except requests.exceptions.RequestException as e:
+                    if intento == 0:
+                        print(f"⚠️ Error en intento {intento + 1}: {e}")
+                        continue
+                    raise
             
-            print(f"📬 Response status: {response.status_code}")
+            return None
             
-            if response.status_code == 200:
-                print(f"✅ Generación completada ({modo_gpu} y contexto)\n")
-                respuesta_json = response.json()
-                
-                # La API de chat devuelve el mensaje en un formato diferente
-                mensaje_respuesta = respuesta_json.get('message', {})
-                respuesta_completa = mensaje_respuesta.get('content', '')
-                
-                if not respuesta_completa:
-                    print(f"⚠️ ADVERTENCIA: Respuesta vacía")
-                    print(f"   JSON completo: {respuesta_json}")
-                    return None
-                
-                # Debug: Guardar respuesta completa
-                print(f"📝 Longitud de respuesta: {len(respuesta_completa)} caracteres")
-                print(f"📄 Primeros 300 caracteres:\n{respuesta_completa[:300]}\n")
-                
-                return respuesta_completa
-            else:
-                error_detail = response.text if response.text else "Sin detalles"
-                print(f"❌ Error Ollama {response.status_code}")
-                print(f"   Detalles: {error_detail[:500]}")
-                return None
         except requests.exceptions.Timeout:
             print(f"⏱️ TIMEOUT: La generación excedió {timeout_segundos} segundos")
             print(f"   Considera reducir el historial o usar un modelo más pequeño")

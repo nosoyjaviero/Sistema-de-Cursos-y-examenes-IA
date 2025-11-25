@@ -1,0 +1,37 @@
+{
+  "id": "92a7eceb-d1bd-4522-813e-8aeadb995d47",
+  "nombre": "Chat 24/11/2025",
+  "fecha": "2025-11-24T20:44:36.588379",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "hola",
+      "hora": "20:24"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Lo siento, no pude generar una respuesta. Intenta de nuevo.",
+      "hora": "20:24"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "hola",
+      "hora": "20:30"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "¡Hola! ¿En qué puedo ayudarte hoy? Estamos empezando nuestra conversación desde cero, así que puedes hablar sobre cualquier tema que te interese o preguntar algo específico si necesitas ayuda. ¡Vamos a charlar!",
+      "hora": "20:30"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "funcionas?",
+      "hora": "20:44"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Sí, funciona. Puedo responder preguntas, proporcionar información y ayudarte con tareas como escribir textos o traducir idiomas. ¿En qué puedo ayudarte hoy en particular?",
+      "hora": "20:44"
+    }
+  ]
+}

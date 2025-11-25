@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Endpoint Generar Práctica</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .loading {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+        }
+        .question-card {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #667eea;
+            border-radius: 5px;
+        }
+        .question-card h4 {
+            margin: 0 0 10px 0;
+            color: #667eea;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .status {
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test del Endpoint /api/generar_practica</h1>
+        
+        <div class="test-section">
+            <h3>⚙️ Configuración</h3>
+            <div class="input-group">
+                <label for="numFlashcards">Número de Flashcards:</label>
+                <input type="number" id="numFlashcards" value="3" min="1" max="20">
+            </div>
+            <div class="input-group">
+                <label for="prompt">Prompt personalizado:</label>
+                <input type="text" id="prompt" value="Genera flashcards sobre programación en Python" placeholder="Describe el tema...">
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🚀 Probar Endpoint</h3>
+            <button onclick="testEndpoint()" id="testBtn">
+                🎯 Generar Práctica (POST /api/generar_practica)
+            </button>
+            <div id="status"></div>
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        async function testEndpoint() {
+            const btn = document.getElementById('testBtn');
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            
+            btn.disabled = true;
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = '⏳ Generando práctica... Por favor espera (puede tomar 30-60 segundos)';
+            resultDiv.innerHTML = '';
+            
+            const numFlashcards = parseInt(document.getElementById('numFlashcards').value) || 3;
+            const prompt = document.getElementById('prompt').value || 'Genera flashcards educativas';
+            
+            const requestBody = {
+                prompt: `Genera una práctica educativa.\n\nINSTRUCCIONES: ${prompt}\n\nTIPOS DE PREGUNTAS A GENERAR:\n**${numFlashcards} Flashcards**`,
+                num_flashcards: numFlashcards,
+                tipo_flashcard: 'respuesta_corta',
+                num_mcq: 0,
+                num_verdadero_falso: 0,
+                num_cloze: 0,
+                num_respuesta_corta: 0,
+                num_open_question: 0,
+                num_caso_estudio: 0,
+                num_reading_comprehension: 0,
+                num_reading_true_false: 0,
+                num_reading_cloze: 0,
+                num_reading_skill: 0,
+                num_reading_matching: 0,
+                num_reading_sequence: 0,
+                num_writing_short: 0,
+                num_writing_paraphrase: 0,
+                num_writing_correction: 0,
+                num_writing_transformation: 0,
+                num_writing_essay: 0,
+                num_writing_sentence_builder: 0,
+                num_writing_picture_description: 0,
+                num_writing_email: 0
+            };
+            
+            console.log('📤 Enviando solicitud:', requestBody);
+            
+            try {
+                const startTime = Date.now();
+                const response = await fetch('http://localhost:8000/api/generar_practica', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                
+                console.log('📥 Respuesta recibida:', response);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('✅ Datos:', data);
+                    
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✅ ¡Éxito! Práctica generada en ${duration}s`;
+                    
+                    let html = `<div class="result success">`;
+                    html += `<strong>✅ RESPUESTA EXITOSA</strong>\n\n`;
+                    html += `Session ID: ${data.session_id}\n`;
+                    html += `Total preguntas: ${data.total_preguntas}\n`;
+                    html += `Success: ${data.success}\n\n`;
+                    
+                    if (data.preguntas && data.preguntas.length > 0) {
+                        html += `<strong>📝 PREGUNTAS GENERADAS:</strong>\n`;
+                        html += `</div>`;
+                        
+                        data.preguntas.forEach((p, i) => {
+                            html += `<div class="question-card">`;
+                            html += `<h4>Pregunta ${i+1}</h4>`;
+                            html += `<p><strong>Tipo:</strong> ${p.tipo}</p>`;
+                            html += `<p><strong>Pregunta:</strong> ${p.pregunta}</p>`;
+                            html += `<p><strong>Puntos:</strong> ${p.puntos}</p>`;
+                            if (p.respuesta_correcta) {
+                                html += `<p><strong>Respuesta:</strong> ${p.respuesta_correcta}</p>`;
+                            }
+                            if (p.opciones && p.opciones.length > 0) {
+                                html += `<p><strong>Opciones:</strong></p><ul>`;
+                                p.opciones.forEach(opt => {
+                                    html += `<li>${opt}</li>`;
+                                });
+                                html += `</ul>`;
+                            }
+                            html += `</div>`;
+                        });
+                    } else {
+                        html += `<p>⚠️ No se generaron preguntas</p></div>`;
+                    }
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    const errorData = await response.json();
+                    console.error('❌ Error:', errorData);
+                    
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `❌ Error ${response.status}`;
+                    
+                    resultDiv.innerHTML = `<div class="result error">
+                        <strong>❌ ERROR ${response.status}</strong>\n\n
+                        ${errorData.detail || JSON.stringify(errorData, null, 2)}
+                    </div>`;
+                }
+            } catch (error) {
+                console.error('❌ Excepción:', error);
+                
+                statusDiv.className = 'status error';
+                statusDiv.textContent = '❌ Error de conexión';
+                
+                resultDiv.innerHTML = `<div class="result error">
+                    <strong>❌ ERROR DE CONEXIÓN</strong>\n\n
+                    ${error.message}\n\n
+                    <strong>Posibles causas:</strong>\n
+                    - El servidor no está corriendo en http://localhost:8000\n
+                    - Problemas de CORS\n
+                    - El endpoint no existe (404)
+                </div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+        
+        // Test automático al cargar la página
+        window.addEventListener('load', () => {
+            console.log('🔍 Página de prueba cargada');
+            console.log('📍 URL del servidor: http://localhost:8000');
+            console.log('📍 Endpoint: POST /api/generar_practica');
+        });
+    </script>
+</body>
+</html>

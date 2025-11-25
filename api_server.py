@@ -71,7 +71,7 @@ def inicializar_modelo():
     try:
         config = cargar_config()
         modelo_path = config.get("modelo_path")
-        modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
         usar_ollama = config.get("usar_ollama", True)
         
         print(f"\n{'='*60}")
@@ -636,6 +636,10 @@ async def chat_con_modelo(data: dict):
     print(f"💬 CHAT REQUEST RECIBIDA")
     print(f"{'='*70}")
     print(f"📝 Mensaje: {mensaje[:100]}...")
+    print(f"🔍 DEBUG - Datos recibidos: {list(data.keys())}")
+    print(f"🔍 DEBUG - buscar_web en data: {'buscar_web' in data}")
+    if 'buscar_web' in data:
+        print(f"🔍 DEBUG - Valor buscar_web: {data['buscar_web']} (tipo: {type(data['buscar_web'])})")
     
     # Verificar si hay modelo cargado
     if generador_actual is None:
@@ -679,9 +683,21 @@ async def chat_con_modelo(data: dict):
         
         # Preparar el contexto si existe
         contexto = data.get("contexto", None)
+        
+        # Obtener buscar_web del data principal o del último mensaje del historial
         buscar_web = data.get("buscar_web", False)
+        historial_temp = data.get("historial", [])
+        if not buscar_web and historial_temp:
+            # Buscar en el último mensaje del usuario
+            ultimo_msg = historial_temp[-1] if historial_temp else {}
+            if ultimo_msg.get("tipo") == "usuario":
+                buscar_web = ultimo_msg.get("busqueda_web", False)
+        
         mensaje_completo = mensaje
-        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español."
+        system_prompt = "Eres un asistente educativo útil y respondes de manera clara y concisa en español. IMPORTANTE: Mantén el contexto completo de toda la conversación y recuerda toda la información que el usuario te ha compartido previamente."
+        
+        # Debug: Verificar si se recibió la solicitud de búsqueda web
+        print(f"🔍 DEBUG - buscar_web detectado: {buscar_web} (tipo: {type(buscar_web)})")
         
         # Si se solicita búsqueda web
         if buscar_web:
@@ -689,14 +705,43 @@ async def chat_con_modelo(data: dict):
                 print(f"🌐 Realizando búsqueda web para: {mensaje}")
                 resultado_busqueda = buscar_y_resumir(mensaje, max_resultados=3)
                 
+                print(f"📊 Resultado búsqueda - Éxito: {resultado_busqueda.get('exito')}, Num resultados: {len(resultado_busqueda.get('resultados', []))}")
+                
                 if resultado_busqueda.get('exito', False) and resultado_busqueda.get('resultados'):
                     contexto_web = resultado_busqueda['resumen']
-                    system_prompt = "Eres un asistente que tiene acceso a información de internet. DEBES usar ÚNICAMENTE la información proporcionada de las búsquedas web para responder."
-                    mensaje_completo = f"""INFORMACIÓN DE BÚSQUEDA WEB:\n\n{contexto_web}\n\n---\n\nPREGUNTA DEL USUARIO: {mensaje}\n\nResponde usando SOLO la información de búsqueda web proporcionada."""
+                    system_prompt = """Eres un asistente que SOLO puede usar información de búsquedas web actuales.
+
+⛔ PROHIBICIONES ABSOLUTAS:
+- NO uses NINGÚN conocimiento de tu entrenamiento
+- NO menciones fechas, eventos o datos que NO estén en los resultados web
+- NO hagas suposiciones ni deducciones
+- NO completes información faltante con tu conocimiento
+
+✅ INSTRUCCIONES:
+- Lee CUIDADOSAMENTE la información de internet proporcionada
+- Usa SOLAMENTE lo que aparece en esos resultados
+- Si la información no está en los resultados web, di: "Los resultados de búsqueda no contienen esa información específica"
+- Cita textualmente lo que encuentres en los resultados web"""
+                    
+                    mensaje_completo = f"""═══════════════════════════════════════════════════════════
+🌐 RESULTADOS DE BÚSQUEDA WEB (actualizados hoy, {data.get('fecha', '24 de noviembre de 2025')}):
+═══════════════════════════════════════════════════════════
+
+{contexto_web}
+
+═══════════════════════════════════════════════════════════
+
+❓ PREGUNTA DEL USUARIO: {mensaje}
+
+⚠️ RECORDATORIO CRÍTICO: Responde ÚNICAMENTE usando la información de los resultados web de arriba. NO uses tu base de conocimientos. Si los resultados no tienen la información, dilo claramente."""
+                    print(f"✅ Búsqueda web exitosa, contexto web agregado ({len(contexto_web)} caracteres)")
                 else:
+                    print(f"⚠️ Búsqueda web sin resultados")
                     return {"respuesta": "🌐 No pude encontrar información actualizada en internet sobre ese tema."}
             except Exception as e:
                 print(f"❌ Error en búsqueda web: {e}")
+                import traceback
+                traceback.print_exc()
                 return {"respuesta": f"🌐 Error al buscar en internet: {str(e)}"}
         
         # Si hay contexto de archivo
@@ -714,21 +759,25 @@ async def chat_con_modelo(data: dict):
         print(f"{'='*70}")
         print(f"📊 Total mensajes recibidos: {len(historial)}")
         
-        # Agregar historial previo (IMPORTANTE: no incluir el último mensaje porque ya viene en 'mensaje')
+        # Agregar historial previo
         if historial:
             # Tomar más mensajes del historial para mejor contexto
-            historial_reciente = historial[-20:]  # Últimos 20 mensajes (10 intercambios)
+            historial_reciente = historial[-30:]  # Últimos 30 mensajes (15 intercambios)
             if buscar_web:
-                historial_reciente = historial[-12:]  # 6 intercambios para búsqueda web
+                # NO incluir historial para búsqueda web - solo la pregunta actual
+                # Esto evita que el modelo se confunda con conocimiento de conversaciones previas
+                historial_reciente = []
+                # Bajar temperatura para búsqueda web (más precisa)
+                temperature = min(temperature, 0.2)
             elif contexto:
-                historial_reciente = historial[-8:]  # 4 intercambios con contexto
+                historial_reciente = historial[-12:]  # 6 intercambios con contexto
             
             print(f"📌 Mensajes a procesar: {len(historial_reciente)} (filtrados de {len(historial)} totales)")
             print(f"\n🔍 CONSTRUYENDO CONTEXTO PARA EL MODELO:")
             print(f"1. [SYSTEM] {system_prompt[:80]}...")
             
-            # Filtrar solo hasta el penúltimo mensaje (el último es el actual)
-            for i, msg in enumerate(historial_reciente[:-1]):
+            # Procesar TODOS los mensajes del historial
+            for i, msg in enumerate(historial_reciente):
                 tipo = msg.get('tipo', 'unknown')
                 texto = msg.get('texto', '')
                 preview = texto[:100] if len(texto) > 100 else texto
@@ -739,13 +788,24 @@ async def chat_con_modelo(data: dict):
                 elif tipo == 'asistente':
                     messages.append({"role": "assistant", "content": texto})
                     print(f"{len(messages)}. [ASSISTANT] {preview}...")
-        
-        # Agregar mensaje actual
-        messages.append({"role": "user", "content": mensaje_completo})
-        print(f"{len(messages)}. [USER - ACTUAL] {mensaje_completo[:100]}...")
+            
+            # SIEMPRE agregar el mensaje actual (con búsqueda web o contexto si aplica)
+            messages.append({"role": "user", "content": mensaje_completo})
+            print(f"{len(messages)}. [USER - ACTUAL] {mensaje_completo[:100]}...")
+        else:
+            # Si no hay historial, agregar mensaje actual
+            messages.append({"role": "user", "content": mensaje_completo})
+            print(f"{len(messages)}. [USER - ACTUAL] {mensaje_completo[:100]}...")
         
         print(f"\n📨 TOTAL MENSAJES ENVIADOS AL MODELO: {len(messages)}")
-        print(f"   └─ 1 system + {len(messages)-2} historial + 1 actual")
+        if historial:
+            print(f"   └─ 1 system + {len(messages)-1} historial (incluyendo mensaje actual)")
+        else:
+            print(f"   └─ 1 system + 1 mensaje actual")
+        
+        if buscar_web:
+            print(f"   └─ ⚠️ MODO BÚSQUEDA WEB ACTIVO: Sin historial, solo información fresca de internet")
+        
         print(f"{'='*70}\n")
         
         # Generar respuesta usando GeneradorUnificado con fallback
@@ -773,6 +833,10 @@ async def chat_con_modelo(data: dict):
         
         if not respuesta_texto:
             respuesta_texto = "Lo siento, no pude generar una respuesta. Intenta de nuevo."
+        
+        # Agregar prefijo si se usó búsqueda web
+        if buscar_web:
+            respuesta_texto = f"🌐 *Información actualizada de Internet:*\n\n{respuesta_texto}"
         
         print(f"✅ Respuesta generada: {len(respuesta_texto)} caracteres")
         print(f"📝 Preview: {respuesta_texto[:100]}...\n")
@@ -1137,6 +1201,286 @@ async def listar_documentos():
     return {"documentos": documentos}
 
 
+@app.get("/api/archivos/recientes")
+async def obtener_archivos_recientes(limite: int = 30):
+    """Obtiene los archivos más recientes de todas las carpetas del sistema"""
+    try:
+        archivos = []
+        
+        # Obtener archivos de todas las carpetas recursivamente
+        def obtener_archivos_recursivo(ruta_relativa: str = ""):
+            datos = cursos_db.listar_documentos(ruta_relativa)
+            
+            for doc in datos:
+                ruta_completa = cursos_db.base_path / doc['ruta']
+                if ruta_completa.exists() and ruta_completa.is_file():
+                    stat = ruta_completa.stat()
+                    archivos.append({
+                        'nombre': doc['nombre'],
+                        'ruta_completa': doc['ruta'],
+                        'tipo': doc.get('tipo', 'Documento'),
+                        'extension': ruta_completa.suffix,
+                        'tamaño': stat.st_size,
+                        'modificado': stat.st_mtime,
+                        'carpeta': ruta_relativa or 'Raíz'
+                    })
+            
+            # Buscar en subcarpetas
+            carpetas = cursos_db.listar_carpetas(ruta_relativa)
+            for carpeta in carpetas:
+                obtener_archivos_recursivo(carpeta['ruta'])
+        
+        # Iniciar búsqueda recursiva desde la raíz
+        obtener_archivos_recursivo()
+        
+        # Ordenar por fecha de modificación (más recientes primero)
+        archivos.sort(key=lambda x: x['modificado'], reverse=True)
+        
+        # Limitar cantidad
+        archivos = archivos[:limite]
+        
+        return {'archivos': archivos}
+    except Exception as e:
+        print(f"❌ Error obteniendo archivos recientes: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/archivos/explorar")
+async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
+    """Explora archivos filtrados por tipo (notas, examenes, practicas, cursos)"""
+    try:
+        carpetas = []
+        archivos = []
+        
+        # Para notas y flashcards, leer desde extracciones/
+        if tipo in ['notas', 'flashcards']:
+            archivo_json = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
+            if archivo_json.exists():
+                try:
+                    with open(archivo_json, "r", encoding="utf-8") as f:
+                        datos = json.load(f)
+                    
+                    # Crear un "archivo virtual" por cada nota/flashcard
+                    for idx, item in enumerate(datos):
+                        if tipo == 'notas':
+                            titulo = item.get('titulo', f'Nota {idx+1}')
+                            contenido = item.get('contenido', '')
+                            # Obtener fecha de modificación de la nota
+                            fecha_modificacion = item.get('fechaModificacion', item.get('fecha', ''))
+                        else:  # flashcards
+                            # Manejar diferentes formatos de flashcards
+                            pregunta = item.get('pregunta', item.get('titulo', f'Flashcard {idx+1}'))
+                            respuesta = item.get('respuesta', item.get('respuestaCorrecta', item.get('contenido', '')))
+                            titulo = pregunta[:50] if pregunta else f'Flashcard {idx+1}'
+                            contenido = f"Pregunta: {pregunta}\nRespuesta: {respuesta}"
+                            # Obtener fecha de modificación de la flashcard
+                            fecha_modificacion = item.get('fechaRevision', item.get('fechaModificacion', item.get('fecha', '')))
+                        
+                        # Convertir fecha a timestamp si es string
+                        try:
+                            if isinstance(fecha_modificacion, str) and fecha_modificacion:
+                                from datetime import datetime
+                                dt = datetime.fromisoformat(fecha_modificacion.replace('Z', '+00:00'))
+                                timestamp = dt.timestamp()
+                            else:
+                                timestamp = archivo_json.stat().st_mtime
+                        except:
+                            timestamp = archivo_json.stat().st_mtime
+                        
+                        archivos.append({
+                            'nombre': f"{titulo}.json",
+                            'ruta_completa': f"extracciones/{tipo}/{idx}",  # Ruta virtual
+                            'tipo': 'Nota' if tipo == 'notas' else 'Flashcard',
+                            'extension': '.json',
+                            'tamaño': len(contenido.encode('utf-8')),
+                            'modificado': timestamp,
+                            'contenido': contenido,  # Incluir contenido directamente
+                            'item_original': item  # Para leer después
+                        })
+                except Exception as e:
+                    print(f"⚠️ Error leyendo {archivo_json}: {e}")
+            
+            # Ordenar por fecha de modificación descendente (más recientes primero)
+            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+            
+            return {
+                'carpetas': [],
+                'archivos': archivos,
+                'ruta_actual': '',
+                'tipo': tipo
+            }
+        
+        # Para examenes, buscar en carpeta examenes/
+        if tipo == 'examenes':
+            examenes_path = Path("examenes")
+            if examenes_path.exists():
+                for archivo_examen in examenes_path.glob("*.json"):
+                    stat = archivo_examen.stat()
+                    archivos.append({
+                        'nombre': archivo_examen.name,
+                        'ruta_completa': str(archivo_examen),
+                        'tipo': 'Examen',
+                        'extension': '.json',
+                        'tamaño': stat.st_size,
+                        'modificado': stat.st_mtime
+                    })
+            
+            # Ordenar por fecha de modificación descendente (más recientes primero)
+            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+            
+            return {
+                'carpetas': [],
+                'archivos': archivos,
+                'ruta_actual': '',
+                'tipo': tipo
+            }
+        
+        # Para cursos, usar el sistema normal de cursos_db
+        if tipo == 'cursos':
+            extensiones_permitidas = ['.pdf', '.html', '.txt', '.md']
+            
+            # Obtener contenido de la carpeta
+            datos_carpetas = cursos_db.listar_carpetas(ruta)
+            datos_docs = cursos_db.listar_documentos(ruta)
+            
+            # Filtrar archivos por extensión
+            for doc in datos_docs:
+                ruta_completa = cursos_db.base_path / doc['ruta']
+                if ruta_completa.suffix in extensiones_permitidas:
+                    stat = ruta_completa.stat()
+                    archivos.append({
+                        'nombre': doc['nombre'],
+                        'ruta_completa': doc['ruta'],
+                        'tipo': doc.get('tipo', 'Documento'),
+                        'extension': ruta_completa.suffix,
+                        'tamaño': stat.st_size,
+                        'modificado': stat.st_mtime
+                    })
+            
+            # Agregar información de carpetas (para navegar)
+            for carpeta in datos_carpetas:
+                carpetas.append({
+                    'nombre': carpeta['nombre'],
+                    'ruta': carpeta['ruta'],
+                    'num_archivos': carpeta.get('archivos', 0)
+                })
+            
+            # Ordenar archivos por fecha de modificación descendente (más recientes primero)
+            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+            
+            return {
+                'carpetas': carpetas,
+                'archivos': archivos,
+                'ruta_actual': ruta,
+                'tipo': tipo
+            }
+        
+        raise HTTPException(status_code=400, detail=f"Tipo '{tipo}' no válido. Usa: notas, examenes, practicas, cursos")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error explorando archivos por tipo: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/archivos/leer-contenido")
+async def leer_contenido_archivo(data: dict):
+    """Lee el contenido de un archivo"""
+    try:
+        ruta = data.get('ruta', '')
+        if not ruta:
+            raise HTTPException(status_code=400, detail="Ruta no proporcionada")
+        
+        # Verificar si es una ruta virtual (notas/flashcards)
+        if ruta.startswith('extracciones/notas/') or ruta.startswith('extracciones/flashcards/'):
+            partes = ruta.split('/')
+            tipo = partes[1]  # 'notas' o 'flashcards'
+            idx = int(partes[2])  # índice del item
+            
+            archivo_json = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
+            if archivo_json.exists():
+                with open(archivo_json, "r", encoding="utf-8") as f:
+                    datos = json.load(f)
+                
+                if idx < len(datos):
+                    item = datos[idx]
+                    if tipo == 'notas':
+                        contenido = f"# {item.get('titulo', 'Sin título')}\n\n{item.get('contenido', '')}"
+                    else:  # flashcards
+                        # Manejar diferentes formatos
+                        pregunta = item.get('pregunta', item.get('titulo', 'Sin pregunta'))
+                        respuesta = item.get('respuesta', item.get('respuestaCorrecta', item.get('contenido', 'Sin respuesta')))
+                        contenido = f"**Pregunta:**\n{pregunta}\n\n**Respuesta:**\n{respuesta}"
+                        if item.get('categoria') or item.get('carpeta'):
+                            cat = item.get('categoria', item.get('carpeta', ''))
+                            if cat:
+                                contenido = f"**Categoría:** {cat}\n\n" + contenido
+                    
+                    return {
+                        'success': True,
+                        'contenido': contenido,
+                        'ruta': ruta,
+                        'tamaño': len(contenido)
+                    }
+            
+            raise HTTPException(status_code=404, detail="Nota/Flashcard no encontrada")
+        
+        # Verificar si es un examen
+        if ruta.startswith('examenes/'):
+            examen_path = Path(ruta)
+            if examen_path.exists():
+                with open(examen_path, 'r', encoding='utf-8') as f:
+                    contenido = f.read()
+                return {
+                    'success': True,
+                    'contenido': contenido,
+                    'ruta': ruta,
+                    'tamaño': len(contenido)
+                }
+            raise HTTPException(status_code=404, detail="Examen no encontrado")
+        
+        # Ruta normal del sistema de archivos
+        ruta_completa = cursos_db.base_path / ruta
+        
+        if not ruta_completa.exists():
+            raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        
+        if not ruta_completa.is_file():
+            raise HTTPException(status_code=400, detail="La ruta no es un archivo")
+        
+        # Leer contenido según extensión
+        try:
+            if ruta_completa.suffix == '.pdf':
+                contenido = obtener_texto(str(ruta_completa))
+            elif ruta_completa.suffix in ['.txt', '.md', '.html', '.json']:
+                with open(ruta_completa, 'r', encoding='utf-8') as f:
+                    contenido = f.read()
+            else:
+                with open(ruta_completa, 'r', encoding='utf-8', errors='ignore') as f:
+                    contenido = f.read()
+            
+            return {
+                'success': True,
+                'contenido': contenido,
+                'ruta': ruta,
+                'tamaño': len(contenido)
+            }
+        except Exception as e:
+            print(f"❌ Error leyendo archivo {ruta}: {e}")
+            raise HTTPException(status_code=500, detail=f"Error al leer archivo: {str(e)}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error en leer-contenido: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ========== ENDPOINTS DE NAVEGACIÓN DE CARPETAS ==========
 
 @app.get("/api/carpetas")
@@ -1152,6 +1496,17 @@ async def listar_carpetas(ruta: str = ""):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/cursos/carpetas")
+async def listar_carpetas_cursos(ruta: str = ""):
+    """Lista carpetas de cursos (alias de /api/carpetas)"""
+    result = await listar_carpetas(ruta)
+    # Agregar num_archivos como alias de num_documentos para compatibilidad
+    for carpeta in result.get('carpetas', []):
+        if 'num_documentos' in carpeta and 'num_archivos' not in carpeta:
+            carpeta['num_archivos'] = carpeta['num_documentos']
+    return result
 
 
 @app.post("/api/carpetas")
@@ -1675,7 +2030,7 @@ async def generar_examen(datos: dict):
         # Recargar generador con la configuración actual
         callback_progreso(5, "Cargando modelo de IA...")
         config = cargar_config()
-        modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
         usar_ollama = config.get("usar_ollama", True)
         modelo_path = config.get("modelo_path")
         gpu_layers = ajustes.get('n_gpu_layers', 35)
@@ -1838,6 +2193,256 @@ async def obtener_progreso_examen(session_id: str):
     )
 
 
+@app.post("/api/generar_practica")
+async def generar_practica(datos: dict):
+    """Genera flashcards/prácticas basadas en contenido de documentos"""
+    global generador_actual, progreso_generacion
+    
+    print(f"\n{'='*60}")
+    print(f"🎯 DEBUG - Datos recibidos en /api/generar_practica:")
+    print(f"   Keys: {list(datos.keys())}")
+    print(f"{'='*60}\n")
+    
+    # Extraer parámetros
+    ruta = datos.get("ruta")
+    prompt = datos.get("prompt", "")
+    tipo_flashcard = datos.get("tipo_flashcard", "respuesta_corta")
+    tipo_caso = datos.get("tipo_caso", "decision")
+    session_id = datos.get("session_id", str(uuid.uuid4()))
+    
+    # Contadores de tipos de preguntas
+    num_flashcards = datos.get("num_flashcards", 0)
+    num_mcq = datos.get("num_mcq", 0)
+    num_verdadero_falso = datos.get("num_verdadero_falso", 0)
+    num_cloze = datos.get("num_cloze", 0)
+    num_respuesta_corta = datos.get("num_respuesta_corta", 0)
+    num_open_question = datos.get("num_open_question", 0)
+    num_caso_estudio = datos.get("num_caso_estudio", 0)
+    
+    # Reading types
+    num_reading_comprehension = datos.get("num_reading_comprehension", 0)
+    num_reading_true_false = datos.get("num_reading_true_false", 0)
+    num_reading_cloze = datos.get("num_reading_cloze", 0)
+    num_reading_skill = datos.get("num_reading_skill", 0)
+    num_reading_matching = datos.get("num_reading_matching", 0)
+    num_reading_sequence = datos.get("num_reading_sequence", 0)
+    
+    # Writing types
+    num_writing_short = datos.get("num_writing_short", 0)
+    num_writing_paraphrase = datos.get("num_writing_paraphrase", 0)
+    num_writing_correction = datos.get("num_writing_correction", 0)
+    num_writing_transformation = datos.get("num_writing_transformation", 0)
+    num_writing_essay = datos.get("num_writing_essay", 0)
+    num_writing_sentence_builder = datos.get("num_writing_sentence_builder", 0)
+    num_writing_picture_description = datos.get("num_writing_picture_description", 0)
+    num_writing_email = datos.get("num_writing_email", 0)
+    
+    # Cargar contenido desde la ruta
+    contenido = ""
+    if ruta:
+        try:
+            ruta_path = Path(ruta)
+            if ruta_path.exists():
+                contenido = obtener_texto(str(ruta_path))
+        except Exception as e:
+            print(f"⚠️ No se pudo cargar contenido de ruta: {e}")
+    
+    # Si no hay contenido, usar el prompt directamente
+    if not contenido and not prompt:
+        raise HTTPException(status_code=400, detail="Se requiere contenido o prompt para generar la práctica")
+    
+    # Cargar configuración
+    config = cargar_config()
+    ajustes = config.get("ajustes_avanzados", {
+        "n_ctx": 4096,
+        "temperature": 0.7,
+        "max_tokens": 512
+    })
+    
+    print(f"\n{'='*60}")
+    print(f"📝 Solicitud de generación de práctica (Session: {session_id})")
+    print(f"📊 Tipos de preguntas solicitadas:")
+    if num_flashcards > 0:
+        print(f"   • Flashcards: {num_flashcards}")
+    if num_mcq > 0:
+        print(f"   • Opción múltiple: {num_mcq}")
+    if num_verdadero_falso > 0:
+        print(f"   • Verdadero/Falso: {num_verdadero_falso}")
+    if num_cloze > 0:
+        print(f"   • Cloze (completar): {num_cloze}")
+    if num_respuesta_corta > 0:
+        print(f"   • Respuesta corta: {num_respuesta_corta}")
+    if num_open_question > 0:
+        print(f"   • Pregunta abierta: {num_open_question}")
+    if num_caso_estudio > 0:
+        print(f"   • Caso de estudio: {num_caso_estudio}")
+    
+    # Reading types logging
+    if num_reading_comprehension > 0:
+        print(f"   • Reading comprehension: {num_reading_comprehension}")
+    if num_reading_true_false > 0:
+        print(f"   • Reading true/false: {num_reading_true_false}")
+    if num_reading_cloze > 0:
+        print(f"   • Reading cloze: {num_reading_cloze}")
+    if num_reading_skill > 0:
+        print(f"   • Reading skill: {num_reading_skill}")
+    if num_reading_matching > 0:
+        print(f"   • Reading matching: {num_reading_matching}")
+    if num_reading_sequence > 0:
+        print(f"   • Reading sequence: {num_reading_sequence}")
+    
+    # Writing types logging
+    if num_writing_short > 0:
+        print(f"   • Writing short: {num_writing_short}")
+    if num_writing_paraphrase > 0:
+        print(f"   • Writing paraphrase: {num_writing_paraphrase}")
+    if num_writing_correction > 0:
+        print(f"   • Writing correction: {num_writing_correction}")
+    if num_writing_transformation > 0:
+        print(f"   • Writing transformation: {num_writing_transformation}")
+    if num_writing_essay > 0:
+        print(f"   • Writing essay: {num_writing_essay}")
+    if num_writing_sentence_builder > 0:
+        print(f"   • Writing sentence builder: {num_writing_sentence_builder}")
+    if num_writing_picture_description > 0:
+        print(f"   • Writing picture description: {num_writing_picture_description}")
+    if num_writing_email > 0:
+        print(f"   • Writing email: {num_writing_email}")
+    
+    print(f"\n🎮 Motor de IA:")
+    if generador_actual and hasattr(generador_actual, 'usar_ollama') and generador_actual.usar_ollama:
+        print(f"   ✅ USANDO GPU - Ollama")
+        print(f"   🎯 Modelo: {generador_actual.modelo_ollama}")
+    else:
+        print(f"   ⚠️  Usando llama-cpp-python")
+    print(f"{'='*60}\n")
+    
+    # Inicializar progreso
+    progreso_generacion[session_id] = {
+        'progreso': 0,
+        'mensaje': 'Iniciando generación de práctica...',
+        'completado': False,
+        'error': None
+    }
+    
+    def callback_progreso(progreso: int, mensaje: str):
+        """Callback para actualizar el progreso"""
+        progreso_generacion[session_id] = {
+            'progreso': progreso,
+            'mensaje': mensaje,
+            'completado': False,
+            'error': None
+        }
+        print(f"📊 Progreso {progreso}%: {mensaje}")
+    
+    try:
+        # Recargar generador con la configuración actual
+        callback_progreso(5, "Cargando modelo de IA...")
+        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
+        usar_ollama = config.get("usar_ollama", True)
+        modelo_path = config.get("modelo_path")
+        gpu_layers = ajustes.get('n_gpu_layers', 35)
+        
+        # Crear generador con la configuración actual
+        if usar_ollama:
+            generador_actual = GeneradorUnificado(
+                usar_ollama=True,
+                modelo_ollama=modelo_ollama,
+                n_gpu_layers=gpu_layers
+            )
+        else:
+            generador_actual = GeneradorUnificado(
+                usar_ollama=False,
+                modelo_path_gguf=modelo_path,
+                n_gpu_layers=gpu_layers
+            )
+        
+        # Mapear tipos de pregunta (usar los mismos tipos que generar-examen)
+        num_preguntas = {}
+        
+        # Mapeo de tipos de práctica a tipos de examen
+        if num_flashcards > 0 or num_respuesta_corta > 0:
+            num_preguntas['short_answer'] = num_flashcards + num_respuesta_corta
+        if num_mcq > 0:
+            num_preguntas['mcq'] = num_mcq
+        if num_verdadero_falso > 0:
+            num_preguntas['true_false'] = num_verdadero_falso
+        if num_open_question > 0:
+            num_preguntas['open_question'] = num_open_question
+        
+        # Por ahora, los demás tipos se tratan como short_answer
+        tipos_adicionales = (num_cloze + num_caso_estudio + 
+                           num_reading_comprehension + num_reading_true_false + num_reading_cloze +
+                           num_reading_skill + num_reading_matching + num_reading_sequence +
+                           num_writing_short + num_writing_paraphrase + num_writing_correction +
+                           num_writing_transformation + num_writing_essay + num_writing_sentence_builder +
+                           num_writing_picture_description + num_writing_email)
+        
+        if tipos_adicionales > 0:
+            num_preguntas['short_answer'] = num_preguntas.get('short_answer', 0) + tipos_adicionales
+        
+        # Si no se especificó ningún tipo, generar 5 flashcards por defecto
+        if not num_preguntas:
+            num_preguntas['short_answer'] = 5
+        
+        callback_progreso(10, "Preparando generación de flashcards...")
+        print("🤖 Generando flashcards con IA...")
+        
+        # Usar el contenido o el prompt
+        contexto = contenido if contenido else prompt
+        
+        preguntas = generador_actual.generar_examen(
+            contexto, 
+            num_preguntas,
+            ajustes_modelo=ajustes,
+            callback_progreso=callback_progreso,
+            session_id=session_id
+        )
+        print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
+        
+        # Convertir a formato JSON
+        callback_progreso(95, "Finalizando...")
+        preguntas_json = [p.to_dict() for p in preguntas]
+        
+        # Marcar como completado
+        progreso_generacion[session_id] = {
+            'progreso': 100,
+            'mensaje': 'Práctica generada exitosamente',
+            'completado': True,
+            'error': None
+        }
+        
+        resultado = {
+            "success": True,
+            "session_id": session_id,
+            "preguntas": preguntas_json,
+            "total_preguntas": len(preguntas),
+        }
+        
+        print(f"✅ Práctica generada: {resultado['total_preguntas']} preguntas\n")
+        return resultado
+        
+    except Exception as e:
+        import traceback
+        print(f"\n❌ ERROR generando práctica:")
+        print(f"   Tipo: {type(e).__name__}")
+        print(f"   Mensaje: {str(e)}")
+        print(f"   Traceback:")
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        
+        # Marcar progreso como error
+        if session_id in progreso_generacion:
+            progreso_generacion[session_id] = {
+                'progreso': 0,
+                'mensaje': f'Error: {str(e)}',
+                'completado': True,
+                'error': str(e)
+            }
+        
+        raise HTTPException(status_code=500, detail=f"Error al generar práctica: {str(e)}")
+
+
 @app.post("/api/evaluar-examen")
 async def evaluar_examen(datos: dict):
     """Evalúa las respuestas de un examen"""
@@ -1848,7 +2453,7 @@ async def evaluar_examen(datos: dict):
         if generador_unificado is None:
             config = cargar_config()
             usar_ollama = config.get("usar_ollama", True)
-            modelo_ollama = config.get("modelo_ollama_activo", "llama31-local")
+            modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
             modelo_path_gguf = config.get("modelo_path")
             ajustes = config.get("ajustes_avanzados", {})
             n_gpu_layers = ajustes.get("n_gpu_layers", 35)
@@ -2417,6 +3022,575 @@ async def set_sesion_activa(request: Request):
         return JSONResponse(content={"ok": True})
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+# ===== ENDPOINTS PARA GESTIÓN DE MODELOS OLLAMA =====
+
+@app.get("/api/ollama/modelos")
+async def listar_modelos_ollama():
+    """Lista todos los modelos disponibles en Ollama"""
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            modelos = []
+            for modelo in data.get('models', []):
+                nombre = modelo.get('name', '')
+                size_bytes = modelo.get('size', 0)
+                size_gb = round(size_bytes / (1024**3), 2)
+                
+                modelos.append({
+                    'nombre': nombre,
+                    'tamaño_gb': size_gb,
+                    'tipo': 'Ollama',
+                    'digest': modelo.get('digest', '')[:12],
+                    'velocidad': 'GPU/CPU'
+                })
+            
+            return {
+                'success': True,
+                'modelos': modelos,
+                'total': len(modelos)
+            }
+        else:
+            return {
+                'success': False,
+                'mensaje': 'Ollama no está respondiendo. Asegúrate de que esté ejecutándose.',
+                'modelos': [],
+                'total': 0
+            }
+    except Exception as e:
+        print(f"❌ Error al listar modelos de Ollama: {e}")
+        return {
+            'success': False,
+            'mensaje': f'Error al conectar con Ollama: {str(e)}',
+            'modelos': [],
+            'total': 0
+        }
+
+
+@app.delete("/api/ollama/modelo/{nombre_modelo}")
+async def eliminar_modelo_ollama(nombre_modelo: str):
+    """Elimina un modelo de Ollama"""
+    try:
+        response = requests.delete(
+            "http://localhost:11434/api/delete",
+            json={"name": nombre_modelo},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return {
+                'success': True,
+                'mensaje': f'✅ Modelo "{nombre_modelo}" eliminado correctamente'
+            }
+        else:
+            return {
+                'success': False,
+                'mensaje': f'❌ Error al eliminar modelo: {response.text}'
+            }
+    except Exception as e:
+        print(f"❌ Error eliminando modelo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/motor/cambiar")
+async def cambiar_motor(data: dict):
+    """Cambia la configuración del motor de IA"""
+    global generador_actual
+    
+    try:
+        usar_ollama = data.get('usar_ollama', False)
+        modelo_ollama = data.get('modelo_ollama', None)
+        n_gpu_layers = data.get('n_gpu_layers', 0)
+        
+        # Actualizar configuración
+        config = cargar_config()
+        config['usar_ollama'] = usar_ollama
+        config['gpu_activa'] = n_gpu_layers > 0
+        
+        if usar_ollama and modelo_ollama:
+            config['modelo_ollama_activo'] = modelo_ollama
+        
+        if n_gpu_layers > 0:
+            config['n_gpu_layers'] = n_gpu_layers
+        
+        guardar_config(config)
+        
+        # Reinicializar generador
+        generador_actual = GeneradorUnificado()
+        
+        return {
+            'success': True,
+            'mensaje': f'✅ Motor configurado correctamente',
+            'config': config
+        }
+    except Exception as e:
+        print(f"❌ Error cambiando motor: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/motor/reparar")
+async def reparar_motor():
+    """Repara/reinicia el motor de IA sin cambiar configuración"""
+    global generador_actual
+    
+    try:
+        print("\n🔧 Reparando motor de IA...")
+        
+        # Reinicializar generador con configuración actual
+        config = cargar_config()
+        generador_actual = GeneradorUnificado()
+        
+        # Verificar estado
+        if generador_actual.usar_ollama:
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=2)
+                if response.status_code == 200:
+                    mensaje = f"✅ Motor reparado - Ollama OK (modelo: {config.get('modelo_ollama_activo', 'default')})"
+                else:
+                    mensaje = "⚠️ Motor reiniciado pero Ollama no responde"
+            except:
+                mensaje = "⚠️ Motor reiniciado pero Ollama no está disponible"
+        else:
+            if generador_actual.llm:
+                mensaje = f"✅ Motor reparado - GGUF cargado ({config.get('n_gpu_layers', 0)} capas GPU)"
+            else:
+                mensaje = "⚠️ Motor reiniciado pero no hay modelo GGUF cargado"
+        
+        return {
+            'success': True,
+            'mensaje': mensaje
+        }
+    except Exception as e:
+        print(f"❌ Error reparando motor: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== ENDPOINTS PARA GESTIÓN DE HISTORIAL DE CHATS =====
+
+# Directorio para chats
+CHATS_DIR = Path("chats_historial")
+CHATS_DIR.mkdir(exist_ok=True)
+
+
+@app.get("/api/chats/historial")
+async def obtener_historial_chats():
+    """Obtiene la lista de chats guardados (deprecated - usar /api/chats/contenido)"""
+    try:
+        chats = []
+        for archivo in CHATS_DIR.glob("*.json"):
+            try:
+                with open(archivo, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    chats.append({
+                        'id': archivo.stem,
+                        'nombre': data.get('nombre', archivo.stem),
+                        'fecha': data.get('fecha', ''),
+                        'mensajes_count': len(data.get('mensajes', []))
+                    })
+            except Exception as e:
+                print(f"Error leyendo {archivo}: {e}")
+        
+        return {'chats': sorted(chats, key=lambda x: x.get('fecha', ''), reverse=True)}
+    except Exception as e:
+        print(f"❌ Error al obtener historial: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chats/contenido")
+async def obtener_contenido_chats(ruta: str = ''):
+    """Obtiene carpetas y chats en una ruta específica"""
+    try:
+        ruta_completa = CHATS_DIR / ruta if ruta else CHATS_DIR
+        ruta_completa.mkdir(parents=True, exist_ok=True)
+        
+        carpetas = []
+        chats = []
+        
+        # Listar contenido
+        for item in ruta_completa.iterdir():
+            if item.is_dir():
+                # Contar chats en la carpeta
+                num_chats = len(list(item.glob("*.json")))
+                carpetas.append({
+                    'nombre': item.name,
+                    'ruta': str(Path(ruta) / item.name) if ruta else item.name,
+                    'num_chats': num_chats
+                })
+            elif item.suffix == '.json':
+                try:
+                    with open(item, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        chats.append({
+                            'id': item.stem,
+                            'nombre': data.get('nombre', item.stem),
+                            'fecha': data.get('fecha', ''),
+                            'mensajes_count': len(data.get('mensajes', [])),
+                            'ruta': str(Path(ruta) / item.name) if ruta else item.name
+                        })
+                except Exception as e:
+                    print(f"Error leyendo {item}: {e}")
+        
+        return {
+            'carpetas': sorted(carpetas, key=lambda x: x['nombre']),
+            'chats': sorted(chats, key=lambda x: x.get('fecha', ''), reverse=True),
+            'ruta_actual': ruta
+        }
+    except Exception as e:
+        print(f"❌ Error al obtener contenido: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/chats/carpetas")
+async def crear_carpeta_chat(data: dict):
+    """Crea una nueva carpeta para organizar chats"""
+    try:
+        nombre = data.get('nombre', '')
+        ruta_padre = data.get('ruta_padre', '')
+        
+        if not nombre:
+            raise HTTPException(status_code=400, detail="Nombre de carpeta requerido")
+        
+        ruta_completa = CHATS_DIR / ruta_padre / nombre if ruta_padre else CHATS_DIR / nombre
+        ruta_completa.mkdir(parents=True, exist_ok=True)
+        
+        return {
+            'success': True,
+            'mensaje': f'Carpeta "{nombre}" creada',
+            'ruta': str(ruta_completa.relative_to(CHATS_DIR))
+        }
+    except Exception as e:
+        print(f"❌ Error creando carpeta: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chats/carpetas")
+async def listar_carpetas_chats(ruta: str = ""):
+    """Lista todas las carpetas de chats disponibles"""
+    try:
+        ruta_base = CHATS_DIR / ruta if ruta else CHATS_DIR
+        
+        if not ruta_base.exists():
+            return {'carpetas': []}
+        
+        carpetas = []
+        for item in ruta_base.iterdir():
+            if item.is_dir():
+                # Contar chats en esta carpeta
+                num_chats = len(list(item.glob("*.json")))
+                
+                carpetas.append({
+                    'nombre': item.name,
+                    'ruta': str(item.relative_to(CHATS_DIR)),
+                    'num_chats': num_chats
+                })
+        
+        return {'carpetas': sorted(carpetas, key=lambda x: x['nombre'])}
+    except Exception as e:
+        print(f"❌ Error listando carpetas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/chats/guardar")
+async def guardar_chat(data: dict):
+    """Guarda un chat en el historial"""
+    try:
+        chat_id = data.get('id') or str(uuid.uuid4())
+        nombre = data.get('nombre', f'Chat {datetime.now().strftime("%Y-%m-%d %H:%M")}')
+        mensajes = data.get('mensajes', [])
+        ruta = data.get('ruta', '')  # Ruta de carpeta opcional
+        
+        # Determinar ruta de guardado
+        if ruta:
+            archivo = CHATS_DIR / ruta / f"{chat_id}.json"
+            archivo.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            archivo = CHATS_DIR / f"{chat_id}.json"
+        
+        # Guardar chat
+        chat_data = {
+            'id': chat_id,
+            'nombre': nombre,
+            'fecha': datetime.now().isoformat(),
+            'mensajes': mensajes
+        }
+        
+        with open(archivo, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, ensure_ascii=False, indent=2)
+        
+        return {
+            'success': True,
+            'id': chat_id,
+            'mensaje': 'Chat guardado exitosamente'
+        }
+    except Exception as e:
+        print(f"❌ Error guardando chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chats/cargar/{chat_id}")
+async def cargar_chat(chat_id: str):
+    """Carga un chat específico"""
+    try:
+        # Buscar el archivo en todas las subcarpetas
+        archivo_encontrado = None
+        for archivo in CHATS_DIR.rglob(f"{chat_id}.json"):
+            archivo_encontrado = archivo
+            break
+        
+        if not archivo_encontrado:
+            raise HTTPException(status_code=404, detail="Chat no encontrado")
+        
+        with open(archivo_encontrado, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        return {
+            'success': True,
+            'nombre': data.get('nombre', ''),
+            'mensajes': data.get('mensajes', []),
+            'fecha': data.get('fecha', '')
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error cargando chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/chats/{chat_id}")
+async def obtener_chat(chat_id: str):
+    """Obtiene un chat específico (alias de cargar)"""
+    return await cargar_chat(chat_id)
+
+
+@app.delete("/api/chats/{chat_id}")
+async def eliminar_chat(chat_id: str):
+    """Elimina un chat del historial"""
+    try:
+        # Buscar el archivo en todas las subcarpetas
+        archivo_encontrado = None
+        for archivo in CHATS_DIR.rglob(f"{chat_id}.json"):
+            archivo_encontrado = archivo
+            break
+        
+        if archivo_encontrado and archivo_encontrado.exists():
+            archivo_encontrado.unlink()
+            return {
+                'success': True,
+                'mensaje': 'Chat eliminado'
+            }
+        else:
+            raise HTTPException(status_code=404, detail="Chat no encontrado")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error eliminando chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/chats/{chat_id}/renombrar")
+async def renombrar_chat(chat_id: str, data: dict):
+    """Renombra un chat del historial"""
+    try:
+        nuevo_nombre = data.get('nuevo_nombre', '').strip()
+        if not nuevo_nombre:
+            raise HTTPException(status_code=400, detail="Nombre vacío")
+        
+        # Buscar el archivo en todas las subcarpetas
+        archivo_encontrado = None
+        for archivo in CHATS_DIR.rglob(f"{chat_id}.json"):
+            archivo_encontrado = archivo
+            break
+        
+        if not archivo_encontrado or not archivo_encontrado.exists():
+            raise HTTPException(status_code=404, detail="Chat no encontrado")
+        
+        # Leer el chat, actualizar el nombre y guardarlo
+        with open(archivo_encontrado, 'r', encoding='utf-8') as f:
+            chat_data = json.load(f)
+        
+        chat_data['nombre'] = nuevo_nombre
+        
+        with open(archivo_encontrado, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, ensure_ascii=False, indent=2)
+        
+        return {
+            'success': True,
+            'mensaje': f'Chat renombrado a "{nuevo_nombre}"'
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error renombrando chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/chats/carpetas/{ruta:path}")
+async def eliminar_carpeta_chats(ruta: str):
+    """Elimina una carpeta de chats y todo su contenido"""
+    try:
+        carpeta_path = CHATS_DIR / ruta
+        
+        if not carpeta_path.exists():
+            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        
+        if not carpeta_path.is_dir():
+            raise HTTPException(status_code=400, detail="La ruta no es una carpeta")
+        
+        # Eliminar carpeta y todo su contenido
+        import shutil
+        shutil.rmtree(carpeta_path)
+        
+        return {
+            'success': True,
+            'mensaje': 'Carpeta eliminada'
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error eliminando carpeta: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/chats/carpetas/{ruta:path}/renombrar")
+async def renombrar_carpeta_chats(ruta: str, data: dict):
+    """Renombra una carpeta de chats"""
+    try:
+        nuevo_nombre = data.get('nuevo_nombre', '').strip()
+        if not nuevo_nombre:
+            raise HTTPException(status_code=400, detail="Nombre vacío")
+        
+        # Validar que no contenga caracteres inválidos
+        caracteres_invalidos = ['\\', '/', ':', '*', '?', '"', '<', '>', '|']
+        if any(c in nuevo_nombre for c in caracteres_invalidos):
+            raise HTTPException(status_code=400, detail="Nombre contiene caracteres inválidos")
+        
+        carpeta_actual = CHATS_DIR / ruta
+        
+        if not carpeta_actual.exists():
+            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        
+        # Obtener carpeta padre y nueva ruta
+        carpeta_padre = carpeta_actual.parent
+        nueva_ruta = carpeta_padre / nuevo_nombre
+        
+        if nueva_ruta.exists():
+            raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre")
+        
+        # Renombrar
+        carpeta_actual.rename(nueva_ruta)
+        
+        return {
+            'success': True,
+            'mensaje': f'Carpeta renombrada a "{nuevo_nombre}"',
+            'nueva_ruta': str(nueva_ruta.relative_to(CHATS_DIR))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error renombrando carpeta: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/chats/{chat_id}/mover")
+async def mover_chat(chat_id: str, data: dict):
+    """Mueve un chat a otra carpeta"""
+    try:
+        nueva_ruta = data.get('nueva_ruta', '').strip()
+        
+        # Buscar el archivo actual
+        archivo_actual = None
+        for archivo in CHATS_DIR.rglob(f"{chat_id}.json"):
+            archivo_actual = archivo
+            break
+        
+        if not archivo_actual:
+            raise HTTPException(status_code=404, detail="Chat no encontrado")
+        
+        # Determinar carpeta destino
+        if nueva_ruta:
+            carpeta_destino = CHATS_DIR / nueva_ruta
+        else:
+            carpeta_destino = CHATS_DIR
+        
+        # Crear carpeta destino si no existe
+        carpeta_destino.mkdir(parents=True, exist_ok=True)
+        
+        # Nueva ubicación del archivo
+        archivo_nuevo = carpeta_destino / f"{chat_id}.json"
+        
+        if archivo_nuevo.exists():
+            raise HTTPException(status_code=400, detail="Ya existe un chat con ese ID en el destino")
+        
+        # Mover archivo
+        archivo_actual.rename(archivo_nuevo)
+        
+        return {
+            'success': True,
+            'mensaje': f'Chat movido a {nueva_ruta or "Raíz"}',
+            'nueva_ubicacion': str(archivo_nuevo.relative_to(CHATS_DIR))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error moviendo chat: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/chats/carpetas/{ruta:path}/mover")
+async def mover_carpeta_chats(ruta: str, data: dict):
+    """Mueve una carpeta de chats a otra ubicación"""
+    try:
+        nueva_ruta = data.get('nueva_ruta', '').strip()
+        
+        carpeta_actual = CHATS_DIR / ruta
+        
+        if not carpeta_actual.exists():
+            raise HTTPException(status_code=404, detail="Carpeta no encontrada")
+        
+        # Obtener nombre de la carpeta
+        nombre_carpeta = carpeta_actual.name
+        
+        # Determinar carpeta destino
+        if nueva_ruta:
+            carpeta_padre_destino = CHATS_DIR / nueva_ruta
+        else:
+            carpeta_padre_destino = CHATS_DIR
+        
+        # Validar que no se intente mover dentro de sí misma
+        try:
+            carpeta_actual.relative_to(carpeta_padre_destino)
+            raise HTTPException(status_code=400, detail="No se puede mover una carpeta dentro de sí misma")
+        except ValueError:
+            pass  # Está bien, no es subcarpeta
+        
+        # Nueva ubicación
+        carpeta_nueva = carpeta_padre_destino / nombre_carpeta
+        
+        if carpeta_nueva.exists():
+            raise HTTPException(status_code=400, detail="Ya existe una carpeta con ese nombre en el destino")
+        
+        # Crear carpeta padre si no existe
+        carpeta_padre_destino.mkdir(parents=True, exist_ok=True)
+        
+        # Mover carpeta
+        import shutil
+        shutil.move(str(carpeta_actual), str(carpeta_nueva))
+        
+        return {
+            'success': True,
+            'mensaje': f'Carpeta movida a {nueva_ruta or "Raíz"}',
+            'nueva_ubicacion': str(carpeta_nueva.relative_to(CHATS_DIR))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error moviendo carpeta: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
