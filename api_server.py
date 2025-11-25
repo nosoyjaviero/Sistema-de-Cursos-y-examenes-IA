@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Optional
 import json
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import uuid
 import requests
@@ -2552,6 +2552,10 @@ async def evaluar_examen(datos: dict):
                 fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
                 archivo_resultado = carpeta_destino / f"examen_{fecha}.json"
 
+                # Calcular próxima revisión (SM-2 algorithm inicial)
+                ahora = datetime.now()
+                proxima_revision = (ahora + timedelta(days=1)).isoformat()  # Primer repaso mañana
+                
                 resultado_completo = {
                     "id": fecha,
                     "archivo": f"examen_{fecha}.json",
@@ -2563,7 +2567,15 @@ async def evaluar_examen(datos: dict):
                     "porcentaje": porcentaje,
                     "resultados": resultados,
                     "tipo": "completado",
-                    "es_practica": es_practica
+                    "es_practica": es_practica,
+                    # Campos para repetición espaciada (SM-2)
+                    "proximaRevision": proxima_revision,
+                    "ultimaRevision": ahora.isoformat(),
+                    "intervalo": 1,
+                    "repeticiones": 0,
+                    "facilidad": 2.5,
+                    "estadoRevision": "nueva",
+                    "titulo": carpeta_nombre
                 }
 
                 with open(archivo_resultado, 'w', encoding='utf-8') as f:
@@ -2921,31 +2933,47 @@ async def listar_examenes():
         raise HTTPException(status_code=500, detail=f"Error al listar exámenes: {str(e)}")
 
 
+@app.post("/api/examenes/actualizar")
+async def actualizar_examen(datos: dict):
+    """Actualiza un examen existente (por ejemplo, marcar preguntas como corregidas)"""
+    try:
+        carpeta_ruta = datos.get("carpeta_ruta")
+        tipo_carpeta = datos.get("tipo_carpeta", "examenes")  # "examenes" o "practicas"
+        archivo_nombre = datos.get("archivo")
+        datos_examen = datos.get("datos")
+        
+        if not carpeta_ruta or not archivo_nombre or not datos_examen:
+            raise HTTPException(status_code=400, detail="Faltan parámetros requeridos")
+        
+        # Construir ruta al archivo
+        carpeta_destino = Path(tipo_carpeta) / carpeta_ruta
+        archivo_path = carpeta_destino / archivo_nombre
+        
+        if not archivo_path.exists():
+            raise HTTPException(status_code=404, detail=f"Examen no encontrado: {archivo_path}")
+        
+        # Guardar examen actualizado
+        with open(archivo_path, 'w', encoding='utf-8') as f:
+            json.dump(datos_examen, f, ensure_ascii=False, indent=2)
+        
+        print(f"✅ Examen actualizado: {archivo_path}")
+        
+        return {
+            "success": True,
+            "message": "Examen actualizado correctamente"
+        }
+    except Exception as e:
+        print(f"❌ Error actualizando examen: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar examen: {str(e)}")
+
+
 # =============================
 # TIMER SYNC ENDPOINTS
 # =============================
-TIMER_SYNC_PATH = Path("timer_sync_state.json")
-
-@app.get("/timer_sync")
-def get_timer_sync():
-    if TIMER_SYNC_PATH.exists():
-        with open(TIMER_SYNC_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return JSONResponse(content=data)
-    return JSONResponse(content={"timer": 0, "enPausa": False, "pausaRestante": 0, "ultimoUpdate": None})
-
-@app.post("/timer_sync")
-async def set_timer_sync(request: Request):
-    data = None
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse(content={"error": "JSON inválido"}, status_code=400)
-    if not isinstance(data, dict):
-        return JSONResponse(content={"error": "Formato incorrecto"}, status_code=400)
-    with open(TIMER_SYNC_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    return JSONResponse(content={"ok": True, "data": data})
+# Timer sync removido - Los contadores se ejecutan localmente en el navegador
+# y los datos se envían al servidor solo cuando es necesario
 
 
 
@@ -3114,6 +3142,7 @@ async def cambiar_motor(data: dict):
     try:
         usar_ollama = data.get('usar_ollama', False)
         modelo_ollama = data.get('modelo_ollama', None)
+        modelo_gguf = data.get('modelo_gguf', None)
         n_gpu_layers = data.get('n_gpu_layers', 0)
         
         # Actualizar configuración
@@ -3124,13 +3153,38 @@ async def cambiar_motor(data: dict):
         if usar_ollama and modelo_ollama:
             config['modelo_ollama_activo'] = modelo_ollama
         
-        if n_gpu_layers > 0:
+        if modelo_gguf:
+            config['modelo_path'] = modelo_gguf
+        
+        if n_gpu_layers >= 0:
             config['n_gpu_layers'] = n_gpu_layers
         
         guardar_config(config)
         
-        # Reinicializar generador
-        generador_actual = GeneradorUnificado()
+        # Reinicializar generador con los parámetros correctos
+        try:
+            if usar_ollama:
+                generador_actual = GeneradorUnificado(
+                    usar_ollama=True,
+                    modelo_ollama=modelo_ollama or config.get('modelo_ollama_activo', 'qwen-local:latest'),
+                    modelo_path_gguf=config.get('modelo_path'),
+                    n_gpu_layers=n_gpu_layers
+                )
+                print(f"✅ GeneradorUnificado configurado para Ollama (GPU layers: {n_gpu_layers})")
+            else:
+                generador_actual = GeneradorUnificado(
+                    usar_ollama=False,
+                    modelo_path_gguf=modelo_gguf or config.get('modelo_path'),
+                    n_gpu_layers=n_gpu_layers
+                )
+                print(f"✅ GeneradorUnificado configurado para GGUF (GPU layers: {n_gpu_layers})")
+        except Exception as e:
+            print(f"⚠️ Error inicializando GeneradorUnificado: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: reintentar sin GPU
+            generador_actual = GeneradorUnificado()
+            print(f"⚠️ Fallback a GeneradorUnificado default")
         
         return {
             'success': True,
@@ -3139,6 +3193,8 @@ async def cambiar_motor(data: dict):
         }
     except Exception as e:
         print(f"❌ Error cambiando motor: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

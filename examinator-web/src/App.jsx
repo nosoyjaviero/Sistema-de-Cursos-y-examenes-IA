@@ -281,6 +281,8 @@ function App() {
   const [datosCalentamiento, setDatosCalentamiento] = useState(null)
   const [erroresActuales, setErroresActuales] = useState([])
   const [indiceErrorActual, setIndiceErrorActual] = useState(0)
+  const [respuestaErrorSeleccionada, setRespuestaErrorSeleccionada] = useState(null) // Para el wizard de errores
+  const [errorYaRespondido, setErrorYaRespondido] = useState(false) // Si ya seleccionó una respuesta
   const [flashcardsSesion, setFlashcardsSesion] = useState([])
   const [indiceFlashcardActual, setIndiceFlashcardActual] = useState(0)
   const [contenidoSesion, setContenidoSesion] = useState(null)
@@ -677,6 +679,12 @@ function App() {
     practicas: [],
     examenes: []
   });
+  const calendarioCargandoRef = useRef(false);
+
+  // Estados para mini calendario visual
+  const [mesCalendario, setMesCalendario] = useState(new Date().getMonth());
+  const [anioCalendario, setAnioCalendario] = useState(new Date().getFullYear());
+  const [fechaSeleccionada, setFechaSeleccionada] = useState(null);
 
   // Detectar automáticamente la URL del API
   // Si accedes desde otra IP (móvil/tablet), usa esa IP para el backend
@@ -798,18 +806,58 @@ function App() {
   // Cargar datos para el calendario de repasos cuando se entra a historial
   useEffect(() => {
     if (selectedMenu === 'historial') {
+      // Prevenir cargas duplicadas simultáneas
+      if (calendarioCargandoRef.current) {
+        console.log('⏳ Calendario ya está cargando, evitando duplicado');
+        return;
+      }
+      
       const cargarDatosCalendario = async () => {
-        const flashcards = await getDatos('flashcards');
-        const notas = await getDatos('notas');
-        const practicas = await getDatos('practicas');
-        const examenes = JSON.parse(localStorage.getItem('examenes') || '[]'); // examenes aún usa localStorage
-        
-        setDatosCalendarioRepasos({
-          flashcards,
-          notas,
-          practicas,
-          examenes
-        });
+        calendarioCargandoRef.current = true;
+        try {
+          const flashcards = await getDatos('flashcards');
+          const notas = await getDatos('notas');
+          let practicas = await getDatos('practicas');
+          
+          // Cargar exámenes completados desde el backend (no localStorage)
+          let examenes = [];
+          try {
+            const responseExamenes = await fetch(`${API_URL}/api/examenes/listar`);
+            const dataExamenes = await responseExamenes.json();
+            if (dataExamenes.success) {
+              examenes = dataExamenes.completados || [];
+              console.log('📅 Exámenes cargados para calendario:', examenes.length);
+            }
+          } catch (error) {
+            console.error('Error cargando exámenes para calendario:', error);
+            // Fallback a localStorage si falla el backend
+            examenes = JSON.parse(localStorage.getItem('examenes') || '[]');
+          }
+          
+          // Normalizar nombres de campos (snake_case a camelCase)
+          practicas = practicas.map(p => ({
+            ...p,
+            proximaRevision: p.proximaRevision || p.proxima_revision,
+            ultimaRevision: p.ultimaRevision || p.ultima_revision,
+            fechaCreacion: p.fechaCreacion || p.fecha_creacion || p.fecha
+          }));
+          
+          examenes = examenes.map(e => ({
+            ...e,
+            proximaRevision: e.proximaRevision || e.proxima_revision,
+            ultimaRevision: e.ultimaRevision || e.ultima_revision,
+            fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado
+          }));
+          
+          setDatosCalendarioRepasos({
+            flashcards,
+            notas,
+            practicas,
+            examenes
+          });
+        } finally {
+          calendarioCargandoRef.current = false;
+        }
       };
       cargarDatosCalendario();
     }
@@ -1617,15 +1665,22 @@ function App() {
   };
   
   const detenerSesion = async () => {
-    // Limpiar estado de sesión
+    console.log('⏹️ Deteniendo sesión...');
+    
+    // 1️⃣ PRIMERO: Cambiar menú para ocultar indicadores visuales
+    setSelectedMenu('inicio');
+    
+    // 2️⃣ Limpiar estado de sesión (esto ocultará los indicadores)
     setSesionActiva(false);
     setTiempoRestante(0);
     setFaseActual(null);
     setIndiceFaseActual(0);
     setSesionPausada(false);
     setTiempoHastaDescanso(1500); // Resetear contador de descanso
+    setEnDescanso(false);
+    setTimestampInicioPausa(null);
     
-    // Limpiar estadísticas
+    // 3️⃣ Limpiar estadísticas
     setEstadisticasSesion({
       erroresReforzados: 0,
       flashcardsRepasadas: 0,
@@ -1633,25 +1688,23 @@ function App() {
       notasTomadas: 0
     });
     
-    // Limpiar datos de fases
+    // 4️⃣ Limpiar datos de fases
     setErroresActuales([]);
     setFlashcardsSesion([]);
     setDocumentoActual(null);
     setCursoActual(null);
     setNotasVinculadas([]);
+    setFasesSesion([]);
     
-    // 🔥 ELIMINAR SESIÓN GUARDADA DEL BACKEND Y LOCALSTORAGE
+    // 5️⃣ ELIMINAR SESIÓN GUARDADA DEL BACKEND Y LOCALSTORAGE
     try {
       await setSesionActiva({});
       localStorage.removeItem('examinator_sesion_activa');
       setSesionPersistente(null);
-      console.log('⏹️ Sesión detenida y eliminada completamente');
+      console.log('✅ Sesión detenida y eliminada completamente');
     } catch (error) {
       console.error('❌ Error eliminando sesión al detener:', error);
     }
-    
-    // Volver a inicio
-    setSelectedMenu('inicio');
   };
   
   const obtenerNombreFase = (fase) => {
@@ -2098,6 +2151,9 @@ function App() {
   };
   
   const marcarErrorComprendido = () => {
+    // Resetear estados de respuesta
+    setRespuestaErrorSeleccionada(null);
+    setErrorYaRespondido(false);
     siguienteError();
   };
   
@@ -6508,12 +6564,19 @@ JSON:`
           const manana = new Date(ahora);
           manana.setDate(manana.getDate() + 1); // Programar próxima revisión para mañana
           
+          const practicaActual = practicas[practicaIndex];
+          
           practicas[practicaIndex].respuestas = respuestasUsuario;
           practicas[practicaIndex].completada = true;
-          practicas[practicaIndex].estado = 'completada'; // Agregar estado explícito
+          practicas[practicaIndex].estado = 'completada';
           practicas[practicaIndex].fecha_completada = ahora.toISOString();
-          practicas[practicaIndex].ultima_revision = ahora.toISOString(); // Marcar revisión de hoy
-          practicas[practicaIndex].proxima_revision = manana.toISOString(); // Programar para mañana
+          practicas[practicaIndex].ultimaRevision = ahora.toISOString();
+          practicas[practicaIndex].proximaRevision = manana.toISOString();
+          practicas[practicaIndex].intervalo = 1;
+          practicas[practicaIndex].repeticiones = 0;
+          practicas[practicaIndex].facilidad = 2.5;
+          practicas[practicaIndex].estadoRevision = 'nueva';
+          practicas[practicaIndex].titulo = practicas[practicaIndex].titulo || `Práctica ${data.puntos_obtenidos}/${data.puntos_totales}`;
           practicas[practicaIndex].resultado = {
             puntos_obtenidos: data.puntos_obtenidos,
             puntos_totales: data.puntos_totales,
@@ -6521,8 +6584,48 @@ JSON:`
             resultados: data.resultados
           };
           await setDatos('practicas', practicas);
-          setPracticas([...practicas]); // Actualizar estado con nueva referencia para forzar re-render
-          console.log('✅ Práctica actualizada a completada con revisión programada');
+          setPracticas([...practicas]);
+          console.log('✅ Práctica actualizada con repetición espaciada programada');
+          
+          // 🃏 CONVERTIR PREGUNTAS TIPO FLASHCARD A FLASHCARDS REALES
+          const preguntasFlashcard = practicaActual.preguntas.filter(p => p.tipo === 'flashcard');
+          if (preguntasFlashcard.length > 0) {
+            console.log(`🎴 Convirtiendo ${preguntasFlashcard.length} preguntas flashcard a flashcards reales`);
+            const flashcardsExistentes = await getDatos('flashcards');
+            const nuevasFlashcards = [];
+            
+            for (const pregunta of preguntasFlashcard) {
+              const nuevaFlashcard = {
+                id: Date.now() + Math.random(),
+                tipo: 'clasica',
+                titulo: pregunta.pregunta,
+                contenido: pregunta.respuesta_correcta || '',
+                opciones: pregunta.opciones || [],
+                respuestaCorrecta: pregunta.respuesta_correcta || '',
+                explicacion: pregunta.explicacion || pregunta.feedback || '',
+                tema: pregunta.tema || pregunta.metadata?.tema || '',
+                subtema: pregunta.subtema || '',
+                carpeta: practicaActual.carpeta || '',
+                fecha: ahora.toISOString(),
+                fecha_creacion: ahora.toISOString(),
+                proximaRevision: manana.toISOString(),
+                intervalo: 1,
+                repeticiones: 0,
+                facilidad: 2.5,
+                estadoRevision: 'nueva',
+                archivos: [],
+                imagenes: [],
+                latex: false,
+                dificultad: 'medio'
+              };
+              nuevasFlashcards.push(nuevaFlashcard);
+            }
+            
+            const todasFlashcards = [...flashcardsExistentes, ...nuevasFlashcards];
+            await setDatos('flashcards', todasFlashcards);
+            setFlashcardsActuales(todasFlashcards);
+            console.log(`✅ ${nuevasFlashcards.length} flashcards guardadas en carpeta: ${practicaActual.carpeta}`);
+          }
         } else {
           console.log('⚠️ No se encontró práctica activa para actualizar');
         }
@@ -7359,7 +7462,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         // Guardar práctica generada
         const practicaId = `practica_${Date.now()}`;
         
-        // Extraer carpeta de la ruta
+        // Extraer carpeta de la ruta y normalizarla (relativa a extracciones)
         let carpetaPracticaGuardar = '';
         if (tipoFuentePractica === 'carpeta') {
           carpetaPracticaGuardar = carpetaPractica;
@@ -7369,6 +7472,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           partes.pop(); // Quitar el nombre del archivo
           carpetaPracticaGuardar = partes.join('\\');
         }
+        
+        // Normalizar carpeta: remover parte absoluta y "extracciones\"
+        if (carpetaPracticaGuardar.includes('extracciones\\')) {
+          const partes = carpetaPracticaGuardar.split('extracciones\\');
+          carpetaPracticaGuardar = partes[partes.length - 1] || '';
+        } else if (carpetaPracticaGuardar.includes('extracciones/')) {
+          const partes = carpetaPracticaGuardar.split('extracciones/');
+          carpetaPracticaGuardar = partes[partes.length - 1] || '';
+        }
+        
+        console.log('📁 Carpeta práctica normalizada:', carpetaPracticaGuardar);
         
         const nuevaPractica = {
           id: practicaId,
@@ -7449,47 +7563,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     }
   };
 
-  // =============================
-  // SINCRONIZACIÓN GLOBAL DEL TIMER Y PAUSA
-  // =============================
-  useEffect(() => {
-    // Cambia esta IP por la de tu servidor si accedes desde otra PC
-    const SERVER_IP = window.location.hostname;
-    const fetchTimerSync = async () => {
-      try {
-        const res = await fetch(`http://${SERVER_IP}:8000/timer_sync`);
-        if (res.ok) {
-          const data = await res.json();
-          if (typeof data.timer === 'number') setTiempoRestante(data.timer);
-          if (typeof data.enPausa === 'boolean') setEnDescanso(data.enPausa);
-          if (typeof data.pausaRestante === 'number') setTiempoPausaRestante(data.pausaRestante);
-        }
-      } catch (e) {}
-    };
-    fetchTimerSync();
-    const interval = setInterval(fetchTimerSync, 3000);
-    return () => clearInterval(interval);
-  }, []);
-  
-  useEffect(() => {
-    // Solo sincronizar si eres el "dueño" del timer (puedes mejorar esta lógica)
-    const SERVER_IP = window.location.hostname;
-    const syncTimer = async () => {
-      try {
-        await fetch(`http://${SERVER_IP}:8000/timer_sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timer: tiempoRestante,
-            enPausa: enDescanso,
-            pausaRestante: tiempoPausaRestante,
-            ultimoUpdate: Date.now()
-          })
-        });
-      } catch (e) {}
-    };
-    syncTimer();
-  }, [tiempoRestante, enDescanso, tiempoPausaRestante]);
+  // Los contadores del timer se ejecutan localmente en el navegador
+  // Los datos se envían al servidor solo cuando se envía la sesión de estudio
+  // (Sincronización en red removida para evitar saturación de logs)
   
     // ============================================
     // FUNCIONES DEL SISTEMA DE NOTAS
@@ -8112,8 +8188,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
       const data = await response.json()
       
-      // Contar flashcards por carpeta
-      const flashcards = JSON.parse(localStorage.getItem('flashcards') || '[]')
+      // Contar flashcards por carpeta desde el backend
+      const flashcards = await getDatos('flashcards');
       const carpetasConConteo = (data.carpetas || []).map(carpeta => {
         const totalFlashcards = flashcards.filter(f => f.carpeta === carpeta.ruta).length
         return { ...carpeta, totalFlashcards }
@@ -10023,28 +10099,58 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         {/* Opciones si existen */}
                         {erroresActuales[indiceErrorActual]?.opciones?.length > 0 && (
                           <div className="error-opciones">
-                            <h4 className="opciones-label">Opciones de respuesta:</h4>
+                            <h4 className="opciones-label">
+                              {errorYaRespondido ? 'Tu respuesta:' : '🎯 Intenta responder correctamente:'}
+                            </h4>
                             <div className="opciones-grid">
-                              {erroresActuales[indiceErrorActual].opciones.map((opcion, idx) => (
-                                <div 
-                                  key={idx}
-                                  className={`opcion-item ${
-                                    opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? 'correcta' : 
-                                    opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_usuario) ? 'incorrecta' : ''
-                                  }`}
-                                >
-                                  <span className="opcion-letra">{String.fromCharCode(65 + idx)}</span>
-                                  <span className="opcion-texto">{opcion}</span>
-                                  {opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) && (
-                                    <span className="opcion-icon">✓</span>
-                                  )}
-                                  {opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_usuario) && 
-                                   !opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) && (
-                                    <span className="opcion-icon">✗</span>
-                                  )}
-                                </div>
-                              ))}
+                              {erroresActuales[indiceErrorActual].opciones.map((opcion, idx) => {
+                                const esRespuestaOriginal = opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_usuario);
+                                const esRespuestaCorrecta = opcion.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta);
+                                const esSeleccionada = respuestaErrorSeleccionada && opcion === respuestaErrorSeleccionada;
+                                
+                                let claseOpcion = 'opcion-item';
+                                if (errorYaRespondido) {
+                                  // Ya respondió: mostrar correcta en verde, incorrecta en rojo
+                                  if (esRespuestaCorrecta) {
+                                    claseOpcion += ' correcta';
+                                  } else if (esSeleccionada && !esRespuestaCorrecta) {
+                                    claseOpcion += ' incorrecta';
+                                  }
+                                } else {
+                                  // No ha respondido: hacer clickeable
+                                  claseOpcion += ' clickeable';
+                                  if (esRespuestaOriginal) {
+                                    claseOpcion += ' tu-error-anterior'; // Estilo suave para mostrar su error anterior
+                                  }
+                                }
+                                
+                                return (
+                                  <div 
+                                    key={idx}
+                                    className={claseOpcion}
+                                    onClick={() => !errorYaRespondido && seleccionarRespuestaError(opcion)}
+                                    style={{ cursor: errorYaRespondido ? 'default' : 'pointer' }}
+                                  >
+                                    <span className="opcion-letra">{String.fromCharCode(65 + idx)}</span>
+                                    <span className="opcion-texto">{opcion}</span>
+                                    {errorYaRespondido && esRespuestaCorrecta && (
+                                      <span className="opcion-icon">✓</span>
+                                    )}
+                                    {errorYaRespondido && esSeleccionada && !esRespuestaCorrecta && (
+                                      <span className="opcion-icon">✗</span>
+                                    )}
+                                    {!errorYaRespondido && esRespuestaOriginal && (
+                                      <span className="opcion-hint" title="Esta fue tu respuesta anterior">⚠️</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
+                            {!errorYaRespondido && (
+                              <p className="opciones-instruccion">
+                                💡 Haz clic en la opción que crees correcta
+                              </p>
+                            )}
                           </div>
                         )}
 
@@ -10105,6 +10211,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           className="btn-action btn-skip"
                           onClick={() => {
                             setNotaSesion('');
+                            setRespuestaErrorSeleccionada(null);
+                            setErrorYaRespondido(false);
                             if (indiceErrorActual < erroresActuales.length - 1) {
                               setIndiceErrorActual(indiceErrorActual + 1);
                             } else {
@@ -12649,10 +12757,30 @@ Shortcuts:
                 
                 // Combinar y mapear a formato común - INCLUIR TODOS
                 let todosLosItems = [
-                  ...flashcards.map(f => ({ ...f, tipo: '🎴 Flashcard', tipoInterno: 'flashcard' })),
-                  ...notas.map(n => ({ ...n, tipo: '📝 Nota', tipoInterno: 'nota' })),
-                  ...practicas.map(p => ({ ...p, tipo: '🎯 Práctica', tipoInterno: 'practica' })),
-                  ...examenes.map(e => ({ ...e, tipo: '📋 Examen', tipoInterno: 'examen' }))
+                  ...flashcards.map(f => ({ 
+                    ...f, 
+                    tipo: '🎴 Flashcard', 
+                    tipoInterno: 'flashcard',
+                    titulo: f.titulo || f.pregunta || 'Flashcard sin título'
+                  })),
+                  ...notas.map(n => ({ 
+                    ...n, 
+                    tipo: '📝 Nota', 
+                    tipoInterno: 'nota',
+                    titulo: n.titulo || 'Nota sin título'
+                  })),
+                  ...practicas.map(p => ({ 
+                    ...p, 
+                    tipo: '🎯 Práctica', 
+                    tipoInterno: 'practica',
+                    titulo: p.titulo || p.nombre || 'Práctica sin título'
+                  })),
+                  ...examenes.map(e => ({ 
+                    ...e, 
+                    tipo: '📋 Examen', 
+                    tipoInterno: 'examen',
+                    titulo: e.titulo || e.nombre || 'Examen sin título'
+                  }))
                 ];
                 
                 // Aplicar filtro por tipo
@@ -12754,6 +12882,178 @@ Shortcuts:
                           Ve a la pestaña correspondiente (Flashcards/Notas/Prácticas) para evaluarlos y programar su repetición espaciada.
                         </p>
                       </div>
+                    </div>
+
+                    {/* Mini Calendario Visual */}
+                    <div className="mini-calendario-wrapper">
+                      <h3 className="mini-calendario-titulo">📅 Vista de Calendario</h3>
+                      
+                      <div className="mini-calendario-compacto">
+                        <div className="calendario-nav">
+                          <button 
+                            className="btn-nav-cal"
+                            onClick={() => {
+                              if (mesCalendario === 0) {
+                                setMesCalendario(11);
+                                setAnioCalendario(anioCalendario - 1);
+                              } else {
+                                setMesCalendario(mesCalendario - 1);
+                              }
+                            }}
+                          >
+                            ‹
+                          </button>
+                          <span className="mes-actual">
+                            {new Date(anioCalendario, mesCalendario).toLocaleDateString('es-ES', { 
+                              month: 'long', 
+                              year: 'numeric' 
+                            })}
+                          </span>
+                          <button 
+                            className="btn-nav-cal"
+                            onClick={() => {
+                              if (mesCalendario === 11) {
+                                setMesCalendario(0);
+                                setAnioCalendario(anioCalendario + 1);
+                              } else {
+                                setMesCalendario(mesCalendario + 1);
+                              }
+                            }}
+                          >
+                            ›
+                          </button>
+                        </div>
+
+                        <div className="calendario-grid-compacto">
+                          {/* Cabecera */}
+                          {['L', 'M', 'X', 'J', 'V', 'S', 'D'].map(dia => (
+                            <div key={dia} className="cal-header">{dia}</div>
+                          ))}
+                          
+                          {(() => {
+                            const primerDia = new Date(anioCalendario, mesCalendario, 1);
+                            const ultimoDia = new Date(anioCalendario, mesCalendario + 1, 0);
+                            const diasEnMes = ultimoDia.getDate();
+                            
+                            let primerDiaSemana = primerDia.getDay();
+                            primerDiaSemana = primerDiaSemana === 0 ? 6 : primerDiaSemana - 1;
+                            
+                            const dias = [];
+                            const hoy = new Date();
+                            hoy.setHours(0, 0, 0, 0);
+                            
+                            // Días vacíos
+                            for (let i = 0; i < primerDiaSemana; i++) {
+                              dias.push(<div key={`vacio-${i}`} className="cal-dia-vacio"></div>);
+                            }
+                            
+                            // Días del mes
+                            for (let dia = 1; dia <= diasEnMes; dia++) {
+                              const fechaDia = new Date(anioCalendario, mesCalendario, dia);
+                              fechaDia.setHours(0, 0, 0, 0);
+                              
+                              // Contar items para este día (CON Y SIN proximaRevision)
+                              const itemsEnDia = todosLosItems.filter(item => {
+                                if (item.proximaRevision) {
+                                  const fechaItem = new Date(item.proximaRevision);
+                                  fechaItem.setHours(0, 0, 0, 0);
+                                  return fechaItem.getTime() === fechaDia.getTime();
+                                }
+                                // Si no tiene proximaRevision, mostrar en "hoy" como pendiente
+                                if (!item.proximaRevision && fechaDia.getTime() === hoy.getTime()) {
+                                  return true;
+                                }
+                                return false;
+                              });
+                              
+                              const esHoy = fechaDia.getTime() === hoy.getTime();
+                              const esFechaSeleccionada = fechaSeleccionada && 
+                                fechaDia.getTime() === new Date(fechaSeleccionada).getTime();
+                              const tieneItems = itemsEnDia.length > 0;
+                              
+                              dias.push(
+                                <div 
+                                  key={dia}
+                                  className={`cal-dia ${esHoy ? 'es-hoy' : ''} ${esFechaSeleccionada ? 'seleccionado' : ''} ${tieneItems ? 'tiene-items' : ''}`}
+                                  onClick={() => {
+                                    if (tieneItems) {
+                                      setFechaSeleccionada(fechaDia.toISOString());
+                                    }
+                                  }}
+                                >
+                                  <span>{dia}</span>
+                                  {tieneItems && <span className="cal-dot">{itemsEnDia.length}</span>}
+                                </div>
+                              );
+                            }
+                            
+                            return dias;
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Detalles de fecha seleccionada */}
+                      {fechaSeleccionada && (() => {
+                        const fechaSel = new Date(fechaSeleccionada);
+                        fechaSel.setHours(0, 0, 0, 0);
+                        const hoy = new Date();
+                        hoy.setHours(0, 0, 0, 0);
+                        
+                        const itemsDelDia = todosLosItems.filter(item => {
+                          if (item.proximaRevision) {
+                            const fechaItem = new Date(item.proximaRevision);
+                            fechaItem.setHours(0, 0, 0, 0);
+                            return fechaItem.getTime() === fechaSel.getTime();
+                          }
+                          // Items sin proximaRevision en "hoy"
+                          if (!item.proximaRevision && fechaSel.getTime() === hoy.getTime()) {
+                            return true;
+                          }
+                          return false;
+                        });
+                        
+                        if (itemsDelDia.length === 0) return null;
+                        
+                        return (
+                          <div className="detalle-fecha">
+                            <div className="detalle-header">
+                              <span>
+                                {new Date(fechaSeleccionada).toLocaleDateString('es-ES', { 
+                                  weekday: 'long', 
+                                  day: 'numeric', 
+                                  month: 'long'
+                                })}
+                              </span>
+                              <button onClick={() => setFechaSeleccionada(null)}>✕</button>
+                            </div>
+                            <div className="detalle-lista">
+                              {itemsDelDia.map((item, idx) => (
+                                <div 
+                                  key={idx} 
+                                  className="detalle-item"
+                                  onClick={() => setItemMapaRepeticion(item)}
+                                >
+                                  <span className="item-icono">{item.tipo.split(' ')[0]}</span>
+                                  <div className="item-texto">
+                                    <div className="item-nombre">{item.titulo}</div>
+                                    <div className="item-stats">
+                                      {item.proximaRevision ? (
+                                        <>
+                                          <span>📅 {item.intervalo || 0}d</span>
+                                          <span>⚡ {(item.facilidad || 2.5).toFixed(1)}</span>
+                                          <span>👁️ {item.repeticiones || 0}×</span>
+                                        </>
+                                      ) : (
+                                        <span className="pendiente-badge">🆕 Pendiente de evaluar</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Controles de Filtro */}

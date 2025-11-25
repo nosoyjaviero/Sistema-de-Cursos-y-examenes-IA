@@ -1,0 +1,74 @@
+{
+  "id": "20251125_104314",
+  "archivo": "examen_20251125_104314.json",
+  "fecha_completado": "2025-11-25T10:43:14.799592",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 4,
+  "puntos_totales": 6,
+  "porcentaje": 66.66666666666666,
+  "resultados": [
+    {
+      "pregunta": "¿Qué es el diseño centrado en usuario?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "B",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué es el proceso de diseño",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué es el diseño de sistemas y servicios?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "B",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El arte y el diseño son términos intercambiables.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "El proceso de diseño es lineal.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "Todo lo relacionado con la tecnología es un aspecto importante para los diseñadores.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true
+}

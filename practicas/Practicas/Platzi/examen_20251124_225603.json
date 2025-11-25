@@ -1,0 +1,94 @@
+{
+  "id": "20251124_225603",
+  "archivo": "examen_20251124_225603.json",
+  "fecha_completado": "2025-11-24T22:56:03.194418",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 4,
+  "puntos_totales": 8,
+  "porcentaje": 50.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué es la Ley de Continuidad de Gestalt?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué es la Ley de Figura y Fondo?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué es el Diseño Basado en Valores?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "¿Qué es la Ley de Similitud?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "B",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El Diseño de la Experiencia es un término reemplazado por el Diseño Basado en Valores.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "La Ley de Continuidad es un concepto relacionado con la percepción visual.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "La Ley de Similitud es un principio relacionado con el uso de texturas en diseños.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "Describa brevemente qué es el Diseño Basado en Valores.",
+      "tipo": "short_answer",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "Diseño que identifica y comunica los valores de una marca a través de elementos visuales.",
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true
+}
