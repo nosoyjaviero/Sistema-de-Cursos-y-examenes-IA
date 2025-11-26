@@ -1,0 +1,41 @@
+{
+  "id": "20251125_162742",
+  "archivo": "examen_20251125_162742.json",
+  "fecha_completado": "2025-11-25T16:27:42.048399",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 1,
+  "puntos_totales": 2,
+  "porcentaje": 50.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué se entiende por 'práctica educativa' según el contenido?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "La práctica educativa se centra únicamente en la teoría.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true,
+  "proximaRevision": "2025-11-26T16:27:42.048399",
+  "ultimaRevision": "2025-11-25T16:27:42.048399",
+  "intervalo": 1,
+  "repeticiones": 0,
+  "facilidad": 2.5,
+  "estadoRevision": "nueva",
+  "titulo": "Platzi"
+}

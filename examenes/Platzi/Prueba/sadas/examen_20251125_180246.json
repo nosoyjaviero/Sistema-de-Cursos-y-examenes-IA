@@ -1,0 +1,121 @@
+{
+  "id": "20251125_180246",
+  "archivo": "examen_20251125_180246.json",
+  "fecha_completado": "2025-11-25T18:02:46.327728",
+  "carpeta_ruta": "Platzi\\Prueba\\sadas",
+  "carpeta_nombre": "sadas",
+  "puntos_obtenidos": 0.0,
+  "puntos_totales": 22,
+  "porcentaje": 0.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué dice la Ley de Figura-Fondo sobre cómo percibe nuestra mente las imágenes?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Nuestra mente separa naturalmente los objetos del espacio que los rodea",
+        "B) La figura y el fondo se perciben igualmente importantes",
+        "C) El diseño gráfico no tiene influencia en la percepción de la imagen",
+        "D) La ley no existe"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cómo se utiliza la ambigüedad (figura/fondo reversibles) en el diseño gráfico?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "Muchos empresarios y profesionales subestiman el valor de un documento firmado digitalmente fuera del contexto correcto.\nEso es justo lo que aprovechan estas páginas.",
+      "respuesta_correcta": "Se usa para crear logotipos creativos, ilustraciones inteligentes y generar profundidad visual.",
+      "puntos": 0.0,
+      "puntos_maximos": 3,
+      "feedback": "Evaluación automática: 0.0/3 puntos basado en similitud de conceptos."
+    },
+    {
+      "pregunta": "Según el contenido, la Ley de Figura-Fondo es importante en diseño porque permite crear una jerarquía visual clara.",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "verdadero",
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cuál es un ejemplo de cómo se puede aplicar la ambigüedad en diseño gráfico según el contenido?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Un logo con una forma clara y definida",
+        "B) Una ilustración que juega con la percepción del cerebro",
+        "C) Un cartel plano sin textos o imágenes destacadas",
+        "D) Un ícono simple sin significado adicional"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "B",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cómo utiliza el diseño gráfico la Ley de Continuidad de Gestalt?",
+      "tipo": "corta",
+      "opciones": [],
+      "respuesta_usuario": "Muchos empresarios y profesionales subestiman el valor de un documento firmado digitalmente fuera del contexto correcto.\nEso es justo lo que aprovechan estas páginas.",
+      "respuesta_correcta": "La Ley de Continuidad de Gestalt se utiliza en el diseño gráfico para crear líneas y formas continuas que guíen la atención del usuario.",
+      "puntos": 0.0,
+      "puntos_maximos": 3,
+      "feedback": "El texto a comparar no menciona la Ley de Continuidad de Gestalt ni su aplicación en el diseño gráfico, por lo que no se puede calcular una puntuación.\\n\\n❌ Conceptos que te faltan comprender: Ley de Continuidad de Gestalt, diseño gráfico"
+    },
+    {
+      "pregunta": "¿Cuál es el nombre de la unidad gráfica digital más pequeña que existe?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Pixel",
+        "B) Píxel",
+        "C) Puntillo",
+        "D) Fragmento"
+      ],
+      "respuesta_usuario": "",
+      "respuesta_correcta": "A",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Cuál es el propósito principal de la Ley de Figura-Fondo en diseño?",
+      "tipo": "multiple",
+      "opciones": [
+        "A) Crear contraste entre lo importante y lo que no",
+        "B) Jugar con la ambigüedad (figura/fondo reversibles)",
+        "C) Crear profundidad visual",
+        "D) Todos los anteriores"
+      ],
+      "respuesta_usuario": "B",
+      "respuesta_correcta": "D",
+      "puntos": 0,
+      "puntos_maximos": 3,
+      "feedback": "Incorrecto. La respuesta correcta es: D"
+    },
+    {
+      "pregunta": "Según el contenido, ¿la Ley de Figura-Fondo es aplicada únicamente en la creación de logos?",
+      "tipo": "verdadero-falso",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 2,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": false,
+  "proximaRevision": "2025-11-26T18:02:46.327728",
+  "ultimaRevision": "2025-11-25T18:02:46.327728",
+  "intervalo": 1,
+  "repeticiones": 0,
+  "facilidad": 2.5,
+  "estadoRevision": "nueva",
+  "titulo": "sadas"
+}

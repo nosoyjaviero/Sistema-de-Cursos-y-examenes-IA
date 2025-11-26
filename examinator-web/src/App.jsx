@@ -774,7 +774,7 @@ function App() {
     const cargarDatosIniciales = async () => {
       try {
         const notas = await getDatos('notas');
-        const flashcards = await getDatos('flashcards');
+        const flashcards = await cargarTodasFlashcards();
         
         if (notas && notas.length > 0) {
           setNotasGuardadas(notas);
@@ -815,23 +815,18 @@ function App() {
       const cargarDatosCalendario = async () => {
         calendarioCargandoRef.current = true;
         try {
-          const flashcards = await getDatos('flashcards');
+          const flashcards = await cargarTodasFlashcards();
           const notas = await getDatos('notas');
           let practicas = await getDatos('practicas');
           
-          // Cargar exámenes completados desde el backend (no localStorage)
+          // 🔥 Cargar exámenes desde el nuevo sistema de carpetas
           let examenes = [];
           try {
-            const responseExamenes = await fetch(`${API_URL}/api/examenes/listar`);
-            const dataExamenes = await responseExamenes.json();
-            if (dataExamenes.success) {
-              examenes = dataExamenes.completados || [];
-              console.log('📅 Exámenes cargados para calendario:', examenes.length);
-            }
+            examenes = await getDatos('examenes');
+            console.log('📅 Exámenes cargados para calendario:', examenes.length);
           } catch (error) {
             console.error('Error cargando exámenes para calendario:', error);
-            // Fallback a localStorage si falla el backend
-            examenes = JSON.parse(localStorage.getItem('examenes') || '[]');
+            examenes = [];
           }
           
           // Normalizar nombres de campos (snake_case a camelCase)
@@ -2012,7 +2007,7 @@ function App() {
       // Cargar flashcards desde archivo
       const cargarFlashcardsAsync = async () => {
         try {
-          const todasFlashcards = await getDatos('flashcards');
+          const todasFlashcards = await cargarTodasFlashcards();
           
           // Filtrar flashcards que necesitan repaso (según repetición espaciada)
           const flashcardsParaRepasar = filtrarItemsParaRepasar(todasFlashcards);
@@ -2219,10 +2214,30 @@ function App() {
    */
   const filtrarItemsParaRepasar = (items) => {
     const ahora = new Date();
+    const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
+    
     const itemsParaRepasar = items.filter(item => {
-      if (!item.proximaRevision) return true; // Nuevo item
+      // 🔥 REGLA 1: Si ya fue revisado HOY, NO mostrarlo
+      if (item.ultima_revision || item.ultimaRevision || item.fechaRevision) {
+        const fechaUltimaRevision = new Date(
+          item.ultima_revision || item.ultimaRevision || item.fechaRevision
+        );
+        
+        // Si la última revisión fue hoy, NO incluirlo
+        if (fechaUltimaRevision >= hoyInicio) {
+          return false;
+        }
+      }
+      
+      // 🔥 REGLA 2: Si NO tiene proximaRevision, es nuevo (mostrar solo si nunca revisado)
+      if (!item.proximaRevision) {
+        // Solo mostrar si NUNCA ha sido revisado
+        return !item.ultima_revision && !item.ultimaRevision && !item.fechaRevision;
+      }
+      
+      // 🔥 REGLA 3: Si tiene proximaRevision, verificar si ya llegó la fecha
       const fechaRevision = new Date(item.proximaRevision);
-      return fechaRevision <= ahora; // Necesita repaso
+      return fechaRevision <= ahora;
     });
     
     // Ordenar por prioridad: nuevos primero, luego por fecha de revisión
@@ -2240,7 +2255,7 @@ function App() {
    * @returns {Object} Estadísticas de rendimiento
    */
   const calcularRendimientoCarpeta = async (rutaCarpeta) => {
-    const flashcards = await getDatos('flashcards');
+    const flashcards = await cargarTodasFlashcards();
     const notas = await getDatos('notas');
     const practicas = await getDatos('practicas');
     
@@ -2342,28 +2357,154 @@ function App() {
   // ============================================
   // 🎴 FUNCIONES FASE 3 - FLASHCARDS
   // ============================================
+
+  // Función auxiliar para guardar flashcards en su carpeta correspondiente
+  const guardarFlashcardEnCarpeta = async (flashcard) => {
+    const carpeta = flashcard.carpeta || '';
+    
+    if (!carpeta) {
+      console.warn('⚠️ Flashcard sin carpeta, usando "Sin carpeta":', flashcard.id);
+      flashcard.carpeta = 'Sin carpeta';
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/datos/flashcards/carpeta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flashcard: flashcard,
+          carpeta: flashcard.carpeta
+        })
+      });
+
+      if (!response.ok) throw new Error('Error al guardar flashcard');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error guardando flashcard en carpeta:', error);
+      throw error;
+    }
+  };
+
+  // Función auxiliar para guardar prácticas en su carpeta correspondiente
+  const guardarPracticaEnCarpeta = async (practica) => {
+    const carpeta = practica.carpeta || '';
+    
+    if (!carpeta) {
+      console.warn('⚠️ Práctica sin carpeta, usando "Sin carpeta":', practica.id);
+      practica.carpeta = 'Sin carpeta';
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/datos/practicas/carpeta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          practica: practica,
+          carpeta: practica.carpeta
+        })
+      });
+
+      if (!response.ok) throw new Error('Error al guardar práctica');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error guardando práctica en carpeta:', error);
+      throw error;
+    }
+  };
+
+  // Función auxiliar para guardar exámenes en su carpeta correspondiente
+  const guardarExamenEnCarpeta = async (examen) => {
+    const carpeta = examen.carpeta || '';
+    
+    if (!carpeta) {
+      console.warn('⚠️ Examen sin carpeta, usando "Sin carpeta":', examen.id);
+      examen.carpeta = 'Sin carpeta';
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/datos/examenes/carpeta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          examen: examen,
+          carpeta: examen.carpeta
+        })
+      });
+
+      if (!response.ok) throw new Error('Error al guardar examen');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error guardando examen en carpeta:', error);
+      throw error;
+    }
+  };
+
+  // Función auxiliar para guardar notas en su carpeta correspondiente
+  const guardarNotaEnCarpeta = async (nota) => {
+    const carpeta = nota.carpeta || '';
+    
+    if (!carpeta) {
+      console.warn('⚠️ Nota sin carpeta, usando "Sin carpeta":', nota.id);
+      nota.carpeta = 'Sin carpeta';
+    }
+    
+    try {
+      const response = await fetch(`${API_URL}/datos/notas/carpeta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nota: nota,
+          carpeta: nota.carpeta
+        })
+      });
+
+      if (!response.ok) throw new Error('Error al guardar nota');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error guardando nota en carpeta:', error);
+      throw error;
+    }
+  };
   
   const evaluarFlashcard = async (dificultad) => {
     // dificultad: 'facil', 'medio', 'dificil'
     const flashcardActual = flashcardsSesion[indiceFlashcardActual];
     
     // Actualizar flashcard con algoritmo SM-2 (SuperMemo 2)
-    const flashcardsGuardadas = await getDatos('flashcards');
-    const flashcardsActualizadas = flashcardsGuardadas.map(f => {
-      if (f.id === flashcardActual.id) {
-        return calcularProximaRevision(f, dificultad);
+    const flashcardsGuardadas = await cargarTodasFlashcards();
+    const flashcardActualizada = flashcardsGuardadas.find(f => f.id === flashcardActual.id);
+    
+    if (flashcardActualizada) {
+      const flashcardConNuevosDatos = calcularProximaRevision(flashcardActualizada, dificultad);
+      
+      // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
+      try {
+        await guardarFlashcardEnCarpeta(flashcardConNuevosDatos);
+        
+        // Actualizar estado local
+        const flashcardsActualizadas = flashcardsGuardadas.map(f => 
+          f.id === flashcardActual.id ? flashcardConNuevosDatos : f
+        );
+        setFlashcardsActuales(flashcardsActualizadas);
+        
+        console.log('📊 Flashcard evaluada y guardada en carpeta:', {
+          dificultad,
+          carpeta: flashcardConNuevosDatos.carpeta,
+          flashcard: flashcardConNuevosDatos
+        });
+      } catch (error) {
+        console.error('Error guardando flashcard evaluada:', error);
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error al guardar la evaluación'
+        });
+        return;
       }
-      return f;
-    });
-    
-    // Guardar en archivo
-    await setDatos('flashcards', flashcardsActualizadas);
-    setFlashcardsActuales(flashcardsActualizadas);
-    
-    console.log('📊 Flashcard evaluada:', {
-      dificultad,
-      flashcard: flashcardsActualizadas.find(f => f.id === flashcardActual.id)
-    });
+    }
     
     setEstadisticasSesion(prev => ({
       ...prev,
@@ -2590,10 +2731,8 @@ function App() {
           estadoRevision: 'nueva'
         }
         
-        // Guardar en archivo con la nueva API
-        const notasActuales = await getDatos('notas');
-        notasActuales.push(nuevaNota);
-        await setDatos('notas', notasActuales);
+        // Guardar en carpeta con la nueva API
+        await guardarNotaEnCarpeta(nuevaNota);
         
         // Actualizar el estado de notas guardadas
         setNotasGuardadas(notasActuales)
@@ -2893,14 +3032,21 @@ function App() {
         tags: editorNotaTags.split(',').map(t => t.trim()).filter(t => t),
         vinculado_a_documento: vincularADocumento ? documentoActual?.id : null,
         carpeta: rutaNotasActual || '',
+        fecha: ahora,
         fecha_creacion: ahora,
-        sesion_id: sesionActual?.id || `session_${Date.now()}`
+        fechaModificacion: ahora,
+        sesion_id: sesionActual?.id || `session_${Date.now()}`,
+        // Repetición espaciada
+        proximaRevision: new Date().toISOString(),
+        intervalo: 1,
+        repeticiones: 0,
+        facilidad: 2.5,
+        estadoRevision: 'nueva'
       };
       
-      // 1. Guardar usando getDatos/setDatos
-      const notasActuales = await getDatos('notas');
-      const notasActualizadas = [...notasActuales, nuevaNota];
-      await setDatos('notas', notasActualizadas);
+      // 1. Guardar usando el sistema per-carpeta
+      await guardarNotaEnCarpeta(nuevaNota);
+      const notasActualizadas = [...notasGuardadas, nuevaNota];
       setNotasGuardadas(notasActualizadas);
       
       // 2. Guardar como archivo .txt en el servidor
@@ -3008,15 +3154,24 @@ function App() {
         return;
       }
       
-      // Guardar flashcards (en producción: POST /api/flashcards/bulk-create)
-      const flashcardsExistentes = await getDatos('flashcards');
-      const todasFlashcards = [...flashcardsExistentes, ...flashcardsNuevas];
-      await setDatos('flashcards', todasFlashcards);
-      
-      setMensaje({
-        tipo: 'success',
-        texto: `✅ ${flashcardsNuevas.length} flashcards creadas y añadidas al scheduler`
-      });
+      // 🔥 GUARDAR CADA FLASHCARD EN SU CARPETA CORRESPONDIENTE
+      try {
+        for (const flashcard of flashcardsNuevas) {
+          await guardarFlashcardEnCarpeta(flashcard);
+        }
+        
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ ${flashcardsNuevas.length} flashcards creadas en carpeta: ${flashcardsNuevas[0].carpeta}`
+        });
+      } catch (error) {
+        console.error('Error guardando flashcards:', error);
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error al guardar flashcards'
+        });
+        return;
+      }
       
       setModalFlashcardCreator(false);
       setTextoSeleccionadoFlashcard('');
@@ -6072,7 +6227,7 @@ function App() {
       console.log('⚙️ Configuración de generación:')
       console.log(`   Prompt personalizado: ${promptPersonalizado ? 'SÍ (' + promptPersonalizado.length + ' caracteres)' : 'NO'}`)
       console.log(`   Prompt sistema: ${promptSistema ? 'SÍ (' + promptSistema.length + ' caracteres)' : 'NO'}`)
-      console.log(`   Preguntas: ${configExamen.num_multiple} múltiple, ${configExamen.num_corta} corta, ${configExamen.num_desarrollo} desarrollo`)
+      console.log(`   Preguntas: ${configExamen.num_multiple} múltiple, ${configExamen.num_verdadero_falso || 0} V/F, ${configExamen.num_corta} corta, ${configExamen.num_desarrollo} desarrollo`)
       
       // Generar examen con la IA
       const respExamen = await fetch(`${API_URL}/api/generar-examen`, {
@@ -6082,9 +6237,10 @@ function App() {
           contenido: contenidoCompleto,
           prompt_personalizado: promptPersonalizado,
           prompt_sistema: promptSistema || null,  // Enviar el prompt del sistema si existe
-          num_multiple: configExamen.num_multiple,
-          num_corta: configExamen.num_corta,
-          num_desarrollo: configExamen.num_desarrollo,
+          num_multiple: configExamen.num_multiple || 0,
+          num_corta: configExamen.num_corta || 0,
+          num_desarrollo: configExamen.num_desarrollo || 0,
+          num_verdadero_falso: configExamen.num_verdadero_falso || 0,  // 🔥 AGREGAR VERDADERO/FALSO
           session_id: sessionId
         }),
         signal: controller.signal
@@ -6301,7 +6457,8 @@ JSON:`
           fecha: new Date().toISOString()
         };
         
-        await setDatos('practicas', practicas);
+        // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
+        await guardarPracticaEnCarpeta(practicas[practicaIndex]);
         
         setMensaje({
           tipo: 'success',
@@ -6583,16 +6740,16 @@ JSON:`
             porcentaje: data.porcentaje,
             resultados: data.resultados
           };
-          await setDatos('practicas', practicas);
+          
+          // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
+          await guardarPracticaEnCarpeta(practicas[practicaIndex]);
           setPracticas([...practicas]);
-          console.log('✅ Práctica actualizada con repetición espaciada programada');
+          console.log('✅ Práctica actualizada con repetición espaciada programada en carpeta:', practicas[practicaIndex].carpeta);
           
           // 🃏 CONVERTIR PREGUNTAS TIPO FLASHCARD A FLASHCARDS REALES
           const preguntasFlashcard = practicaActual.preguntas.filter(p => p.tipo === 'flashcard');
           if (preguntasFlashcard.length > 0) {
             console.log(`🎴 Convirtiendo ${preguntasFlashcard.length} preguntas flashcard a flashcards reales`);
-            const flashcardsExistentes = await getDatos('flashcards');
-            const nuevasFlashcards = [];
             
             for (const pregunta of preguntasFlashcard) {
               const nuevaFlashcard = {
@@ -6618,16 +6775,181 @@ JSON:`
                 latex: false,
                 dificultad: 'medio'
               };
-              nuevasFlashcards.push(nuevaFlashcard);
+              
+              // Guardar cada flashcard en su carpeta individual
+              try {
+                await fetch(`${API_URL}/datos/flashcards/carpeta`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    flashcard: nuevaFlashcard,
+                    carpeta: practicaActual.carpeta || ''
+                  })
+                });
+              } catch (error) {
+                console.error('Error guardando flashcard de práctica:', error);
+              }
             }
             
-            const todasFlashcards = [...flashcardsExistentes, ...nuevasFlashcards];
-            await setDatos('flashcards', todasFlashcards);
+            // Recargar todas las flashcards
+            const todasFlashcards = await cargarTodasFlashcards();
             setFlashcardsActuales(todasFlashcards);
-            console.log(`✅ ${nuevasFlashcards.length} flashcards guardadas en carpeta: ${practicaActual.carpeta}`);
+            console.log(`✅ ${preguntasFlashcard.length} flashcards guardadas en carpeta: ${practicaActual.carpeta}`);
           }
+        } else if (!esPractica) {
+          // 🔥 SI ES UN EXAMEN (NO PRÁCTICA), GUARDARLO EN SU CARPETA
+          console.log('📝 Guardando examen completado en carpeta:', carpetaExamen?.ruta);
+          const ahora = new Date();
+          const manana = new Date(ahora);
+          manana.setDate(manana.getDate() + 1);
+          
+          const nuevoExamen = {
+            id: `examen_${Date.now()}`,
+            preguntas: preguntasExamen,
+            respuestas: respuestasUsuario,
+            completado: true,
+            carpeta: carpetaExamen?.ruta || 'Sin carpeta',
+            titulo: `Examen ${data.puntos_obtenidos}/${data.puntos_totales}`,
+            fecha: ahora.toISOString(),
+            fecha_creacion: ahora.toISOString(),
+            fecha_completada: ahora.toISOString(),
+            ultimaRevision: ahora.toISOString(),
+            proximaRevision: manana.toISOString(),
+            intervalo: 1,
+            repeticiones: 0,
+            facilidad: 2.5,
+            estadoRevision: 'nueva',
+            resultado: {
+              puntos_obtenidos: data.puntos_obtenidos,
+              puntos_totales: data.puntos_totales,
+              porcentaje: data.porcentaje,
+              resultados: data.resultados
+            }
+          };
+          
+          await guardarExamenEnCarpeta(nuevoExamen);
+          console.log('✅ Examen guardado en carpeta:', nuevoExamen.carpeta);
         } else {
           console.log('⚠️ No se encontró práctica activa para actualizar');
+        }
+        
+        // 🔥 CONVERTIR ERRORES Y ACIERTOS EN FLASHCARDS AUTOMÁTICAMENTE
+        if (data.resultados && Array.isArray(data.resultados)) {
+          const ahora = new Date();
+          const manana = new Date(ahora);
+          manana.setDate(manana.getDate() + 1);
+          
+          const errores = data.resultados.filter(r => {
+            const porcentaje = (r.puntos / r.puntos_maximos) * 100;
+            return porcentaje < 60; // Menos de 60% = error
+          });
+          
+          const aciertos = data.resultados.filter(r => {
+            const porcentaje = (r.puntos / r.puntos_maximos) * 100;
+            return porcentaje >= 60; // 60% o más = acierto
+          });
+          
+          // 🎯 ERRORES: Revisión mañana
+          if (errores.length > 0) {
+            console.log(`🎯 Creando ${errores.length} flashcards de errores`);
+            
+            for (const error of errores) {
+              const nuevaFlashcard = {
+                id: Date.now() + Math.random(),
+                tipo: 'clasica',
+                titulo: error.pregunta,
+                contenido: error.respuesta_correcta || error.feedback || '',
+                opciones: error.opciones || [],
+                respuestaCorrecta: error.respuesta_correcta || '',
+                explicacion: error.feedback || '',
+                tema: 'Error de examen',
+                subtema: '',
+                carpeta: carpetaExamen?.ruta || 'Sin carpeta',
+                fecha: ahora.toISOString(),
+                fecha_creacion: ahora.toISOString(),
+                proximaRevision: manana.toISOString(), // 🔥 Próxima revisión MAÑANA
+                intervalo: 1,
+                repeticiones: 0,
+                facilidad: 2.5,
+                estadoRevision: 'nueva',
+                archivos: [],
+                imagenes: [],
+                latex: false,
+                dificultad: 'medio'
+              };
+              
+              // Guardar flashcard en carpeta
+              try {
+                await fetch(`${API_URL}/datos/flashcards/carpeta`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    flashcard: nuevaFlashcard,
+                    carpeta: carpetaExamen?.ruta || 'Sin carpeta'
+                  })
+                });
+              } catch (error) {
+                console.error('Error guardando flashcard de error:', error);
+              }
+            }
+            console.log(`✅ ${errores.length} flashcards de errores creadas para revisión mañana`);
+          }
+          
+          // ✅ ACIERTOS: Revisión entre 3 y 10 días
+          if (aciertos.length > 0) {
+            console.log(`✅ Creando ${aciertos.length} flashcards de aciertos`);
+            
+            for (const acierto of aciertos) {
+              const diasAleatorios = Math.floor(Math.random() * 8) + 3; // 3-10 días
+              const fechaRevision = new Date(ahora);
+              fechaRevision.setDate(fechaRevision.getDate() + diasAleatorios);
+              
+              const nuevaFlashcard = {
+                id: Date.now() + Math.random(),
+                tipo: 'clasica',
+                titulo: acierto.pregunta,
+                contenido: acierto.respuesta_correcta || acierto.feedback || '',
+                opciones: acierto.opciones || [],
+                respuestaCorrecta: acierto.respuesta_correcta || '',
+                explicacion: acierto.feedback || '',
+                tema: 'Acierto de examen',
+                subtema: '',
+                carpeta: carpetaExamen?.ruta || 'Sin carpeta',
+                fecha: ahora.toISOString(),
+                fecha_creacion: ahora.toISOString(),
+                proximaRevision: fechaRevision.toISOString(), // 🔥 Revisión en 3-10 días
+                intervalo: diasAleatorios,
+                repeticiones: 1,
+                facilidad: 2.6, // Un poco más fácil porque ya acertó
+                estadoRevision: 'en_progreso',
+                archivos: [],
+                imagenes: [],
+                latex: false,
+                dificultad: 'medio'
+              };
+              
+              // Guardar flashcard en carpeta
+              try {
+                await fetch(`${API_URL}/datos/flashcards/carpeta`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    flashcard: nuevaFlashcard,
+                    carpeta: carpetaExamen?.ruta || 'Sin carpeta'
+                  })
+                });
+              } catch (error) {
+                console.error('Error guardando flashcard de acierto:', error);
+              }
+            }
+            console.log(`✅ ${aciertos.length} flashcards de aciertos creadas para revisión en 3-10 días`);
+          }
+          
+          // Recargar flashcards si se creó alguna
+          if (errores.length > 0 || aciertos.length > 0) {
+            const todasFlashcards = await cargarTodasFlashcards();
+            setFlashcardsActuales(todasFlashcards);
+          }
         }
         
         setMensaje({
@@ -6775,7 +7097,9 @@ JSON:`
       if (practicaIndex !== -1) {
         // Actualizar respuestas parciales
         practicas[practicaIndex].respuestas = respuestasUsuario;
-        await setDatos('practicas', practicas);
+        
+        // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
+        await guardarPracticaEnCarpeta(practicas[practicaIndex]);
         console.log('✅ Progreso guardado automáticamente');
       }
     }
@@ -7521,11 +7845,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           }
         };
         
-        // Guardar en archivo
+        // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
+        await guardarPracticaEnCarpeta(nuevaPractica);
         const practicas = await getDatos('practicas');
-        practicas.push(nuevaPractica);
-        await setDatos('practicas', practicas);
-        setPracticas(practicas); // Actualizar estado para forzar re-render
+        setPracticas([...practicas, nuevaPractica]); // Actualizar estado para forzar re-render
         
         // 🔥 ESTABLECER CARPETA DE PRÁCTICA (no examen)
         setCarpetaExamen({
@@ -7867,8 +8190,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     const index = practicas.findIndex(p => p.id === practicaId);
     if (index !== -1) {
       practicas[index].carpeta = nuevaRuta;
-      await setDatos('practicas', practicas);
-      setPracticas(practicas); // Actualizar estado
+      
+      // 🔥 GUARDAR EN NUEVA CARPETA
+      await guardarPracticaEnCarpeta(practicas[index]);
+      setPracticas([...practicas]); // Actualizar estado
       setMensaje({
         tipo: 'success',
         texto: '✅ Práctica movida correctamente'
@@ -7948,9 +8273,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
       console.log('💾 Guardando nota:', notaNueva)
 
+      await guardarNotaEnCarpeta(notaNueva);
       const notasActualizadas = [...notasGuardadas, notaNueva]
       setNotasGuardadas(notasActualizadas)
-      await setDatos('notas', notasActualizadas);
       
       setMensaje({
         tipo: 'success',
@@ -8023,8 +8348,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       notasActualizadas = [...(notasGuardadas || []), notaNueva]
     }
 
+    await guardarNotaEnCarpeta(notaNueva);
     setNotasGuardadas(notasActualizadas)
-    await setDatos('notas', notasActualizadas);
     
     setMensaje({
       tipo: 'success',
@@ -8037,27 +8362,41 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   const eliminarNota = async (idNota) => {
     if (!confirm('¿Estás seguro de eliminar esta nota?')) return
     
-    const notasActualizadas = (notasGuardadas || []).filter(n => n.id !== idNota)
-    setNotasGuardadas(notasActualizadas)
-    await setDatos('notas', notasActualizadas);
+    const nota = (notasGuardadas || []).find(n => n.id === idNota);
+    const carpeta = nota?.carpeta || '';
     
-    setMensaje({
-      tipo: 'success',
-      texto: '🗑️ Nota eliminada'
-    })
+    try {
+      const response = await fetch(`${API_URL}/datos/notas/${idNota}?carpeta=${encodeURIComponent(carpeta)}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) throw new Error('Error al eliminar');
+      
+      const notasActualizadas = (notasGuardadas || []).filter(n => n.id !== idNota)
+      setNotasGuardadas(notasActualizadas)
+      
+      setMensaje({
+        tipo: 'success',
+        texto: '🗑️ Nota eliminada'
+      })
+    } catch (error) {
+      console.error('Error eliminando nota:', error);
+      setMensaje({ tipo: 'error', texto: '❌ Error al eliminar nota' });
+    }
   }
   
   // Evaluar comprensión de nota con repetición espaciada
   const evaluarNota = async (idNota, dificultad) => {
-    const notasActuales = await getDatos('notas');
-    const notasActualizadas = notasActuales.map(nota => {
-      if (nota.id === idNota) {
-        return calcularProximaRevision(nota, dificultad);
-      }
-      return nota;
-    });
+    const nota = notasGuardadas.find(n => n.id === idNota);
+    if (!nota) return;
     
-    await setDatos('notas', notasActualizadas);
+    const resultado = calcularProximaRevision(nota, dificultad);
+    const notaActualizada = { ...nota, ...resultado };
+    
+    await guardarNotaEnCarpeta(notaActualizada);
+    
+    const notasActualizadas = notasGuardadas.map(n => n.id === idNota ? notaActualizada : n);
+    setNotasGuardadas(notasActualizadas);
     setNotasGuardadas(notasActualizadas);
     
     console.log('📝 Nota evaluada:', {
@@ -8074,25 +8413,30 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // Evaluar práctica con repetición espaciada
   const evaluarPractica = async (idPractica, dificultad) => {
     const practicasActuales = await getDatos('practicas');
-    const practicasActualizadas = practicasActuales.map(practica => {
-      if (practica.id === idPractica) {
-        return calcularProximaRevision(practica, dificultad);
-      }
-      return practica;
-    });
+    const practicaActualizada = practicasActuales.find(p => p.id === idPractica);
     
-    await setDatos('practicas', practicasActualizadas);
-    setPracticas(practicasActualizadas);
-    
-    console.log('🎯 Práctica evaluada:', {
-      dificultad,
-      practica: practicasActualizadas.find(p => p.id === idPractica)
-    });
-    
-    setMensaje({
-      tipo: 'success',
-      texto: `✅ Práctica evaluada: ${dificultad === 'facil' ? 'Excelente' : dificultad === 'medio' ? 'Bien' : 'Necesita más práctica'}`
-    });
+    if (practicaActualizada) {
+      const practicaConNuevosDatos = calcularProximaRevision(practicaActualizada, dificultad);
+      
+      // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
+      await guardarPracticaEnCarpeta(practicaConNuevosDatos);
+      
+      // Actualizar estado local
+      const practicasActualizadas = practicasActuales.map(p => 
+        p.id === idPractica ? practicaConNuevosDatos : p
+      );
+      setPracticas(practicasActualizadas);
+      
+      console.log('🎯 Práctica evaluada:', {
+        dificultad,
+        practica: practicaConNuevosDatos
+      });
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Práctica evaluada: ${dificultad === 'facil' ? 'Excelente' : dificultad === 'medio' ? 'Bien' : 'Necesita más práctica'}`
+      });
+    }
   };
 
   const exportarNotaTXT = (nota) => {
@@ -8160,13 +8504,29 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // FUNCIONES DEL SISTEMA DE FLASHCARDS
   // ============================================
 
+  // Función auxiliar para cargar todas las flashcards desde el nuevo sistema
+  const cargarTodasFlashcards = async () => {
+    try {
+      const response = await fetch(`${API_URL}/datos/flashcards`);
+      return await response.json();
+    } catch (error) {
+      console.error('Error cargando flashcards:', error);
+      return [];
+    }
+  };
+
   // Cargar flashcards del archivo
   useEffect(() => {
     const cargarFlashcardsIniciales = async () => {
       try {
-        const flashcardsGuardadas = await getDatos('flashcards');
+        // 🔥 USAR NUEVO ENDPOINT QUE AGREGA DE TODAS LAS CARPETAS
+        const flashcardsGuardadas = await cargarTodasFlashcards();
+        
+        console.log('📚 Flashcards cargadas:', flashcardsGuardadas.length);
         if (flashcardsGuardadas && flashcardsGuardadas.length > 0) {
           setFlashcardsActuales(flashcardsGuardadas);
+        } else {
+          setFlashcardsActuales([]);
         }
       } catch (error) {
         console.error('Error cargando flashcards:', error);
@@ -8189,12 +8549,24 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const data = await response.json()
       
       // Contar flashcards por carpeta desde el backend
-      const flashcards = await getDatos('flashcards');
+      const flashcards = await cargarTodasFlashcards();
       const carpetasConConteo = (data.carpetas || []).map(carpeta => {
-        const totalFlashcards = flashcards.filter(f => f.carpeta === carpeta.ruta).length
-        return { ...carpeta, totalFlashcards }
+        // Normalizar ruta de Windows (\\) a Unix (/)
+        const rutaNormalizada = carpeta.ruta.replace(/\\/g, '/');
+        const totalFlashcards = flashcards.filter(f => {
+          const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+          return carpetaFlashcard === rutaNormalizada;
+        }).length;
+        
+        return { 
+          ...carpeta,
+          ruta: rutaNormalizada, // Guardar ruta normalizada
+          totalFlashcards,
+          subcarpetas: carpeta.num_subcarpetas || 0 // del backend
+        }
       })
       
+      console.log('📂 Carpetas cargadas:', carpetasConConteo.map(c => `${c.nombre} (🃏 ${c.totalFlashcards}, 📁 ${c.subcarpetas})`))
       setFlashcardsCarpetas(carpetasConConteo)
       setRutaFlashcardsActual(ruta)
     } catch (error) {
@@ -8204,14 +8576,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
   const abrirCarpetaFlashcards = (carpeta) => {
-    // Cargar subcarpetas de esta carpeta
-    cargarCarpetasFlashcards(carpeta.ruta)
+    // Navegar a subcarpetas de esta carpeta
+    const rutaNormalizada = carpeta.ruta.replace(/\\/g, '/');
+    console.log('📂 Navegando a carpeta:', rutaNormalizada)
+    cargarCarpetasFlashcards(rutaNormalizada)
     setCarpetaFlashcardActual(null) // Resetear para mostrar subcarpetas
     setFiltroTipoFlashcard('todas')
   }
   
   const verFlashcardsDeCarpeta = (carpeta) => {
-    // Mostrar flashcards de esta carpeta específica
+    // Mostrar SOLO flashcards de esta carpeta específica (sin navegar)
+    console.log('🃏 Mostrando flashcards de:', carpeta.ruta)
     setCarpetaFlashcardActual(carpeta)
     setFiltroTipoFlashcard('todas')
   }
@@ -8303,7 +8678,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
       // Buscar en flashcards
       if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'flashcard') {
-        const flashcards = await getDatos('flashcards');
+        const flashcards = await cargarTodasFlashcards();
         console.log('🔍 Buscando en flashcards:', flashcards.length, 'flashcards cargadas');
         flashcards.forEach(fc => {
           // Soporte para dos formatos: pregunta/respuesta Y titulo/contenido
@@ -8459,7 +8834,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       case 'flashcard':
         console.log('🃏 Procesando flashcard...');
         // Buscar la flashcard por ID  
-        const allFlashcards = await getDatos('flashcards');
+        const allFlashcards = await cargarTodasFlashcards();
         console.log('🃏 Flashcards cargadas:', allFlashcards.length);
         const flashcard = allFlashcards.find(f => f.id === resultado.id);
         console.log('🃏 Flashcard encontrada:', flashcard);
@@ -8626,6 +9001,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
   const crearNuevaFlashcard = () => {
     setFlashcardEditando(null)
+    const carpetaActual = carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '';
+    console.log('📝 Creando nueva flashcard en carpeta:', carpetaActual);
     setFormDataFlashcard({
       tipo: 'clasica',
       titulo: '',
@@ -8634,7 +9011,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       respuestaCorrecta: '',
       explicacion: '',
       tema: '',
-      carpeta: carpetaFlashcardActual?.ruta || '',
+      carpeta: carpetaActual,
       estadoRevision: 'nueva',
       archivos: [],
       imagenes: [],
@@ -8683,15 +9060,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
 
   const guardarFlashcard = async (flashcard) => {
-    const flashcards = await getDatos('flashcards');
-    
     const carpetaDestino = carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '';
+    
+    if (!carpetaDestino) {
+      setMensaje({
+        tipo: 'error',
+        texto: '⚠️ Por favor, navega a una carpeta primero'
+      });
+      return;
+    }
+    
     console.log('💾 Guardando flashcard:', {
       titulo: flashcard.titulo,
       carpetaFlashcardActual: carpetaFlashcardActual,
       rutaFlashcardsActual: rutaFlashcardsActual,
-      carpetaDestino: carpetaDestino,
-      totalFlashcards: flashcards.length
+      carpetaDestino: carpetaDestino
     });
     
     const nuevaFlashcard = {
@@ -8757,56 +9140,85 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       paletaColor: flashcard.paletaColor || 'ninguna'
     }
 
-    let flashcardsActualizadas
-    if (flashcard.id) {
-      // Editar existente
-      flashcardsActualizadas = flashcards.map(f => f.id === flashcard.id ? nuevaFlashcard : f)
-      console.log('✏️ Flashcard editada');
-    } else {
-      // Nueva flashcard
-      flashcardsActualizadas = [...flashcards, nuevaFlashcard]
-      console.log('➕ Nueva flashcard agregada');
+    // 🔥 GUARDAR EN ARCHIVO INDIVIDUAL DE LA CARPETA
+    try {
+      const response = await fetch(`${API_URL}/datos/flashcards/carpeta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flashcard: nuevaFlashcard,
+          carpeta: carpetaDestino
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.ok) {
+        console.log(`✅ Flashcard guardada en: ${result.archivo}`);
+        console.log(`   Total en carpeta: ${result.count}`);
+        
+        // 🔥 Recargar todas las flashcards usando el NUEVO ENDPOINT
+        const todasFlashcards = await cargarTodasFlashcards();
+        setFlashcardsActuales(todasFlashcards);
+        setModalNuevaFlashcard(false);
+        
+        // Recargar carpetas para actualizar el conteo
+        if (selectedMenu === 'flashcards') {
+          cargarCarpetasFlashcards(rutaFlashcardsActual);
+        }
+        
+        setMensaje({
+          tipo: 'success',
+          texto: flashcard.id ? '✅ Flashcard actualizada' : `✅ Flashcard creada en ${carpetaDestino}`
+        });
+      } else {
+        throw new Error(result.error || 'Error al guardar');
+      }
+    } catch (error) {
+      console.error('❌ Error guardando flashcard:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al guardar flashcard'
+      });
     }
-
-    await setDatos('flashcards', flashcardsActualizadas);
-    console.log('💾 Guardado en archivo:', {
-      total: flashcardsActualizadas.length,
-      ultimaFlashcard: nuevaFlashcard
-    });
-    
-    setFlashcardsActuales(flashcardsActualizadas)
-    setModalNuevaFlashcard(false)
-    
-    // Recargar carpetas para actualizar el conteo
-    if (selectedMenu === 'flashcards') {
-      console.log('🔄 Recargando carpetas desde:', rutaFlashcardsActual);
-      cargarCarpetasFlashcards(rutaFlashcardsActual)
-    }
-    
-    setMensaje({
-      tipo: 'success',
-      texto: flashcard.id ? '✅ Flashcard actualizada' : '✅ Flashcard creada'
-    })
   }
 
   const eliminarFlashcard = async (id) => {
     if (!confirm('¿Eliminar esta flashcard?')) return
     
-    const flashcards = await getDatos('flashcards');
-    const flashcardsActualizadas = flashcards.filter(f => f.id !== id)
+    // Buscar la carpeta de la flashcard
+    const flashcards = await cargarTodasFlashcards();
+    const flashcard = flashcards.find(f => f.id === id);
+    const carpeta = flashcard?.carpeta || '';
     
-    await setDatos('flashcards', flashcardsActualizadas);
-    setFlashcardsActuales(flashcardsActualizadas)
-    
-    // Recargar carpetas para actualizar el conteo
-    if (selectedMenu === 'flashcards') {
-      cargarCarpetasFlashcards(rutaFlashcardsActual)
+    try {
+      // 🔥 ELIMINAR USANDO ENDPOINT DELETE
+      const response = await fetch(`${API_URL}/datos/flashcards/${id}?carpeta=${encodeURIComponent(carpeta)}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) throw new Error('Error al eliminar');
+      
+      // Actualizar estado local
+      const flashcardsActualizadas = flashcards.filter(f => f.id !== id);
+      setFlashcardsActuales(flashcardsActualizadas);
+      
+      // Recargar carpetas para actualizar el conteo
+      if (selectedMenu === 'flashcards') {
+        cargarCarpetasFlashcards(rutaFlashcardsActual);
+      }
+      
+      setMensaje({
+        tipo: 'success',
+        texto: '🗑️ Flashcard eliminada'
+      });
+    } catch (error) {
+      console.error('Error eliminando flashcard:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al eliminar flashcard'
+      });
     }
-    
-    setMensaje({
-      tipo: 'success',
-      texto: '🗑️ Flashcard eliminada'
-    })
   }
 
   const seleccionarCarpetaNota = (carpeta) => {
@@ -8815,11 +9227,16 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
   const moverNota = async (idNota, nuevaCarpeta) => {
+    const nota = (notasGuardadas || []).find(n => n.id === idNota);
+    if (!nota) return;
+    
+    const notaActualizada = { ...nota, carpeta: nuevaCarpeta };
+    await guardarNotaEnCarpeta(notaActualizada);
+    
     const notasActualizadas = (notasGuardadas || []).map(n => 
-      n.id === idNota ? { ...n, carpeta: nuevaCarpeta } : n
+      n.id === idNota ? notaActualizada : n
     )
     setNotasGuardadas(notasActualizadas)
-    await setDatos('notas', notasActualizadas);
     
     setMensaje({
       tipo: 'success',
@@ -11514,7 +11931,6 @@ Shortcuts:
                                     }
                                     
                                     try {
-                                      const flashcardsActuales = await getDatos('flashcards');
                                       const ahora = new Date().toISOString();
                                       const esNueva = !formDataFlashcard.id;
                                       
@@ -11524,24 +11940,18 @@ Shortcuts:
                                         pregunta: formDataFlashcard.titulo,
                                         respuesta: formDataFlashcard.respuestaCorrecta || formDataFlashcard.contenido,
                                         fecha_creacion: formDataFlashcard.fecha_creacion || ahora,
-                                        carpeta: carpetaFlashcardActual?.ruta || '',
+                                        carpeta: carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '',
                                         // Marcar como revisada solo si es nueva (recién creada)
                                         ultima_revision: esNueva ? ahora : formDataFlashcard.ultima_revision,
                                         proxima_revision: esNueva ? new Date(Date.now() + 24*60*60*1000).toISOString() : formDataFlashcard.proxima_revision
                                       };
                                       
-                                      // Si ya existe, actualizar
-                                      const index = flashcardsActuales.findIndex(f => f.id === nuevaFlashcard.id);
-                                      let flashcardsActualizadas;
-                                      if (index >= 0) {
-                                        flashcardsActualizadas = [...flashcardsActuales];
-                                        flashcardsActualizadas[index] = nuevaFlashcard;
-                                      } else {
-                                        flashcardsActualizadas = [...flashcardsActuales, nuevaFlashcard];
-                                      }
+                                      // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
+                                      await guardarFlashcardEnCarpeta(nuevaFlashcard);
                                       
-                                      await setDatos('flashcards', flashcardsActualizadas);
-                                      setFlashcardsActuales(flashcardsActualizadas);
+                                      // Actualizar estado local
+                                      const flashcardsActuales = await cargarTodasFlashcards();
+                                      setFlashcardsActuales(flashcardsActuales);
                                       
                                       setMensaje({
                                         tipo: 'success',
@@ -13592,6 +14002,119 @@ Shortcuts:
               </div>
             )}
 
+            {/* 🃏 Flashcards de esta carpeta */}
+            {rutaNotasActual && (() => {
+              const flashcardsCarpeta = flashcardsActuales.filter(f => f.carpeta === rutaNotasActual);
+              
+              if (flashcardsCarpeta.length > 0) {
+                return (
+                  <div className="flashcards-en-notas" style={{marginBottom: '2rem'}}>
+                    <div className="section-subtitle" style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '1rem',
+                      padding: '0.75rem 1rem',
+                      background: 'rgba(100, 108, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(100, 108, 255, 0.2)'
+                    }}>
+                      <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                        <span style={{fontSize: '1.5rem'}}>🃏</span>
+                        <span style={{fontWeight: '600'}}>Flashcards en esta carpeta ({flashcardsCarpeta.length})</span>
+                      </span>
+                      <button
+                        className="btn-secondary"
+                        onClick={() => {
+                          setCarpetaFlashcardActual({ ruta: rutaNotasActual });
+                          setSelectedMenu('flashcards');
+                        }}
+                        style={{fontSize: '0.875rem'}}
+                      >
+                        Ver todas →
+                      </button>
+                    </div>
+                    <div className="flashcards-preview-grid" style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+                      gap: '1rem'
+                    }}>
+                      {flashcardsCarpeta.slice(0, 6).map((flashcard) => (
+                        <div
+                          key={flashcard.id}
+                          className="flashcard-preview-card"
+                          style={{
+                            background: 'rgba(51, 65, 85, 0.4)',
+                            border: '1px solid rgba(148, 163, 184, 0.2)',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'translateY(-2px)';
+                            e.currentTarget.style.borderColor = 'rgba(100, 108, 255, 0.4)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'translateY(0)';
+                            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+                          }}
+                          onClick={() => {
+                            setCarpetaFlashcardActual({ ruta: rutaNotasActual });
+                            setSelectedMenu('flashcards');
+                          }}
+                        >
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#94a3b8',
+                            marginBottom: '0.5rem',
+                            textTransform: 'uppercase',
+                            fontWeight: '600'
+                          }}>
+                            {flashcard.tipo === 'clasica' ? '📇 Clásica' :
+                             flashcard.tipo === 'mcq' ? '☑️ Opción Múltiple' :
+                             flashcard.tipo === 'cloze' ? '🔤 Cloze' :
+                             '🃏 ' + flashcard.tipo}
+                          </div>
+                          <h4 style={{
+                            fontSize: '0.95rem',
+                            marginBottom: '0.5rem',
+                            color: '#e2e8f0',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical'
+                          }}>
+                            {flashcard.titulo}
+                          </h4>
+                          <div style={{
+                            fontSize: '0.75rem',
+                            color: '#64748b',
+                            display: 'flex',
+                            gap: '0.5rem',
+                            flexWrap: 'wrap'
+                          }}>
+                            {flashcard.estadoRevision === 'nueva' && <span>🆕 Nueva</span>}
+                            {flashcard.estadoRevision === 'en_progreso' && <span>📚 En progreso</span>}
+                            {flashcard.estadoRevision === 'dominada' && <span>✅ Dominada</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {flashcardsCarpeta.length > 6 && (
+                      <div style={{textAlign: 'center', marginTop: '1rem'}}>
+                        <span style={{color: '#94a3b8', fontSize: '0.875rem'}}>
+                          Y {flashcardsCarpeta.length - 6} flashcard(s) más...
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             {/* Notas filtradas por carpeta actual */}
             {(() => {
               const notasFiltradas = (notasGuardadas || []).filter(nota => 
@@ -13914,9 +14437,21 @@ Shortcuts:
                                 className="btn-eliminar"
                                 onClick={async () => {
                                   if (confirm(`¿Eliminar esta práctica?`)) {
-                                    const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
-                                    await setDatos('practicas', nuevasPracticas);
-                                    setPracticas(nuevasPracticas); // Actualizar estado
+                                    const carpeta = practica.carpeta || '';
+                                    
+                                    try {
+                                      // 🔥 ELIMINAR USANDO ENDPOINT DELETE
+                                      const response = await fetch(`${API_URL}/datos/practicas/${practica.id}?carpeta=${encodeURIComponent(carpeta)}`, {
+                                        method: 'DELETE'
+                                      });
+                                      
+                                      if (response.ok) {
+                                        const todasPracticas = await getDatos('practicas');
+                                        setPracticas(todasPracticas);
+                                      }
+                                    } catch (error) {
+                                      console.error('Error eliminando práctica:', error);
+                                    }
                                   }
                                 }}
                                 title="Eliminar práctica"
@@ -14061,9 +14596,21 @@ Shortcuts:
                                 className="btn-eliminar"
                                 onClick={async () => {
                                   if (confirm(`¿Eliminar esta práctica?`)) {
-                                    const nuevasPracticas = practicas.filter(p => p.id !== practica.id);
-                                    await setDatos('practicas', nuevasPracticas);
-                                    setPracticas(nuevasPracticas); // Actualizar estado
+                                    const carpeta = practica.carpeta || '';
+                                    
+                                    try {
+                                      // 🔥 ELIMINAR USANDO ENDPOINT DELETE
+                                      const response = await fetch(`${API_URL}/datos/practicas/${practica.id}?carpeta=${encodeURIComponent(carpeta)}`, {
+                                        method: 'DELETE'
+                                      });
+                                      
+                                      if (response.ok) {
+                                        const todasPracticas = await getDatos('practicas');
+                                        setPracticas(todasPracticas);
+                                      }
+                                    } catch (error) {
+                                      console.error('Error eliminando práctica:', error);
+                                    }
                                   }
                                 }}
                                 title="Eliminar práctica"
@@ -14090,6 +14637,8 @@ Shortcuts:
               {(rutaFlashcardsActual || carpetaFlashcardActual) && (
                 <button className="btn-primary" onClick={crearNuevaFlashcard}>
                   ➕ Nueva Flashcard
+                  {carpetaFlashcardActual && ` en ${carpetaFlashcardActual.nombre}`}
+                  {!carpetaFlashcardActual && rutaFlashcardsActual && ` en ${rutaFlashcardsActual.split('/').pop()}`}
                 </button>
               )}
             </div>
@@ -14136,9 +14685,20 @@ Shortcuts:
               </div>
             )}
 
-            {/* Filtro dropdown por tipo (solo si hay carpeta abierta) */}
-            {carpetaFlashcardActual && (() => {
-              const flashcards = flashcardsActuales.filter(f => f.carpeta === carpetaFlashcardActual.ruta);
+            {/* Filtro dropdown por tipo (mostrar si hay carpeta abierta O si estás en una ruta con flashcards) */}
+            {(carpetaFlashcardActual || (rutaFlashcardsActual && (() => {
+              const rutaNormalizada = rutaFlashcardsActual.replace(/\\/g, '/');
+              return flashcardsActuales.some(f => {
+                const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                return carpetaFlashcard === rutaNormalizada;
+              });
+            })())) && (() => {
+              const rutaParaFiltro = carpetaFlashcardActual?.ruta || rutaFlashcardsActual;
+              const rutaNormalizada = rutaParaFiltro.replace(/\\/g, '/');
+              const flashcards = flashcardsActuales.filter(f => {
+                const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                return carpetaFlashcard === rutaNormalizada;
+              });
               const contadores = {
                 todas: flashcards.length,
                 clasica: flashcards.filter(f => f.tipo === 'clasica').length,
@@ -14257,28 +14817,228 @@ Shortcuts:
 
             {/* Grid de carpetas */}
             {!carpetaFlashcardActual && flashcardsCarpetas.length > 0 && (
-              <div className="carpetas-grid">
-                {flashcardsCarpetas.map((carpeta, idx) => (
-                  <div 
-                    key={idx} 
-                    className="carpeta-card flashcard-folder"
-                    onClick={() => verFlashcardsDeCarpeta(carpeta)}
-                    style={{cursor: 'pointer'}}
-                  >
-                    <div className="carpeta-header">
-                      <span className="carpeta-icon">📚</span>
-                      <span className="carpeta-nombre">{carpeta.nombre}</span>
-                      <span className="carpeta-count">{carpeta.totalFlashcards || 0} flashcards</span>
+              <>
+                {/* Mostrar flashcards de la carpeta actual si existe rutaFlashcardsActual */}
+                {rutaFlashcardsActual && (() => {
+                  const rutaNormalizada = rutaFlashcardsActual.replace(/\\/g, '/');
+                  const flashcardsAqui = flashcardsActuales.filter(f => {
+                    const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                    return carpetaFlashcard === rutaNormalizada;
+                  }).filter(f => filtroTipoFlashcard === 'todas' || f.tipo === filtroTipoFlashcard);
+
+                  if (flashcardsAqui.length > 0) {
+                    const tipoConfig = {
+                      clasica: { color: '#667eea', icon: '📇', nombre: 'Clásica' },
+                      reconocimiento: { color: '#f093fb', icon: '👁️', nombre: 'Reconocimiento' },
+                      cloze: { color: '#4facfe', icon: '🔤', nombre: 'Cloze' },
+                      escenario: { color: '#43e97b', icon: '🎬', nombre: 'Escenario' },
+                      mcq: { color: '#fa709a', icon: '☑️', nombre: 'Opción Múltiple' },
+                      visual: { color: '#30cfd0', icon: '🖼️', nombre: 'Visual' },
+                      auditiva: { color: '#a8edea', icon: '🔊', nombre: 'Auditiva' },
+                      produccion: { color: '#ffa751', icon: '✍️', nombre: 'Producción' },
+                      invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
+                      jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
+                      error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
+                      comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' },
+                      matematica: { color: '#3b82f6', icon: '📐', nombre: 'Matemáticas' },
+                      quimica: { color: '#10b981', icon: '🧪', nombre: 'Química' },
+                      fisica: { color: '#f59e0b', icon: '⚡', nombre: 'Física' },
+                      geometria: { color: '#22c55e', icon: '📐', nombre: 'Geometría' },
+                      ingenieria: { color: '#ef4444', icon: '🔧', nombre: 'Ingeniería' },
+                      'logica-discreta': { color: '#7c3aed', icon: '🔮', nombre: 'Lógica' },
+                      linguistica: { color: '#ec4899', icon: '🗣️', nombre: 'Fonética' },
+                      musica: { color: '#a855f7', icon: '🎼', nombre: 'Música' },
+                      programacion: { color: '#14b8a6', icon: '💻', nombre: 'Programación' },
+                      'programacion-avanzada': { color: '#8b5cf6', icon: '💻', nombre: 'Prog. Avanzada' },
+                      'quimica-avanzada': { color: '#c084fc', icon: '🧬', nombre: 'Química Avz.' },
+                      probabilidad: { color: '#8b5cf6', icon: '🎲', nombre: 'Probabilidad' },
+                      datos: { color: '#06b6d4', icon: '📊', nombre: 'Datos' },
+                      arte: { color: '#f472b6', icon: '🎨', nombre: 'Arte' }
+                    };
+
+                    return (
+                      <div style={{marginBottom: '2rem'}}>
+                        <h3 style={{
+                          margin: '0 0 1rem 0',
+                          color: 'white',
+                          fontSize: '1.25rem'
+                        }}>
+                          🃏 Flashcards en esta carpeta ({flashcardsAqui.length})
+                        </h3>
+                        <div className="flashcards-grid">
+                          {flashcardsAqui.map((flashcard) => {
+                            const config = tipoConfig[flashcard.tipo] || tipoConfig.clasica;
+                            const estadoColor = {
+                              nueva: '#ff9800',
+                              en_progreso: '#3b82f6',
+                              dominada: '#4caf50'
+                            }[flashcard.estadoRevision] || '#ff9800';
+
+                            return (
+                              <div key={flashcard.id} className="flashcard-card">
+                                <div className="flashcard-type-badge" style={{
+                                  background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}dd 100%)`
+                                }}>
+                                  <span>{config.icon}</span>
+                                  <span>{config.nombre}</span>
+                                </div>
+                                <div className="flashcard-body" onClick={() => setFlashcardVistaCompleta(flashcard)} style={{cursor: 'pointer'}}>
+                                  <h3 className="flashcard-titulo">{flashcard.titulo}</h3>
+                                  <div className="flashcard-preview">
+                                    {flashcard.contenido.substring(0, 100)}
+                                    {flashcard.contenido.length > 100 && '...'}
+                                  </div>
+                                </div>
+
+                                {/* Footer con metadata */}
+                                <div className="flashcard-footer">
+                                  <div style={{display: 'flex', flexDirection: 'column', gap: '0.25rem'}}>
+                                    {flashcard.tema && (
+                                      <span className="flashcard-tema">
+                                        🏷️ {flashcard.tema}
+                                      </span>
+                                    )}
+                                    {flashcard.proximaRevision && (() => {
+                                      const ahora = new Date();
+                                      const proxima = new Date(flashcard.proximaRevision);
+                                      const diff = Math.ceil((proxima - ahora) / (1000 * 60 * 60 * 24));
+                                      const necesitaRepaso = diff <= 0;
+                                      
+                                      return (
+                                        <span style={{
+                                          color: necesitaRepaso ? '#fbbf24' : '#94a3b8',
+                                          fontSize: '0.7rem',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem'
+                                        }}>
+                                          {necesitaRepaso ? '⏰ Repasar ahora' : `📅 Repaso en ${diff} día${diff !== 1 ? 's' : ''}`}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                  <span className="flashcard-estado" style={{
+                                    background: estadoColor,
+                                    color: 'white',
+                                    padding: '0.3rem 0.6rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    {flashcard.estadoRevision === 'nueva' && '🆕 Nueva'}
+                                    {flashcard.estadoRevision === 'en_progreso' && '📖 En Progreso'}
+                                    {flashcard.estadoRevision === 'dominada' && '✅ Dominada'}
+                                  </span>
+                                </div>
+
+                                {/* Acciones */}
+                                <div className="flashcard-actions">
+                                  <button 
+                                    className="btn-flashcard-action"
+                                    onClick={() => setFlashcardVistaCompleta(flashcard)}
+                                    title="Ver completa"
+                                    style={{
+                                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                      color: 'white',
+                                      fontWeight: '600'
+                                    }}
+                                  >
+                                    👁️
+                                  </button>
+                                  <button 
+                                    className="btn-flashcard-action"
+                                    onClick={() => {
+                                      setFlashcardEditando(flashcard);
+                                      setFormDataFlashcard(flashcard);
+                                      setModalNuevaFlashcard(true);
+                                    }}
+                                    title="Editar"
+                                  >
+                                    ✏️
+                                  </button>
+                                  <button 
+                                    className="btn-flashcard-action"
+                                    onClick={() => {
+                                      const nueva = {
+                                        ...flashcard,
+                                        id: Date.now(),
+                                        titulo: `${flashcard.titulo} (copia)`,
+                                        estadoRevision: 'nueva',
+                                        fecha: new Date().toISOString()
+                                      };
+                                      guardarFlashcard(nueva);
+                                    }}
+                                    title="Duplicar"
+                                  >
+                                    📋
+                                  </button>
+                                  <button 
+                                    className="btn-flashcard-action danger"
+                                    onClick={() => eliminarFlashcard(flashcard.id)}
+                                    title="Eliminar"
+                                  >
+                                    🗑️
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Grid de subcarpetas */}
+                <div className="carpetas-grid">
+                  {flashcardsCarpetas.map((carpeta, idx) => {
+                  const tieneSubcarpetas = carpeta.subcarpetas && carpeta.subcarpetas > 0;
+                  const tieneFlashcards = carpeta.totalFlashcards && carpeta.totalFlashcards > 0;
+                  
+                  return (
+                    <div 
+                      key={idx} 
+                      className="carpeta-card flashcard-folder"
+                      onClick={() => verFlashcardsDeCarpeta(carpeta)}
+                      style={{
+                        cursor: 'pointer',
+                        position: 'relative'
+                      }}
+                    >
+                      <div className="carpeta-header">
+                        <span className="carpeta-icon">{tieneSubcarpetas ? '📁' : '📚'}</span>
+                        <span className="carpeta-nombre">{carpeta.nombre}</span>
+                        <div style={{
+                          display: 'flex',
+                          gap: '0.5rem',
+                          fontSize: '0.85rem',
+                          color: 'rgba(255,255,255,0.6)',
+                          marginTop: '0.3rem'
+                        }}>
+                          {tieneFlashcards && (
+                            <span>🃏 {carpeta.totalFlashcards}</span>
+                          )}
+                          {tieneSubcarpetas && (
+                            <span>📂 {carpeta.subcarpetas}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              </>
             )}
 
             {/* Grid de Flashcards */}
             {carpetaFlashcardActual && (() => {
+              const rutaCarpetaNormalizada = carpetaFlashcardActual.ruta.replace(/\\/g, '/');
               const flashcards = flashcardsActuales
-                .filter(f => f.carpeta === carpetaFlashcardActual.ruta)
+                .filter(f => {
+                  const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                  return carpetaFlashcard === rutaCarpetaNormalizada;
+                })
                 .filter(f => filtroTipoFlashcard === 'todas' || f.tipo === filtroTipoFlashcard);
 
               if (flashcards.length === 0) {

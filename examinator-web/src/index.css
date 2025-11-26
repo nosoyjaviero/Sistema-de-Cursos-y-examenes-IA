@@ -41,6 +41,13 @@ h1 {
   line-height: 1.1;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;

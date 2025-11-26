@@ -1,0 +1,71 @@
+{
+  "id": "20251125_151037",
+  "archivo": "examen_20251125_151037.json",
+  "fecha_completado": "2025-11-25T15:10:37.960769",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 3,
+  "puntos_totales": 5,
+  "porcentaje": 60.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué es el diseño gráfico?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El diseño es una disciplina que se enfoca exclusivamente en la creación de objetos visuales.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "falso",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "¿Qué es la psicología en el diseño?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "El usuario no tiene participación activa en el proceso de diseño.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "¿Qué papel juega la tecnología en el diseño?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "C",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true,
+  "proximaRevision": "2025-11-26T15:10:37.960769",
+  "ultimaRevision": "2025-11-25T15:10:37.960769",
+  "intervalo": 1,
+  "repeticiones": 0,
+  "facilidad": 2.5,
+  "estadoRevision": "nueva",
+  "titulo": "Platzi"
+}

@@ -1,0 +1,71 @@
+{
+  "id": "20251125_163104",
+  "archivo": "examen_20251125_163104.json",
+  "fecha_completado": "2025-11-25T16:31:04.940272",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 2,
+  "puntos_totales": 5,
+  "porcentaje": 40.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué es el Diseño Centrado en el Usuario?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué es la Ley de Continuidad de Gestalt?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué es el Diseño Basado en Valores?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "A",
+      "respuesta_correcta": null,
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    },
+    {
+      "pregunta": "La evaluación del diseño es un proceso lineal que involucra la recolección de datos y su análisis.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "Incorrecto. La respuesta correcta es: None"
+    },
+    {
+      "pregunta": "El diseño es un proceso creativo que involucra la imaginación y la inspiración.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true,
+  "proximaRevision": "2025-11-26T16:31:04.940272",
+  "ultimaRevision": "2025-11-25T16:31:04.940272",
+  "intervalo": 1,
+  "repeticiones": 0,
+  "facilidad": 2.5,
+  "estadoRevision": "nueva",
+  "titulo": "Platzi"
+}

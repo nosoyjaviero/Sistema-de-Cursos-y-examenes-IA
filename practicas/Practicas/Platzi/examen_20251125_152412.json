@@ -1,0 +1,71 @@
+{
+  "id": "20251125_152412",
+  "archivo": "examen_20251125_152412.json",
+  "fecha_completado": "2025-11-25T15:24:12.378162",
+  "carpeta_ruta": "Practicas/Platzi",
+  "carpeta_nombre": "Platzi",
+  "puntos_obtenidos": 1,
+  "puntos_totales": 5,
+  "porcentaje": 20.0,
+  "resultados": [
+    {
+      "pregunta": "¿Qué es el Diseño Centrado en el Usuario?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué es la Ley de Continuidad de Gestalt?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "¿Qué es el Diseño Basado en Valores?",
+      "tipo": "mcq",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "La evaluación del diseño es un proceso lineal que involucra la recolección de datos y su análisis.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "",
+      "respuesta_correcta": null,
+      "puntos": 0,
+      "puntos_maximos": 1,
+      "feedback": "No se proporcionó respuesta"
+    },
+    {
+      "pregunta": "El diseño es un proceso creativo que involucra la imaginación y la inspiración.",
+      "tipo": "true_false",
+      "opciones": [],
+      "respuesta_usuario": "verdadero",
+      "respuesta_correcta": "verdadero",
+      "puntos": 1,
+      "puntos_maximos": 1,
+      "feedback": "¡Correcto!"
+    }
+  ],
+  "tipo": "completado",
+  "es_practica": true,
+  "proximaRevision": "2025-11-26T15:24:12.378162",
+  "ultimaRevision": "2025-11-25T15:24:12.378162",
+  "intervalo": 1,
+  "repeticiones": 0,
+  "facilidad": 2.5,
+  "estadoRevision": "nueva",
+  "titulo": "Platzi"
+}
