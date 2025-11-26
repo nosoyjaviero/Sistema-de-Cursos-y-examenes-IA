@@ -283,6 +283,10 @@ function App() {
   const [indiceErrorActual, setIndiceErrorActual] = useState(0)
   const [respuestaErrorSeleccionada, setRespuestaErrorSeleccionada] = useState(null) // Para el wizard de errores
   const [errorYaRespondido, setErrorYaRespondido] = useState(false) // Si ya seleccionó una respuesta
+  const [respuestaTextual, setRespuestaTextual] = useState('') // Para preguntas de respuesta corta
+  const [historialIntentos, setHistorialIntentos] = useState([]) // Historial de intentos para preguntas cortas
+  const [evaluandoRespuesta, setEvaluandoRespuesta] = useState(false) // Estado de carga al evaluar
+  const [feedbackIA, setFeedbackIA] = useState(null) // Feedback del modelo
   const [flashcardsSesion, setFlashcardsSesion] = useState([])
   const [indiceFlashcardActual, setIndiceFlashcardActual] = useState(0)
   const [contenidoSesion, setContenidoSesion] = useState(null)
@@ -754,16 +758,9 @@ function App() {
     const cargarPracticasIniciales = async () => {
       const practicasGuardadas = await getDatos('practicas');
       if (practicasGuardadas && practicasGuardadas.length > 0) {
-        // Filtrar prácticas: solo mostrar las NO revisadas hoy
-        const practicasPendientes = practicasGuardadas.filter(p => {
-          // Si está completada y ya se revisó hoy, no mostrar
-          if (p.completada && fueRevisadoHoy(p.ultima_revision)) {
-            return false;
-          }
-          // Si no está completada o no se revisó hoy, mostrar
-          return true;
-        });
-        setPracticas(practicasPendientes);
+        // ✅ CARGAR TODAS LAS PRÁCTICAS (sin filtrar)
+        // El filtro por carpeta se hace en la UI
+        setPracticas(practicasGuardadas);
       }
     };
     cargarPracticasIniciales();
@@ -921,14 +918,17 @@ function App() {
 
   // 🔥 RESTAURAR SESIÓN AL MONTAR O VOLVER A LA VISTA DE SESIÓN
   useEffect(() => {
-    const estadoGuardado = cargarEstadoSesion();
-    if (estadoGuardado && estadoGuardado.estado?.sesionActiva) {
-      console.log('🔄 Sesión guardada detectada al montar componente');
-      // Solo restaurar si no hay una sesión activa ya
-      if (!sesionActiva) {
-        restaurarSesion(estadoGuardado);
+    const verificarSesionGuardada = async () => {
+      const estadoGuardado = await cargarEstadoSesion();
+      if (estadoGuardado && estadoGuardado.estado?.sesionActiva) {
+        console.log('🔄 Sesión guardada detectada al montar componente');
+        // Solo restaurar si no hay una sesión activa ya
+        if (!sesionActiva) {
+          setSesionPersistente(estadoGuardado);
+        }
       }
-    }
+    };
+    verificarSesionGuardada();
   }, []); // Solo al montar
 
   // 🔥 MANTENER SESIÓN ACTIVA AL CAMBIAR DE MENÚ
@@ -1662,11 +1662,16 @@ function App() {
   const detenerSesion = async () => {
     console.log('⏹️ Deteniendo sesión...');
     
-    // 1️⃣ PRIMERO: Cambiar menú para ocultar indicadores visuales
+    // 🔥 CRÍTICO: Detener PRIMERO sesionActiva para que los useEffect dejen de ejecutarse
+    setSesionActiva(false);
+    
+    // Pequeña espera para que React procese el cambio de estado
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // 1️⃣ Cambiar menú para ocultar indicadores visuales
     setSelectedMenu('inicio');
     
-    // 2️⃣ Limpiar estado de sesión (esto ocultará los indicadores)
-    setSesionActiva(false);
+    // 2️⃣ Limpiar estado de sesión completo
     setTiempoRestante(0);
     setFaseActual(null);
     setIndiceFaseActual(0);
@@ -1674,6 +1679,10 @@ function App() {
     setTiempoHastaDescanso(1500); // Resetear contador de descanso
     setEnDescanso(false);
     setTimestampInicioPausa(null);
+    setTiempoFaseActual(0);
+    setTiempoTotalEfectivo(0);
+    setTiempoAcumuladoEstudio(0);
+    setTiempoPausaRestante(0);
     
     // 3️⃣ Limpiar estadísticas
     setEstadisticasSesion({
@@ -1690,15 +1699,30 @@ function App() {
     setCursoActual(null);
     setNotasVinculadas([]);
     setFasesSesion([]);
+    setIndiceErrorActual(0);
+    setIndiceFlashcardActual(0);
     
     // 5️⃣ ELIMINAR SESIÓN GUARDADA DEL BACKEND Y LOCALSTORAGE
     try {
-      await setSesionActiva({});
+      // Eliminar del backend
+      const response = await fetch(`${API_URL}/sesion`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        console.log('✅ Sesión eliminada del backend');
+      }
+      
+      // Eliminar de localStorage
       localStorage.removeItem('examinator_sesion_activa');
       setSesionPersistente(null);
+      
       console.log('✅ Sesión detenida y eliminada completamente');
     } catch (error) {
       console.error('❌ Error eliminando sesión al detener:', error);
+      // Aunque falle el backend, limpiamos localStorage
+      localStorage.removeItem('examinator_sesion_activa');
+      setSesionPersistente(null);
     }
   };
   
@@ -1724,6 +1748,14 @@ function App() {
   // Timer de la sesión con descansos automáticos basados en ciencia
   useEffect(() => {
     let intervalo;
+    
+    // 🔥 CRÍTICO: Solo ejecutar si sesionActiva es true
+    if (!sesionActiva) {
+      // Si la sesión no está activa, limpiar cualquier intervalo
+      if (intervalo) clearInterval(intervalo);
+      return;
+    }
+    
     if (sesionActiva && !sesionPausada && tiempoRestante > 0) {
       intervalo = setInterval(() => {
         setTiempoRestante(prev => {
@@ -1770,12 +1802,26 @@ function App() {
         }
       }, 1000);
     }
-    return () => clearInterval(intervalo);
+    
+    // 🔥 CLEANUP: Siempre limpiar el intervalo al desmontar o cuando cambien las dependencias
+    return () => {
+      if (intervalo) {
+        clearInterval(intervalo);
+        console.log('⏹️ Timer principal detenido');
+      }
+    };
   }, [sesionActiva, sesionPausada, tiempoRestante, indiceFaseActual, enDescanso]);
   
   // Contador de tiempo de pausa (cuenta regresiva)
   useEffect(() => {
     let intervaloPausa;
+    
+    // 🔥 CRÍTICO: Solo ejecutar si sesionActiva es true
+    if (!sesionActiva) {
+      if (intervaloPausa) clearInterval(intervaloPausa);
+      return;
+    }
+    
     if (sesionPausada && tiempoPausaRestante > 0) {
       intervaloPausa = setInterval(() => {
         setTiempoPausaRestante(prev => {
@@ -1789,12 +1835,25 @@ function App() {
         });
       }, 1000);
     }
-    return () => clearInterval(intervaloPausa);
-  }, [sesionPausada, tiempoPausaRestante]);
+    
+    return () => {
+      if (intervaloPausa) {
+        clearInterval(intervaloPausa);
+        console.log('⏹️ Contador de pausa detenido');
+      }
+    };
+  }, [sesionActiva, sesionPausada, tiempoPausaRestante]);
   
   // Contador hasta el próximo descanso (independiente del timer principal)
   useEffect(() => {
     let intervaloDescanso;
+    
+    // 🔥 CRÍTICO: Solo ejecutar si sesionActiva es true
+    if (!sesionActiva) {
+      if (intervaloDescanso) clearInterval(intervaloDescanso);
+      return;
+    }
+    
     if (sesionActiva && !sesionPausada && !enDescanso && tiempoHastaDescanso > 0) {
       intervaloDescanso = setInterval(() => {
         setTiempoHastaDescanso(prev => {
@@ -1813,12 +1872,25 @@ function App() {
         });
       }, 1000);
     }
-    return () => clearInterval(intervaloDescanso);
+    
+    return () => {
+      if (intervaloDescanso) {
+        clearInterval(intervaloDescanso);
+        console.log('⏹️ Contador de descanso detenido');
+      }
+    };
   }, [sesionActiva, sesionPausada, enDescanso, tiempoHastaDescanso]);
 
   // Sincronizar estado de la sesión con el backend cada 5 segundos (para red)
   useEffect(() => {
     let intervaloSincronizacion;
+    
+    // 🔥 CRÍTICO: Solo sincronizar si sesionActiva es true
+    if (!sesionActiva) {
+      if (intervaloSincronizacion) clearInterval(intervaloSincronizacion);
+      return;
+    }
+    
     if (sesionActiva) {
       intervaloSincronizacion = setInterval(async () => {
         try {
@@ -1835,7 +1907,14 @@ function App() {
         }
       }, 5000); // Cada 5 segundos
     }
-    return () => clearInterval(intervaloSincronizacion);
+    
+    // 🔥 CLEANUP: Siempre limpiar el intervalo
+    return () => {
+      if (intervaloSincronizacion) {
+        clearInterval(intervaloSincronizacion);
+        console.log('⏹️ Sincronización detenida');
+      }
+    };
   }, [sesionActiva, tiempoRestante, faseActual, sesionPausada]);
   
   const iniciarDescanso = (duracion) => {
@@ -2042,24 +2121,59 @@ function App() {
   const extraerErroresDeExamenes = (examenes) => {
     const errores = [];
     
+    console.log('🔍 Extrayendo errores de', examenes.length, 'exámenes/prácticas');
+    
     examenes.forEach(examen => {
-      if (examen.resultados) {
-        examen.resultados.forEach(resultado => {
+      // 🔥 BUSCAR EN AMBAS ESTRUCTURAS: resultados directos Y resultado.resultados
+      let resultados = null;
+      
+      if (examen.resultados && Array.isArray(examen.resultados)) {
+        resultados = examen.resultados;
+      } else if (examen.resultado?.resultados && Array.isArray(examen.resultado.resultados)) {
+        resultados = examen.resultado.resultados;
+      }
+      
+      if (resultados) {
+        resultados.forEach(resultado => {
           const porcentaje = (resultado.puntos / resultado.puntos_maximos) * 100;
           
-          // Considerar error si obtuvo menos del 60%
-          if (porcentaje < 60) {
+          // Considerar error si obtuvo menos del 60% Y no ha sido corregido
+          if (porcentaje < 60 && !resultado.corregido) {
+            console.log('❌ Error encontrado:', {
+              examen_id: examen.id,
+              archivo: examen.archivo,
+              pregunta: resultado.pregunta.substring(0, 50) + '...',
+              porcentaje: porcentaje.toFixed(2) + '%',
+              puntos: resultado.puntos,
+              maximos: resultado.puntos_maximos,
+              corregido: resultado.corregido
+            });
+            
             errores.push({
               ...resultado,
               examen_id: examen.id,
+              archivo: examen.archivo, // 🔥 NECESARIO para actualizar archivo individual
+              carpeta_ruta: examen.carpeta_ruta || examen.carpeta, // 🔥 NECESARIO para actualizar archivo individual
               fecha: examen.fecha_completado,
               carpeta: examen.carpeta_nombre,
+              es_practica: examen.es_practica, // 🔥 Para distinguir entre examen y práctica
               porcentaje_obtenido: porcentaje
+            });
+          } else if (porcentaje < 60 && resultado.corregido) {
+            console.log('✅ Error ya corregido (ignorado):', {
+              examen_id: examen.id,
+              pregunta: resultado.pregunta.substring(0, 50) + '...',
+              porcentaje: porcentaje.toFixed(2) + '%',
+              corregido: resultado.corregido,
+              fechaCorreccion: resultado.fechaCorreccion
             });
           }
         });
       }
     });
+    
+    console.log('📊 Total errores encontrados:', errores.length);
+    return errores;
     
     // Ordenar por peor rendimiento primero
     return errores.sort((a, b) => a.porcentaje_obtenido - b.porcentaje_obtenido);
@@ -2070,10 +2184,19 @@ function App() {
     
     if (siguienteIndice < fasesSesion.length) {
       const siguienteFase = fasesSesion[siguienteIndice];
+      
+      // 💡 TRANSFERIR TIEMPO SOBRANTE de la fase actual a la siguiente
+      const tiempoSobrante = tiempoRestante > 0 ? tiempoRestante : 0;
+      const nuevaDuracion = siguienteFase.duracion + tiempoSobrante;
+      
+      if (tiempoSobrante > 0) {
+        console.log(`⏱️ Transferencia de tiempo: +${Math.floor(tiempoSobrante/60)} min ${tiempoSobrante%60} seg a ${siguienteFase.nombre}`);
+      }
+      
       setIndiceFaseActual(siguienteIndice);
       setFaseActual(siguienteFase.tipo);
-      setTiempoRestante(siguienteFase.duracion);
-      setTiempoFaseActual(siguienteFase.duracion);
+      setTiempoRestante(nuevaDuracion);
+      setTiempoFaseActual(nuevaDuracion);
       
       // Si avanzamos desde calentamiento y hay una carpeta seleccionada, establecerla para las siguientes fases
       if (faseActual === 'calentamiento' && rutaCalentamientoActual) {
@@ -2103,9 +2226,33 @@ function App() {
     setSesionPausada(!sesionPausada);
   };
   
-  const finalizarSesion = () => {
+  const finalizarSesion = async () => {
+    console.log('🏁 Finalizando sesión...');
+    
+    // 🔥 CRÍTICO: Detener PRIMERO sesionActiva para que los useEffect dejen de ejecutarse
     setSesionActiva(false);
+    
+    // Pequeña espera para que React procese el cambio de estado
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Cambiar a fase de cierre
     setFaseActual('cierre');
+    
+    // Limpiar todos los timers
+    setTiempoRestante(0);
+    setSesionPausada(false);
+    setEnDescanso(false);
+    setTiempoHastaDescanso(0);
+    setTiempoPausaRestante(0);
+    
+    // Eliminar sesión del backend
+    try {
+      await setSesionActiva({});
+      localStorage.removeItem('examinator_sesion_activa');
+      setSesionPersistente(null);
+    } catch (error) {
+      console.error('❌ Error eliminando sesión al finalizar:', error);
+    }
     
     setMensaje({
       tipo: 'success',
@@ -2145,11 +2292,309 @@ function App() {
     }
   };
   
-  const marcarErrorComprendido = () => {
+  // Función para seleccionar respuesta al error
+  const seleccionarRespuestaError = (opcion) => {
+    setRespuestaErrorSeleccionada(opcion);
+    setErrorYaRespondido(true);
+    
+    const errorActual = erroresActuales[indiceErrorActual];
+    const esCorrecta = opcion.startsWith(errorActual.respuesta_correcta);
+    
+    if (esCorrecta) {
+      console.log('✅ ¡Respuesta correcta! El error fue comprendido.');
+    } else {
+      console.log('❌ Respuesta incorrecta. Intenta nuevamente.');
+    }
+  };
+
+  // 🔥 NUEVA: Función para evaluar respuesta textual con IA (usando backend con modelo configurado)
+  const evaluarRespuestaTextual = async () => {
+    if (!respuestaTextual.trim()) {
+      alert('Por favor escribe una respuesta antes de enviar');
+      return;
+    }
+
+    const errorActual = erroresActuales[indiceErrorActual];
+    setEvaluandoRespuesta(true);
+
+    try {
+      // Obtener el modelo activo desde la configuración
+      const modelo = configuracion?.modelo_ollama_activo || modeloSeleccionado;
+      
+      if (!modelo) {
+        alert('⚠️ No hay un modelo seleccionado. Por favor, activa un modelo en la configuración.');
+        setEvaluandoRespuesta(false);
+        return;
+      }
+      
+      console.log('🤖 Evaluando con modelo configurado:', modelo);
+      console.log('   📝 Pregunta:', errorActual.pregunta);
+      console.log('   💭 Respuesta usuario:', respuestaTextual);
+      
+      // Llamar al nuevo endpoint del backend que usa el modelo configurado
+      const response = await fetch(`${API_URL}/api/evaluar-respuesta-textual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pregunta: errorActual.pregunta,
+          respuesta_usuario: respuestaTextual,
+          respuesta_correcta: errorActual.respuesta_correcta,
+          intentos_previos: historialIntentos,
+          modelo: modelo
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Error del servidor: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const evaluacion = data.evaluacion;
+      
+      console.log('✅ Evaluación recibida:', evaluacion);
+
+      // Convertir puntuación 0-10 a 0-100 para compatibilidad
+      const puntaje = Math.round((evaluacion.puntuacion / 10) * 100);
+      
+      // Construir feedback en formato compatible
+      const feedbackTexto = `Puntaje: ${puntaje}/100 (${evaluacion.puntuacion}/10)
+
+${evaluacion.feedback}
+
+${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
+
+      // Guardar en historial
+      setHistorialIntentos(prev => [...prev, {
+        respuesta: respuestaTextual,
+        feedback: feedbackTexto,
+        puntaje: puntaje,
+        timestamp: new Date().toISOString()
+      }]);
+
+      setFeedbackIA({
+        texto: feedbackTexto,
+        puntaje: puntaje,
+        esSuficiente: evaluacion.aprobada || puntaje >= 70
+      });
+
+      // Si la respuesta fue aprobada, marcar como respondido
+      if (evaluacion.aprobada || puntaje >= 70) {
+        setRespuestaErrorSeleccionada(respuestaTextual);
+        setErrorYaRespondido(true);
+      }
+
+    } catch (error) {
+      console.error('❌ Error al evaluar respuesta:', error);
+      
+      let mensajeError = 'Error al evaluar con el modelo.';
+      
+      if (error.message.includes('conectar') || error.message.includes('503')) {
+        mensajeError = '❌ No se pudo conectar con Ollama. Verifica que esté corriendo.';
+      } else if (error.message.includes('modelo')) {
+        mensajeError = '❌ Error con el modelo. Verifica que esté correctamente configurado.';
+      } else {
+        mensajeError = `❌ ${error.message}`;
+      }
+      
+      alert(mensajeError);
+    } finally {
+      setEvaluandoRespuesta(false);
+    }
+  };
+
+  const marcarErrorComprendido = async () => {
+    const errorActual = erroresActuales[indiceErrorActual];
+    let esCorrecta = false;
+    
+    console.log('🔍 MARCANDO ERROR COMPRENDIDO:', {
+      pregunta: errorActual.pregunta.substring(0, 50) + '...',
+      respuestaSeleccionada: respuestaErrorSeleccionada,
+      respuestaTextual: respuestaTextual,
+      feedbackIA: feedbackIA
+    });
+    
+    // Verificar si la respuesta es correcta (puede ser de opción múltiple o texto)
+    if (respuestaErrorSeleccionada && respuestaErrorSeleccionada.startsWith(errorActual.respuesta_correcta)) {
+      esCorrecta = true;
+      console.log('✅ Respuesta de opción múltiple CORRECTA');
+    } else if (feedbackIA && (feedbackIA.porcentaje_similitud >= 70 || feedbackIA.puntos >= 2)) {
+      // Si es respuesta de texto y la IA la calificó bien
+      esCorrecta = true;
+      console.log('✅ Respuesta de texto CORRECTA (similitud:', feedbackIA.porcentaje_similitud, '%, puntos:', feedbackIA.puntos, ')');
+    }
+    
+    // Si el usuario respondió correctamente, actualizar el examen/práctica original
+    if (esCorrecta) {
+      console.log('✅ Error corregido. Actualizando examen/práctica original...');
+      
+      try {
+        // 🔥 OPTIMIZACIÓN: Buscar directamente por ID del error
+        const esExamen = !errorActual.es_practica;
+        const listaABuscar = esExamen ? await getDatos('examenes') : await getDatos('practicas');
+        
+        console.log(`📦 Buscando en ${listaABuscar.length} ${esExamen ? 'exámenes' : 'prácticas'}`);
+        console.log('   🔍 Buscando ID:', errorActual.examen_id);
+        console.log('   📂 Archivo:', errorActual.archivo);
+        console.log('   📁 Carpeta:', errorActual.carpeta_ruta);
+        
+        // Buscar por ID
+        const itemEncontrado = listaABuscar.find(item => item.id === errorActual.examen_id);
+        
+        if (!itemEncontrado) {
+          console.error('❌ No se encontró el item con ID:', errorActual.examen_id);
+          throw new Error(`Item con ID ${errorActual.examen_id} no encontrado`);
+        }
+        
+        console.log('✅ Item encontrado:', {
+          id: itemEncontrado.id,
+          archivo: itemEncontrado.archivo,
+          carpeta_ruta: itemEncontrado.carpeta_ruta,
+          tiene_archivo: !!itemEncontrado.archivo,
+          tiene_carpeta_ruta: !!itemEncontrado.carpeta_ruta
+        });
+        
+        // Obtener resultados
+        let resultados = null;
+        let esEstructuraDirecta = false;
+        
+        if (itemEncontrado.resultado?.resultados) {
+          resultados = itemEncontrado.resultado.resultados;
+          esEstructuraDirecta = false;
+        } else if (itemEncontrado.resultados && Array.isArray(itemEncontrado.resultados)) {
+          resultados = itemEncontrado.resultados;
+          esEstructuraDirecta = true;
+        }
+        
+        if (!resultados) {
+          console.error('❌ No se encontraron resultados en el item');
+          throw new Error('No se encontraron resultados');
+        }
+        
+        // Buscar la pregunta específica
+        const preguntaIndex = resultados.findIndex(r => r.pregunta === errorActual.pregunta);
+        
+        if (preguntaIndex === -1) {
+          console.error('❌ Pregunta no encontrada en resultados');
+          throw new Error('Pregunta no encontrada');
+        }
+        
+        console.log(`📝 Pregunta encontrada en índice ${preguntaIndex}`);
+        
+        // Actualizar la respuesta a correcta
+        if (respuestaErrorSeleccionada) {
+          resultados[preguntaIndex].respuesta_usuario = errorActual.respuesta_correcta;
+        } else if (respuestaTextual) {
+          resultados[preguntaIndex].respuesta_usuario = respuestaTextual;
+        }
+        resultados[preguntaIndex].puntos = resultados[preguntaIndex].puntos_maximos;
+        resultados[preguntaIndex].corregido = true;
+        resultados[preguntaIndex].fechaCorreccion = new Date().toISOString();
+        
+        console.log('   ✅ Pregunta marcada como corregida:', {
+          corregido: resultados[preguntaIndex].corregido,
+          fechaCorreccion: resultados[preguntaIndex].fechaCorreccion,
+          puntos_antes: errorActual.puntos,
+          puntos_despues: resultados[preguntaIndex].puntos
+        });
+        
+        // Recalcular puntos totales
+        const nuevosPuntosObtenidos = resultados.reduce((sum, r) => sum + (r.puntos || 0), 0);
+        const puntosTotales = esEstructuraDirecta ? itemEncontrado.puntos_totales : itemEncontrado.resultado.puntos_totales;
+        const nuevoPorcentaje = (nuevosPuntosObtenidos / puntosTotales) * 100;
+        
+        if (esEstructuraDirecta) {
+          itemEncontrado.puntos_obtenidos = nuevosPuntosObtenidos;
+          itemEncontrado.porcentaje = nuevoPorcentaje;
+        } else {
+          itemEncontrado.resultado.puntos_obtenidos = nuevosPuntosObtenidos;
+          itemEncontrado.resultado.porcentaje = nuevoPorcentaje;
+        }
+        
+        // Guardar usando la función correcta
+        console.log('   💾 Guardando item actualizado...');
+        if (esExamen) {
+          await guardarExamenEnCarpeta(itemEncontrado);
+        } else {
+          await guardarPracticaEnCarpeta(itemEncontrado);
+        }
+        
+        console.log('✅ Item actualizado y guardado - Nuevo porcentaje:', nuevoPorcentaje.toFixed(2) + '%');
+        
+        // 🔥 RECARGAR DATOS DESDE BACKEND PARA VERIFICAR QUE SE GUARDÓ
+        console.log('🔄 Recargando desde backend...');
+        const itemsActualizados = esExamen ? await getDatos('examenes') : await getDatos('practicas');
+        console.log('📦 Recargados:', itemsActualizados.length, esExamen ? 'exámenes' : 'prácticas');
+        
+        // Refiltrar errores con los datos actualizados
+        const todosItems = [...await getDatos('examenes'), ...await getDatos('practicas')];
+        const erroresRefrescados = extraerErroresDeExamenes(todosItems);
+        console.log('🔍 Errores después de recargar:', erroresRefrescados.length);
+        
+        // Verificar que la pregunta ya NO esté en la lista
+        const preguntaAunEnLista = erroresRefrescados.find(e => 
+          e.pregunta === errorActual.pregunta && e.examen_id === errorActual.examen_id
+        );
+        if (preguntaAunEnLista) {
+          console.error('❌ ERROR: La pregunta sigue en la lista después de marcarla como corregida!', {
+            pregunta: errorActual.pregunta.substring(0, 50),
+            id: preguntaAunEnLista.examen_id,
+            archivo: preguntaAunEnLista.archivo,
+            corregido: preguntaAunEnLista.corregido,
+            puntos: preguntaAunEnLista.puntos
+          });
+        } else {
+          console.log('✅ VERIFICADO: La pregunta ya NO está en la lista de errores');
+        }
+        
+      } catch (error) {
+        console.error('❌ Error actualizando item:', error);
+      }
+    } else {
+      console.log('⚠️ El usuario no respondió correctamente, no se actualiza el examen.');
+      
+      // Si respondió mal, programar para mañana
+      const errorConRevision = calcularProximaRevision(errorActual, 'dificil');
+      console.log('📅 Error mal respondido, revisión para:', errorConRevision.proximaRevision);
+    }
+    
+    // Si fue corregido, eliminarlo de la lista de errores actuales
+    if (esCorrecta) {
+      const nuevosErrores = erroresActuales.filter((_, idx) => idx !== indiceErrorActual);
+      setErroresActuales(nuevosErrores);
+      
+      // Si ya no quedan errores, avanzar fase
+      if (nuevosErrores.length === 0) {
+        setMensaje({
+          tipo: 'success',
+          texto: '🎉 ¡Felicidades! Has corregido todos los errores'
+        });
+        setRespuestaErrorSeleccionada(null);
+        setErrorYaRespondido(false);
+        setRespuestaTextual('');
+        setHistorialIntentos([]);
+        setFeedbackIA(null);
+        avanzarFase();
+        return;
+      }
+      
+      // Ajustar índice si es necesario
+      if (indiceErrorActual >= nuevosErrores.length) {
+        setIndiceErrorActual(nuevosErrores.length - 1);
+      }
+    }
+    
     // Resetear estados de respuesta
     setRespuestaErrorSeleccionada(null);
     setErrorYaRespondido(false);
-    siguienteError();
+    setRespuestaTextual('');
+    setHistorialIntentos([]);
+    setFeedbackIA(null);
+    
+    // Si no fue corregido, pasar al siguiente
+    if (!esCorrecta) {
+      siguienteError();
+    }
   };
   
   // ============================================
@@ -2167,6 +2612,36 @@ function App() {
     let nuevoIntervalo = intervalo || 1;
     let nuevasRepeticiones = repeticiones || 0;
     let nuevaFacilidad = facilidad || 2.5;
+    
+    // 🔥 CONTADOR DE REVISIONES DIARIAS (máximo 2 por día)
+    const ahora = new Date();
+    const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
+    const ultimaRevision = item.ultima_revision || item.ultimaRevision;
+    let revisionesHoy = item.revisionesHoy || 0;
+    
+    console.log('📊 calcularProximaRevision - Estado inicial:', {
+      titulo: item.titulo || item.frente || item.pregunta,
+      ultimaRevision: ultimaRevision,
+      revisionesHoyActual: revisionesHoy,
+      horaActual: ahora.toISOString(),
+      inicioDia: hoyInicio.toISOString()
+    });
+    
+    // Si la última revisión fue hoy, incrementar contador
+    if (ultimaRevision) {
+      const fechaUltima = new Date(ultimaRevision);
+      if (fechaUltima >= hoyInicio) {
+        revisionesHoy += 1;
+        console.log(`✅ Última revisión fue HOY → revisionesHoy: ${revisionesHoy - 1} → ${revisionesHoy}`);
+      } else {
+        // Nuevo día, resetear contador
+        console.log(`🔄 Nueva día detectado → resetear revisionesHoy: ${revisionesHoy} → 1`);
+        revisionesHoy = 1;
+      }
+    } else {
+      console.log(`🆕 Primera revisión → revisionesHoy: ${revisionesHoy} → 1`);
+      revisionesHoy = 1;
+    }
     
     // Calidad de respuesta: facil=5, medio=3, dificil=1
     const calidad = dificultad === 'facil' ? 5 : dificultad === 'medio' ? 3 : 1;
@@ -2195,7 +2670,7 @@ function App() {
     const proximaFecha = new Date();
     proximaFecha.setDate(proximaFecha.getDate() + nuevoIntervalo);
     
-    return {
+    const itemActualizado = {
       ...item,
       fechaRevision: new Date().toISOString(),
       ultima_revision: new Date().toISOString(), // Para control de repetición diaria
@@ -2203,8 +2678,17 @@ function App() {
       intervalo: nuevoIntervalo,
       repeticiones: nuevasRepeticiones,
       facilidad: nuevaFacilidad,
-      estadoRevision: nuevasRepeticiones >= 3 ? 'dominada' : nuevasRepeticiones > 0 ? 'en_progreso' : 'nueva'
+      estadoRevision: nuevasRepeticiones >= 3 ? 'dominada' : nuevasRepeticiones > 0 ? 'en_progreso' : 'nueva',
+      revisionesHoy: revisionesHoy  // 🔥 Contador de revisiones diarias
     };
+    
+    console.log('📊 calcularProximaRevision - Estado final:', {
+      revisionesHoy: itemActualizado.revisionesHoy,
+      proximaRevision: itemActualizado.proximaRevision,
+      intervalo: itemActualizado.intervalo
+    });
+    
+    return itemActualizado;
   };
   
   /**
@@ -2216,29 +2700,106 @@ function App() {
     const ahora = new Date();
     const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
     
+    console.log('🔍 FILTRANDO ITEMS PARA REPASAR:', {
+      totalItems: items.length,
+      horaActual: ahora.toISOString(),
+      inicioDia: hoyInicio.toISOString()
+    });
+    
     const itemsParaRepasar = items.filter(item => {
-      // 🔥 REGLA 1: Si ya fue revisado HOY, NO mostrarlo
-      if (item.ultima_revision || item.ultimaRevision || item.fechaRevision) {
-        const fechaUltimaRevision = new Date(
-          item.ultima_revision || item.ultimaRevision || item.fechaRevision
-        );
-        
-        // Si la última revisión fue hoy, NO incluirlo
-        if (fechaUltimaRevision >= hoyInicio) {
-          return false;
+      const titulo = item.titulo || item.frente || item.pregunta || item.id;
+      
+      // 🔥 INICIALIZAR revisionesHoy si no existe
+      if (item.revisionesHoy === undefined || item.revisionesHoy === null) {
+        // Verificar si la última revisión fue hoy para inicializar correctamente
+        const ultimaRevision = item.ultima_revision || item.ultimaRevision || item.fechaRevision;
+        if (ultimaRevision) {
+          const fechaUltima = new Date(ultimaRevision);
+          if (fechaUltima >= hoyInicio) {
+            // Ya fue revisado hoy, pero no tiene contador - asumir 1 revisión
+            item.revisionesHoy = 1;
+            console.log(`⚠️ Flashcard sin contador, inicializando a 1 (revisada hoy): ${titulo}`);
+          } else {
+            // Revisado en otro día - inicializar a 0
+            item.revisionesHoy = 0;
+          }
+        } else {
+          // Nunca revisado - inicializar a 0
+          item.revisionesHoy = 0;
         }
       }
       
-      // 🔥 REGLA 2: Si NO tiene proximaRevision, es nuevo (mostrar solo si nunca revisado)
-      if (!item.proximaRevision) {
-        // Solo mostrar si NUNCA ha sido revisado
-        return !item.ultima_revision && !item.ultimaRevision && !item.fechaRevision;
+      // 🔥 REGLA 1: Máximo 2 revisiones por día (sistema Anki) - VERIFICAR PRIMERO
+      const revisionesHoy = item.revisionesHoy || 0;
+      if (revisionesHoy >= 2) {
+        console.log(`❌ EXCLUIDO (${revisionesHoy} revisiones hoy, máximo 2): ${titulo}`);
+        return false;
       }
       
-      // 🔥 REGLA 3: Si tiene proximaRevision, verificar si ya llegó la fecha
+      // 🔥 REGLA 2: Si ya fue revisado HOY, verificar que no haya alcanzado el límite
+      const ultimaRevision = item.ultima_revision || item.ultimaRevision || item.fechaRevision;
+      if (ultimaRevision) {
+        const fechaUltimaRevision = new Date(ultimaRevision);
+        
+        // Si la última revisión fue hoy, verificar contador
+        if (fechaUltimaRevision >= hoyInicio) {
+          if (revisionesHoy >= 2) {
+            console.log(`❌ EXCLUIDO (revisado hoy ${revisionesHoy} veces): ${titulo}`, {
+              ultima_revision: fechaUltimaRevision.toISOString(),
+              revisionesHoy: revisionesHoy
+            });
+            return false;
+          }
+          // Si tiene 1 revisión, puede aparecer una vez más
+          if (revisionesHoy === 1) {
+            console.log(`⚠️ ALERTA: Puede aparecer 1 vez más hoy (${revisionesHoy}/2): ${titulo}`);
+          }
+        } else {
+          // Última revisión fue en otro día - debería tener revisionesHoy = 0
+          if (revisionesHoy > 0) {
+            console.log(`🔄 CORRIGIENDO contador obsoleto: ${titulo} (${revisionesHoy} → 0)`);
+            item.revisionesHoy = 0;
+          }
+        }
+      }
+      
+      // 🔥 REGLA 3: Si NO tiene proximaRevision, es nuevo (mostrar solo si nunca revisado)
+      if (!item.proximaRevision) {
+        // Solo mostrar si NUNCA ha sido revisado O si fue revisado hace días
+        const esNuevo = !ultimaRevision;
+        const revisadoHacetiempo = ultimaRevision && new Date(ultimaRevision) < hoyInicio;
+        
+        if (esNuevo) {
+          console.log(`✅ INCLUIDO (nuevo, nunca revisado): ${titulo}`);
+          return true;
+        } else if (revisadoHacetiempo && revisionesHoy === 0) {
+          console.log(`✅ INCLUIDO (revisado antes, pero no hoy): ${titulo}`);
+          return true;
+        }
+        return false;
+      }
+      
+      // 🔥 REGLA 4: Si tiene proximaRevision, verificar si ya llegó la fecha
       const fechaRevision = new Date(item.proximaRevision);
-      return fechaRevision <= ahora;
+      const debeRepasar = fechaRevision <= ahora;
+      
+      if (debeRepasar) {
+        console.log(`✅ INCLUIDO (fecha llegada, ${revisionesHoy}/2 revisiones): ${titulo}`, {
+          proximaRevision: fechaRevision.toISOString(),
+          ahora: ahora.toISOString(),
+          revisionesHoy: revisionesHoy
+        });
+      } else {
+        console.log(`⏭️ EXCLUIDO (fecha no llegada): ${titulo}`, {
+          proximaRevision: fechaRevision.toISOString(),
+          faltanHoras: Math.round((fechaRevision - ahora) / (1000 * 60 * 60))
+        });
+      }
+      
+      return debeRepasar;
     });
+    
+    console.log(`📊 RESULTADO FILTRADO: ${itemsParaRepasar.length} de ${items.length} items para repasar`);
     
     // Ordenar por prioridad: nuevos primero, luego por fecha de revisión
     return itemsParaRepasar.sort((a, b) => {
@@ -2396,18 +2957,38 @@ function App() {
     }
     
     try {
-      const response = await fetch(`${API_URL}/datos/practicas/carpeta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          practica: practica,
-          carpeta: practica.carpeta
-        })
-      });
-
-      if (!response.ok) throw new Error('Error al guardar práctica');
+      // 🔥 VERIFICAR SI ES ARCHIVO INDIVIDUAL (resultados_practicas/examen_*.json)
+      const esArchivoIndividual = practica.carpeta_ruta && practica.archivo;
       
-      return await response.json();
+      if (esArchivoIndividual) {
+        // Usar endpoint para actualizar archivo individual
+        console.log('📝 Actualizando archivo individual de práctica:', practica.archivo);
+        const response = await fetch(`${API_URL}/datos/practicas/actualizar_archivo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            practica: practica
+          })
+        });
+
+        if (!response.ok) throw new Error('Error al actualizar archivo de práctica');
+        
+        return await response.json();
+      } else {
+        // Usar endpoint legacy para practicas.json
+        const response = await fetch(`${API_URL}/datos/practicas/carpeta`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            practica: practica,
+            carpeta: practica.carpeta
+          })
+        });
+
+        if (!response.ok) throw new Error('Error al guardar práctica');
+        
+        return await response.json();
+      }
     } catch (error) {
       console.error('Error guardando práctica en carpeta:', error);
       throw error;
@@ -2424,18 +3005,38 @@ function App() {
     }
     
     try {
-      const response = await fetch(`${API_URL}/datos/examenes/carpeta`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          examen: examen,
-          carpeta: examen.carpeta
-        })
-      });
-
-      if (!response.ok) throw new Error('Error al guardar examen');
+      // 🔥 VERIFICAR SI ES ARCHIVO INDIVIDUAL (resultados_examenes/examen_*.json)
+      const esArchivoIndividual = examen.carpeta_ruta && examen.archivo;
       
-      return await response.json();
+      if (esArchivoIndividual) {
+        // Usar endpoint para actualizar archivo individual
+        console.log('📝 Actualizando archivo individual de examen:', examen.archivo);
+        const response = await fetch(`${API_URL}/datos/examenes/actualizar_archivo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            examen: examen
+          })
+        });
+
+        if (!response.ok) throw new Error('Error al actualizar archivo de examen');
+        
+        return await response.json();
+      } else {
+        // Usar endpoint legacy para examenes.json
+        const response = await fetch(`${API_URL}/datos/examenes/carpeta`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            examen: examen,
+            carpeta: examen.carpeta
+          })
+        });
+
+        if (!response.ok) throw new Error('Error al guardar examen');
+        
+        return await response.json();
+      }
     } catch (error) {
       console.error('Error guardando examen en carpeta:', error);
       throw error;
@@ -2474,36 +3075,87 @@ function App() {
     // dificultad: 'facil', 'medio', 'dificil'
     const flashcardActual = flashcardsSesion[indiceFlashcardActual];
     
+    console.log('🔍 EVALUANDO FLASHCARD:', {
+      id: flashcardActual?.id,
+      titulo: flashcardActual?.titulo || flashcardActual?.frente,
+      dificultad,
+      indiceActual: indiceFlashcardActual,
+      totalEnSesion: flashcardsSesion.length
+    });
+    
     // Actualizar flashcard con algoritmo SM-2 (SuperMemo 2)
     const flashcardsGuardadas = await cargarTodasFlashcards();
     const flashcardActualizada = flashcardsGuardadas.find(f => f.id === flashcardActual.id);
     
-    if (flashcardActualizada) {
-      const flashcardConNuevosDatos = calcularProximaRevision(flashcardActualizada, dificultad);
+    if (!flashcardActualizada) {
+      console.error('❌ Flashcard no encontrada en archivo:', flashcardActual.id);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error: Flashcard no encontrada'
+      });
+      return;
+    }
+    
+    console.log('📋 Datos actuales de la flashcard:', {
+      ultima_revision: flashcardActualizada.ultima_revision,
+      proximaRevision: flashcardActualizada.proximaRevision,
+      intervalo: flashcardActualizada.intervalo,
+      repeticiones: flashcardActualizada.repeticiones
+    });
+    
+    const flashcardConNuevosDatos = calcularProximaRevision(flashcardActualizada, dificultad);
+    
+    console.log('📊 Nuevos datos calculados:', {
+      ultima_revision: flashcardConNuevosDatos.ultima_revision,
+      proximaRevision: flashcardConNuevosDatos.proximaRevision,
+      intervalo: flashcardConNuevosDatos.intervalo,
+      repeticiones: flashcardConNuevosDatos.repeticiones,
+      estadoRevision: flashcardConNuevosDatos.estadoRevision
+    });
+    
+    // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
+    try {
+      await guardarFlashcardEnCarpeta(flashcardConNuevosDatos);
+      console.log('✅ Flashcard guardada en carpeta:', flashcardConNuevosDatos.carpeta);
       
-      // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
-      try {
-        await guardarFlashcardEnCarpeta(flashcardConNuevosDatos);
-        
-        // Actualizar estado local
-        const flashcardsActualizadas = flashcardsGuardadas.map(f => 
-          f.id === flashcardActual.id ? flashcardConNuevosDatos : f
-        );
-        setFlashcardsActuales(flashcardsActualizadas);
-        
-        console.log('📊 Flashcard evaluada y guardada en carpeta:', {
-          dificultad,
-          carpeta: flashcardConNuevosDatos.carpeta,
-          flashcard: flashcardConNuevosDatos
-        });
-      } catch (error) {
-        console.error('Error guardando flashcard evaluada:', error);
-        setMensaje({
-          tipo: 'error',
-          texto: '❌ Error al guardar la evaluación'
-        });
-        return;
+      // ⏳ Esperar un momento para asegurar que el archivo se escribió completamente
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // 🔥 RECARGAR TODAS LAS FLASHCARDS para que el filtro funcione correctamente
+      const flashcardsReacargadas = await cargarTodasFlashcards();
+      console.log('🔄 Flashcards recargadas:', flashcardsReacargadas.length);
+      
+      // Actualizar estado local
+      setFlashcardsActuales(flashcardsReacargadas);
+      
+      // 🔥 ACTUALIZAR la lista de flashcards de sesión eliminando las ya repasadas hoy
+      const flashcardsParaRepasar = filtrarItemsParaRepasar(flashcardsReacargadas);
+      
+      console.log('🎯 Filtrado de flashcards para repasar:', {
+        totalRecargadas: flashcardsReacargadas.length,
+        paraRepasar: flashcardsParaRepasar.length,
+        eliminadas: flashcardsReacargadas.length - flashcardsParaRepasar.length,
+        anteriorEnSesion: flashcardsSesion.length
+      });
+      
+      // Verificar si la flashcard actual sigue en la lista
+      const flashcardSigueEnLista = flashcardsParaRepasar.find(f => f.id === flashcardActual.id);
+      if (flashcardSigueEnLista) {
+        console.warn('⚠️ PROBLEMA: La flashcard evaluada AÚN está en la lista para repasar!');
+        console.warn('   ultima_revision guardada:', flashcardSigueEnLista.ultima_revision);
+        console.warn('   Hora actual:', new Date().toISOString());
+      } else {
+        console.log('✅ Correcto: Flashcard eliminada de la lista de repaso');
       }
+      
+      setFlashcardsSesion(flashcardsParaRepasar);
+    } catch (error) {
+      console.error('Error guardando flashcard evaluada:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al guardar la evaluación'
+      });
+      return;
     }
     
     setEstadisticasSesion(prev => ({
@@ -2511,15 +3163,20 @@ function App() {
       flashcardsRepasadas: prev.flashcardsRepasadas + 1
     }));
     
-    // Avanzar a siguiente flashcard
-    if (indiceFlashcardActual < flashcardsSesion.length - 1) {
-      setIndiceFlashcardActual(indiceFlashcardActual + 1);
-      // Resetear estado de volteo para nueva flashcard
-      setFlashcardsVolteadas({});
-    } else {
-      // No hay más flashcards
-      avanzarFase();
-    }
+    // Avanzar a siguiente flashcard O terminar fase
+    // Usar setTimeout para dar tiempo a que se actualice flashcardsSesion
+    setTimeout(() => {
+      if (indiceFlashcardActual >= flashcardsSesion.length - 1) {
+        // No hay más flashcards, avanzar de fase
+        console.log('✅ Todas las flashcards repasadas, avanzando de fase');
+        avanzarFase();
+      } else {
+        // Hay más flashcards, avanzar al siguiente índice
+        setIndiceFlashcardActual(prev => prev + 1);
+        // Resetear estado de volteo para nueva flashcard
+        setFlashcardsVolteadas({});
+      }
+    }, 100);
   };
   
   // ============================================
@@ -3583,16 +4240,49 @@ function App() {
   };
   
   const redirigirAInicioDesdeResumen = async () => {
-    // Limpiar estados de sesión
+    console.log('🏁 Finalizando sesión y limpiando todo...');
+    
+    // 🔥 CRÍTICO: Detener PRIMERO sesionActiva para que los useEffect dejen de ejecutarse
     setSesionActiva(false);
+    
+    // Pequeña espera para que React procese el cambio de estado
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // 1️⃣ Cambiar menú para ocultar indicadores visuales
+    setSelectedMenu('inicio');
+    
+    // 2️⃣ Limpiar estado de sesión completo (igual que detenerSesion)
+    setTiempoRestante(0);
     setFaseActual(null);
     setIndiceFaseActual(0);
+    setSesionPausada(false);
+    setTiempoHastaDescanso(1500); // Resetear contador de descanso
+    setEnDescanso(false);
+    setTimestampInicioPausa(null);
+    setTiempoFaseActual(0);
+    setTiempoTotalEfectivo(0);
+    setTiempoAcumuladoEstudio(0);
+    setTiempoPausaRestante(0);
+    
+    // 3️⃣ Limpiar estadísticas
     setEstadisticasSesion({
       erroresReforzados: 0,
       flashcardsRepasadas: 0,
       practicasHechas: 0,
       notasTomadas: 0
     });
+    
+    // 4️⃣ Limpiar datos de fases
+    setErroresActuales([]);
+    setFlashcardsSesion([]);
+    setDocumentoActual(null);
+    setCursoActual(null);
+    setNotasVinculadas([]);
+    setFasesSesion([]);
+    setIndiceErrorActual(0);
+    setIndiceFlashcardActual(0);
+    
+    // 5️⃣ Limpiar datos de resumen
     setResumenSesion(null);
     setReflexionDificil('');
     setReflexionManana('');
@@ -3601,25 +4291,28 @@ function App() {
     setTiempoFinSesion(null);
     setTiempoPausaTotal(0);
     
-    // Resetear estados de fases
-    setDocumentoActual(null);
-    setNotasVinculadas([]);
-    setCursoActual(null);
-    setErroresActuales([]);
-    setFlashcardsSesion([]);
-    
-    // 🔥 ELIMINAR SESIÓN GUARDADA DEL BACKEND Y LOCALSTORAGE
+    // 6️⃣ ELIMINAR SESIÓN GUARDADA DEL BACKEND Y LOCALSTORAGE
     try {
-      await setSesionActiva({}); // Eliminar del backend
-      localStorage.removeItem('examinator_sesion_activa'); // Legacy
+      // Eliminar del backend
+      const response = await fetch(`${API_URL}/sesion`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        console.log('✅ Sesión eliminada del backend');
+      }
+      
+      // Eliminar de localStorage
+      localStorage.removeItem('examinator_sesion_activa');
       setSesionPersistente(null);
-      console.log('🗑️ Sesión finalizada y eliminada completamente');
+      
+      console.log('✅ Sesión finalizada y eliminada completamente');
     } catch (error) {
       console.error('❌ Error eliminando sesión al finalizar:', error);
+      // Aunque falle el backend, limpiamos localStorage
+      localStorage.removeItem('examinator_sesion_activa');
+      setSesionPersistente(null);
     }
-    
-    // Redirect a inicio
-    setSelectedMenu('inicio');
   };
   
   // Tracking de pausas para cálculo de tiempo efectivo
@@ -3879,6 +4572,12 @@ function App() {
   useEffect(() => {
     let intervalo;
     
+    // 🔥 CRÍTICO: Solo ejecutar si sesionActiva es true
+    if (!sesionActiva) {
+      if (intervalo) clearInterval(intervalo);
+      return;
+    }
+    
     if (sesionActiva && !sesionPausada) {
       intervalo = setInterval(() => {
         guardarEstadoSesion();
@@ -3886,7 +4585,10 @@ function App() {
     }
     
     return () => {
-      if (intervalo) clearInterval(intervalo);
+      if (intervalo) {
+        clearInterval(intervalo);
+        console.log('⏹️ Auto-guardado detenido');
+      }
     };
   }, [sesionActiva, sesionPausada, faseActual, tiempoRestante, estadisticasSesion]);
   
@@ -6707,13 +7409,20 @@ JSON:`
         // Guardar progreso de práctica si viene de una práctica
         const practicas = await getDatos('practicas');
         
-        // Buscar práctica activa (la más reciente sin completar o con mismas preguntas)
-        const practicaIndex = practicas.findIndex(p => {
-          if (p.completada) return false;
-          // Comparar por longitud de preguntas y tiempo reciente
-          const esReciente = new Date(p.fecha).getTime() > Date.now() - 3600000; // Última hora
-          return p.preguntas.length === preguntasExamen.length && esReciente;
-        });
+        // 🔥 BUSCAR POR ID ÚNICO si tenemos examenActivo
+        let practicaIndex = -1;
+        if (examenActivo && examenActivo.id) {
+          practicaIndex = practicas.findIndex(p => p.id === examenActivo.id);
+          console.log('🔍 Buscando práctica por ID:', examenActivo.id, '→ índice:', practicaIndex);
+        } else {
+          // Fallback: buscar por características (método antiguo, menos confiable)
+          practicaIndex = practicas.findIndex(p => {
+            if (p.completada) return false;
+            const esReciente = new Date(p.fecha).getTime() > Date.now() - 3600000; // Última hora
+            return p.preguntas.length === preguntasExamen.length && esReciente;
+          });
+          console.log('⚠️ Búsqueda sin ID - usando fallback → índice:', practicaIndex);
+        }
         
         if (practicaIndex !== -1) {
           console.log('📝 Actualizando práctica en índice:', practicaIndex);
@@ -7249,7 +7958,9 @@ JSON:`
     
     try {
       // Construir el prompt con las especificaciones JSON para cada tipo
-      let promptCompleto = `Genera una práctica educativa basada en el contenido proporcionado.\n\n`;
+      // NOTA: Este prompt solo se usa si NO hay archivo/ruta
+      // Cuando hay ruta, el backend carga el contenido y genera el prompt internamente
+      let promptCompleto = ``;
       
       if (promptPractica.trim()) {
         promptCompleto += `INSTRUCCIONES PERSONALIZADAS:\n${promptPractica}\n\n`;
@@ -8507,8 +9218,42 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // Función auxiliar para cargar todas las flashcards desde el nuevo sistema
   const cargarTodasFlashcards = async () => {
     try {
-      const response = await fetch(`${API_URL}/datos/flashcards`);
-      return await response.json();
+      // 🔥 Agregar timestamp para evitar caché del navegador
+      const timestamp = Date.now();
+      const response = await fetch(`${API_URL}/datos/flashcards?_t=${timestamp}`);
+      let flashcards = await response.json();
+      
+      // 🔥 NORMALIZAR contadores de revisiones diarias
+      const hoyInicio = new Date();
+      hoyInicio.setHours(0, 0, 0, 0);
+      
+      flashcards = flashcards.map(fc => {
+        // Si no tiene revisionesHoy, inicializar
+        if (fc.revisionesHoy === undefined || fc.revisionesHoy === null) {
+          const ultimaRevision = fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
+          if (ultimaRevision) {
+            const fechaUltima = new Date(ultimaRevision);
+            // Si última revisión fue hoy, inicializar a 1; si no, a 0
+            fc.revisionesHoy = (fechaUltima >= hoyInicio) ? 1 : 0;
+          } else {
+            fc.revisionesHoy = 0;
+          }
+        } else {
+          // Si tiene contador pero la última revisión no fue hoy, resetear a 0
+          const ultimaRevision = fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
+          if (ultimaRevision) {
+            const fechaUltima = new Date(ultimaRevision);
+            if (fechaUltima < hoyInicio && fc.revisionesHoy > 0) {
+              console.log(`🔄 Reseteando contador obsoleto para: ${fc.titulo || fc.id} (${fc.revisionesHoy} → 0)`);
+              fc.revisionesHoy = 0;
+            }
+          }
+        }
+        return fc;
+      });
+      
+      console.log(`📚 cargarTodasFlashcards: ${flashcards.length} flashcards cargadas (timestamp: ${timestamp})`);
+      return flashcards;
     } catch (error) {
       console.error('Error cargando flashcards:', error);
       return [];
@@ -8539,7 +9284,12 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // Cargar carpetas cuando entras a la sección de flashcards
   useEffect(() => {
     if (selectedMenu === 'flashcards') {
-      cargarCarpetasFlashcards('')
+      // 🔥 Recargar flashcards cada vez que entras a la sección
+      cargarTodasFlashcards().then(flashcards => {
+        console.log('📚 Flashcards recargadas al entrar a sección:', flashcards.length);
+        setFlashcardsActuales(flashcards);
+      });
+      cargarCarpetasFlashcards('');
     }
   }, [selectedMenu])
 
@@ -8548,8 +9298,12 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
       const data = await response.json()
       
-      // Contar flashcards por carpeta desde el backend
+      // 🔥 Cargar flashcards y actualizar estado global
       const flashcards = await cargarTodasFlashcards();
+      console.log('📚 Flashcards cargadas para conteo:', flashcards.length);
+      setFlashcardsActuales(flashcards); // 🔥 ACTUALIZAR ESTADO
+      
+      // Contar flashcards por carpeta desde el backend
       const carpetasConConteo = (data.carpetas || []).map(carpeta => {
         // Normalizar ruta de Windows (\\) a Unix (/)
         const rutaNormalizada = carpeta.ruta.replace(/\\/g, '/');
@@ -8584,12 +9338,35 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     setFiltroTipoFlashcard('todas')
   }
   
-  const verFlashcardsDeCarpeta = (carpeta) => {
+  const verFlashcardsDeCarpeta = async (carpeta) => {
     // Mostrar SOLO flashcards de esta carpeta específica (sin navegar)
-    console.log('🃏 Mostrando flashcards de:', carpeta.ruta)
-    setCarpetaFlashcardActual(carpeta)
-    setFiltroTipoFlashcard('todas')
-  }
+    console.log('🃏 Mostrando flashcards de:', carpeta.ruta);
+    
+    // 🔥 IMPORTANTE: Recargar flashcards antes de mostrar la carpeta
+    try {
+      const flashcardsReacargadas = await cargarTodasFlashcards();
+      console.log('📚 Flashcards recargadas:', flashcardsReacargadas.length);
+      setFlashcardsActuales(flashcardsReacargadas);
+      
+      // Filtrar flashcards de esta carpeta específica
+      const flashcardsCarpeta = flashcardsReacargadas.filter(f => {
+        const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+        return carpetaFlashcard === carpeta.ruta;
+      });
+      
+      console.log('🃏 Flashcards en carpeta', carpeta.ruta, ':', flashcardsCarpeta.length);
+      
+      // Establecer carpeta actual para mostrar las flashcards
+      setCarpetaFlashcardActual(carpeta);
+      setFiltroTipoFlashcard('todas');
+    } catch (error) {
+      console.error('❌ Error cargando flashcards de carpeta:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al cargar flashcards de la carpeta'
+      });
+    }
+  };
 
   const volverListaFlashcards = () => {
     setCarpetaFlashcardActual(null)
@@ -8639,6 +9416,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     });
   };
 
+  // Función auxiliar para normalizar texto (quitar acentos y caracteres especiales)
+  const normalizarTexto = (texto) => {
+    if (!texto) return '';
+    try {
+      return String(texto)
+        .toLowerCase()
+        .normalize('NFD') // Descomponer caracteres acentuados
+        .replace(/[\u0300-\u036f]/g, '') // Eliminar marcas de acento
+        .replace(/[¿?¡!]/g, ''); // Eliminar signos de interrogación y exclamación
+    } catch (e) {
+      console.warn('Error normalizando texto:', e);
+      return String(texto).toLowerCase();
+    }
+  };
+
   const buscarConIA = async () => {
     if (!queryBusqueda.trim()) {
       setMensaje({ tipo: 'error', texto: 'Escribe algo para buscar' });
@@ -8652,6 +9444,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const startTime = Date.now();
       const resultados = [];
       const query = queryBusqueda.toLowerCase();
+      const queryNormalizada = normalizarTexto(queryBusqueda); // 🔥 Normalizar para búsqueda flexible
+      
+      console.log('🔍 Búsqueda original:', query);
+      console.log('🔍 Búsqueda normalizada:', queryNormalizada);
 
       // Buscar en notas
       if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'nota') {
@@ -8659,8 +9455,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         console.log('🔍 Buscando en notas:', notas.length, 'notas cargadas');
         console.log('🔍 Query:', query, '| Filtro:', filtroBusquedaTipo);
         notas.forEach(nota => {
-          const tituloMatch = nota.titulo?.toLowerCase().includes(query);
-          const contenidoMatch = nota.contenido?.toLowerCase().includes(query);
+          const tituloNormalizado = normalizarTexto(nota.titulo);
+          const contenidoNormalizado = normalizarTexto(nota.contenido);
+          
+          const tituloMatch = tituloNormalizado.includes(queryNormalizada);
+          const contenidoMatch = contenidoNormalizado.includes(queryNormalizada);
           
           if (tituloMatch || contenidoMatch) {
             console.log('✅ Nota encontrada:', nota.titulo);
@@ -8685,17 +9484,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           const pregunta = fc.pregunta || fc.titulo || '';
           const respuesta = fc.respuesta || fc.contenido || '';
           
-          // Buscar en campos principales
-          const preguntaMatch = pregunta.toLowerCase().includes(query);
-          const respuestaMatch = respuesta.toLowerCase().includes(query);
+          // 🔥 Normalizar para búsqueda flexible
+          const preguntaMatch = normalizarTexto(pregunta).includes(queryNormalizada);
+          const respuestaMatch = normalizarTexto(respuesta).includes(queryNormalizada);
           
           // Buscar en campos adicionales
-          const temaMatch = fc.tema?.toLowerCase().includes(query);
-          const subtemaMatch = fc.subtema?.toLowerCase().includes(query);
-          const explicacionMatch = fc.explicacion?.toLowerCase().includes(query);
-          const dificultadMatch = fc.dificultad?.toLowerCase().includes(query);
-          const tipoMatch = fc.tipo?.toLowerCase().includes(query);
-          const respuestaCorrectaMatch = fc.respuestaCorrecta?.toLowerCase().includes(query);
+          const temaMatch = normalizarTexto(fc.tema).includes(queryNormalizada);
+          const subtemaMatch = normalizarTexto(fc.subtema).includes(queryNormalizada);
+          const explicacionMatch = normalizarTexto(fc.explicacion).includes(queryNormalizada);
+          const dificultadMatch = normalizarTexto(fc.dificultad).includes(queryNormalizada);
+          const tipoMatch = normalizarTexto(fc.tipo).includes(queryNormalizada);
+          const respuestaCorrectaMatch = normalizarTexto(fc.respuestaCorrecta).includes(queryNormalizada);
           
           if (preguntaMatch || respuestaMatch || temaMatch || subtemaMatch || explicacionMatch || dificultadMatch || tipoMatch || respuestaCorrectaMatch) {
             console.log('✅ Flashcard encontrada:', pregunta || 'Sin título');
@@ -8706,6 +9505,180 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               ruta: fc.carpeta || 'Raíz',
               id: fc.id,
               relevancia: preguntaMatch ? 10 : (respuestaMatch ? 8 : 5)
+            });
+          }
+        });
+      }
+
+      // 🔥 Buscar en exámenes
+      if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'examen') {
+        const examenes = await getDatos('examenes');
+        console.log('🔍 Buscando en exámenes:', examenes.length, 'exámenes cargados');
+        console.log('🔍 Query normalizada para búsqueda:', queryNormalizada);
+        
+        // 🔥 LOG DETALLADO: Mostrar todas las preguntas de todos los exámenes
+        examenes.forEach((examen, idx) => {
+          const numPreguntas = examen.preguntas?.length || 0;
+          const numResultados = examen.resultado?.resultados?.length || 0;
+          const numResultadosDirectos = examen.resultados?.length || 0;
+          console.log(`📚 Examen[${idx}]: "${examen.titulo}" - ${numPreguntas} preguntas, ${numResultados} resultado.resultados, ${numResultadosDirectos} resultados`);
+          
+          // Mostrar primeras 3 preguntas de cada examen
+          if (examen.preguntas && examen.preguntas.length > 0) {
+            examen.preguntas.slice(0, 3).forEach((p, pIdx) => {
+              const preguntaTexto = p.pregunta || p.texto || '';
+              console.log(`  [preguntas[${pIdx}]]: "${preguntaTexto.substring(0, 80)}..."`);
+            });
+          }
+          
+          // Mostrar primeras 3 preguntas de resultados directos
+          if (examen.resultados && examen.resultados.length > 0) {
+            examen.resultados.slice(0, 3).forEach((r, rIdx) => {
+              const preguntaTexto = r.pregunta || '';
+              console.log(`  [resultados[${rIdx}]]: "${preguntaTexto.substring(0, 80)}..."`);
+            });
+          }
+        });
+        
+        examenes.forEach((examen, idx) => {
+          const tituloMatch = normalizarTexto(examen.titulo).includes(queryNormalizada);
+          const carpetaMatch = normalizarTexto(examen.carpeta).includes(queryNormalizada);
+          
+          // Buscar en preguntas del examen
+          let preguntaMatch = false;
+          let preguntaEncontrada = '';
+          
+          // Buscar en array de preguntas
+          if (examen.preguntas) {
+            examen.preguntas.forEach((p, pIdx) => {
+              const preguntaTexto = p.pregunta || p.texto || '';
+              const respuestaCorrecta = p.respuesta_correcta || p.correcta || '';
+              
+              const preguntaNormalizada = normalizarTexto(preguntaTexto);
+              const respuestaNormalizada = normalizarTexto(respuestaCorrecta);
+              
+              if (preguntaNormalizada.includes(queryNormalizada) || 
+                  respuestaNormalizada.includes(queryNormalizada)) {
+                preguntaMatch = true;
+                if (!preguntaEncontrada) {
+                  preguntaEncontrada = preguntaTexto;
+                  console.log(`✅ MATCH en examen[${idx}].preguntas[${pIdx}]:`, preguntaTexto.substring(0, 100));
+                }
+              }
+            });
+          }
+          
+          // 🔥 IMPORTANTE: También buscar en resultado.resultados (donde están los detalles)
+          if (examen.resultado?.resultados) {
+            examen.resultado.resultados.forEach((r, rIdx) => {
+              const preguntaTexto = r.pregunta || '';
+              const respuestaUsuario = r.respuesta_usuario || '';
+              const respuestaCorrecta = r.respuesta_correcta || '';
+              const feedback = r.feedback || '';
+              
+              if (normalizarTexto(preguntaTexto).includes(queryNormalizada) || 
+                  normalizarTexto(respuestaUsuario).includes(queryNormalizada) ||
+                  normalizarTexto(respuestaCorrecta).includes(queryNormalizada) ||
+                  normalizarTexto(feedback).includes(queryNormalizada)) {
+                preguntaMatch = true;
+                if (!preguntaEncontrada) {
+                  preguntaEncontrada = preguntaTexto;
+                  console.log(`✅ MATCH en examen[${idx}].resultado.resultados[${rIdx}]:`, preguntaTexto.substring(0, 100));
+                }
+              }
+            });
+          }
+          
+          // 🔥 NUEVO: También buscar directamente en examen.resultados (estructura alternativa)
+          if (examen.resultados && Array.isArray(examen.resultados)) {
+            examen.resultados.forEach((r, rIdx) => {
+              const preguntaTexto = r.pregunta || '';
+              const respuestaUsuario = r.respuesta_usuario || '';
+              const respuestaCorrecta = r.respuesta_correcta || '';
+              const feedback = r.feedback || '';
+              
+              if (normalizarTexto(preguntaTexto).includes(queryNormalizada) || 
+                  normalizarTexto(respuestaUsuario).includes(queryNormalizada) ||
+                  normalizarTexto(respuestaCorrecta).includes(queryNormalizada) ||
+                  normalizarTexto(feedback).includes(queryNormalizada)) {
+                preguntaMatch = true;
+                if (!preguntaEncontrada) {
+                  preguntaEncontrada = preguntaTexto;
+                  console.log(`✅ MATCH en examen[${idx}].resultados[${rIdx}]:`, preguntaTexto.substring(0, 100));
+                }
+              }
+            });
+          }
+          
+          if (tituloMatch || carpetaMatch || preguntaMatch) {
+            console.log('✅ Examen encontrado:', examen.titulo || 'Sin título');
+            const porcentaje = examen.resultado?.porcentaje || 0;
+            resultados.push({
+              tipo: 'examen',
+              titulo: examen.titulo || 'Examen sin título',
+              contenido: `${porcentaje.toFixed(0)}% - ${examen.preguntas?.length || 0} preguntas${preguntaEncontrada ? ' - ' + preguntaEncontrada.substring(0, 100) : ''}`,
+              ruta: examen.carpeta || 'Raíz',
+              id: examen.id,
+              relevancia: tituloMatch ? 10 : (preguntaMatch ? 8 : 5)
+            });
+          }
+        });
+      }
+
+      // 🔥 Buscar en prácticas
+      if (filtroBusquedaTipo === 'todos' || filtroBusquedaTipo === 'practica') {
+        const practicas = await getDatos('practicas');
+        console.log('🔍 Buscando en prácticas:', practicas.length, 'prácticas cargadas');
+        practicas.forEach(practica => {
+          const tituloMatch = normalizarTexto(practica.titulo).includes(queryNormalizada);
+          const nombreMatch = normalizarTexto(practica.nombre).includes(queryNormalizada);
+          const carpetaMatch = normalizarTexto(practica.carpeta).includes(queryNormalizada);
+          
+          // Buscar en preguntas de la práctica
+          let preguntaMatch = false;
+          let preguntaEncontrada = '';
+          
+          // Buscar en array de preguntas
+          if (practica.preguntas) {
+            practica.preguntas.forEach(p => {
+              const preguntaTexto = p.pregunta || p.texto || '';
+              const respuestaCorrecta = p.respuesta_correcta || p.correcta || '';
+              if (normalizarTexto(preguntaTexto).includes(queryNormalizada) || 
+                  normalizarTexto(respuestaCorrecta).includes(queryNormalizada)) {
+                preguntaMatch = true;
+                if (!preguntaEncontrada) preguntaEncontrada = preguntaTexto;
+              }
+            });
+          }
+          
+          // 🔥 IMPORTANTE: También buscar en resultado.resultados (donde están los detalles)
+          if (practica.resultado?.resultados) {
+            practica.resultado.resultados.forEach(r => {
+              const preguntaTexto = r.pregunta || '';
+              const respuestaUsuario = r.respuesta_usuario || '';
+              const respuestaCorrecta = r.respuesta_correcta || '';
+              const feedback = r.feedback || '';
+              
+              if (normalizarTexto(preguntaTexto).includes(queryNormalizada) || 
+                  normalizarTexto(respuestaUsuario).includes(queryNormalizada) ||
+                  normalizarTexto(respuestaCorrecta).includes(queryNormalizada) ||
+                  normalizarTexto(feedback).includes(queryNormalizada)) {
+                preguntaMatch = true;
+                if (!preguntaEncontrada) preguntaEncontrada = preguntaTexto;
+              }
+            });
+          }
+          
+          if (tituloMatch || nombreMatch || carpetaMatch || preguntaMatch) {
+            console.log('✅ Práctica encontrada:', practica.titulo || practica.nombre || 'Sin título');
+            const porcentaje = practica.resultado?.porcentaje || 0;
+            resultados.push({
+              tipo: 'practica',
+              titulo: practica.titulo || practica.nombre || 'Práctica sin título',
+              contenido: `${porcentaje.toFixed(0)}% - ${practica.preguntas?.length || 0} preguntas${preguntaEncontrada ? ' - ' + preguntaEncontrada.substring(0, 100) : ''}`,
+              ruta: practica.carpeta || 'Raíz',
+              id: practica.id,
+              relevancia: tituloMatch || nombreMatch ? 10 : (preguntaMatch ? 8 : 5)
             });
           }
         });
@@ -8863,6 +9836,57 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         }, 100);
         break;
         
+      case 'examen':
+        console.log('📋 Procesando examen...');
+        // Buscar el examen por ID
+        const examenes = await getDatos('examenes');
+        const examen = examenes.find(e => e.id === resultado.id);
+        console.log('📋 Examen encontrado:', examen);
+        if (examen) {
+          // Cargar el examen completo para mostrar
+          setPreguntasExamen(examen.preguntas || []);
+          setRespuestasUsuario(examen.respuestas || {});
+          setExamenCompletado(true);
+          setResultadoExamen(examen.resultado || null);
+          setExamenActivo(examen);
+          setModalExamenAbierto(true);
+          
+          setMensaje({ 
+            tipo: 'exito', 
+            texto: `📋 Mostrando examen: ${examen.titulo || 'Sin título'}` 
+          });
+        } else {
+          console.error('❌ Examen no encontrado');
+          setMensaje({ tipo: 'error', texto: '❌ Examen no encontrado' });
+        }
+        break;
+        
+      case 'practica':
+        console.log('🎯 Procesando práctica...');
+        // Buscar la práctica por ID
+        const practicas = await getDatos('practicas');
+        const practica = practicas.find(p => p.id === resultado.id);
+        console.log('🎯 Práctica encontrada:', practica);
+        if (practica) {
+          // Cargar la práctica completa para mostrar
+          setPreguntasExamen(practica.preguntas || []);
+          setRespuestasUsuario(practica.respuestas || {});
+          setExamenCompletado(practica.completada || false);
+          setResultadoExamen(practica.resultado || null);
+          setExamenActivo(practica);
+          setEsPractica(true);
+          setModalExamenAbierto(true);
+          
+          setMensaje({ 
+            tipo: 'exito', 
+            texto: `🎯 Mostrando práctica: ${practica.titulo || practica.nombre || 'Sin título'}` 
+          });
+        } else {
+          console.error('❌ Práctica no encontrada');
+          setMensaje({ tipo: 'error', texto: '❌ Práctica no encontrada' });
+        }
+        break;
+        
       default:
         console.warn('⚠️ Tipo no soportado:', resultado.tipo);
         setMensaje({ tipo: 'info', texto: '📄 Tipo de archivo no soportado' });
@@ -8899,6 +9923,18 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           setRutaActual(rutaDoc);
         }
         setMensaje({ tipo: 'exito', texto: '📚 Navegando a Mis Cursos...' });
+        break;
+        
+      case 'examen':
+        console.log('📋 Navegando a sección Historial (exámenes), carpeta:', resultado.ruta);
+        setSelectedMenu('historial');
+        setMensaje({ tipo: 'exito', texto: '📋 Navegando a Historial de Exámenes...' });
+        break;
+        
+      case 'practica':
+        console.log('🎯 Navegando a sección Historial (prácticas), carpeta:', resultado.ruta);
+        setSelectedMenu('historial');
+        setMensaje({ tipo: 'exito', texto: '🎯 Navegando a Historial de Prácticas...' });
         break;
     }
   };
@@ -10499,8 +11535,18 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             📚 {erroresActuales[indiceErrorActual]?.carpeta || 'General'}
                           </span>
                           <span className="tag tag-rendimiento">
-                            📊 {erroresActuales[indiceErrorActual]?.porcentaje_obtenido?.toFixed(0) || 0}%
+                            📊 {erroresActuales[indiceErrorActual]?.porcentaje_obtenido?.toFixed(0) || erroresActuales[indiceErrorActual]?.porcentaje?.toFixed(0) || 0}%
                           </span>
+                          {erroresActuales[indiceErrorActual]?.proximaRevision && (
+                            <span className="tag tag-proxima-revision" title="Próxima revisión programada">
+                              🔄 {new Date(erroresActuales[indiceErrorActual].proximaRevision).toLocaleDateString('es-ES', { 
+                                day: 'numeric', 
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          )}
                         </div>
 
                         {/* Pregunta */}
@@ -10513,7 +11559,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </h3>
                         </div>
 
-                        {/* Opciones si existen */}
+                        {/* Opciones si existen (preguntas tipo multiple) */}
                         {erroresActuales[indiceErrorActual]?.opciones?.length > 0 && (
                           <div className="error-opciones">
                             <h4 className="opciones-label">
@@ -10571,28 +11617,153 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </div>
                         )}
 
-                        {/* Comparación de respuestas */}
-                        <div className="error-comparison">
-                          <div className="comparison-grid">
-                            <div className="comparison-card user-answer">
-                              <div className="card-icon">❌</div>
-                              <h4>Tu respuesta:</h4>
-                              <p className="answer-text">
-                                {erroresActuales[indiceErrorActual]?.respuesta_usuario || 'Sin respuesta'}
-                              </p>
-                            </div>
+                        {/* 🔥 NUEVO: Input para respuestas cortas/casos (cuando no hay opciones) */}
+                        {(!erroresActuales[indiceErrorActual]?.opciones || erroresActuales[indiceErrorActual]?.opciones.length === 0) && (
+                          <div className="error-respuesta-textual">
+                            <h4 className="respuesta-textual-label">
+                              {errorYaRespondido ? 'Tu respuesta final:' : '✍️ Escribe tu respuesta:'}
+                            </h4>
                             
-                            <div className="comparison-arrow">→</div>
+                            {/* Mostrar respuesta original del examen */}
+                            {!errorYaRespondido && erroresActuales[indiceErrorActual]?.respuesta_usuario && (
+                              <div className="respuesta-original-error">
+                                <h5>📝 Tu respuesta original en el examen:</h5>
+                                <div className="respuesta-original-contenido">
+                                  {erroresActuales[indiceErrorActual].respuesta_usuario}
+                                </div>
+                                <p className="respuesta-original-hint">
+                                  💡 Esta respuesta obtuvo {erroresActuales[indiceErrorActual].porcentaje_obtenido?.toFixed(0)}%. Intenta mejorarla abajo.
+                                </p>
+                              </div>
+                            )}
                             
-                            <div className="comparison-card correct-answer">
-                              <div className="card-icon">✅</div>
-                              <h4>Respuesta correcta:</h4>
-                              <p className="answer-text">
-                                {erroresActuales[indiceErrorActual]?.respuesta_correcta}
-                              </p>
-                            </div>
+                            {/* Historial de intentos */}
+                            {historialIntentos.length > 0 && (
+                              <div className="historial-intentos">
+                                <h5>📊 Intentos anteriores:</h5>
+                                {historialIntentos.map((intento, idx) => (
+                                  <div key={idx} className="intento-card">
+                                    <div className="intento-header">
+                                      <span className="intento-numero">Intento {idx + 1}</span>
+                                      <span className={`intento-puntaje ${intento.puntaje >= 70 ? 'aprobado' : 'pendiente'}`}>
+                                        {intento.puntaje}/100
+                                      </span>
+                                    </div>
+                                    <p className="intento-respuesta">"{intento.respuesta}"</p>
+                                    <div className="intento-feedback">{intento.feedback}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Campo de texto para responder */}
+                            {!errorYaRespondido && (
+                              <div className="respuesta-textual-input-container">
+                                <textarea
+                                  className="respuesta-textual-input"
+                                  placeholder="Escribe tu respuesta aquí... El modelo te dará retroalimentación para perfeccionarla."
+                                  rows="5"
+                                  value={respuestaTextual}
+                                  onChange={(e) => setRespuestaTextual(e.target.value)}
+                                  disabled={evaluandoRespuesta}
+                                />
+                                <button 
+                                  className="btn-evaluar-respuesta"
+                                  onClick={evaluarRespuestaTextual}
+                                  disabled={evaluandoRespuesta || !respuestaTextual.trim()}
+                                >
+                                  {evaluandoRespuesta ? (
+                                    <>
+                                      <span className="spinner">⏳</span>
+                                      <span>Evaluando con IA...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="btn-icon">🤖</span>
+                                      <span>Evaluar Respuesta</span>
+                                    </>
+                                  )}
+                                </button>
+                                <p className="respuesta-textual-hint">
+                                  💡 El modelo comparará tu respuesta con la correcta y te guiará para mejorarla
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Feedback actual de la IA */}
+                            {feedbackIA && (
+                              <div className={`feedback-ia ${feedbackIA.esSuficiente ? 'aprobado' : 'mejorable'}`}>
+                                <div className="feedback-ia-header">
+                                  <span className="feedback-ia-icon">
+                                    {feedbackIA.esSuficiente ? '🎉' : '💪'}
+                                  </span>
+                                  <span className="feedback-ia-puntaje">
+                                    Puntaje: {feedbackIA.puntaje}/100
+                                  </span>
+                                </div>
+                                <div className="feedback-ia-contenido">
+                                  {feedbackIA.texto.split('\n').map((linea, idx) => (
+                                    <p key={idx}>{linea}</p>
+                                  ))}
+                                </div>
+                                {feedbackIA.esSuficiente && (
+                                  <p className="feedback-ia-exito">
+                                    ✅ ¡Excelente! Tu respuesta es suficientemente buena. Puedes continuar.
+                                  </p>
+                                )}
+                                {!feedbackIA.esSuficiente && (
+                                  <p className="feedback-ia-mejora">
+                                    📝 Intenta nuevamente incorporando las sugerencias anteriores
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        </div>
+                        )}
+
+                        {/* Comparación de respuestas - SOLO SI YA RESPONDIÓ */}
+                        {errorYaRespondido && (
+                          <div className="error-comparison">
+                            <div className="comparison-grid">
+                              <div className="comparison-card user-answer">
+                                <div className="card-icon">
+                                  {respuestaErrorSeleccionada && respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? '✅' : '❌'}
+                                </div>
+                                <h4>Tu respuesta:</h4>
+                                <p className="answer-text">
+                                  {respuestaErrorSeleccionada || 'Sin respuesta'}
+                                </p>
+                              </div>
+                              
+                              <div className="comparison-arrow">→</div>
+                              
+                              <div className="comparison-card correct-answer">
+                                <div className="card-icon">✅</div>
+                                <h4>Respuesta correcta:</h4>
+                                <p className="answer-text">
+                                  {erroresActuales[indiceErrorActual]?.respuesta_correcta}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Mostrar mensaje de feedback */}
+                            {respuestaErrorSeleccionada && (
+                              <div className={`feedback-message ${respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? 'correcto' : 'incorrecto'}`}>
+                                {respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? (
+                                  <>
+                                    <span className="feedback-icon">🎉</span>
+                                    <p><strong>¡Excelente!</strong> Has corregido tu error. Esta respuesta se actualizará en tu examen/práctica original.</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="feedback-icon">💪</span>
+                                    <p><strong>Sigue intentando.</strong> La respuesta correcta se mostrará arriba. Este error se programará para revisión mañana.</p>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Explicación */}
                         {erroresActuales[indiceErrorActual]?.feedback && (
@@ -10630,6 +11801,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             setNotaSesion('');
                             setRespuestaErrorSeleccionada(null);
                             setErrorYaRespondido(false);
+                            setRespuestaTextual('');
+                            setHistorialIntentos([]);
+                            setFeedbackIA(null);
                             if (indiceErrorActual < erroresActuales.length - 1) {
                               setIndiceErrorActual(indiceErrorActual + 1);
                             } else {
@@ -10644,9 +11818,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         <button 
                           className="btn-action btn-understood"
                           onClick={marcarErrorComprendido}
+                          disabled={!errorYaRespondido}
+                          style={{
+                            opacity: errorYaRespondido ? 1 : 0.5,
+                            cursor: errorYaRespondido ? 'pointer' : 'not-allowed'
+                          }}
+                          title={!errorYaRespondido ? 'Primero selecciona una respuesta' : ''}
                         >
                           <span className="btn-icon">✅</span>
-                          <span>Comprendido, Siguiente</span>
+                          <span>{errorYaRespondido ? 'Siguiente' : 'Selecciona una respuesta primero'}</span>
                         </button>
 
                         <button 
@@ -10657,6 +11837,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               erroresReforzados: prev.erroresReforzados + 1
                             }));
                             setNotaSesion('');
+                            setRespuestaErrorSeleccionada(null);
+                            setErrorYaRespondido(false);
+                            setRespuestaTextual('');
+                            setHistorialIntentos([]);
+                            setFeedbackIA(null);
                             if (indiceErrorActual < erroresActuales.length - 1) {
                               setIndiceErrorActual(indiceErrorActual + 1);
                             } else {
@@ -13285,11 +14470,12 @@ Shortcuts:
                         <p>
                           <strong>🎴 Flashcards:</strong> {totalFlashcards} total ({flashcardsConRevision.length} con revisión programada, {flashcardsNuevas.length} nuevas) • 
                           <strong>📝 Notas:</strong> {totalNotas} total ({notasConRevision.length} con revisión, {notasNuevas.length} nuevas) • 
-                          <strong>🎯 Prácticas:</strong> {totalPracticas} total ({practicasConRevision.length} con revisión, {practicasNuevas.length} nuevas)
+                          <strong>🎯 Prácticas:</strong> {totalPracticas} total ({practicasConRevision.length} con revisión, {practicasNuevas.length} nuevas) • 
+                          <strong>📋 Exámenes:</strong> {totalExamenes} total ({examenesConRevision.length} con revisión, {examenesNuevos.length} nuevos)
                         </p>
                         <p className="info-nota">
                           💡 Los items nuevos (sin revisión programada) aparecerán en el calendario después de su primera evaluación.
-                          Ve a la pestaña correspondiente (Flashcards/Notas/Prácticas) para evaluarlos y programar su repetición espaciada.
+                          Los exámenes se guardan automáticamente al completarlos y se programan para revisión mañana.
                         </p>
                       </div>
                     </div>
@@ -13808,6 +14994,8 @@ Shortcuts:
                     const tipoConfig = {
                       'nota': { emoji: '📝', color: '#22c55e', nombre: 'Nota' },
                       'flashcard': { emoji: '🃏', color: '#667eea', nombre: 'Flashcard' },
+                      'examen': { emoji: '📋', color: '#f59e0b', nombre: 'Examen' },
+                      'practica': { emoji: '🎯', color: '#ec4899', nombre: 'Práctica' },
                       'documento': { emoji: '📄', color: '#3b82f6', nombre: 'Documento' }
                     };
                     const config = tipoConfig[resultado.tipo] || tipoConfig['documento'];
@@ -14001,119 +15189,6 @@ Shortcuts:
                 ))}
               </div>
             )}
-
-            {/* 🃏 Flashcards de esta carpeta */}
-            {rutaNotasActual && (() => {
-              const flashcardsCarpeta = flashcardsActuales.filter(f => f.carpeta === rutaNotasActual);
-              
-              if (flashcardsCarpeta.length > 0) {
-                return (
-                  <div className="flashcards-en-notas" style={{marginBottom: '2rem'}}>
-                    <div className="section-subtitle" style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '1rem',
-                      padding: '0.75rem 1rem',
-                      background: 'rgba(100, 108, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(100, 108, 255, 0.2)'
-                    }}>
-                      <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                        <span style={{fontSize: '1.5rem'}}>🃏</span>
-                        <span style={{fontWeight: '600'}}>Flashcards en esta carpeta ({flashcardsCarpeta.length})</span>
-                      </span>
-                      <button
-                        className="btn-secondary"
-                        onClick={() => {
-                          setCarpetaFlashcardActual({ ruta: rutaNotasActual });
-                          setSelectedMenu('flashcards');
-                        }}
-                        style={{fontSize: '0.875rem'}}
-                      >
-                        Ver todas →
-                      </button>
-                    </div>
-                    <div className="flashcards-preview-grid" style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-                      gap: '1rem'
-                    }}>
-                      {flashcardsCarpeta.slice(0, 6).map((flashcard) => (
-                        <div
-                          key={flashcard.id}
-                          className="flashcard-preview-card"
-                          style={{
-                            background: 'rgba(51, 65, 85, 0.4)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '12px',
-                            padding: '1rem',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'translateY(-2px)';
-                            e.currentTarget.style.borderColor = 'rgba(100, 108, 255, 0.4)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'translateY(0)';
-                            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                          }}
-                          onClick={() => {
-                            setCarpetaFlashcardActual({ ruta: rutaNotasActual });
-                            setSelectedMenu('flashcards');
-                          }}
-                        >
-                          <div style={{
-                            fontSize: '0.75rem',
-                            color: '#94a3b8',
-                            marginBottom: '0.5rem',
-                            textTransform: 'uppercase',
-                            fontWeight: '600'
-                          }}>
-                            {flashcard.tipo === 'clasica' ? '📇 Clásica' :
-                             flashcard.tipo === 'mcq' ? '☑️ Opción Múltiple' :
-                             flashcard.tipo === 'cloze' ? '🔤 Cloze' :
-                             '🃏 ' + flashcard.tipo}
-                          </div>
-                          <h4 style={{
-                            fontSize: '0.95rem',
-                            marginBottom: '0.5rem',
-                            color: '#e2e8f0',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical'
-                          }}>
-                            {flashcard.titulo}
-                          </h4>
-                          <div style={{
-                            fontSize: '0.75rem',
-                            color: '#64748b',
-                            display: 'flex',
-                            gap: '0.5rem',
-                            flexWrap: 'wrap'
-                          }}>
-                            {flashcard.estadoRevision === 'nueva' && <span>🆕 Nueva</span>}
-                            {flashcard.estadoRevision === 'en_progreso' && <span>📚 En progreso</span>}
-                            {flashcard.estadoRevision === 'dominada' && <span>✅ Dominada</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {flashcardsCarpeta.length > 6 && (
-                      <div style={{textAlign: 'center', marginTop: '1rem'}}>
-                        <span style={{color: '#94a3b8', fontSize: '0.875rem'}}>
-                          Y {flashcardsCarpeta.length - 6} flashcard(s) más...
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })()}
 
             {/* Notas filtradas por carpeta actual */}
             {(() => {
@@ -14494,13 +15569,34 @@ Shortcuts:
                               <button
                                 className="btn-reintentar-header"
                                 onClick={() => {
+                                  // Buscar la práctica por ID para evitar referencias incorrectas
+                                  const practicaActual = practicas.find(p => p.id === practica.id);
+                                  if (!practicaActual) {
+                                    console.error('❌ Práctica no encontrada:', practica.id);
+                                    setMensaje({
+                                      tipo: 'error',
+                                      texto: '❌ No se pudo encontrar la práctica'
+                                    });
+                                    return;
+                                  }
+                                  
+                                  console.log('🔄 Reintentando práctica:', practicaActual.id);
+                                  console.log('   Ruta:', practicaActual.ruta);
+                                  console.log('   Preguntas:', practicaActual.preguntas.length);
+                                  
                                   // Reintentar práctica - limpiar respuestas
-                                  setPreguntasExamen(practica.preguntas);
+                                  setPreguntasExamen(practicaActual.preguntas);
                                   setRespuestasUsuario({});
                                   setExamenCompletado(false);
                                   setResultadoExamen(null);
                                   setFlashcardsVolteadas({});
+                                  setExamenActivo(practicaActual); // Guardar la práctica activa
                                   setModalExamenAbierto(true);
+                                  
+                                  setMensaje({
+                                    tipo: 'info',
+                                    texto: `🔄 Reintentando: ${practicaActual.ruta.split('/').pop() || practicaActual.ruta}`
+                                  });
                                 }}
                                 title="Reintentar práctica"
                                 style={{
@@ -14560,6 +15656,7 @@ Shortcuts:
                                   setRespuestasUsuario(practica.respuestas || {});
                                   setExamenCompletado(true);
                                   setResultadoExamen(practica.resultado || null);
+                                  setExamenActivo(practica); // ✅ Establecer práctica activa
                                   setModalExamenAbierto(true);
                                 }}
                                 title="Ver Resultados"
@@ -14569,13 +15666,33 @@ Shortcuts:
                               <button 
                                 className="btn-secondary"
                                 onClick={() => {
+                                  // Buscar la práctica por ID para evitar referencias incorrectas
+                                  const practicaActual = practicas.find(p => p.id === practica.id);
+                                  if (!practicaActual) {
+                                    console.error('Práctica no encontrada:', practica.id);
+                                    setMensaje({
+                                      tipo: 'error',
+                                      texto: '❌ No se pudo encontrar la práctica'
+                                    });
+                                    return;
+                                  }
+                                  
+                                  console.log('🔄 Reintentando práctica:', practicaActual.id, practicaActual.ruta);
+                                  console.log('   Preguntas:', practicaActual.preguntas.length);
+                                  
                                   // Reintentar práctica - limpiar respuestas
-                                  setPreguntasExamen(practica.preguntas);
+                                  setPreguntasExamen(practicaActual.preguntas);
                                   setRespuestasUsuario({});
                                   setExamenCompletado(false);
                                   setResultadoExamen(null);
                                   setFlashcardsVolteadas({});
+                                  setExamenActivo(practicaActual); // Guardar la práctica activa
                                   setModalExamenAbierto(true);
+                                  
+                                  setMensaje({
+                                    tipo: 'info',
+                                    texto: `🔄 Reintentando: ${practicaActual.ruta.split('/').pop() || practicaActual.ruta}`
+                                  });
                                 }}
                                 title="Reintentar práctica"
                               >
@@ -15730,6 +16847,15 @@ Shortcuts:
                     📋 Exámenes
                   </button>
                   <button
+                    className={`explorador-tab ${tipoExploradorChat === 'practicas' ? 'active' : ''}`}
+                    onClick={() => {
+                      setTipoExploradorChat('practicas')
+                      explorarCarpetaChat('practicas', '')
+                    }}
+                  >
+                    ✅ Prácticas
+                  </button>
+                  <button
                     className={`explorador-tab ${tipoExploradorChat === 'flashcards' ? 'active' : ''}`}
                     onClick={() => {
                       setTipoExploradorChat('flashcards')
@@ -15800,7 +16926,11 @@ Shortcuts:
                           <div key={idx} className={`archivo-item ${yaAdjuntado ? 'adjuntado' : ''}`}>
                             <div className="archivo-info">
                               <span className="archivo-icon">
-                                {archivo.extension === '.pdf' ? '📕' :
+                                {archivo.tipo === 'Nota' ? '📝' :
+                                 archivo.tipo === 'Examen' ? '📋' :
+                                 archivo.tipo === 'Práctica' ? '✅' :
+                                 archivo.tipo === 'Flashcard' ? '🎴' :
+                                 archivo.extension === '.pdf' ? '📕' :
                                  archivo.extension === '.html' ? '🌐' :
                                  archivo.extension === '.json' ? '📊' :
                                  archivo.extension === '.txt' ? '📄' : '📝'}
@@ -15808,7 +16938,7 @@ Shortcuts:
                               <div className="archivo-detalles">
                                 <span className="archivo-nombre">{archivo.nombre}</span>
                                 <span className="archivo-meta">
-                                  {archivo.tipo} • {(archivo.tamaño / 1024).toFixed(1)} KB • 
+                                  {archivo.tipo} • {archivo.carpeta && `${archivo.carpeta} • `}{(archivo.tamaño / 1024).toFixed(1)} KB • 
                                   {new Date(archivo.modificado * 1000).toLocaleDateString('es-ES')}
                                 </span>
                               </div>
@@ -18606,6 +19736,42 @@ Shortcuts:
                                 </div>
                               )}
                               
+                              {/* Datos Clave - Campo genérico para todos los casos */}
+                              {pregunta.metadata?.datos_clave && Array.isArray(pregunta.metadata.datos_clave) && pregunta.metadata.datos_clave.length > 0 && (
+                                <div style={{
+                                  padding: '1rem 1.5rem', 
+                                  background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.1) 100%)', 
+                                  borderTop: '1px solid rgba(255,255,255,0.05)',
+                                  borderLeft: '3px solid #f59e0b'
+                                }}>
+                                  <h4 style={{
+                                    marginTop: 0, 
+                                    marginBottom: '0.75rem', 
+                                    fontSize: '0.95rem', 
+                                    color: '#fbbf24',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem'
+                                  }}>
+                                    <span>🔑</span>
+                                    <span>Datos Clave</span>
+                                  </h4>
+                                  <ul style={{
+                                    margin: 0, 
+                                    paddingLeft: '1.5rem', 
+                                    color: '#fde68a',
+                                    listStyleType: 'circle'
+                                  }}>
+                                    {pregunta.metadata.datos_clave.map((dato, idx) => (
+                                      <li key={idx} style={{
+                                        marginBottom: '0.5rem',
+                                        lineHeight: '1.6'
+                                      }}>{dato}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
                               {/* Campos específicos por tipo de caso */}
                               
                               {/* Caso Descriptivo - Puntos clave */}
@@ -19308,8 +20474,39 @@ Shortcuts:
                                      resultado.puntos > 0 ? '#fbbf24' : '#ef4444'
                             }}>
                               {resultado.puntos} / {resultado.puntos_maximos} pts
+                              {resultado.porcentaje !== undefined && (
+                                <span style={{marginLeft: '0.5rem', fontSize: '0.9em'}}>
+                                  ({resultado.porcentaje.toFixed(0)}%)
+                                </span>
+                              )}
                             </span>
                           </div>
+                          
+                          {/* Mostrar próxima revisión si existe */}
+                          {resultado.proximaRevision && (
+                            <div className="resultado-proxima-revision" style={{
+                              fontSize: '0.85rem',
+                              color: '#a78bfa',
+                              marginTop: '0.5rem',
+                              padding: '0.5rem',
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(139, 92, 246, 0.3)'
+                            }}>
+                              🔄 Próxima revisión: {new Date(resultado.proximaRevision).toLocaleDateString('es-ES', { 
+                                weekday: 'long',
+                                day: 'numeric', 
+                                month: 'long',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                              {resultado.intervalo !== undefined && (
+                                <span style={{marginLeft: '0.5rem', opacity: 0.8}}>
+                                  ({resultado.intervalo >= 1 ? `${resultado.intervalo} días` : '12 horas'})
+                                </span>
+                              )}
+                            </div>
+                          )}
                           
                           <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
                           
@@ -27275,6 +28472,9 @@ Shortcuts:
                           onClick={() => {
                             restaurarSesion(sesionPersistente);
                             setModalConfigSesion(false);
+                            setModalSesionAbierto(false);
+                            setSelectedMenu('sesion');
+                            console.log('✅ Sesión restaurada y activada');
                           }}
                         >
                           ▶️ Continuar Sesión

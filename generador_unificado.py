@@ -587,46 +587,340 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
             motor = "Ollama + GPU" if self.usar_ollama else "llama-cpp-python"
             callback_progreso(25, f"Generando con {motor}...")
         
-        # Generar
+        # NUEVA ESTRATEGIA: GENERAR POR BLOQUES PARA ASEGURAR TIPOS CORRECTOS
         print(f"\n{'='*60}")
-        print(f"🤖 Generando {total} preguntas con IA...")
+        print(f"🎯 GENERACIÓN POR BLOQUES - Total: {total} preguntas")
         print(f"{'='*60}")
         
-        if self.usar_ollama:
-            respuesta = self._generar_ollama(
-                prompt, 
-                ajustes_modelo['max_tokens'], 
-                ajustes_modelo['temperature']
-            )
-        else:
-            respuesta = self._generar_gguf(
-                prompt,
-                ajustes_modelo['max_tokens'],
-                ajustes_modelo['temperature'],
-                ajustes_modelo['top_p'],
-                ajustes_modelo['repeat_penalty']
-            )
+        todas_preguntas = []
+        progreso_base = 25
+        progreso_por_tipo = 45 / len([v for v in num_preguntas.values() if v > 0])  # 45% para generación
         
-        if not respuesta:
-            error_msg = "No se obtuvo respuesta del modelo"
-            print(f"❌ {error_msg}")
-            self._agregar_log('errores', error_msg)
-            self._guardar_log()
-            return []
+        for tipo, cantidad in num_preguntas.items():
+            if cantidad == 0:
+                continue
+            
+            print(f"\n📦 Bloque {len(todas_preguntas) + 1}: Generando {cantidad} preguntas de tipo '{tipo}'")
+            
+            # Crear prompt específico para este tipo
+            prompt_bloque = self._crear_prompt_por_tipo(contenido_corto, tipo, cantidad, tipo_caso)
+            
+            # Generar este bloque
+            if self.usar_ollama:
+                respuesta = self._generar_ollama(
+                    prompt_bloque, 
+                    ajustes_modelo['max_tokens'], 
+                    ajustes_modelo['temperature']
+                )
+            else:
+                respuesta = self._generar_gguf(
+                    prompt_bloque,
+                    ajustes_modelo['max_tokens'],
+                    ajustes_modelo['temperature'],
+                    ajustes_modelo['top_p'],
+                    ajustes_modelo['repeat_penalty']
+                )
+            
+            if not respuesta:
+                print(f"⚠️ No se obtuvo respuesta para tipo '{tipo}'")
+                continue
+            
+            # Parsear solo preguntas de este tipo
+            preguntas_bloque = self._extraer_preguntas_simple(respuesta, tipo)
+            
+            # Tomar exactamente la cantidad solicitada
+            preguntas_tipo_correcto = [p for p in preguntas_bloque if p.tipo == tipo][:cantidad]
+            
+            print(f"✅ Bloque completado: {len(preguntas_tipo_correcto)}/{cantidad} preguntas de tipo '{tipo}'")
+            todas_preguntas.extend(preguntas_tipo_correcto)
+            
+            # Actualizar progreso
+            if callback_progreso:
+                progreso_base += progreso_por_tipo
+                callback_progreso(int(progreso_base), f"Generadas {len(todas_preguntas)}/{total}...")
         
-        # Registrar respuesta del modelo
-        self._agregar_log('respuesta_modelo', respuesta)
+        # Registrar todas las respuestas
+        self._agregar_log('total_preguntas_generadas', len(todas_preguntas))
         
         if callback_progreso:
             callback_progreso(70, "Procesando respuesta...")
         
-        # Parsear JSON
-        preguntas = self._extraer_preguntas(respuesta, num_preguntas)
+        print(f"\n{'='*60}")
+        print(f"✅ GENERACIÓN COMPLETADA: {len(todas_preguntas)}/{total} preguntas")
+        print(f"{'='*60}")
         
         if callback_progreso:
-            callback_progreso(100, f"¡{len(preguntas)} preguntas generadas!")
+            callback_progreso(100, f"¡{len(todas_preguntas)} preguntas generadas!")
         
-        return preguntas
+        return todas_preguntas
+    
+    def _crear_prompt_caso_estudio(self, contenido: str, cantidad: int, tipo_caso: str) -> str:
+        """Crea un prompt especializado para casos de estudio según el subtipo seleccionado"""
+        
+        # Mapeo de tipos de casos de estudio con instrucciones específicas
+        tipos_casos = {
+            'descriptivo': {
+                'nombre': 'Caso Descriptivo',
+                'descripcion': 'Describe qué pasó, quién hizo qué y el contexto completo',
+                'objetivo': 'Aprender a observar, sintetizar y entender el contexto',
+                'instrucciones': '''- Formula un caso que DESCRIBA una situación real extraída del contenido
+- Incluye: actores involucrados, contexto temporal, acciones realizadas, resultados obtenidos
+- Enfócate en QUÉ pasó, no en por qué o cómo solucionarlo
+- El caso debe permitir al estudiante practicar observación y síntesis'''
+            },
+            'analitico': {
+                'nombre': 'Caso Analítico-Diagnóstico',
+                'descripcion': 'Explica causas, relaciones y consecuencias (autopsia empresarial)',
+                'objetivo': 'Analizar causas raíz y relaciones causa-efecto',
+                'instrucciones': '''- Formula un caso que requiera ANALIZAR causas, relaciones y consecuencias
+- Incluye: síntomas observables, datos relevantes, múltiples factores interrelacionados
+- El estudiante debe identificar causas raíz y explicar cadenas de causalidad
+- Requiere pensamiento sistémico y diagnóstico profundo'''
+            },
+            'resolucion': {
+                'nombre': 'Caso de Resolución de Problemas',
+                'descripcion': 'Plantea un problema abierto que requiere solución',
+                'objetivo': 'Desarrollar habilidades de problem-solving',
+                'instrucciones': '''- Formula un caso con un PROBLEMA CLARO que necesita solución
+- Incluye: descripción del problema, restricciones, recursos disponibles
+- El problema debe ser abierto (múltiples soluciones posibles)
+- El estudiante debe proponer Y justificar una solución concreta'''
+            },
+            'decision': {
+                'nombre': 'Caso de Decisión',
+                'descripcion': 'Escenario donde se debe elegir entre varias opciones',
+                'objetivo': 'Practicar toma de decisiones justificadas',
+                'instrucciones': '''- Formula un caso donde se deba TOMAR UNA DECISIÓN entre 2-4 opciones
+- Incluye: contexto de decisión, opciones disponibles (con pros/contras), stakeholders afectados
+- Ninguna opción es claramente superior - todas tienen trade-offs
+- El estudiante debe elegir Y justificar exhaustivamente su decisión'''
+            },
+            'comparativo': {
+                'nombre': 'Caso Comparativo',
+                'descripcion': 'Compara dos soluciones, enfoques o metodologías',
+                'objetivo': 'Entrenar evaluación crítica comparativa',
+                'instrucciones': '''- Formula un caso que compare 2-3 ALTERNATIVAS del contenido
+- Incluye: criterios de comparación, ventajas/desventajas de cada opción, contexto de aplicación
+- El estudiante debe evaluar críticamente cada alternativa
+- Debe recomendar cuál usar y en qué circunstancias'''
+            },
+            'predictivo': {
+                'nombre': 'Caso Predictivo',
+                'descripcion': 'Proyecta el futuro basándose en datos actuales',
+                'objetivo': 'Desarrollar capacidad de pronóstico fundamentado',
+                'instrucciones': '''- Formula un caso con DATOS ACTUALES donde se deba predecir el futuro
+- Incluye: tendencias observadas, métricas actuales, factores externos relevantes
+- El estudiante debe hacer predicciones específicas (no vagas)
+- Debe justificar el pronóstico con evidencia y razonamiento lógico'''
+            },
+            'simulacion': {
+                'nombre': 'Caso de Simulación',
+                'descripcion': 'Sistema con variables dinámicas que requiere decisiones',
+                'objetivo': 'Practicar decisiones en sistemas complejos',
+                'instrucciones': '''- Formula un caso que simule un SISTEMA CON VARIABLES DINÁMICAS
+- Incluye: estado inicial, variables que interactúan, reglas del sistema
+- El estudiante debe tomar decisiones secuenciales
+- Debe predecir cómo sus decisiones afectan las variables del sistema'''
+            },
+            'inverso': {
+                'nombre': 'Caso Inverso (Reverse)',
+                'descripcion': 'Se da el resultado final, se debe reconstruir el proceso',
+                'objetivo': 'Desarrollar pensamiento deductivo e ingeniaría inversa',
+                'instrucciones': '''- Formula un caso mostrando el RESULTADO FINAL ya logrado
+- Incluye: descripción detallada del outcome, pistas sobre el proceso
+- OCULTA los pasos intermedios
+- El estudiante debe reconstruir lógicamente QUÉ PASOS se siguieron para llegar a ese resultado'''
+            },
+            'fallo': {
+                'nombre': 'Caso de Fallo o Desastre',
+                'descripcion': 'Estudia algo que salió mal (aprender de errores ajenos)',
+                'objetivo': 'Aprender de fracasos y prevenir errores',
+                'instrucciones': '''- Formula un caso sobre algo que SALIÓ MAL basándote en el contenido
+- Incluye: qué se intentó lograr, qué falló específicamente, consecuencias
+- Menciona señales de alerta que se ignoraron
+- El estudiante debe analizar causas del fallo y proponer cómo evitarlo'''
+            },
+            'creativo': {
+                'nombre': 'Caso Creativo/Innovación',
+                'descripcion': 'No hay respuesta correcta, se evalúa creatividad',
+                'objetivo': 'Fomentar ideación y pensamiento original',
+                'instrucciones': '''- Formula un caso ABIERTO que requiera INNOVACIÓN
+- Incluye: desafío o oportunidad, restricciones del contexto
+- NO hay una respuesta "correcta" predefinida
+- Se evalúa originalidad, viabilidad de ideas y creatividad de la propuesta'''
+            },
+            'etico': {
+                'nombre': 'Caso Ético',
+                'descripcion': 'Dilema donde el negocio choca con la moral',
+                'objetivo': 'Desarrollar razonamiento ético y responsabilidad',
+                'instrucciones': '''- Formula un caso con un DILEMA ÉTICO basado en el contenido
+- Incluye: conflicto entre beneficio/deber, stakeholders con intereses contrapuestos
+- No hay solución fácil - hay tensión entre opciones
+- El estudiante debe razonar éticamente y defender su postura moral'''
+            },
+            'tecnico': {
+                'nombre': 'Caso Técnico-Operativo',
+                'descripcion': 'Explica un sistema/proceso y reta a optimizarlo',
+                'objetivo': 'Mejorar habilidades técnicas y optimización',
+                'instrucciones': '''- Formula un caso explicando un SISTEMA O PROCESO TÉCNICO del contenido
+- Incluye: descripción del funcionamiento actual, métricas de desempeño
+- Identifica ineficiencias o áreas de mejora
+- El estudiante debe proponer optimizaciones técnicas concretas y justificarlas'''
+            }
+        }
+        
+        # Si no se especifica tipo o es inválido, usar descriptivo por defecto
+        if not tipo_caso or tipo_caso not in tipos_casos:
+            tipo_caso = 'descriptivo'
+        
+        info_tipo = tipos_casos[tipo_caso]
+        
+        prompt = f"""Eres un experto en crear casos de estudio educativos. Tu tarea es generar EXACTAMENTE {cantidad} caso(s) de estudio de tipo "{info_tipo['nombre']}" basándote en el contenido proporcionado.
+
+CONTENIDO BASE PARA EL CASO:
+{contenido}
+
+🎯 TIPO DE CASO REQUERIDO: {info_tipo['nombre'].upper()}
+📋 DESCRIPCIÓN: {info_tipo['descripcion']}
+🎓 OBJETIVO PEDAGÓGICO: {info_tipo['objetivo']}
+
+⚠️ INSTRUCCIONES ESPECÍFICAS PARA ESTE TIPO:
+{info_tipo['instrucciones']}
+
+⚠️ REGLAS CRÍTICAS:
+1. DEBES formular el caso DE ESTUDIO COMPLETO basándote en la información del contenido
+2. El caso debe ser REALISTA y coherente con el contenido proporcionado
+3. Genera EXACTAMENTE {cantidad} caso(s) de tipo "{tipo_caso}"
+4. NO generes otros tipos de casos
+5. El caso debe estar COMPLETO con todos los campos requeridos
+6. NO uses placeholders como "...", "[...]", "[Nombre de empresa]"
+7. Usa información ESPECÍFICA del contenido proporcionado
+8. El caso debe ser autocontenido (incluye todo el contexto necesario)
+
+FORMATO JSON REQUERIDO:
+{{
+  "preguntas": [
+    {{
+      "tipo": "case_study",
+      "subtipo": "{tipo_caso}",
+      "titulo": "Título descriptivo del caso (máx 15 palabras)",
+      "contexto": "CONTEXTO DETALLADO (mínimo 100 palabras): Describe el escenario completo, actores involucrados, situación inicial, antecedentes relevantes. Usa información ESPECÍFICA del contenido.",
+      "descripcion": "DESCRIPCIÓN EXHAUSTIVA (mínimo 150 palabras): Desarrolla el caso en profundidad según el tipo '{tipo_caso}'. Incluye datos concretos, situaciones específicas, detalles relevantes extraídos del contenido.",
+      "pregunta": "Pregunta principal que guía el análisis del caso (relacionada con el tipo '{tipo_caso}')",
+      "datos_clave": ["Dato relevante 1 del contenido", "Dato relevante 2 del contenido", "Dato relevante 3 del contenido", "Dato relevante 4 del contenido"],
+      "respuesta_esperada": "Respuesta modelo DETALLADA (mínimo 150 palabras) que muestre cómo analizar/resolver este tipo de caso. Debe demostrar el tipo de razonamiento requerido para '{tipo_caso}'.",
+      "puntos": 10
+    }}
+  ]
+}}
+
+IMPORTANTE: El caso debe formularse USANDO LA INFORMACIÓN DEL CONTENIDO PROPORCIONADO, no inventes escenarios genéricos. Extrae situaciones, conceptos, ejemplos o problemas del texto y desarróllalos como un caso de estudio del tipo "{tipo_caso}".
+
+Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionales."""
+
+        return prompt
+    
+    def _crear_prompt_por_tipo(self, contenido: str, tipo: str, cantidad: int, tipo_caso: str = None) -> str:
+        """Crea un prompt específico para generar preguntas de UN SOLO TIPO
+        Esto asegura que el modelo genere exactamente el tipo solicitado
+        """
+        
+        # CASOS DE ESTUDIO: Requieren prompt especial basado en el subtipo
+        if tipo == 'case_study':
+            return self._crear_prompt_caso_estudio(contenido, cantidad, tipo_caso)
+        
+        # Mapeo de nombres de tipos a descripciones
+        tipo_info = {
+            'mcq': {
+                'nombre': 'opción múltiple',
+                'puntos': 3,
+                'ejemplo': '''{
+      "tipo": "mcq",
+      "pregunta": "¿Pregunta clara y específica sobre el contenido?",
+      "opciones": ["A) Primera opción", "B) Segunda opción", "C) Tercera opción", "D) Cuarta opción"],
+      "respuesta_correcta": "A",
+      "puntos": 3
+    }''',
+                'instrucciones': '- Debe tener EXACTAMENTE 4 opciones (A, B, C, D)\n- Una sola respuesta correcta\n- Las opciones incorrectas deben ser plausibles'
+            },
+            'true_false': {
+                'nombre': 'verdadero/falso',
+                'puntos': 2,
+                'ejemplo': '''{
+      "tipo": "true_false",
+      "pregunta": "Afirmación clara basada en el contenido",
+      "respuesta_correcta": "verdadero",
+      "puntos": 2
+    }''',
+                'instrucciones': '- La afirmación debe ser clara y específica\n- respuesta_correcta debe ser "verdadero" o "falso"\n- Basada en información del contenido'
+            },
+            'short_answer': {
+                'nombre': 'respuesta corta',
+                'puntos': 3,
+                'ejemplo': '''{
+      "tipo": "short_answer",
+      "pregunta": "Pregunta que requiere una respuesta breve y concreta",
+      "respuesta_correcta": "Respuesta esperada (2-3 oraciones)",
+      "puntos": 3
+    }''',
+                'instrucciones': '- Respuesta de 2-3 oraciones\n- Clara y concreta\n- Basada en el contenido'
+            },
+            'open_question': {
+                'nombre': 'desarrollo/ensayo',
+                'puntos': 5,
+                'ejemplo': '''{
+      "tipo": "open_question",
+      "pregunta": "📝 DESARROLLO: Analiza en profundidad [tema del contenido]",
+      "respuesta_correcta": "Respuesta modelo DETALLADA con análisis profundo (mínimo 150 palabras)",
+      "puntos": 5
+    }''',
+                'instrucciones': '- Pregunta compleja que requiere análisis profundo\n- Respuesta modelo de mínimo 150 palabras\n- Debe incluir múltiples conceptos del contenido'
+            },
+            'flashcard': {
+                'nombre': 'flashcard',
+                'puntos': 1,
+                'ejemplo': '''{
+      "tipo": "flashcard",
+      "pregunta": "Concepto o término clave",
+      "respuesta_correcta": "Definición o explicación",
+      "puntos": 1
+    }''',
+                'instrucciones': '- Pregunta directa sobre un concepto\n- Respuesta concisa y precisa'
+            }
+        }
+        
+        info = tipo_info.get(tipo, tipo_info['mcq'])
+        
+        prompt = f"""Eres un experto en crear exámenes educativos. Tu tarea es generar EXACTAMENTE {cantidad} preguntas de tipo "{tipo}" ({info['nombre']}) basadas en el contenido proporcionado.
+
+CONTENIDO A EVALUAR:
+{contenido}
+
+🎯 TIPO DE PREGUNTA REQUERIDO: {info['nombre'].upper()}
+📊 CANTIDAD EXACTA: {cantidad} preguntas
+
+⚠️ INSTRUCCIONES ESPECÍFICAS PARA ESTE TIPO:
+{info['instrucciones']}
+
+⚠️ REGLAS CRÍTICAS:
+1. Genera EXACTAMENTE {cantidad} preguntas de tipo "{tipo}"
+2. NO generes otros tipos de preguntas
+3. Todas las preguntas deben estar COMPLETAS
+4. NO uses placeholders como "...", "[...]"
+5. Basa todas las preguntas en el contenido proporcionado
+6. Cada pregunta debe ser AUTOCONTENIDA (incluye contexto necesario)
+7. NO inventes información que no esté en el texto
+
+FORMATO JSON (genera un array con {cantidad} preguntas):
+{{
+  "preguntas": [
+    {info['ejemplo']}
+  ]
+}}
+
+Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionales."""
+
+        return prompt
     
     def _crear_prompt(self, contenido: str, num_preguntas: Dict[str, int], total: int, tipo_caso: str = None) -> str:
         """Crea el prompt optimizado
@@ -1074,6 +1368,89 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         
         return formatos_casos.get(tipo_caso, formatos_casos["descriptivo"])
     
+    def _extraer_preguntas_simple(self, respuesta: str, tipo_esperado: str) -> List[PreguntaExamen]:
+        """Extrae preguntas de UN SOLO TIPO sin filtrado complejo
+        Usado para generación por bloques donde ya sabemos el tipo esperado
+        """
+        import json
+        
+        print(f"  📥 Extrayendo preguntas de tipo '{tipo_esperado}'...")
+        
+        try:
+            # Buscar el bloque JSON (objeto o array)
+            inicio = respuesta.find('{')
+            if inicio == -1:
+                inicio = respuesta.find('[')
+            
+            if inicio == -1:
+                print(f"  ❌ No se encontró JSON en la respuesta")
+                return []
+            
+            # Extraer hasta el final balanceado
+            nivel = 0
+            en_string = False
+            escape = False
+            fin = inicio
+            
+            for i in range(inicio, len(respuesta)):
+                c = respuesta[i]
+                
+                if escape:
+                    escape = False
+                    continue
+                
+                if c == '\\':
+                    escape = True
+                    continue
+                
+                if c == '"':
+                    en_string = not en_string
+                    continue
+                
+                if not en_string:
+                    if c in '{[':
+                        nivel += 1
+                    elif c in '}]':
+                        nivel -= 1
+                        if nivel == 0:
+                            fin = i + 1
+                            break
+            
+            json_str = respuesta[inicio:fin]
+            
+            # Parsear
+            datos = json.loads(json_str)
+            
+            # Extraer array de preguntas
+            lista_preguntas = []
+            if isinstance(datos, list):
+                lista_preguntas = datos
+            elif isinstance(datos, dict):
+                if 'preguntas' in datos:
+                    lista_preguntas = datos['preguntas']
+                elif 'questions' in datos:
+                    lista_preguntas = datos['questions']
+                elif 'tipo' in datos or 'type' in datos:
+                    # Es una pregunta única
+                    lista_preguntas = [datos]
+            
+            # Convertir a objetos PreguntaExamen
+            preguntas = []
+            for p in lista_preguntas:
+                try:
+                    pregunta = PreguntaExamen.from_dict(p)
+                    preguntas.append(pregunta)
+                except Exception as e:
+                    print(f"  ⚠️ Error parseando pregunta: {e}")
+                    continue
+            
+            print(f"  ✅ Extraídas {len(preguntas)} preguntas")
+            return preguntas
+            
+        except Exception as e:
+            print(f"  ❌ Error extrayendo JSON: {e}")
+            return []
+    
     def _extraer_preguntas(self, respuesta: str, num_preguntas: Dict[str, int] = None) -> List[PreguntaExamen]:
         """Extrae preguntas del JSON"""
         try:
@@ -1345,6 +1722,8 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                             cantidad_solicitada = num_preguntas.get(tipo_normalizado, 0)
                             print(f"     → Cantidad solicitada de '{tipo_normalizado}': {cantidad_solicitada}")
                             
+                            # NUEVO: Aceptar preguntas incluso si no se solicitaron explícitamente
+                            # siempre que sean de tipos válidos (mcq, true_false, short_answer, etc.)
                             if cantidad_solicitada > 0:
                                 if tipo_normalizado not in contador_por_tipo:
                                     contador_por_tipo[tipo_normalizado] = 0
@@ -1352,6 +1731,18 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                                 if contador_por_tipo[tipo_normalizado] < cantidad_solicitada:
                                     preguntas_filtradas.append(pregunta)
                                     contador_por_tipo[tipo_normalizado] += 1
+                                    print(f"     ✅ Aceptada (solicitada)")
+                                else:
+                                    print(f"     ❌ Rechazada (ya se alcanzó el límite de {cantidad_solicitada})")
+                            elif tipo_normalizado in ['mcq', 'true_false', 'short_answer', 'open_question', 'flashcard']:
+                                # Tipos válidos aunque no solicitados explícitamente - ACEPTAR
+                                if tipo_normalizado not in contador_por_tipo:
+                                    contador_por_tipo[tipo_normalizado] = 0
+                                preguntas_filtradas.append(pregunta)
+                                contador_por_tipo[tipo_normalizado] += 1
+                                print(f"     ✅ Aceptada (tipo válido extra)")
+                            else:
+                                print(f"     ❌ Rechazada (tipo no solicitado ni en lista válida)")
                         
                         print(f"🔍 Filtrado: {len(preguntas_unicas)} únicas → {len(preguntas_filtradas)} solicitadas")
                         print(f"   Solicitadas: {num_preguntas}")
@@ -1589,10 +1980,11 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                 if isinstance(solution, dict):
                     respuesta_modelo = solution.get('answer', respuesta_modelo)
         
-        # Para casos de estudio, extraer de metadata.sample_answer
+        # Para casos de estudio, extraer de metadata (respuesta_esperada o sample_answer)
         elif pregunta.tipo == 'case_study' and hasattr(pregunta, 'metadata') and pregunta.metadata:
             if isinstance(pregunta.metadata, dict):
-                respuesta_modelo = pregunta.metadata.get('sample_answer', respuesta_modelo)
+                # Intentar primero respuesta_esperada, luego sample_answer
+                respuesta_modelo = pregunta.metadata.get('respuesta_esperada') or pregunta.metadata.get('sample_answer', respuesta_modelo)
         
         # Si es un diccionario (fallback), extraer el campo 'answer'
         if isinstance(respuesta_modelo, dict):

@@ -69,6 +69,7 @@ class PreguntaExamen:
             # Para respuesta correcta, intentar varios campos
             respuesta_correcta = (
                 data.get('respuesta_correcta') or 
+                data.get('respuesta_esperada') or  # Para casos de estudio
                 data.get('correct_answer') or 
                 data.get('answer') or
                 data.get('back') or  # Para flashcards antiguas
@@ -89,6 +90,7 @@ class PreguntaExamen:
         # Para respuesta correcta, intentar varios campos
         respuesta_correcta = (
             data.get('respuesta_correcta') or 
+            data.get('respuesta_esperada') or  # Para casos de estudio
             data.get('correct_answer') or 
             data.get('answer') or 
             data.get('back') or  # Para flashcards

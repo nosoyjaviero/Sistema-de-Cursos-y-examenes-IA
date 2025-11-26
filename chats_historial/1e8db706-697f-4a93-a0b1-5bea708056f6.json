@@ -1,0 +1,17 @@
+{
+  "id": "1e8db706-697f-4a93-a0b1-5bea708056f6",
+  "nombre": "Chat 26/11/2025",
+  "fecha": "2025-11-26T01:40:52.724641",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "que dice?",
+      "hora": "01:40"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "La pregunta \"que dice\" no tiene una respuesta explícita en el documento proporcionado, pero sí se menciona un archivo llamado \"yuyo2.json\". El contenido de este archivo es una simple declaración vacía: \" [Fin de yuyo2.json]\". No hay información adicional o contexto que pueda indicar lo que exactamente dice.",
+      "hora": "01:40"
+    }
+  ]
+}

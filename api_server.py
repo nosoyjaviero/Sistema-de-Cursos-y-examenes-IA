@@ -1207,11 +1207,11 @@ async def listar_documentos():
 
 @app.get("/api/archivos/recientes")
 async def obtener_archivos_recientes(limite: int = 30):
-    """Obtiene los archivos más recientes de todas las carpetas del sistema"""
+    """Obtiene los archivos más recientes de todas las carpetas del sistema (cursos, notas, exámenes, prácticas)"""
     try:
         archivos = []
         
-        # Obtener archivos de todas las carpetas recursivamente
+        # 1. Obtener archivos de cursos recursivamente
         def obtener_archivos_recursivo(ruta_relativa: str = ""):
             datos = cursos_db.listar_documentos(ruta_relativa)
             
@@ -1226,7 +1226,7 @@ async def obtener_archivos_recientes(limite: int = 30):
                         'extension': ruta_completa.suffix,
                         'tamaño': stat.st_size,
                         'modificado': stat.st_mtime,
-                        'carpeta': ruta_relativa or 'Raíz'
+                        'carpeta': ruta_relativa or 'Cursos'
                     })
             
             # Buscar en subcarpetas
@@ -1234,8 +1234,91 @@ async def obtener_archivos_recientes(limite: int = 30):
             for carpeta in carpetas:
                 obtener_archivos_recursivo(carpeta['ruta'])
         
-        # Iniciar búsqueda recursiva desde la raíz
+        # Iniciar búsqueda recursiva desde la raíz de cursos
         obtener_archivos_recursivo()
+        
+        # 2. Obtener notas desde extracciones/*/notas.json
+        extracciones_base = EXTRACCIONES_PATH
+        if extracciones_base.exists():
+            for carpeta in extracciones_base.iterdir():
+                if carpeta.is_dir():
+                    notas_json = carpeta / 'notas.json'
+                    if notas_json.exists():
+                        try:
+                            with open(notas_json, 'r', encoding='utf-8') as f:
+                                notas = json.load(f)
+                            for idx, nota in enumerate(notas):
+                                titulo = nota.get('titulo', f'Nota {idx+1}')
+                                contenido = nota.get('contenido', '')
+                                fecha_modificacion = nota.get('fechaModificacion', nota.get('fecha', ''))
+                                try:
+                                    if isinstance(fecha_modificacion, str) and fecha_modificacion:
+                                        from datetime import datetime
+                                        dt = datetime.fromisoformat(fecha_modificacion.replace('Z', '+00:00'))
+                                        timestamp = dt.timestamp()
+                                    else:
+                                        timestamp = notas_json.stat().st_mtime
+                                except:
+                                    timestamp = notas_json.stat().st_mtime
+                                
+                                archivos.append({
+                                    'nombre': f"{titulo}.json",
+                                    'ruta_completa': f"extracciones/{carpeta.name}/notas/{idx}",
+                                    'tipo': 'Nota',
+                                    'extension': '.json',
+                                    'tamaño': len(contenido.encode('utf-8')),
+                                    'modificado': timestamp,
+                                    'carpeta': carpeta.name
+                                })
+                        except Exception as e:
+                            print(f"⚠️ Error leyendo notas de {carpeta.name}: {e}")
+        
+        # 3. Obtener exámenes desde examenes/*.json
+        examenes_path = Path("examenes")
+        if examenes_path.exists():
+            for archivo_examen in examenes_path.glob("*.json"):
+                stat = archivo_examen.stat()
+                archivos.append({
+                    'nombre': archivo_examen.name,
+                    'ruta_completa': str(archivo_examen),
+                    'tipo': 'Examen',
+                    'extension': '.json',
+                    'tamaño': stat.st_size,
+                    'modificado': stat.st_mtime,
+                    'carpeta': 'Exámenes'
+                })
+        
+        # 4. Obtener prácticas desde extracciones/*/resultados_practicas/*.json
+        extracciones_base = EXTRACCIONES_PATH
+        if extracciones_base.exists():
+            practicas_encontradas = 0
+            for carpeta in extracciones_base.iterdir():
+                if carpeta.is_dir():
+                    practicas_path = carpeta / 'resultados_practicas'
+                    if practicas_path.exists():
+                        for archivo_practica in practicas_path.glob("*.json"):
+                            try:
+                                stat = archivo_practica.stat()
+                                # Leer el archivo para obtener el título y verificar que es una práctica
+                                with open(archivo_practica, 'r', encoding='utf-8') as f:
+                                    practica_data = json.load(f)
+                                
+                                # Verificar que tiene es_practica=true
+                                if practica_data.get('es_practica', False):
+                                    practicas_encontradas += 1
+                                    titulo = practica_data.get('titulo', practica_data.get('carpeta_nombre', archivo_practica.stem))
+                                    archivos.append({
+                                        'nombre': f"{titulo}.json",
+                                        'ruta_completa': str(archivo_practica.relative_to(Path.cwd())),
+                                        'tipo': 'Práctica',
+                                        'extension': '.json',
+                                        'tamaño': stat.st_size,
+                                        'modificado': stat.st_mtime,
+                                        'carpeta': carpeta.name
+                                    })
+                            except Exception as e:
+                                print(f"⚠️ Error leyendo práctica {archivo_practica}: {e}")
+            print(f"✅ Prácticas encontradas en recientes: {practicas_encontradas}")
         
         # Ordenar por fecha de modificación (más recientes primero)
         archivos.sort(key=lambda x: x['modificado'], reverse=True)
@@ -1255,66 +1338,108 @@ async def obtener_archivos_recientes(limite: int = 30):
 async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
     """Explora archivos filtrados por tipo (notas, examenes, practicas, cursos)"""
     try:
+        print(f"🔍 EXPLORAR: tipo='{tipo}', ruta='{ruta}', len={len(ruta)}, bool={bool(ruta)}")
         carpetas = []
         archivos = []
         
-        # Para notas y flashcards, leer desde extracciones/
+        # Para notas y flashcards, leer desde extracciones/*/
         if tipo in ['notas', 'flashcards']:
-            archivo_json = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
-            if archivo_json.exists():
-                try:
-                    with open(archivo_json, "r", encoding="utf-8") as f:
-                        datos = json.load(f)
-                    
-                    # Crear un "archivo virtual" por cada nota/flashcard
-                    for idx, item in enumerate(datos):
-                        if tipo == 'notas':
-                            titulo = item.get('titulo', f'Nota {idx+1}')
-                            contenido = item.get('contenido', '')
-                            # Obtener fecha de modificación de la nota
-                            fecha_modificacion = item.get('fechaModificacion', item.get('fecha', ''))
-                        else:  # flashcards
-                            # Manejar diferentes formatos de flashcards
-                            pregunta = item.get('pregunta', item.get('titulo', f'Flashcard {idx+1}'))
-                            respuesta = item.get('respuesta', item.get('respuestaCorrecta', item.get('contenido', '')))
-                            titulo = pregunta[:50] if pregunta else f'Flashcard {idx+1}'
-                            contenido = f"Pregunta: {pregunta}\nRespuesta: {respuesta}"
-                            # Obtener fecha de modificación de la flashcard
-                            fecha_modificacion = item.get('fechaRevision', item.get('fechaModificacion', item.get('fecha', '')))
+            extracciones_base = EXTRACCIONES_PATH
+            
+            if not extracciones_base.exists():
+                return {
+                    'carpetas': [],
+                    'archivos': [],
+                    'ruta_actual': ruta,
+                    'tipo': tipo
+                }
+            
+            # Si ruta está vacía o es None, mostrar carpetas disponibles
+            if not ruta:
+                carpetas_disponibles = []
+                for carpeta in extracciones_base.iterdir():
+                    if carpeta.is_dir():
+                        archivo_json = carpeta / f"{tipo}.json"
+                        if archivo_json.exists():
+                            try:
+                                with open(archivo_json, 'r', encoding='utf-8') as f:
+                                    datos = json.load(f)
+                                num_items = len(datos) if isinstance(datos, list) else 0
+                                if num_items > 0:
+                                    carpetas_disponibles.append({
+                                        'nombre': carpeta.name,
+                                        'ruta': carpeta.name,
+                                        'num_archivos': num_items
+                                    })
+                            except Exception as e:
+                                print(f"⚠️ Error leyendo {archivo_json}: {e}")
+                
+                return {
+                    'carpetas': carpetas_disponibles,
+                    'archivos': [],
+                    'ruta_actual': '',
+                    'tipo': tipo
+                }
+            
+            # Si hay ruta específica, listar items de esa carpeta
+            else:
+                archivos = []
+                carpeta_seleccionada = extracciones_base / ruta
+                archivo_json = carpeta_seleccionada / f"{tipo}.json"
+                if archivo_json.exists():
+                    try:
+                        with open(archivo_json, "r", encoding="utf-8") as f:
+                            datos = json.load(f)
                         
-                        # Convertir fecha a timestamp si es string
-                        try:
-                            if isinstance(fecha_modificacion, str) and fecha_modificacion:
-                                from datetime import datetime
-                                dt = datetime.fromisoformat(fecha_modificacion.replace('Z', '+00:00'))
-                                timestamp = dt.timestamp()
-                            else:
+                        # Crear un "archivo virtual" por cada nota/flashcard
+                        for idx, item in enumerate(datos):
+                            if tipo == 'notas':
+                                titulo = item.get('titulo', f'Nota {idx+1}')
+                                contenido = item.get('contenido', '')
+                                # Obtener fecha de modificación de la nota
+                                fecha_modificacion = item.get('fechaModificacion', item.get('fecha', ''))
+                            else:  # flashcards
+                                # Manejar diferentes formatos de flashcards
+                                pregunta = item.get('pregunta', item.get('titulo', f'Flashcard {idx+1}'))
+                                respuesta = item.get('respuesta', item.get('respuestaCorrecta', item.get('contenido', '')))
+                                titulo = pregunta[:50] if pregunta else f'Flashcard {idx+1}'
+                                contenido = f"Pregunta: {pregunta}\nRespuesta: {respuesta}"
+                                # Obtener fecha de modificación de la flashcard
+                                fecha_modificacion = item.get('fechaRevision', item.get('fechaModificacion', item.get('fecha', '')))
+                            
+                            # Convertir fecha a timestamp si es string
+                            try:
+                                if isinstance(fecha_modificacion, str) and fecha_modificacion:
+                                    from datetime import datetime
+                                    dt = datetime.fromisoformat(fecha_modificacion.replace('Z', '+00:00'))
+                                    timestamp = dt.timestamp()
+                                else:
+                                    timestamp = archivo_json.stat().st_mtime
+                            except:
                                 timestamp = archivo_json.stat().st_mtime
-                        except:
-                            timestamp = archivo_json.stat().st_mtime
-                        
-                        archivos.append({
-                            'nombre': f"{titulo}.json",
-                            'ruta_completa': f"extracciones/{tipo}/{idx}",  # Ruta virtual
-                            'tipo': 'Nota' if tipo == 'notas' else 'Flashcard',
-                            'extension': '.json',
-                            'tamaño': len(contenido.encode('utf-8')),
-                            'modificado': timestamp,
-                            'contenido': contenido,  # Incluir contenido directamente
-                            'item_original': item  # Para leer después
-                        })
-                except Exception as e:
-                    print(f"⚠️ Error leyendo {archivo_json}: {e}")
-            
-            # Ordenar por fecha de modificación descendente (más recientes primero)
-            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
-            
-            return {
-                'carpetas': [],
-                'archivos': archivos,
-                'ruta_actual': '',
-                'tipo': tipo
-            }
+                            
+                            archivos.append({
+                                'nombre': f"{titulo}.json",
+                                'ruta_completa': f"extracciones/{ruta}/{tipo}/{idx}",  # Ruta virtual
+                                'tipo': 'Nota' if tipo == 'notas' else 'Flashcard',
+                                'extension': '.json',
+                                'tamaño': len(contenido.encode('utf-8')),
+                                'modificado': timestamp,
+                                'contenido': contenido,  # Incluir contenido directamente
+                                'item_original': item  # Para leer después
+                            })
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo {archivo_json}: {e}")
+                
+                # Ordenar por fecha de modificación descendente (más recientes primero)
+                archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+                
+                return {
+                    'carpetas': [],
+                    'archivos': archivos,
+                    'ruta_actual': ruta,
+                    'tipo': tipo
+                }
         
         # Para examenes, buscar en carpeta examenes/
         if tipo == 'examenes':
@@ -1338,6 +1463,60 @@ async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
                 'carpetas': [],
                 'archivos': archivos,
                 'ruta_actual': '',
+                'tipo': tipo
+            }
+        
+        # Para prácticas, buscar en extracciones/*/resultados_practicas/*.json
+        if tipo == 'practicas':
+            extracciones_base = EXTRACCIONES_PATH
+            carpetas_practicas = []
+            
+            if extracciones_base.exists():
+                # Si no hay ruta específica, mostrar carpetas disponibles
+                if not ruta:
+                    for carpeta in extracciones_base.iterdir():
+                        if carpeta.is_dir():
+                            practicas_path = carpeta / 'resultados_practicas'
+                            if practicas_path.exists():
+                                num_practicas = len(list(practicas_path.glob("*.json")))
+                                if num_practicas > 0:
+                                    carpetas_practicas.append({
+                                        'nombre': carpeta.name,
+                                        'ruta': carpeta.name,
+                                        'num_archivos': num_practicas
+                                    })
+                else:
+                    # Listar prácticas de la carpeta específica
+                    carpeta_seleccionada = extracciones_base / ruta / 'resultados_practicas'
+                    if carpeta_seleccionada.exists():
+                        for archivo_practica in carpeta_seleccionada.glob("*.json"):
+                            try:
+                                stat = archivo_practica.stat()
+                                # Leer el archivo para obtener información
+                                with open(archivo_practica, 'r', encoding='utf-8') as f:
+                                    practica_data = json.load(f)
+                                
+                                # Verificar que tiene es_practica=true
+                                if practica_data.get('es_practica', False):
+                                    titulo = practica_data.get('titulo', practica_data.get('carpeta_nombre', archivo_practica.stem))
+                                    archivos.append({
+                                        'nombre': f"{titulo}.json",
+                                        'ruta_completa': str(archivo_practica.relative_to(Path.cwd())),
+                                        'tipo': 'Práctica',
+                                        'extension': '.json',
+                                        'tamaño': stat.st_size,
+                                        'modificado': stat.st_mtime
+                                    })
+                            except Exception as e:
+                                print(f"⚠️ Error leyendo práctica {archivo_practica}: {e}")
+            
+            # Ordenar archivos por fecha de modificación descendente (más recientes primero)
+            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+            
+            return {
+                'carpetas': carpetas_practicas,
+                'archivos': archivos,
+                'ruta_actual': ruta,
                 'tipo': tipo
             }
         
@@ -1401,12 +1580,13 @@ async def leer_contenido_archivo(data: dict):
             raise HTTPException(status_code=400, detail="Ruta no proporcionada")
         
         # Verificar si es una ruta virtual (notas/flashcards)
-        if ruta.startswith('extracciones/notas/') or ruta.startswith('extracciones/flashcards/'):
+        if 'extracciones/' in ruta and ('/notas/' in ruta or '/flashcards/' in ruta):
             partes = ruta.split('/')
-            tipo = partes[1]  # 'notas' o 'flashcards'
-            idx = int(partes[2])  # índice del item
+            carpeta_nombre = partes[1]  # nombre de la carpeta (ej: 'Vielka', 'Sin carpeta')
+            tipo = partes[2]  # 'notas' o 'flashcards'
+            idx = int(partes[3])  # índice del item
             
-            archivo_json = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
+            archivo_json = EXTRACCIONES_PATH / carpeta_nombre / f"{tipo}.json"
             if archivo_json.exists():
                 with open(archivo_json, "r", encoding="utf-8") as f:
                     datos = json.load(f)
@@ -1447,6 +1627,50 @@ async def leer_contenido_archivo(data: dict):
                     'tamaño': len(contenido)
                 }
             raise HTTPException(status_code=404, detail="Examen no encontrado")
+        
+        # Verificar si es una práctica
+        if ruta.startswith('extracciones/') and 'resultados_practicas' in ruta:
+            practica_path = Path(ruta)
+            if practica_path.exists():
+                with open(practica_path, 'r', encoding='utf-8') as f:
+                    practica_data = json.load(f)
+                
+                # Formatear el contenido de la práctica de forma legible
+                titulo = practica_data.get('titulo', practica_data.get('carpeta_nombre', 'Sin título'))
+                porcentaje = practica_data.get('porcentaje', 0)
+                fecha = practica_data.get('fecha_completado', 'Sin fecha')
+                
+                contenido = f"# Práctica: {titulo}\n\n"
+                contenido += f"**Fecha:** {fecha}\n"
+                contenido += f"**Puntuación:** {porcentaje:.1f}%\n\n"
+                contenido += f"## Preguntas\n\n"
+                
+                # Agregar preguntas y respuestas
+                resultados = practica_data.get('resultados', [])
+                for idx, resultado in enumerate(resultados, 1):
+                    pregunta = resultado.get('pregunta', 'Sin pregunta')
+                    respuesta_usuario = resultado.get('respuesta_usuario', 'Sin respuesta')
+                    respuesta_correcta = resultado.get('respuesta_correcta', 'Sin respuesta correcta')
+                    puntos = resultado.get('puntos', 0)
+                    puntos_maximos = resultado.get('puntos_maximos', 0)
+                    
+                    contenido += f"### {idx}. {pregunta}\n\n"
+                    contenido += f"**Tu respuesta:** {respuesta_usuario}\n\n"
+                    contenido += f"**Respuesta correcta:** {respuesta_correcta}\n\n"
+                    contenido += f"**Puntos:** {puntos}/{puntos_maximos}\n\n"
+                    
+                    if resultado.get('feedback'):
+                        contenido += f"**Feedback:**\n{resultado['feedback']}\n\n"
+                    
+                    contenido += "---\n\n"
+                
+                return {
+                    'success': True,
+                    'contenido': contenido,
+                    'ruta': ruta,
+                    'tamaño': len(contenido)
+                }
+            raise HTTPException(status_code=404, detail="Práctica no encontrada")
         
         # Ruta normal del sistema de archivos
         ruta_completa = cursos_db.base_path / ruta
@@ -2246,10 +2470,29 @@ async def generar_practica(datos: dict):
     if ruta:
         try:
             ruta_path = Path(ruta)
+            print(f"🔍 DEBUG - Ruta recibida: {ruta}")
+            print(f"   Path object: {ruta_path}")
+            print(f"   Existe? {ruta_path.exists()}")
+            print(f"   Es absoluta? {ruta_path.is_absolute()}")
+            
+            # Si la ruta no existe, intentar desde extracciones/
+            if not ruta_path.exists():
+                ruta_alternativa = Path("extracciones") / ruta
+                print(f"   Intentando ruta alternativa: {ruta_alternativa}")
+                print(f"   Existe alternativa? {ruta_alternativa.exists()}")
+                if ruta_alternativa.exists():
+                    ruta_path = ruta_alternativa
+            
             if ruta_path.exists():
                 contenido = obtener_texto(str(ruta_path))
+                print(f"✅ Contenido cargado: {len(contenido)} caracteres")
+                print(f"   Primeros 150 chars: {contenido[:150]}...")
+            else:
+                print(f"❌ ERROR: La ruta no existe ni en absoluto ni en extracciones/")
         except Exception as e:
             print(f"⚠️ No se pudo cargar contenido de ruta: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Si no hay contenido, usar el prompt directamente
     if not contenido and not prompt:
@@ -2373,9 +2616,11 @@ async def generar_practica(datos: dict):
             num_preguntas['true_false'] = num_verdadero_falso
         if num_open_question > 0:
             num_preguntas['open_question'] = num_open_question
+        if num_caso_estudio > 0:
+            num_preguntas['case_study'] = num_caso_estudio
         
         # Por ahora, los demás tipos se tratan como short_answer
-        tipos_adicionales = (num_cloze + num_caso_estudio + 
+        tipos_adicionales = (num_cloze + 
                            num_reading_comprehension + num_reading_true_false + num_reading_cloze +
                            num_reading_skill + num_reading_matching + num_reading_sequence +
                            num_writing_short + num_writing_paraphrase + num_writing_correction +
@@ -2392,7 +2637,8 @@ async def generar_practica(datos: dict):
         callback_progreso(10, "Preparando generación de flashcards...")
         print("🤖 Generando flashcards con IA...")
         
-        # Usar el contenido o el prompt
+        # Usar el contenido del documento (cargado desde la ruta)
+        # El generador_actual.generar_examen() se encarga de crear el prompt internamente
         contexto = contenido if contenido else prompt
         
         preguntas = generador_actual.generar_examen(
@@ -2400,7 +2646,8 @@ async def generar_practica(datos: dict):
             num_preguntas,
             ajustes_modelo=ajustes,
             callback_progreso=callback_progreso,
-            session_id=session_id
+            session_id=session_id,
+            tipo_caso=tipo_caso  # Pasar el tipo de caso de estudio seleccionado
         )
         print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
         
@@ -2512,6 +2759,30 @@ async def evaluar_examen(datos: dict):
 
                 puntos_obtenidos += puntos
                 puntos_totales += pregunta.puntos
+                
+                # Calcular porcentaje individual de esta pregunta
+                porcentaje_pregunta = (puntos / pregunta.puntos * 100) if pregunta.puntos > 0 else 0
+                
+                # Calcular repetición espaciada individual según rendimiento
+                ahora = datetime.now()
+                if porcentaje_pregunta >= 90:
+                    # Excelente: revisar en 7 días
+                    intervalo_dias = 7
+                    facilidad = 2.8
+                elif porcentaje_pregunta >= 70:
+                    # Bien: revisar en 3 días
+                    intervalo_dias = 3
+                    facilidad = 2.5
+                elif porcentaje_pregunta >= 50:
+                    # Regular: revisar mañana
+                    intervalo_dias = 1
+                    facilidad = 2.2
+                else:
+                    # Mal: revisar hoy (en 12 horas)
+                    intervalo_dias = 0.5
+                    facilidad = 2.0
+                
+                proxima_revision_pregunta = (ahora + timedelta(days=intervalo_dias)).isoformat()
 
                 resultados.append({
                     "pregunta": pregunta.pregunta,
@@ -2521,32 +2792,44 @@ async def evaluar_examen(datos: dict):
                     "respuesta_correcta": pregunta.respuesta_correcta,
                     "puntos": puntos,
                     "puntos_maximos": pregunta.puntos,
-                    "feedback": feedback
+                    "feedback": feedback,
+                    # Repetición espaciada individual
+                    "porcentaje": porcentaje_pregunta,
+                    "proximaRevision": proxima_revision_pregunta,
+                    "ultimaRevision": ahora.isoformat(),
+                    "intervalo": intervalo_dias,
+                    "repeticiones": 0,
+                    "facilidad": facilidad,
+                    "estadoRevision": "nueva"
                 })
             
             porcentaje = (puntos_obtenidos / puntos_totales * 100) if puntos_totales > 0 else 0
             
             # Guardar resultados SIEMPRE (con o sin carpeta)
             try:
-                # Si no hay carpeta, usar carpeta por defecto
+                # Determinar la carpeta de destino
                 if not carpeta_path:
+                    # Sin carpeta: usar carpeta por defecto en raíz
                     if es_practica:
                         carpeta_path = "Practicas_Generales"
                         carpeta_nombre = "Prácticas Generales"
                     else:
                         carpeta_path = "Examenes_Generales"
                         carpeta_nombre = "Exámenes Generales"
-                    print(f"💾 Guardando en carpeta por defecto: {carpeta_path}")
+                    carpeta_destino = Path(tipo_carpeta) / carpeta_path
+                    print(f"💾 Guardando en carpeta por defecto: {carpeta_destino}")
                 else:
+                    # Con carpeta: guardar en extracciones/[carpeta]/
                     print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
-                    carpeta = Path(carpeta_path)
-                    if not carpeta.exists():
-                        carpeta = Path("extracciones") / carpeta_path
-                    carpeta_nombre = carpeta.name
-
-                # Crear estructura en la carpeta correcta (examenes/ o practicas/)
-                tipo_carpeta = "practicas" if es_practica else "examenes"
-                carpeta_destino = Path(tipo_carpeta) / carpeta_path
+                    
+                    # Extraer el nombre de la carpeta
+                    carpeta_nombre = carpeta_path.split('/')[-1] if '/' in carpeta_path else carpeta_path.split('\\')[-1]
+                    
+                    # Crear subcarpeta específica para resultados dentro de extracciones
+                    tipo_subcarpeta = "resultados_practicas" if es_practica else "resultados_examenes"
+                    carpeta_destino = Path("extracciones") / carpeta_path / tipo_subcarpeta
+                
+                # Crear estructura de carpetas
                 carpeta_destino.mkdir(parents=True, exist_ok=True)
 
                 fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -2584,9 +2867,10 @@ async def evaluar_examen(datos: dict):
                 print(f"✅ Resultados guardados en: {archivo_resultado}")
 
                 # Limpiar exámenes/prácticas en progreso de esta carpeta
-                carpeta_progreso = carpeta_destino / "examenes_progreso"
-                if carpeta_progreso.exists():
-                    for archivo in carpeta_progreso.glob("examen_progreso_*.json"):
+                # La carpeta de progreso está en el mismo nivel que resultados
+                carpeta_progreso_base = carpeta_destino.parent / "examenes_progreso"
+                if carpeta_progreso_base.exists():
+                    for archivo in carpeta_progreso_base.glob("examen_progreso_*.json"):
                         archivo.unlink()
                         print(f"🗑️ Examen en progreso eliminado: {archivo.name}")
             except Exception as e:
@@ -2609,6 +2893,133 @@ async def evaluar_examen(datos: dict):
         raise HTTPException(status_code=500, detail=f"Error al evaluar examen: {str(e)}")
 
 
+@app.post("/api/evaluar-respuesta-textual")
+async def evaluar_respuesta_textual(datos: dict):
+    """Evalúa una respuesta de texto usando el modelo seleccionado por el usuario"""
+    try:
+        # Extraer parámetros
+        pregunta = datos.get("pregunta", "")
+        respuesta_usuario = datos.get("respuesta_usuario", "")
+        respuesta_correcta = datos.get("respuesta_correcta", "")
+        intentos_previos = datos.get("intentos_previos", [])
+        modelo = datos.get("modelo")  # Modelo seleccionado por el usuario
+        
+        if not modelo:
+            raise HTTPException(status_code=400, detail="Debe especificar un modelo")
+        
+        if not pregunta or not respuesta_usuario:
+            raise HTTPException(status_code=400, detail="Faltan datos requeridos: pregunta y respuesta_usuario")
+        
+        print(f"🤖 Evaluando respuesta con modelo: {modelo}")
+        print(f"   📝 Pregunta: {pregunta[:100]}...")
+        print(f"   💭 Respuesta usuario: {respuesta_usuario[:100]}...")
+        
+        # Construir prompt de evaluación
+        historial_intentos = "\n".join([
+            f"Intento {i+1} (puntuación {int.get('puntuacion', 0)}/10): {int.get('respuesta', '')}\nFeedback: {int.get('feedback', '')}"
+            for i, int in enumerate(intentos_previos)
+        ]) if intentos_previos else "Primer intento"
+        
+        prompt = f"""Eres un evaluador de respuestas académicas. Evalúa la siguiente respuesta de manera objetiva y constructiva.
+
+PREGUNTA:
+{pregunta}
+
+RESPUESTA ESPERADA:
+{respuesta_correcta}
+
+RESPUESTA DEL ESTUDIANTE:
+{respuesta_usuario}
+
+HISTORIAL DE INTENTOS PREVIOS:
+{historial_intentos}
+
+Evalúa la respuesta con los siguientes criterios:
+1. Precisión conceptual (¿es correcta?)
+2. Completitud (¿incluye todos los puntos clave?)
+3. Claridad (¿está bien explicada?)
+4. Mejora respecto a intentos anteriores (si aplica)
+
+IMPORTANTE: Responde ÚNICAMENTE con un JSON válido en este formato exacto:
+{{
+  "puntuacion": <número del 0 al 10>,
+  "feedback": "<explicación constructiva de 2-3 líneas>",
+  "aprobada": <true o false>,
+  "sugerencias": "<sugerencias específicas para mejorar (si aplica)>"
+}}
+
+NO incluyas texto adicional fuera del JSON. NO uses markdown. Solo el JSON puro."""
+
+        # Llamar a Ollama con el modelo especificado
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    'http://localhost:11434/api/generate',
+                    json={
+                        'model': modelo,
+                        'prompt': prompt,
+                        'stream': False,
+                        'options': {
+                            'temperature': 0.3,
+                            'top_p': 0.9,
+                            'num_predict': 500
+                        }
+                    }
+                )
+                
+                if response.status_code != 200:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Error de Ollama: {response.status_code} - {response.text}"
+                    )
+                
+                resultado = response.json()
+                respuesta_ia = resultado.get('response', '').strip()
+                
+                print(f"   🤖 Respuesta IA: {respuesta_ia[:200]}...")
+                
+                # Extraer JSON de la respuesta
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', respuesta_ia)
+                if json_match:
+                    evaluacion = json.loads(json_match.group())
+                else:
+                    # Si no hay JSON, crear evaluación por defecto
+                    evaluacion = {
+                        "puntuacion": 5,
+                        "feedback": respuesta_ia[:200] if respuesta_ia else "No se pudo evaluar la respuesta",
+                        "aprobada": False,
+                        "sugerencias": "Por favor, revisa tu respuesta y vuelve a intentarlo"
+                    }
+                
+                print(f"   ✅ Evaluación: {evaluacion.get('puntuacion')}/10 - Aprobada: {evaluacion.get('aprobada')}")
+                
+                return {
+                    "success": True,
+                    "evaluacion": evaluacion
+                }
+                
+        except httpx.RequestError as e:
+            print(f"❌ Error conectando con Ollama: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail=f"No se pudo conectar con Ollama. Asegúrate de que esté ejecutándose: {str(e)}"
+            )
+        except json.JSONDecodeError as e:
+            print(f"❌ Error parseando JSON de la respuesta IA: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"La respuesta del modelo no tiene el formato esperado: {str(e)}"
+            )
+            
+    except Exception as e:
+        print(f"❌ Error en evaluar_respuesta_textual: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al evaluar respuesta: {str(e)}")
+
+
 @app.post("/api/examenes/pausar")
 async def pausar_examen(datos: dict):
     """Guarda el progreso de un examen o práctica para continuarlo después"""
@@ -2622,9 +3033,15 @@ async def pausar_examen(datos: dict):
         
         print(f"⏸️ Pausando {'práctica' if es_practica else 'examen'} para carpeta: {carpeta_ruta}")
         
-        # Crear estructura en la carpeta correcta (examenes/ o practicas/)
-        tipo_carpeta = "practicas" if es_practica else "examenes"
-        carpeta_examenes_base = Path(tipo_carpeta) / carpeta_ruta
+        # Determinar carpeta de destino
+        if carpeta_ruta in ["Examenes_Generales", "Practicas_Generales"]:
+            # Carpetas por defecto: usar estructura antigua
+            tipo_carpeta = "practicas" if es_practica else "examenes"
+            carpeta_examenes_base = Path(tipo_carpeta) / carpeta_ruta
+        else:
+            # Carpetas de extracciones: guardar en extracciones/[carpeta]/
+            carpeta_examenes_base = Path("extracciones") / carpeta_ruta
+        
         carpeta_examenes_base.mkdir(parents=True, exist_ok=True)
         
         carpeta_examenes = carpeta_examenes_base / "examenes_progreso"
@@ -3017,6 +3434,13 @@ def get_datos(tipo: str):
         elif tipo == "practicas":
             todas_practicas = []
             
+            # 🔥 BUSCAR EN MÚLTIPLES UBICACIONES
+            carpetas_busqueda = [
+                EXTRACCIONES_PATH,  # extracciones/
+                Path("practicas"),   # practicas/
+                Path("examenes")     # examenes/ (por si hay prácticas allí)
+            ]
+            
             # Leer practicas.json central (legacy)
             archivo_central = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
             if archivo_central.exists():
@@ -3024,17 +3448,25 @@ def get_datos(tipo: str):
                     practicas_central = json.load(f)
                     todas_practicas.extend(practicas_central)
             
-            # Leer practicas.json de cada carpeta recursivamente
-            for archivo_practica in EXTRACCIONES_PATH.rglob("practicas.json"):
-                # Saltar el archivo central
-                if archivo_practica == archivo_central:
+            # Leer practicas.json de cada carpeta recursivamente EN TODAS LAS UBICACIONES
+            for carpeta_raiz in carpetas_busqueda:
+                if not carpeta_raiz.exists():
                     continue
-                try:
-                    with open(archivo_practica, "r", encoding="utf-8") as f:
-                        practicas_carpeta = json.load(f)
-                        todas_practicas.extend(practicas_carpeta)
-                except Exception as e:
-                    print(f"⚠️ Error leyendo {archivo_practica}: {e}")
+                    
+                for archivo_practica in carpeta_raiz.rglob("practica*.json"):
+                    # Saltar el archivo central
+                    if archivo_practica == archivo_central:
+                        continue
+                    try:
+                        with open(archivo_practica, "r", encoding="utf-8") as f:
+                            contenido = json.load(f)
+                            # Puede ser una sola práctica o una lista
+                            if isinstance(contenido, list):
+                                todas_practicas.extend(contenido)
+                            elif isinstance(contenido, dict):
+                                todas_practicas.append(contenido)
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo {archivo_practica}: {e}")
             
             print(f"🎯 Prácticas cargadas: {len(todas_practicas)} total")
             return JSONResponse(content=todas_practicas)
@@ -3043,6 +3475,13 @@ def get_datos(tipo: str):
         elif tipo == "examenes":
             todos_examenes = []
             
+            # 🔥 BUSCAR EN MÚLTIPLES UBICACIONES
+            carpetas_busqueda = [
+                EXTRACCIONES_PATH,  # extracciones/
+                Path("examenes"),    # examenes/
+                Path("practicas")    # practicas/ (por si hay exámenes allí)
+            ]
+            
             # Leer examenes.json central (legacy)
             archivo_central = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
             if archivo_central.exists():
@@ -3050,17 +3489,25 @@ def get_datos(tipo: str):
                     examenes_central = json.load(f)
                     todos_examenes.extend(examenes_central)
             
-            # Leer examenes.json de cada carpeta recursivamente
-            for archivo_examen in EXTRACCIONES_PATH.rglob("examenes.json"):
-                # Saltar el archivo central
-                if archivo_examen == archivo_central:
+            # Leer examenes.json de cada carpeta recursivamente EN TODAS LAS UBICACIONES
+            for carpeta_raiz in carpetas_busqueda:
+                if not carpeta_raiz.exists():
                     continue
-                try:
-                    with open(archivo_examen, "r", encoding="utf-8") as f:
-                        examenes_carpeta = json.load(f)
-                        todos_examenes.extend(examenes_carpeta)
-                except Exception as e:
-                    print(f"⚠️ Error leyendo {archivo_examen}: {e}")
+                    
+                for archivo_examen in carpeta_raiz.rglob("examen*.json"):
+                    # Saltar el archivo central
+                    if archivo_examen == archivo_central:
+                        continue
+                    try:
+                        with open(archivo_examen, "r", encoding="utf-8") as f:
+                            contenido = json.load(f)
+                            # Puede ser un solo examen o una lista
+                            if isinstance(contenido, list):
+                                todos_examenes.extend(contenido)
+                            elif isinstance(contenido, dict):
+                                todos_examenes.append(contenido)
+                    except Exception as e:
+                        print(f"⚠️ Error leyendo {archivo_examen}: {e}")
             
             print(f"📋 Exámenes cargados: {len(todos_examenes)} total")
             return JSONResponse(content=todos_examenes)
@@ -3196,13 +3643,19 @@ def get_flashcards_carpeta(carpeta_ruta: str):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.delete("/datos/flashcards/{flashcard_id}")
-def delete_flashcard(flashcard_id: int, carpeta: str = ""):
+def delete_flashcard(flashcard_id: str, carpeta: str = ""):
     """Elimina una flashcard de su carpeta"""
     try:
+        print(f"🗑️ Intentando eliminar flashcard ID: {flashcard_id} (tipo: {type(flashcard_id)})")
+        print(f"   Carpeta especificada: '{carpeta}'")
+        
         if carpeta:
             archivo = EXTRACCIONES_PATH / carpeta / "flashcards.json"
+            print(f"   Buscando en: {archivo}")
         else:
             # Buscar en todas las carpetas
+            print(f"   Buscando en todas las carpetas...")
+            archivo = None
             for carpeta_path in EXTRACCIONES_PATH.rglob("flashcards.json"):
                 with open(carpeta_path, "r", encoding="utf-8") as f:
                     flashcards = json.load(f)
@@ -3213,27 +3666,36 @@ def delete_flashcard(flashcard_id: int, carpeta: str = ""):
                 )
                 if flashcard_encontrada:
                     archivo = carpeta_path
+                    print(f"   ✅ Flashcard encontrada en: {archivo}")
                     break
-            else:
+            
+            if not archivo:
+                print(f"   ❌ Flashcard {flashcard_id} no encontrada en ninguna carpeta")
                 return JSONResponse(content={"error": "Flashcard no encontrada"}, status_code=404)
         
         if not archivo.exists():
+            print(f"   ❌ Archivo no existe: {archivo}")
             return JSONResponse(content={"error": "Archivo no encontrado"}, status_code=404)
         
         # Leer, eliminar y guardar
         with open(archivo, "r", encoding="utf-8") as f:
             flashcards = json.load(f)
         
+        print(f"   📋 Total flashcards antes: {len(flashcards)}")
+        
         # Comparar como string para evitar problemas de tipo
         flashcards_filtradas = [f for f in flashcards if str(f.get("id")) != str(flashcard_id)]
         
+        print(f"   📋 Total flashcards después: {len(flashcards_filtradas)}")
+        
         if len(flashcards_filtradas) == len(flashcards):
+            print(f"   ⚠️ Flashcard {flashcard_id} no encontrada en esta carpeta")
             return JSONResponse(content={"error": "Flashcard no encontrada en esta carpeta"}, status_code=404)
         
         with open(archivo, "w", encoding="utf-8") as f:
             json.dump(flashcards_filtradas, f, indent=2, ensure_ascii=False)
         
-        print(f"🗑️ Flashcard {flashcard_id} eliminada de {archivo.parent.name}")
+        print(f"✅ Flashcard {flashcard_id} eliminada de {archivo.parent.name}")
         return JSONResponse(content={
             "success": True,
             "count": len(flashcards_filtradas),
@@ -3241,6 +3703,8 @@ def delete_flashcard(flashcard_id: int, carpeta: str = ""):
         })
     except Exception as e:
         print(f"❌ Error eliminando flashcard {flashcard_id}: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ============================================
@@ -3301,11 +3765,11 @@ async def guardar_examen_carpeta(request: Request):
 
 @app.get("/datos/examenes")
 def get_examenes():
-    """Obtiene todos los exámenes de todas las carpetas"""
+    """Obtiene todos los exámenes de todas las carpetas (examenes.json y resultados_examenes/*.json)"""
     try:
         todos_examenes = []
         
-        # Buscar recursivamente todos los examenes.json
+        # 1. Buscar recursivamente todos los examenes.json
         for archivo in EXTRACCIONES_PATH.rglob("examenes.json"):
             try:
                 with open(archivo, "r", encoding="utf-8") as f:
@@ -3314,6 +3778,22 @@ def get_examenes():
             except Exception as e:
                 print(f"Error leyendo {archivo}: {e}")
         
+        # 2. 🔥 BUSCAR TAMBIÉN EN resultados_examenes/*.json (archivos individuales)
+        for carpeta in EXTRACCIONES_PATH.iterdir():
+            if carpeta.is_dir():
+                resultados_path = carpeta / "resultados_examenes"
+                if resultados_path.exists() and resultados_path.is_dir():
+                    for archivo in resultados_path.glob("*.json"):
+                        try:
+                            with open(archivo, "r", encoding="utf-8") as f:
+                                examen = json.load(f)
+                                # Verificar que NO sea práctica
+                                if not examen.get("es_practica"):
+                                    todos_examenes.append(examen)
+                        except Exception as e:
+                            print(f"Error leyendo {archivo}: {e}")
+        
+        print(f"📊 Total exámenes cargados: {len(todos_examenes)}")
         return JSONResponse(content=todos_examenes)
     except Exception as e:
         print(f"❌ Error obteniendo exámenes: {e}")
@@ -3373,19 +3853,65 @@ async def guardar_practica_carpeta(request: Request):
 
 @app.get("/datos/practicas")
 def get_practicas():
-    """Obtiene todas las prácticas de todas las carpetas"""
+    """Obtiene todas las prácticas de todas las carpetas (practicas.json y resultados_practicas/*.json)"""
+    print("\n" + "="*60)
+    print("🔍 GET /datos/practicas - INICIANDO")
+    print("="*60)
     try:
         todas_practicas = []
         
-        # Buscar recursivamente todos los practicas.json
+        # 1. Buscar recursivamente todos los practicas.json
+        practicas_json_count = 0
+        print(f"📁 Buscando practicas.json en: {EXTRACCIONES_PATH.absolute()}")
         for archivo in EXTRACCIONES_PATH.rglob("practicas.json"):
             try:
+                print(f"   Encontrado: {archivo}")
                 with open(archivo, "r", encoding="utf-8") as f:
                     practicas = json.load(f)
                     todas_practicas.extend(practicas)
+                    practicas_json_count += len(practicas)
             except Exception as e:
                 print(f"Error leyendo {archivo}: {e}")
         
+        print(f"📁 Prácticas desde practicas.json: {practicas_json_count}")
+        
+        # 2. 🔥 BUSCAR TAMBIÉN EN resultados_practicas/*.json (archivos individuales)
+        practicas_individuales_count = 0
+        print(f"🔍 Buscando en: {EXTRACCIONES_PATH.absolute()}")
+        print(f"   Existe: {EXTRACCIONES_PATH.exists()}")
+        print(f"   Es directorio: {EXTRACCIONES_PATH.is_dir()}")
+        
+        carpetas_encontradas = list(EXTRACCIONES_PATH.iterdir())
+        print(f"   Carpetas encontradas: {len(carpetas_encontradas)}")
+        
+        for carpeta in carpetas_encontradas:
+            print(f"\n   📂 Revisando carpeta: {carpeta.name}")
+            if carpeta.is_dir():
+                resultados_path = carpeta / "resultados_practicas"
+                print(f"      Buscando: {resultados_path}")
+                print(f"      Existe: {resultados_path.exists()}")
+                if resultados_path.exists() and resultados_path.is_dir():
+                    print(f"      ✅ Directorio existe, buscando archivos JSON...")
+                    archivos = list(resultados_path.glob("*.json"))
+                    print(f"      Archivos JSON encontrados: {len(archivos)}")
+                    for archivo in archivos:
+                        try:
+                            with open(archivo, "r", encoding="utf-8") as f:
+                                practica = json.load(f)
+                                # Verificar que tenga es_practica=true
+                                if practica.get("es_practica"):
+                                    todas_practicas.append(practica)
+                                    practicas_individuales_count += 1
+                                    print(f"         ✅ Cargada: {archivo.name} (id: {practica.get('id')})")
+                                else:
+                                    print(f"         ⏭️ Ignorada (no es práctica): {archivo.name}")
+                        except Exception as e:
+                            print(f"         ❌ Error leyendo {archivo}: {e}")
+                else:
+                    print(f"      ⏭️ No existe resultados_practicas/")
+        
+        print(f"\n📁 Prácticas individuales: {practicas_individuales_count}")
+        print(f"📊 Total prácticas cargadas: {len(todas_practicas)}")
         return JSONResponse(content=todas_practicas)
     except Exception as e:
         print(f"❌ Error obteniendo prácticas: {e}")
@@ -3464,6 +3990,120 @@ def delete_practica(practica_id: str, carpeta: str = ""):
         })
     except Exception as e:
         print(f"❌ Error eliminando práctica {practica_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/practicas/actualizar_archivo")
+async def actualizar_archivo_practica(request: Request):
+    """Actualiza un archivo individual de práctica en resultados_practicas/"""
+    try:
+        data = await request.json()
+        practica = data.get("practica")
+        
+        if not practica:
+            return JSONResponse(content={"error": "No se proporcionó práctica"}, status_code=400)
+        
+        practica_id = practica.get("id")
+        carpeta_ruta = practica.get("carpeta_ruta") or practica.get("carpeta")
+        archivo_nombre = practica.get("archivo")
+        
+        if not carpeta_ruta:
+            return JSONResponse(content={"error": "No se especificó carpeta_ruta"}, status_code=400)
+        
+        # Construir ruta al archivo
+        carpeta_destino = EXTRACCIONES_PATH / carpeta_ruta / "resultados_practicas"
+        
+        # Si tiene nombre de archivo específico, usarlo
+        if archivo_nombre:
+            archivo_path = carpeta_destino / archivo_nombre
+        else:
+            # Buscar por ID
+            archivo_path = None
+            if carpeta_destino.exists():
+                for archivo in carpeta_destino.glob("*.json"):
+                    try:
+                        with open(archivo, "r", encoding="utf-8") as f:
+                            data_existente = json.load(f)
+                            if data_existente.get("id") == practica_id:
+                                archivo_path = archivo
+                                break
+                    except:
+                        continue
+        
+        if not archivo_path:
+            return JSONResponse(content={"error": f"No se encontró archivo de práctica con ID {practica_id}"}, status_code=404)
+        
+        # Guardar archivo actualizado
+        carpeta_destino.mkdir(parents=True, exist_ok=True)
+        with open(archivo_path, "w", encoding="utf-8") as f:
+            json.dump(practica, f, indent=2, ensure_ascii=False)
+        
+        print(f"✅ Práctica actualizada en: {archivo_path}")
+        return JSONResponse(content={
+            "success": True,
+            "archivo": str(archivo_path.name),
+            "carpeta": carpeta_ruta
+        })
+    except Exception as e:
+        print(f"❌ Error actualizando archivo de práctica: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/examenes/actualizar_archivo")
+async def actualizar_archivo_examen(request: Request):
+    """Actualiza un archivo individual de examen en resultados_examenes/"""
+    try:
+        data = await request.json()
+        examen = data.get("examen")
+        
+        if not examen:
+            return JSONResponse(content={"error": "No se proporcionó examen"}, status_code=400)
+        
+        examen_id = examen.get("id")
+        carpeta_ruta = examen.get("carpeta_ruta") or examen.get("carpeta")
+        archivo_nombre = examen.get("archivo")
+        
+        if not carpeta_ruta:
+            return JSONResponse(content={"error": "No se especificó carpeta_ruta"}, status_code=400)
+        
+        # Construir ruta al archivo
+        carpeta_destino = EXTRACCIONES_PATH / carpeta_ruta / "resultados_examenes"
+        
+        # Si tiene nombre de archivo específico, usarlo
+        if archivo_nombre:
+            archivo_path = carpeta_destino / archivo_nombre
+        else:
+            # Buscar por ID
+            archivo_path = None
+            if carpeta_destino.exists():
+                for archivo in carpeta_destino.glob("*.json"):
+                    try:
+                        with open(archivo, "r", encoding="utf-8") as f:
+                            data_existente = json.load(f)
+                            if data_existente.get("id") == examen_id:
+                                archivo_path = archivo
+                                break
+                    except:
+                        continue
+        
+        if not archivo_path:
+            return JSONResponse(content={"error": f"No se encontró archivo de examen con ID {examen_id}"}, status_code=404)
+        
+        # Guardar archivo actualizado
+        carpeta_destino.mkdir(parents=True, exist_ok=True)
+        with open(archivo_path, "w", encoding="utf-8") as f:
+            json.dump(examen, f, indent=2, ensure_ascii=False)
+        
+        print(f"✅ Examen actualizado en: {archivo_path}")
+        return JSONResponse(content={
+            "success": True,
+            "archivo": str(archivo_path.name),
+            "carpeta": carpeta_ruta
+        })
+    except Exception as e:
+        print(f"❌ Error actualizando archivo de examen: {e}")
         import traceback
         traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
