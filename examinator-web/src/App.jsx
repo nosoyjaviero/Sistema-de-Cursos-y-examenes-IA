@@ -2627,19 +2627,36 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       inicioDia: hoyInicio.toISOString()
     });
     
-    // Si la última revisión fue hoy, incrementar contador
+    // 🔥 RESETEO INTELIGENTE DEL CONTADOR DIARIO
     if (ultimaRevision) {
       const fechaUltima = new Date(ultimaRevision);
-      if (fechaUltima >= hoyInicio) {
+      const diaUltimaRevision = new Date(
+        fechaUltima.getFullYear(),
+        fechaUltima.getMonth(),
+        fechaUltima.getDate()
+      );
+      
+      // Comparar DÍA CALENDARIO
+      if (diaUltimaRevision.getTime() === hoyInicio.getTime()) {
+        // Misma fecha → Incrementar
+        const anteriorRevisionesHoy = revisionesHoy;
         revisionesHoy += 1;
-        console.log(`✅ Última revisión fue HOY → revisionesHoy: ${revisionesHoy - 1} → ${revisionesHoy}`);
+        
+        // 🚨 LÍMITE ABSOLUTO: No permitir más de 2 revisiones
+        if (revisionesHoy > 2) {
+          console.warn(`🚫 LÍMITE EXCEDIDO: revisionesHoy = ${revisionesHoy}, FORZANDO a 2`);
+          revisionesHoy = 2;
+        }
+        
+        console.log(`✅ Última revisión HOY → revisionesHoy: ${anteriorRevisionesHoy} → ${revisionesHoy}`);
       } else {
-        // Nuevo día, resetear contador
-        console.log(`🔄 Nueva día detectado → resetear revisionesHoy: ${revisionesHoy} → 1`);
+        // Diferente fecha → Resetear a 1 (nueva revisión de hoy)
+        console.log(`🔄 Nuevo día detectado → resetear revisionesHoy: ${revisionesHoy} → 1`);
         revisionesHoy = 1;
       }
     } else {
-      console.log(`🆕 Primera revisión → revisionesHoy: ${revisionesHoy} → 1`);
+      // Sin historial → Primera revisión
+      console.log(`🆕 Primera revisión → revisionesHoy: 0 → 1`);
       revisionesHoy = 1;
     }
     
@@ -2731,30 +2748,39 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         }
       }
       
-      // 🔥 REGLA 1: Máximo 2 revisiones por día (sistema Anki) - VERIFICAR PRIMERO
+      // 🔥 REGLA 1: BLOQUEO ABSOLUTO - Máximo 2 revisiones por día (sistema Anki)
       const revisionesHoy = item.revisionesHoy || 0;
+      
+      // 🚨 VERIFICACIÓN CRÍTICA: Si tiene 2 o más revisiones, BLOQUEAR INMEDIATAMENTE
       if (revisionesHoy >= 2) {
-        console.log(`❌ EXCLUIDO (${revisionesHoy} revisiones hoy, máximo 2): ${titulo}`);
-        return false;
+        console.log(`🚫 BLOQUEADO (${revisionesHoy} revisiones hoy, límite 2/día): ${titulo}`);
+        return false; // ← SALIDA INMEDIATA, NO CONTINUAR
       }
       
-      // 🔥 REGLA 2: Si ya fue revisado HOY, verificar que no haya alcanzado el límite
+      // 🔥 REGLA 2: Verificar si fue revisado HOY (doble validación)
       const ultimaRevision = item.ultima_revision || item.ultimaRevision || item.fechaRevision;
       if (ultimaRevision) {
         const fechaUltimaRevision = new Date(ultimaRevision);
+        const diaUltimaRevision = new Date(
+          fechaUltimaRevision.getFullYear(),
+          fechaUltimaRevision.getMonth(),
+          fechaUltimaRevision.getDate()
+        );
         
-        // Si la última revisión fue hoy, verificar contador
-        if (fechaUltimaRevision >= hoyInicio) {
+        // Comparar DÍA CALENDARIO (no hora)
+        if (diaUltimaRevision.getTime() === hoyInicio.getTime()) {
+          // 🚨 REVISADO HOY - Verificar contador NUEVAMENTE
           if (revisionesHoy >= 2) {
-            console.log(`❌ EXCLUIDO (revisado hoy ${revisionesHoy} veces): ${titulo}`, {
-              ultima_revision: fechaUltimaRevision.toISOString(),
-              revisionesHoy: revisionesHoy
-            });
-            return false;
+            console.log(`🚫 BLOQUEADO DOBLE CHECK (revisado hoy ${revisionesHoy} veces): ${titulo}`);
+            return false; // ← BLOQUEO REDUNDANTE por seguridad
           }
-          // Si tiene 1 revisión, puede aparecer una vez más
+          
+          // Si tiene 1 revisión, puede aparecer UNA VEZ MÁS
           if (revisionesHoy === 1) {
-            console.log(`⚠️ ALERTA: Puede aparecer 1 vez más hoy (${revisionesHoy}/2): ${titulo}`);
+            console.log(`⚠️ ÚLTIMA OPORTUNIDAD HOY (${revisionesHoy}/2): ${titulo}`);
+          } else if (revisionesHoy === 0) {
+            console.log(`✅ Revisado hoy pero contador en 0 (inconsistencia corregida): ${titulo}`);
+            item.revisionesHoy = 1; // Corregir inconsistencia
           }
         } else {
           // Última revisión fue en otro día - debería tener revisionesHoy = 0
@@ -2786,19 +2812,34 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       const fechaRevision = new Date(item.proximaRevision);
       const diaRevision = new Date(fechaRevision.getFullYear(), fechaRevision.getMonth(), fechaRevision.getDate());
       const diaHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-      const debeRepasar = diaRevision <= diaHoy;
+      
+      // 🚨 COMPARACIÓN ESTRICTA: Solo si la fecha de revisión es HOY o ANTES
+      const debeRepasar = diaRevision.getTime() <= diaHoy.getTime();
       
       if (debeRepasar) {
+        // 🔥 VERIFICACIÓN ADICIONAL: Asegurar que no excede límite diario
+        if (revisionesHoy >= 2) {
+          console.log(`🚫 BLOQUEADO POR LÍMITE DIARIO (${revisionesHoy}/2): ${titulo}`, {
+            diaRevision: diaRevision.toISOString().split('T')[0],
+            diaHoy: diaHoy.toISOString().split('T')[0]
+          });
+          return false;
+        }
+        
         console.log(`✅ INCLUIDO (fecha llegada, ${revisionesHoy}/2 revisiones): ${titulo}`, {
           diaRevision: diaRevision.toISOString().split('T')[0],
           diaHoy: diaHoy.toISOString().split('T')[0],
-          revisionesHoy: revisionesHoy
+          revisionesHoy: revisionesHoy,
+          timestampRevision: diaRevision.getTime(),
+          timestampHoy: diaHoy.getTime()
         });
       } else {
-        console.log(`⏭️ EXCLUIDO (fecha no llegada): ${titulo}`, {
+        console.log(`⏭️ EXCLUIDO (fecha NO llegada): ${titulo}`, {
           diaRevision: diaRevision.toISOString().split('T')[0],
           diaHoy: diaHoy.toISOString().split('T')[0],
-          faltanDias: Math.round((diaRevision - diaHoy) / (1000 * 60 * 60 * 24))
+          faltanDias: Math.round((diaRevision.getTime() - diaHoy.getTime()) / (1000 * 60 * 60 * 24)),
+          timestampRevision: diaRevision.getTime(),
+          timestampHoy: diaHoy.getTime()
         });
       }
       
@@ -9184,27 +9225,37 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       hoyInicio.setHours(0, 0, 0, 0);
       
       flashcards = flashcards.map(fc => {
-        // Si no tiene revisionesHoy, inicializar
+        const ultimaRevision = fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
+        
+        // 🔥 NORMALIZACIÓN MEJORADA: Solo inicializar si NO existe, nunca sobrescribir
         if (fc.revisionesHoy === undefined || fc.revisionesHoy === null) {
-          const ultimaRevision = fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
           if (ultimaRevision) {
             const fechaUltima = new Date(ultimaRevision);
-            // Si última revisión fue hoy, inicializar a 1; si no, a 0
-            fc.revisionesHoy = (fechaUltima >= hoyInicio) ? 1 : 0;
+            const diaUltima = new Date(fechaUltima.getFullYear(), fechaUltima.getMonth(), fechaUltima.getDate());
+            // Comparar solo DÍA CALENDARIO
+            if (diaUltima.getTime() === hoyInicio.getTime()) {
+              fc.revisionesHoy = 1; // Revisada hoy pero sin contador - asumir 1 revisión
+            } else {
+              fc.revisionesHoy = 0; // Revisada en otro día
+            }
           } else {
-            fc.revisionesHoy = 0;
+            fc.revisionesHoy = 0; // Nunca revisada
           }
         } else {
-          // Si tiene contador pero la última revisión no fue hoy, resetear a 0
-          const ultimaRevision = fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
+          // 🔥 SI YA TIENE CONTADOR, SOLO RESETEAR SI LA ÚLTIMA REVISIÓN NO FUE HOY
           if (ultimaRevision) {
             const fechaUltima = new Date(ultimaRevision);
-            if (fechaUltima < hoyInicio && fc.revisionesHoy > 0) {
-              console.log(`🔄 Reseteando contador obsoleto para: ${fc.titulo || fc.id} (${fc.revisionesHoy} → 0)`);
+            const diaUltima = new Date(fechaUltima.getFullYear(), fechaUltima.getMonth(), fechaUltima.getDate());
+            
+            // Comparar solo DÍA CALENDARIO
+            if (diaUltima.getTime() !== hoyInicio.getTime() && fc.revisionesHoy > 0) {
+              console.log(`🔄 Reseteando contador obsoleto: ${fc.titulo || fc.id} (${fc.revisionesHoy} → 0)`);
               fc.revisionesHoy = 0;
             }
+            // Si la última revisión fue HOY, MANTENER el contador actual (no sobrescribir)
           }
         }
+        
         return fc;
       });
       

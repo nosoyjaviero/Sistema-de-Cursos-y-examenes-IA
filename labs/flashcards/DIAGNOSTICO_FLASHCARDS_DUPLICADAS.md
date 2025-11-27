@@ -74,6 +74,22 @@ if (item.revisionesHoy === undefined || item.revisionesHoy === null) {
 
 ## ✅ CORRECCIONES IMPLEMENTADAS
 
+### ⚠️ ACTUALIZACIÓN CRÍTICA (26-Nov-2025 23:00)
+
+**PROBLEMA ENCONTRADO EN PRODUCCIÓN**:
+- Una flashcard tenía `revisionesHoy: 3` (¡excedía el límite de 2!)
+- El filtro NO la estaba bloqueando correctamente
+- La verificación existía pero no era suficientemente estricta
+
+**NUEVAS CORRECCIONES APLICADAS**:
+
+1. ✅ **Bloqueo doble en filtro** - Dos validaciones independientes
+2. ✅ **Límite absoluto en contador** - No permite incrementar sobre 2
+3. ✅ **Script de limpieza** - Para corregir archivos existentes corruptos
+4. ✅ **Comparación de día calendario** - No solo `>=` sino comparación exacta
+
+---
+
 ### Corrección #1: Normalización de Fecha al Inicio del Día
 
 **Archivo**: `App.jsx` - `calcularProximaRevision()`
@@ -98,29 +114,105 @@ proximaFecha.setDate(proximaFecha.getDate() + nuevoIntervalo);
 **Archivo**: `App.jsx` - `filtrarItemsParaRepasar()`
 
 ```javascript
-// ✅ DESPUÉS (CORRECTO)
-const fechaRevision = new Date(item.proximaRevision);
-const diaRevision = new Date(
-  fechaRevision.getFullYear(), 
-  fechaRevision.getMonth(), 
-  fechaRevision.getDate()
-);
-const diaHoy = new Date(
-  ahora.getFullYear(), 
-  ahora.getMonth(), 
-  ahora.getDate()
-);
-const debeRepasar = diaRevision <= diaHoy;
+// ✅ DESPUÉS (CORRECTO) - BLOQUEO ABSOLUTO
+const revisionesHoy = item.revisionesHoy || 0;
+
+// 🚨 PRIMERA VERIFICACIÓN: Bloqueo inmediato si >= 2
+if (revisionesHoy >= 2) {
+  console.log(`🚫 BLOQUEADO (${revisionesHoy} revisiones, límite 2/día): ${titulo}`);
+  return false; // ← SALIDA INMEDIATA
+}
+
+// 🚨 SEGUNDA VERIFICACIÓN: Doble check con fecha
+const ultimaRevision = item.ultima_revision || item.ultimaRevision;
+if (ultimaRevision) {
+  const fechaUltima = new Date(ultimaRevision);
+  const diaUltima = new Date(fechaUltima.getFullYear(), fechaUltima.getMonth(), fechaUltima.getDate());
+  
+  // Comparar DÍA EXACTO (no solo >=)
+  if (diaUltima.getTime() === hoyInicio.getTime()) {
+    if (revisionesHoy >= 2) {
+      console.log(`🚫 BLOQUEADO DOBLE CHECK: ${titulo}`);
+      return false; // ← BLOQUEO REDUNDANTE
+    }
+  }
+}
 ```
 
 **Beneficio**:
-- Se comparan **solo los días**, sin importar la hora
-- Si hoy es `26 de noviembre`, cualquier flashcard con `proximaRevision <= 26 nov` aparece
-- No importa si es las 00:01 o las 23:59
+- **Doble validación**: Dos puntos de bloqueo independientes
+- **Comparación exacta**: No solo `>=`, sino `getTime() ===`
+- **Bloqueo redundante**: Aunque ya pasó el primer filtro, verifica de nuevo
+- **Logs críticos**: Emojis 🚫 para identificar bloqueos rápidamente
 
 ---
 
-### Corrección #3: Logging Mejorado
+### Corrección #3: Límite Absoluto en Contador
+
+**Archivo**: `App.jsx` - `calcularProximaRevision()`
+
+```javascript
+// ✅ DESPUÉS (CORRECTO) - LÍMITE FORZADO
+if (diaUltimaRevision.getTime() === hoyInicio.getTime()) {
+  const anteriorRevisionesHoy = revisionesHoy;
+  revisionesHoy += 1;
+  
+  // 🚨 LÍMITE ABSOLUTO: No permitir más de 2
+  if (revisionesHoy > 2) {
+    console.warn(`🚫 LÍMITE EXCEDIDO: ${revisionesHoy}, FORZANDO a 2`);
+    revisionesHoy = 2; // ← FORZAR a 2, nunca más
+  }
+  
+  console.log(`✅ Incrementado: ${anteriorRevisionesHoy} → ${revisionesHoy}`);
+}
+```
+
+**Beneficio**:
+- **Techo absoluto**: Aunque haya corrupción de datos, nunca excede 2
+- **Autocorrección**: Si una flashcard llega con `revisionesHoy: 5`, se fuerza a 2
+- **Prevención**: Imposible que el contador suba sobre el límite
+
+---
+
+### Corrección #4: Script de Limpieza de Datos Corruptos
+
+**Archivo**: `limpiar_flashcards_corruptas.ps1`
+
+```powershell
+# Corrige 4 problemas:
+# 1. revisionesHoy > 2 (resetea a 0)
+# 2. proximaRevision sin T00:00:00.000Z (normaliza)
+# 3. revisionesHoy sin ultima_revision (resetea a 0)
+# 4. Revisada hoy pero contador en 0 (corrige a 1)
+```
+
+**Uso**:
+```powershell
+.\limpiar_flashcards_corruptas.ps1
+```
+
+**Salida esperada**:
+```
+🔍 BUSCANDO FLASHCARDS CORRUPTAS...
+
+📁 Procesando: extracciones\Platzi
+   ⚠️  dua lipa
+      - revisionesHoy=3 (reseteado a 0)
+      - proximaRevision con hora incorrecta (normalizada a 00:00:00)
+   ✅ Archivo guardado con correcciones
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 RESUMEN DE LIMPIEZA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Archivos corregidos: 1
+Flashcards corregidas: 1
+
+🎉 Limpieza completada. Reinicia el navegador para aplicar cambios.
+```
+
+---
+
+### Corrección #5: Logging Mejorado
 
 **Archivo**: `App.jsx` - `filtrarItemsParaRepasar()`
 
