@@ -1,0 +1,57 @@
+{
+  "success": true,
+  "session_id": "32bf6791-0595-4585-8de7-358adc26b9fe",
+  "preguntas": [
+    {
+      "tipo": "open_question",
+      "pregunta": "Analiza las diferencias y similitudes entre el diseño centrado en el usuario (UCD) y otras metodologías de diseño, como la ingeniería de requisitos. ¿Cuáles son los beneficios específicos del UCD comparados con otros enfoques?",
+      "opciones": [],
+      "respuesta_correcta": "El diseño centrado en el usuario (UCD) y la ingeniería de requisitos son metodologías que buscan mejorar la calidad de los productos. Sin embargo, tienen enfocamientos diferentes: el UCD se centra explícitamente en las necesidades y experiencias del usuario, mientras que la ingeniería de requisitos es más amplia y busca garantizar la precisión de las especificaciones del producto.",
+      "puntos": 5,
+      "metadata": {
+        "tipo": "open_question",
+        "pregunta": "Analiza las diferencias y similitudes entre el diseño centrado en el usuario (UCD) y otras metodologías de diseño, como la ingeniería de requisitos. ¿Cuáles son los beneficios específicos del UCD comparados con otros enfoques?",
+        "respuesta_correcta": "El diseño centrado en el usuario (UCD) y la ingeniería de requisitos son metodologías que buscan mejorar la calidad de los productos. Sin embargo, tienen enfocamientos diferentes: el UCD se centra explícitamente en las necesidades y experiencias del usuario, mientras que la ingeniería de requisitos es más amplia y busca garantizar la precisión de las especificaciones del producto.",
+        "puntos": 5,
+        "key_points": [
+          "Definición de UCD vs otras metodologías",
+          "Diferencias y similitudes entre el UCD e ingeniería de requisitos",
+          "Beneficios únicos del UCD",
+          "Comparativa con otros enfoques"
+        ],
+        "expected_length": "150-300 palabras",
+        "evaluation_criteria": [
+          "Análisis preciso y conciso sobre diferencias y similitudes entre metodologías",
+          "Claridad al describir beneficios únicos del UCD",
+          "Ejemplos concretos o casos de estudio para ilustrar ventajas del UCD"
+        ]
+      }
+    },
+    {
+      "tipo": "open_question",
+      "pregunta": "Desarrolla un argumento a favor o en contra de utilizar el diseño centrado en usuario (UCD) en todos los proyectos, considerando sus beneficios y desventajas. ¿Cuáles serían las consecuencias de adoptar este proceso como norma para todas las iniciativas?",
+      "opciones": [],
+      "respuesta_correcta": "Aunque el diseño centrado en usuario (UCD) ofrece varios beneficios, su aplicación universal podría ser impráctico o innecesario para ciertos proyectos. Algunos argumentan que, especialmente en iniciativas de tecnología emergente o con plazos apretados, puede no valer la inversión en el proceso iterativo del UCD.",
+      "puntos": 5,
+      "metadata": {
+        "tipo": "open_question",
+        "pregunta": "Desarrolla un argumento a favor o en contra de utilizar el diseño centrado en usuario (UCD) en todos los proyectos, considerando sus beneficios y desventajas. ¿Cuáles serían las consecuencias de adoptar este proceso como norma para todas las iniciativas?",
+        "respuesta_correcta": "Aunque el diseño centrado en usuario (UCD) ofrece varios beneficios, su aplicación universal podría ser impráctico o innecesario para ciertos proyectos. Algunos argumentan que, especialmente en iniciativas de tecnología emergente o con plazos apretados, puede no valer la inversión en el proceso iterativo del UCD.",
+        "puntos": 5,
+        "key_points": [
+          "Argumento a favor o en contra del UCD universal",
+          "Consideración de beneficios (mayor satisfacción, reducción costos)",
+          "Desventajas potenciales al aplicar el UCD en todos los proyectos",
+          "Consecuencias de implementar el UCD como norma"
+        ],
+        "expected_length": "150-300 palabras",
+        "evaluation_criteria": [
+          "Claridad y profundidad del argumento a favor o en contra",
+          "Consideración crítica de beneficios y desventajas potenciales",
+          "Evaluación realista de consecuencias al implementar el UCD como norma"
+        ]
+      }
+    }
+  ],
+  "total_preguntas": 2
+}

@@ -865,16 +865,48 @@ Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionale
     }''',
                 'instrucciones': '- Respuesta de 2-3 oraciones\n- Clara y concreta\n- Basada en el contenido'
             },
+            'cloze': {
+                'nombre': 'relleno de huecos (cloze test)',
+                'puntos': 3,
+                'ejemplo': '''{
+      "tipo": "cloze",
+      "pregunta": "Python es un lenguaje de {} creado por {} en {}",
+      "metadata": {
+        "text_with_gaps": "Python es un lenguaje de {} creado por {} en {}",
+        "answers": ["programación", "Guido van Rossum", "1991"],
+        "hint": "Piensa en el tipo de lenguaje y su creador"
+      },
+      "respuesta_correcta": "programación, Guido van Rossum, 1991",
+      "puntos": 3
+    }''',
+                'instrucciones': '- El texto debe tener 2-5 huecos marcados con {}\n- Cada hueco representa UNA palabra o frase corta clave\n- metadata.answers debe tener el MISMO número de elementos que huecos\n- Las respuestas deben estar en el MISMO ORDEN que aparecen los huecos\n- Incluye una pista (hint) útil que ayude sin revelar la respuesta\n- El texto debe ser educativo y basado en el contenido'
+            },
             'open_question': {
                 'nombre': 'desarrollo/ensayo',
                 'puntos': 5,
                 'ejemplo': '''{
       "tipo": "open_question",
-      "pregunta": "📝 DESARROLLO: Analiza en profundidad [tema del contenido]",
-      "respuesta_correcta": "Respuesta modelo DETALLADA con análisis profundo (mínimo 150 palabras)",
+      "pregunta": "Analiza en profundidad el diseño centrado en el usuario. Explica sus principios fundamentales, beneficios principales y cómo se aplica en proyectos reales. Desarrolla tu respuesta con ejemplos concretos.",
+      "metadata": {
+        "key_points": [
+          "Definición de diseño centrado en usuario",
+          "Principios fundamentales (enfoque en usuarios, medición empírica, diseño iterativo)",
+          "Beneficios para usuarios y negocio",
+          "Metodologías y técnicas aplicadas",
+          "Ejemplos concretos de implementación"
+        ],
+        "expected_length": "150-300 palabras",
+        "evaluation_criteria": [
+          "Claridad conceptual y profundidad de análisis",
+          "Conexión entre teoría y práctica",
+          "Uso de ejemplos relevantes",
+          "Estructura y coherencia argumentativa"
+        ]
+      },
+      "respuesta_correcta": "El diseño centrado en el usuario (UCD) es una filosofía de diseño que sitúa al usuario final en el centro del proceso de desarrollo. Sus principios fundamentales incluyen: 1) Enfoque temprano en usuarios y tareas, comprendiendo quiénes son, qué necesitan y en qué contexto operan. 2) Medición empírica mediante observación del comportamiento real con prototipos. 3) Diseño iterativo con ciclos de diseño-prueba-refinamiento. Los beneficios son significativos: mayor satisfacción del usuario, reducción de costos al detectar problemas temprano, productos más intuitivos y mejor adopción. Las metodologías comunes incluyen investigación de usuarios, creación de personas, pruebas de usabilidad y diseño participativo. Por ejemplo, al desarrollar una aplicación bancaria, el UCD implica observar cómo usuarios reales interactúan con prototipos, identificar fricciones en el flujo de pagos, y refinar iterativamente hasta lograr una experiencia fluida.",
       "puntos": 5
     }''',
-                'instrucciones': '- Pregunta compleja que requiere análisis profundo\n- Respuesta modelo de mínimo 150 palabras\n- Debe incluir múltiples conceptos del contenido'
+                'instrucciones': '- Pregunta compleja que requiere análisis profundo y estructurado\n- Debe solicitar explícitamente: explicación de conceptos, análisis de relaciones, ejemplos concretos\n- metadata.key_points: Array con 4-6 aspectos específicos que debe cubrir la respuesta\n- metadata.expected_length: Extensión esperada de la respuesta\n- metadata.evaluation_criteria: Criterios de evaluación claros\n- Respuesta modelo de 150-300 palabras con estructura clara\n- Debe incluir definiciones, análisis y ejemplos prácticos'
             },
             'flashcard': {
                 'nombre': 'flashcard',
@@ -934,6 +966,8 @@ Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionale
             tipos_detalle.append(f"{num_preguntas['true_false']} verdadero/falso (puntos: 2)")
         if num_preguntas.get('short_answer', 0) > 0:
             tipos_detalle.append(f"{num_preguntas['short_answer']} de respuesta corta (puntos: 3)")
+        if num_preguntas.get('cloze', 0) > 0:
+            tipos_detalle.append(f"{num_preguntas['cloze']} de relleno de huecos/cloze (texto con {{}}, puntos: 3)")
         if num_preguntas.get('open_question', 0) > 0:
             tipos_detalle.append(f"**🔥 {num_preguntas['open_question']} de desarrollo/ensayo EXTENSO** (puntos: 5) - OBLIGATORIO: pregunta compleja que requiere ANÁLISIS PROFUNDO")
         
@@ -979,11 +1013,41 @@ Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionale
       "puntos": 3
     }""")
         
+        if num_preguntas.get('cloze', 0) > 0:
+            json_ejemplos.append("""    {
+      "tipo": "cloze",
+      "pregunta": "Python es un lenguaje de {} creado por {} en {}",
+      "metadata": {
+        "text_with_gaps": "Python es un lenguaje de {} creado por {} en {}",
+        "answers": ["programación", "Guido van Rossum", "1991"],
+        "hint": "Piensa en el tipo de lenguaje y su creador"
+      },
+      "respuesta_correcta": "programación, Guido van Rossum, 1991",
+      "puntos": 3
+    }""")
+        
         if num_preguntas.get('open_question', 0) > 0:
             json_ejemplos.append("""    {
       "tipo": "open_question",
-      "pregunta": "📝 DESARROLLO EXTENSO: Analiza en profundidad [tema complejo del contenido]. Explica los conceptos principales, sus interrelaciones y aplicaciones. (Mínimo 150 palabras)",
-      "respuesta_correcta": "Respuesta modelo DETALLADA: 1) Definiciones completas con ejemplos del contenido (mínimo 3 conceptos clave), 2) Análisis de relaciones entre conceptos con 8-10 oraciones explicativas, 3) Ejemplos concretos extraídos del texto, 4) Aplicaciones prácticas o importancia. DEBE ser sustancialmente más larga que short_answer - mínimo 150 palabras totales.",
+      "pregunta": "Analiza en profundidad [tema complejo del contenido]. Explica los conceptos principales, sus interrelaciones, beneficios/impactos y aplicaciones prácticas. Desarrolla tu respuesta con ejemplos concretos del contenido.",
+      "metadata": {
+        "key_points": [
+          "Definición y contexto del tema principal",
+          "Conceptos o principios fundamentales (mínimo 3)",
+          "Relaciones e interconexiones entre conceptos",
+          "Beneficios, ventajas o impactos significativos",
+          "Aplicaciones prácticas o ejemplos reales",
+          "Implicaciones o importancia en el campo"
+        ],
+        "expected_length": "200-300 palabras",
+        "evaluation_criteria": [
+          "Profundidad de análisis conceptual",
+          "Claridad en explicaciones",
+          "Conexión entre teoría y ejemplos",
+          "Estructura lógica y coherencia"
+        ]
+      },
+      "respuesta_correcta": "Respuesta modelo DETALLADA de 200-300 palabras que desarrolle sistemáticamente: 1) Definiciones completas de conceptos clave con contexto del contenido, 2) Análisis de cómo se relacionan e interconectan estos conceptos (mínimo 3 relaciones explicadas), 3) Explicación de beneficios o impactos significativos con datos/evidencia del texto, 4) Ejemplos concretos y específicos extraídos del contenido, 5) Aplicaciones prácticas en contextos reales, 6) Reflexión sobre importancia o implicaciones. La respuesta debe demostrar comprensión profunda, no superficial.",
       "puntos": 5
     }""")
         
@@ -1969,6 +2033,65 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
     
     def _evaluar_con_ia(self, pregunta: PreguntaExamen, respuesta_usuario: str) -> dict:
         """Evalúa una respuesta de desarrollo/corta usando IA"""
+        
+        # ========== EVALUACIÓN ESPECIAL PARA CLOZE ==========
+        if pregunta.tipo == 'cloze' and hasattr(pregunta, 'metadata') and pregunta.metadata:
+            if isinstance(pregunta.metadata, dict) and 'answers' in pregunta.metadata:
+                respuestas_correctas = pregunta.metadata['answers']
+                
+                # Dividir respuestas del usuario (pueden estar separadas por comas o |||)
+                respuestas_usuario_lista = []
+                if ', ' in respuesta_usuario:
+                    respuestas_usuario_lista = [r.strip() for r in respuesta_usuario.split(',')]
+                elif '|||' in respuesta_usuario:
+                    respuestas_usuario_lista = [r.strip() for r in respuesta_usuario.split('|||')]
+                else:
+                    respuestas_usuario_lista = [respuesta_usuario.strip()]
+                
+                # Comparar cada respuesta
+                correctas = 0
+                total = len(respuestas_correctas)
+                conceptos_correctos = []
+                conceptos_faltantes = []
+                
+                for i, respuesta_correcta in enumerate(respuestas_correctas):
+                    if i < len(respuestas_usuario_lista):
+                        resp_usuario = respuestas_usuario_lista[i].lower().strip()
+                        resp_correcta = str(respuesta_correcta).lower().strip()
+                        
+                        # Comparación flexible (permite variaciones)
+                        if resp_usuario == resp_correcta or resp_usuario in resp_correcta or resp_correcta in resp_usuario:
+                            correctas += 1
+                            conceptos_correctos.append(respuesta_correcta)
+                        else:
+                            # Verificar similitud básica (al menos 60% de las palabras coinciden)
+                            palabras_correcta = set(resp_correcta.split())
+                            palabras_usuario = set(resp_usuario.split())
+                            if palabras_usuario and palabras_correcta:
+                                coincidencia = len(palabras_usuario.intersection(palabras_correcta)) / len(palabras_correcta)
+                                if coincidencia >= 0.6:
+                                    correctas += 1
+                                    conceptos_correctos.append(respuesta_correcta)
+                                else:
+                                    conceptos_faltantes.append(respuesta_correcta)
+                            else:
+                                conceptos_faltantes.append(respuesta_correcta)
+                    else:
+                        conceptos_faltantes.append(respuesta_correcta)
+                
+                # Calcular puntos
+                porcentaje = correctas / total if total > 0 else 0
+                puntos = round(porcentaje * pregunta.puntos, 1)
+                
+                return {
+                    "correcta": porcentaje >= 0.6,
+                    "puntos_obtenidos": puntos,
+                    "conceptos_correctos": conceptos_correctos,
+                    "conceptos_faltantes": conceptos_faltantes,
+                    "feedback": f"Completaste {correctas}/{total} huecos correctamente ({int(porcentaje*100)}%)."
+                }
+        
+        # ========== EVALUACIÓN NORMAL PARA OTROS TIPOS ==========
         
         # Extraer respuesta correcta dependiendo del tipo
         respuesta_modelo = pregunta.respuesta_correcta

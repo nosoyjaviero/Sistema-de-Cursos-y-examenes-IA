@@ -1,0 +1,44 @@
+{
+  "success": true,
+  "session_id": "c38fd558-2103-49f4-8843-6a9cbe78adc8",
+  "preguntas": [
+    {
+      "tipo": "cloze",
+      "pregunta": "Python es un lenguaje de {} alto nivel y propósito general utilizado en {} y {}",
+      "opciones": [],
+      "respuesta_correcta": "alto, desarrollo web, ciencia de datos",
+      "puntos": 3,
+      "metadata": {
+        "tipo": "cloze",
+        "pregunta": "Python es un lenguaje de {} alto nivel y propósito general utilizado en {} y {}",
+        "respuesta_correcta": "alto, desarrollo web, ciencia de datos",
+        "puntos": 3,
+        "text_with_gaps": "Python es un lenguaje de {} alto nivel y propósito general utilizado en {} y {}",
+        "answers": [
+          "alto",
+          "desarrollo web, ciencia de datos"
+        ],
+        "hint": "Piensa en el tipo de programa"
+      }
+    },
+    {
+      "tipo": "cloze",
+      "pregunta": "Python se utiliza ampliamente en {} como la inteligencia artificial y automatización",
+      "opciones": [],
+      "respuesta_correcta": "desarrollo web, ciencia de datos",
+      "puntos": 3,
+      "metadata": {
+        "tipo": "cloze",
+        "pregunta": "Python se utiliza ampliamente en {} como la inteligencia artificial y automatización",
+        "respuesta_correcta": "desarrollo web, ciencia de datos",
+        "puntos": 3,
+        "text_with_gaps": "Python se utiliza ampliamente en {} como la inteligencia artificial y automatización",
+        "answers": [
+          "desarrollo web, ciencia de datos"
+        ],
+        "hint": "Piensa en el campo donde es muy utilizado"
+      }
+    }
+  ],
+  "total_preguntas": 2
+}

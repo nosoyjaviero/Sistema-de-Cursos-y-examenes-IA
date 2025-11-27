@@ -5286,9 +5286,16 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       let contextoFinal = contenidoContexto || null
       
       if (archivosContextoChat.length > 0) {
+        console.log('📎 Archivos en contexto:', archivosContextoChat.length)
+        archivosContextoChat.forEach((archivo, idx) => {
+          console.log(`  ${idx + 1}. ${archivo.nombre} - ${archivo.contenido?.length || 0} caracteres`)
+        })
+        
         const contextosArchivos = archivosContextoChat.map(archivo => 
           `[Archivo: ${archivo.nombre}]\n${archivo.contenido}\n[Fin de ${archivo.nombre}]\n`
         ).join('\n\n')
+        
+        console.log('📝 Contexto de archivos combinado:', contextosArchivos.substring(0, 300), '...')
         
         if (contextoFinal) {
           contextoFinal = contextoFinal + '\n\n' + contextosArchivos
@@ -5296,6 +5303,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           contextoFinal = contextosArchivos
         }
       }
+      
+      console.log('📦 Contexto final a enviar:', contextoFinal ? `${contextoFinal.length} caracteres` : 'null')
       
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
@@ -6029,6 +6038,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
   // Adjuntar archivo al contexto del chat
   const adjuntarArchivoContexto = async (archivo) => {
     try {
+      console.log('📎 Adjuntando archivo:', archivo)
       const response = await fetch(`${API_URL}/api/archivos/leer-contenido`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -6036,6 +6046,11 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       })
       
       const data = await response.json()
+      console.log('📥 Respuesta del servidor:', data)
+      
+      if (!data.contenido) {
+        throw new Error('El servidor no devolvió contenido')
+      }
       
       // Agregar a la lista de archivos del contexto
       const nuevoArchivo = {
@@ -6043,6 +6058,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         contenido: data.contenido,
         vista_previa: data.contenido.substring(0, 200) + (data.contenido.length > 200 ? '...' : '')
       }
+      
+      console.log('✅ Archivo adjuntado con contenido de', data.contenido.length, 'caracteres')
       
       // Evitar duplicados
       const yaExiste = archivosContextoChat.some(a => a.ruta_completa === archivo.ruta_completa)
@@ -8105,9 +8122,27 @@ Ejemplo de buena flashcard:
   "difficulty": "easy|medium|hard",
   "tags": ["concepto1"],
   "description": "Contexto o instrucción (opcional)",
-  "text_with_gaps": "El {{}} es fundamental porque {{}}",
+  "text_with_gaps": "El {} es fundamental porque {}",
   "answers": ["concepto clave", "explicación breve"],
   "hint": "Pista opcional"
+}
+
+🎯 REGLAS PARA CLOZE TEST:
+- Usa {} para marcar cada hueco (NO uses {{}} ni ___)
+- El texto debe tener entre 2 y 5 huecos
+- Cada hueco debe corresponder a una palabra o frase corta clave
+- El array "answers" debe tener el MISMO número de elementos que huecos {}
+- Las respuestas deben estar en el MISMO ORDEN que aparecen los huecos
+- El texto debe ser educativo y basado en el contenido del documento
+
+Ejemplo correcto:
+{
+  "type": "cloze",
+  "difficulty": "medium",
+  "tags": ["programación", "python"],
+  "text_with_gaps": "Python es un lenguaje de {} ampliamente usado para {} y {}. Fue creado por {} en 1991.",
+  "answers": ["programación", "desarrollo web", "ciencia de datos", "Guido van Rossum"],
+  "hint": "Piensa en las características y el creador de Python"
 }\n\n`;
       }
       
@@ -8973,13 +9008,44 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       
       // Crear nueva nota con el contenido del documento
       const nombreNota = documento.nombre.replace(/\.(txt|pdf)$/i, '') // Quitar extensión
+      
+      // Extraer la carpeta del documento
+      // Puede venir como "Platzi\archivo.txt" o "extracciones\Platzi\archivo.txt"
+      const rutaDocumento = documento.ruta || ''
+      const partesRuta = rutaDocumento.split(/[\\/]/).filter(p => p) // Dividir y limpiar vacíos
+      
+      let carpetaDocumento = ''
+      const indicExtracciones = partesRuta.indexOf('extracciones')
+      
+      if (indicExtracciones !== -1 && indicExtracciones < partesRuta.length - 1) {
+        // Si tiene 'extracciones' en la ruta: extracciones/Platzi/archivo.txt -> Platzi
+        const carpetasInternas = partesRuta.slice(indicExtracciones + 1, -1) // Excluir archivo
+        carpetaDocumento = carpetasInternas.join('/')
+      } else if (partesRuta.length > 1) {
+        // Si NO tiene 'extracciones': Platzi/archivo.txt -> Platzi
+        const carpetasInternas = partesRuta.slice(0, -1) // Todo menos el archivo
+        carpetaDocumento = carpetasInternas.join('/')
+      }
+      
+      // Si no hay carpeta específica, usar 'notas'
+      if (!carpetaDocumento || carpetaDocumento.trim() === '') {
+        carpetaDocumento = 'notas'
+      }
+      
+      console.log('📁 Extracción de carpeta:', {
+        rutaOriginal: rutaDocumento,
+        partesRuta: partesRuta,
+        carpetaFinal: carpetaDocumento
+      })
+      
       const notaNueva = {
         id: Date.now(),
         titulo: nombreNota,
         contenido: contenidoHTML,
-        carpeta: rutaNotasActual || '', // Usar carpeta actual de notas
+        carpeta: carpetaDocumento,
         fecha: new Date().toISOString(),
-        fechaModificacion: new Date().toISOString()
+        fechaModificacion: new Date().toISOString(),
+        origen_documento: documento.ruta // Guardar referencia al documento original
       }
 
       console.log('💾 Guardando nota:', notaNueva)
@@ -14368,13 +14434,15 @@ Shortcuts:
                     ...p, 
                     tipo: '🎯 Práctica', 
                     tipoInterno: 'practica',
-                    titulo: p.titulo || p.nombre || 'Práctica sin título'
+                    titulo: p.titulo || p.nombre || 'Práctica sin título',
+                    preguntas: p.preguntas || []
                   })),
                   ...examenes.map(e => ({ 
                     ...e, 
                     tipo: '📋 Examen', 
                     tipoInterno: 'examen',
-                    titulo: e.titulo || e.nombre || 'Examen sin título'
+                    titulo: e.titulo || e.nombre || 'Examen sin título',
+                    preguntas: e.preguntas || []
                   }))
                 ];
                 
@@ -20355,14 +20423,44 @@ Shortcuts:
                           {/* Cloze Test - Relleno de huecos */}
                           {pregunta.tipo === 'cloze' && (
                             <div className="respuesta-cloze">
-                              <p className="cloze-text">{pregunta.pregunta}</p>
-                              <textarea
-                                className="respuesta-corta"
-                                placeholder="Completa los espacios en blanco (separa respuestas con comas)..."
-                                value={respuestasUsuario[index] || ''}
-                                onChange={(e) => actualizarRespuesta(index, e.target.value)}
-                                rows={3}
-                              />
+                              <div className="cloze-text-interactivo">
+                                {(() => {
+                                  // Obtener el texto con huecos
+                                  const texto = pregunta.pregunta || pregunta.metadata?.text_with_gaps || '';
+                                  
+                                  // Dividir por cualquier patrón de llaves: {} o {1}, {2}, etc.
+                                  const partes = texto.split(/\{[^}]*\}/);
+                                  
+                                  // Obtener las respuestas del usuario
+                                  const respuestas = (respuestasUsuario[index] || '').split('|||');
+                                  
+                                  return partes.map((parte, i) => (
+                                    <React.Fragment key={i}>
+                                      {parte}
+                                      {i < partes.length - 1 && (
+                                        <input
+                                          type="text"
+                                          className="cloze-input"
+                                          placeholder="..."
+                                          value={respuestas[i] || ''}
+                                          onChange={(e) => {
+                                            const nuevasRespuestas = [...respuestas];
+                                            nuevasRespuestas[i] = e.target.value;
+                                            // Asegurar que el array tenga el tamaño correcto
+                                            while (nuevasRespuestas.length < partes.length - 1) {
+                                              nuevasRespuestas.push('');
+                                            }
+                                            actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                          }}
+                                        />
+                                      )}
+                                    </React.Fragment>
+                                  ));
+                                })()}
+                              </div>
+                              {pregunta.metadata?.hint && (
+                                <p style={{color: '#fbbf24', fontSize: '0.9rem', marginTop: '8px'}}>💡 {pregunta.metadata.hint}</p>
+                              )}
                             </div>
                           )}
                           
@@ -20395,6 +20493,20 @@ Shortcuts:
                           {/* Desarrollo / Open Question / Case Study */}
                           {(pregunta.tipo === 'desarrollo' || pregunta.tipo === 'open_question' || pregunta.tipo === 'case_study') && (
                             <div className="respuesta-con-voz">
+                              {/* Mostrar puntos clave si están disponibles */}
+                              {pregunta.metadata?.key_points && pregunta.metadata.key_points.length > 0 && (
+                                <div className="key-points-box">
+                                  <h4 className="key-points-title">🎯 Puntos clave a desarrollar:</h4>
+                                  <ul className="key-points-list">
+                                    {pregunta.metadata.key_points.map((punto, i) => (
+                                      <li key={i} className="key-point-item">{punto}</li>
+                                    ))}
+                                  </ul>
+                                  {pregunta.metadata?.expected_length && (
+                                    <p className="expected-length">📏 Extensión esperada: {pregunta.metadata.expected_length}</p>
+                                  )}
+                                </div>
+                              )}
                               <textarea
                                 className="respuesta-desarrollo"
                                 placeholder="Desarrolla tu respuesta completa aquí..."
@@ -28793,6 +28905,151 @@ Shortcuts:
                                 year: 'numeric'
                               })}
                             </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Preguntas a repasar (para prácticas y exámenes) */}
+                    {(itemMapaRepeticion.tipo?.includes('🎯') || itemMapaRepeticion.tipo?.includes('📝 Examen')) && itemMapaRepeticion.preguntas && itemMapaRepeticion.preguntas.length > 0 && (
+                      <div className="mapa-preguntas-repaso">
+                        <h4>📋 Preguntas a Repasar ({itemMapaRepeticion.preguntas.length})</h4>
+                        <div className="preguntas-lista-preview">
+                          {itemMapaRepeticion.preguntas.slice(0, 5).map((pregunta, idx) => (
+                            <div key={idx} className="pregunta-preview-item">
+                              <span className="pregunta-numero">#{idx + 1}</span>
+                              <div className="pregunta-info">
+                                <span className="pregunta-tipo">[{pregunta.tipo?.toUpperCase() || 'PREGUNTA'}]</span>
+                                <span className="pregunta-texto">
+                                  {pregunta.pregunta?.substring(0, 80) || 'Sin texto'}
+                                  {pregunta.pregunta?.length > 80 ? '...' : ''}
+                                </span>
+                                {pregunta.puntos && (
+                                  <span className="pregunta-puntos">{pregunta.puntos} pts</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {itemMapaRepeticion.preguntas.length > 5 && (
+                            <div className="preguntas-mas">
+                              + {itemMapaRepeticion.preguntas.length - 5} pregunta{itemMapaRepeticion.preguntas.length - 5 > 1 ? 's' : ''} más
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Historial de Repasos */}
+                    <div className="mapa-historial-repasos">
+                      <h4>📅 Historial de Repasos</h4>
+                      <div className="historial-timeline">
+                        {/* Fecha de creación */}
+                        {itemMapaRepeticion.fecha && (
+                          <div className="historial-item creacion">
+                            <div className="historial-dot">🌟</div>
+                            <div className="historial-content">
+                              <div className="historial-fecha">
+                                {new Date(itemMapaRepeticion.fecha).toLocaleDateString('es-ES', {
+                                  weekday: 'long',
+                                  day: 'numeric',
+                                  month: 'long',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                              <div className="historial-hora">
+                                {new Date(itemMapaRepeticion.fecha).toLocaleTimeString('es-ES', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                              <div className="historial-tipo">📝 Creado</div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Historial de revisiones */}
+                        {itemMapaRepeticion.historialRevisiones && itemMapaRepeticion.historialRevisiones.length > 0 ? (
+                          itemMapaRepeticion.historialRevisiones.map((revision, idx) => (
+                            <div key={idx} className={`historial-item revision evaluacion-${revision.evaluacion || 'desconocida'}`}>
+                              <div className="historial-dot">
+                                {revision.evaluacion === 'facil' && '😊'}
+                                {revision.evaluacion === 'medio' && '🤔'}
+                                {revision.evaluacion === 'dificil' && '😓'}
+                                {!revision.evaluacion && '👁️'}
+                              </div>
+                              <div className="historial-content">
+                                <div className="historial-fecha">
+                                  {new Date(revision.fecha).toLocaleDateString('es-ES', {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                    year: 'numeric'
+                                  })}
+                                </div>
+                                <div className="historial-hora">
+                                  {new Date(revision.fecha).toLocaleTimeString('es-ES', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                                <div className="historial-tipo">
+                                  👁️ Repasado {idx + 1}
+                                  {revision.evaluacion && (
+                                    <span className="evaluacion-badge">
+                                      {revision.evaluacion === 'facil' && '😊 Fácil'}
+                                      {revision.evaluacion === 'medio' && '🤔 Medio'}
+                                      {revision.evaluacion === 'dificil' && '😓 Difícil'}
+                                    </span>
+                                  )}
+                                </div>
+                                {revision.intervaloSiguiente && (
+                                  <div className="historial-meta">
+                                    Próximo repaso: {revision.intervaloSiguiente} día{revision.intervaloSiguiente !== 1 ? 's' : ''}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="historial-vacio">
+                            <span>📭 Aún no has repasado este contenido</span>
+                            {itemMapaRepeticion.proximaRevision && (
+                              <span className="historial-vacio-hint">
+                                Primera revisión programada para: {new Date(itemMapaRepeticion.proximaRevision).toLocaleDateString('es-ES', {
+                                  day: 'numeric',
+                                  month: 'long'
+                                })}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Próxima revisión */}
+                        {itemMapaRepeticion.proximaRevision && (
+                          <div className="historial-item proxima">
+                            <div className="historial-dot">⏰</div>
+                            <div className="historial-content">
+                              <div className="historial-fecha">
+                                {new Date(itemMapaRepeticion.proximaRevision).toLocaleDateString('es-ES', {
+                                  weekday: 'long',
+                                  day: 'numeric',
+                                  month: 'long',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                              <div className="historial-tipo">⏰ Próxima Revisión</div>
+                              {(() => {
+                                const dias = Math.ceil((new Date(itemMapaRepeticion.proximaRevision) - new Date()) / (1000 * 60 * 60 * 24));
+                                return (
+                                  <div className="historial-meta">
+                                    {dias === 0 && '¡Hoy!'}
+                                    {dias === 1 && 'Mañana'}
+                                    {dias > 1 && `En ${dias} días`}
+                                    {dias < 0 && `Hace ${Math.abs(dias)} día${Math.abs(dias) !== 1 ? 's' : ''} (atrasado)`}
+                                  </div>
+                                );
+                              })()}
+                            </div>
                           </div>
                         )}
                       </div>

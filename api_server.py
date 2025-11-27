@@ -1466,7 +1466,7 @@ async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
                 'tipo': tipo
             }
         
-        # Para prácticas, buscar en extracciones/*/resultados_practicas/*.json
+        # Para prácticas, buscar en extracciones/*/practicas.json
         if tipo == 'practicas':
             extracciones_base = EXTRACCIONES_PATH
             carpetas_practicas = []
@@ -1476,39 +1476,83 @@ async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
                 if not ruta:
                     for carpeta in extracciones_base.iterdir():
                         if carpeta.is_dir():
-                            practicas_path = carpeta / 'resultados_practicas'
-                            if practicas_path.exists():
-                                num_practicas = len(list(practicas_path.glob("*.json")))
-                                if num_practicas > 0:
-                                    carpetas_practicas.append({
-                                        'nombre': carpeta.name,
-                                        'ruta': carpeta.name,
-                                        'num_archivos': num_practicas
-                                    })
+                            practicas_json = carpeta / 'practicas.json'
+                            if practicas_json.exists():
+                                try:
+                                    with open(practicas_json, 'r', encoding='utf-8') as f:
+                                        practicas_list = json.load(f)
+                                    num_practicas = len(practicas_list) if isinstance(practicas_list, list) else 0
+                                    if num_practicas > 0:
+                                        carpetas_practicas.append({
+                                            'nombre': carpeta.name,
+                                            'ruta': carpeta.name,
+                                            'num_archivos': num_practicas
+                                        })
+                                except Exception as e:
+                                    print(f"⚠️ Error leyendo {practicas_json}: {e}")
                 else:
-                    # Listar prácticas de la carpeta específica
-                    carpeta_seleccionada = extracciones_base / ruta / 'resultados_practicas'
-                    if carpeta_seleccionada.exists():
-                        for archivo_practica in carpeta_seleccionada.glob("*.json"):
-                            try:
-                                stat = archivo_practica.stat()
-                                # Leer el archivo para obtener información
-                                with open(archivo_practica, 'r', encoding='utf-8') as f:
-                                    practica_data = json.load(f)
+                    # Listar prácticas de la carpeta específica desde practicas.json
+                    carpeta_seleccionada = extracciones_base / ruta
+                    practicas_json = carpeta_seleccionada / 'practicas.json'
+                    print(f"📂 Buscando prácticas en: {practicas_json}")
+                    print(f"📂 ¿Existe?: {practicas_json.exists()}")
+                    
+                    if practicas_json.exists():
+                        try:
+                            with open(practicas_json, 'r', encoding='utf-8') as f:
+                                practicas_list = json.load(f)
+                            
+                            print(f"📄 Prácticas encontradas: {len(practicas_list)}")
+                            stat = practicas_json.stat()
+                            
+                            # Crear un archivo virtual por cada práctica
+                            for idx, practica_data in enumerate(practicas_list):
+                                # Generar título descriptivo
+                                if 'titulo' in practica_data and practica_data['titulo']:
+                                    titulo = practica_data['titulo']
+                                elif 'ruta' in practica_data:
+                                    # Extraer nombre del archivo de la ruta
+                                    ruta_archivo = practica_data['ruta']
+                                    nombre_archivo = Path(ruta_archivo).stem  # Sin extensión
+                                    titulo = f"Práctica: {nombre_archivo}"
+                                else:
+                                    titulo = f'Práctica {idx+1}'
                                 
-                                # Verificar que tiene es_practica=true
-                                if practica_data.get('es_practica', False):
-                                    titulo = practica_data.get('titulo', practica_data.get('carpeta_nombre', archivo_practica.stem))
-                                    archivos.append({
-                                        'nombre': f"{titulo}.json",
-                                        'ruta_completa': str(archivo_practica.relative_to(Path.cwd())),
-                                        'tipo': 'Práctica',
-                                        'extension': '.json',
-                                        'tamaño': stat.st_size,
-                                        'modificado': stat.st_mtime
-                                    })
-                            except Exception as e:
-                                print(f"⚠️ Error leyendo práctica {archivo_practica}: {e}")
+                                print(f"🔍 Práctica {idx+1}: {titulo}")
+                                
+                                # Obtener fecha de modificación
+                                fecha_completado = practica_data.get('fecha_completado', '')
+                                try:
+                                    if fecha_completado:
+                                        from datetime import datetime
+                                        # Intentar parsear diferentes formatos de fecha
+                                        if 'T' in fecha_completado:
+                                            dt = datetime.fromisoformat(fecha_completado.replace('Z', '+00:00'))
+                                        else:
+                                            dt = datetime.strptime(fecha_completado, '%d/%m/%Y %H:%M:%S')
+                                        timestamp = dt.timestamp()
+                                    else:
+                                        timestamp = stat.st_mtime
+                                except:
+                                    timestamp = stat.st_mtime
+                                
+                                # Formatear el contenido de la práctica
+                                porcentaje = practica_data.get('porcentaje', 0)
+                                
+                                archivos.append({
+                                    'nombre': f"{titulo}.json",
+                                    'ruta_completa': f"extracciones/{ruta}/practicas/{idx}",  # Ruta virtual
+                                    'tipo': 'Práctica',
+                                    'extension': '.json',
+                                    'tamaño': len(json.dumps(practica_data).encode('utf-8')),
+                                    'modificado': timestamp,
+                                    'item_original': practica_data,  # Para leer después
+                                    'carpeta': ruta
+                                })
+                        except Exception as e:
+                            print(f"⚠️ Error leyendo practicas.json: {e}")
+                            import traceback
+                            traceback.print_exc()
             
             # Ordenar archivos por fecha de modificación descendente (más recientes primero)
             archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
@@ -1579,11 +1623,16 @@ async def leer_contenido_archivo(data: dict):
         if not ruta:
             raise HTTPException(status_code=400, detail="Ruta no proporcionada")
         
-        # Verificar si es una ruta virtual (notas/flashcards)
-        if 'extracciones/' in ruta and ('/notas/' in ruta or '/flashcards/' in ruta):
-            partes = ruta.split('/')
-            carpeta_nombre = partes[1]  # nombre de la carpeta (ej: 'Vielka', 'Sin carpeta')
-            tipo = partes[2]  # 'notas' o 'flashcards'
+        print(f"📖 Leyendo contenido de: {ruta}")
+        
+        # Normalizar separadores de ruta (convertir \ a /)
+        ruta_normalizada = ruta.replace('\\', '/')
+        
+        # Verificar si es una ruta virtual (notas/flashcards/practicas)
+        if 'extracciones/' in ruta_normalizada and ('/notas/' in ruta_normalizada or '/flashcards/' in ruta_normalizada or '/practicas/' in ruta_normalizada):
+            partes = ruta_normalizada.split('/')
+            carpeta_nombre = partes[1]  # nombre de la carpeta (ej: 'Platzi', 'Sin carpeta')
+            tipo = partes[2]  # 'notas', 'flashcards' o 'practicas'
             idx = int(partes[3])  # índice del item
             
             archivo_json = EXTRACCIONES_PATH / carpeta_nombre / f"{tipo}.json"
@@ -1593,9 +1642,10 @@ async def leer_contenido_archivo(data: dict):
                 
                 if idx < len(datos):
                     item = datos[idx]
+                    
                     if tipo == 'notas':
                         contenido = f"# {item.get('titulo', 'Sin título')}\n\n{item.get('contenido', '')}"
-                    else:  # flashcards
+                    elif tipo == 'flashcards':
                         # Manejar diferentes formatos
                         pregunta = item.get('pregunta', item.get('titulo', 'Sin pregunta'))
                         respuesta = item.get('respuesta', item.get('respuestaCorrecta', item.get('contenido', 'Sin respuesta')))
@@ -1604,6 +1654,122 @@ async def leer_contenido_archivo(data: dict):
                             cat = item.get('categoria', item.get('carpeta', ''))
                             if cat:
                                 contenido = f"**Categoría:** {cat}\n\n" + contenido
+                    elif tipo == 'practicas':
+                        # Verificar si es práctica completada o en progreso
+                        if 'resultados' in item and item['resultados']:
+                            # Práctica completada
+                            titulo = item.get('titulo', item.get('carpeta_nombre', 'Sin título'))
+                            porcentaje = item.get('porcentaje', 0)
+                            fecha = item.get('fecha_completado', item.get('fecha', 'Sin fecha'))
+                            
+                            contenido = f"# Práctica: {titulo}\n\n"
+                            contenido += f"**Estado:** ✅ Completada\n"
+                            contenido += f"**Fecha:** {fecha}\n"
+                            contenido += f"**Puntuación:** {porcentaje:.1f}%\n\n"
+                            contenido += f"## Preguntas\n\n"
+                            
+                            # Agregar preguntas y respuestas
+                            resultados = item.get('resultados', [])
+                            preguntas_correctas = []
+                            preguntas_incorrectas = []
+                            
+                            for idx_res, resultado in enumerate(resultados, 1):
+                                pregunta = resultado.get('pregunta', 'Sin pregunta')
+                                respuesta_usuario = resultado.get('respuesta_usuario', 'Sin respuesta')
+                                respuesta_correcta = resultado.get('respuesta_correcta', 'Sin respuesta correcta')
+                                puntos = resultado.get('puntos', 0)
+                                puntos_maximos = resultado.get('puntos_maximos', 0)
+                                
+                                # Determinar si fue correcta o incorrecta
+                                es_correcta = puntos == puntos_maximos and puntos > 0
+                                estado = "✅ CORRECTA" if es_correcta else "❌ INCORRECTA"
+                                
+                                # Clasificar
+                                if es_correcta:
+                                    preguntas_correctas.append(f"{idx_res}. {pregunta}")
+                                else:
+                                    preguntas_incorrectas.append(f"{idx_res}. {pregunta}")
+                                
+                                contenido += f"### {idx_res}. {pregunta} [{estado}]\n\n"
+                                contenido += f"**Tu respuesta:** {respuesta_usuario}\n\n"
+                                contenido += f"**Respuesta correcta:** {respuesta_correcta}\n\n"
+                                contenido += f"**Puntos obtenidos:** {puntos}/{puntos_maximos}\n\n"
+                                
+                                if resultado.get('feedback'):
+                                    contenido += f"**Feedback:**\n{resultado['feedback']}\n\n"
+                                
+                                contenido += "---\n\n"
+                            
+                            # Agregar resumen al final
+                            contenido += "## 📊 Resumen\n\n"
+                            contenido += f"**Preguntas correctas ({len(preguntas_correctas)}):**\n"
+                            if preguntas_correctas:
+                                for preg in preguntas_correctas:
+                                    contenido += f"- {preg}\n"
+                            else:
+                                contenido += "- Ninguna\n"
+                            
+                            contenido += f"\n**Preguntas incorrectas ({len(preguntas_incorrectas)}):**\n"
+                            if preguntas_incorrectas:
+                                for preg in preguntas_incorrectas:
+                                    contenido += f"- {preg}\n"
+                            else:
+                                contenido += "- Ninguna\n"
+                        else:
+                            # Práctica en progreso (sin completar)
+                            ruta_origen = item.get('ruta', '')
+                            nombre_archivo = Path(ruta_origen).stem if ruta_origen else 'Sin título'
+                            titulo = item.get('titulo', f'Práctica: {nombre_archivo}')
+                            fecha = item.get('fecha', 'Sin fecha')
+                            
+                            contenido = f"# {titulo}\n\n"
+                            contenido += f"**Estado:** ⏳ En progreso (no completada)\n"
+                            contenido += f"**Fecha creación:** {fecha}\n"
+                            contenido += f"**Archivo origen:** {ruta_origen}\n\n"
+                            
+                            # Mostrar preguntas disponibles
+                            preguntas = item.get('preguntas', [])
+                            if preguntas:
+                                contenido += f"## Preguntas ({len(preguntas)})\n\n"
+                                for idx_preg, pregunta in enumerate(preguntas, 1):
+                                    tipo_preg = pregunta.get('tipo', 'desconocido')
+                                    texto_preg = pregunta.get('pregunta', 'Sin texto')
+                                    puntos = pregunta.get('puntos', 0)
+                                    respuesta_correcta = pregunta.get('respuesta_correcta', '')
+                                    opciones = pregunta.get('opciones', [])
+                                    metadata = pregunta.get('metadata', {})
+                                    
+                                    contenido += f"### {idx_preg}. [{tipo_preg.upper()}] - {puntos} puntos\n\n"
+                                    contenido += f"**Pregunta:** {texto_preg}\n\n"
+                                    
+                                    # Mostrar opciones si existen (MCQ, True/False)
+                                    if opciones:
+                                        contenido += f"**Opciones:**\n"
+                                        for opt in opciones:
+                                            contenido += f"- {opt}\n"
+                                        contenido += "\n"
+                                    
+                                    # Mostrar respuesta correcta
+                                    if respuesta_correcta:
+                                        contenido += f"**Respuesta correcta:** {respuesta_correcta}\n\n"
+                                    
+                                    # Información adicional del metadata
+                                    if metadata:
+                                        if metadata.get('answers'):
+                                            contenido += f"**Respuestas esperadas:** {', '.join(metadata['answers'])}\n\n"
+                                        if metadata.get('hint'):
+                                            contenido += f"**Pista:** {metadata['hint']}\n\n"
+                                        if metadata.get('key_points'):
+                                            contenido += f"**Puntos clave a incluir:**\n"
+                                            for kp in metadata['key_points']:
+                                                contenido += f"- {kp}\n"
+                                            contenido += "\n"
+                                    
+                                    contenido += "---\n\n"
+                            else:
+                                contenido += "No hay preguntas generadas.\n\n"
+                            
+                            contenido += f"\n💡 **Nota:** Esta práctica aún no ha sido completada. Ve a la sección de Prácticas para responderla.\n"
                     
                     return {
                         'success': True,
@@ -1615,7 +1781,7 @@ async def leer_contenido_archivo(data: dict):
             raise HTTPException(status_code=404, detail="Nota/Flashcard no encontrada")
         
         # Verificar si es un examen
-        if ruta.startswith('examenes/'):
+        if ruta_normalizada.startswith('examenes/'):
             examen_path = Path(ruta)
             if examen_path.exists():
                 with open(examen_path, 'r', encoding='utf-8') as f:
@@ -1629,8 +1795,11 @@ async def leer_contenido_archivo(data: dict):
             raise HTTPException(status_code=404, detail="Examen no encontrado")
         
         # Verificar si es una práctica
-        if ruta.startswith('extracciones/') and 'resultados_practicas' in ruta:
+        if ruta_normalizada.startswith('extracciones/') and 'resultados_practicas' in ruta_normalizada:
             practica_path = Path(ruta)
+            print(f"📂 Buscando práctica en: {practica_path}")
+            print(f"📂 Existe: {practica_path.exists()}")
+            
             if practica_path.exists():
                 with open(practica_path, 'r', encoding='utf-8') as f:
                     practica_data = json.load(f)
@@ -1647,6 +1816,9 @@ async def leer_contenido_archivo(data: dict):
                 
                 # Agregar preguntas y respuestas
                 resultados = practica_data.get('resultados', [])
+                preguntas_correctas = []
+                preguntas_incorrectas = []
+                
                 for idx, resultado in enumerate(resultados, 1):
                     pregunta = resultado.get('pregunta', 'Sin pregunta')
                     respuesta_usuario = resultado.get('respuesta_usuario', 'Sin respuesta')
@@ -1654,15 +1826,41 @@ async def leer_contenido_archivo(data: dict):
                     puntos = resultado.get('puntos', 0)
                     puntos_maximos = resultado.get('puntos_maximos', 0)
                     
-                    contenido += f"### {idx}. {pregunta}\n\n"
+                    # Determinar si fue correcta o incorrecta
+                    es_correcta = puntos == puntos_maximos and puntos > 0
+                    estado = "✅ CORRECTA" if es_correcta else "❌ INCORRECTA"
+                    
+                    # Clasificar
+                    if es_correcta:
+                        preguntas_correctas.append(f"{idx}. {pregunta}")
+                    else:
+                        preguntas_incorrectas.append(f"{idx}. {pregunta}")
+                    
+                    contenido += f"### {idx}. {pregunta} [{estado}]\n\n"
                     contenido += f"**Tu respuesta:** {respuesta_usuario}\n\n"
                     contenido += f"**Respuesta correcta:** {respuesta_correcta}\n\n"
-                    contenido += f"**Puntos:** {puntos}/{puntos_maximos}\n\n"
+                    contenido += f"**Puntos obtenidos:** {puntos}/{puntos_maximos}\n\n"
                     
                     if resultado.get('feedback'):
                         contenido += f"**Feedback:**\n{resultado['feedback']}\n\n"
                     
                     contenido += "---\n\n"
+                
+                # Agregar resumen al final
+                contenido += "## 📊 Resumen\n\n"
+                contenido += f"**Preguntas correctas ({len(preguntas_correctas)}):**\n"
+                if preguntas_correctas:
+                    for preg in preguntas_correctas:
+                        contenido += f"- {preg}\n"
+                else:
+                    contenido += "- Ninguna\n"
+                
+                contenido += f"\n**Preguntas incorrectas ({len(preguntas_incorrectas)}):**\n"
+                if preguntas_incorrectas:
+                    for preg in preguntas_incorrectas:
+                        contenido += f"- {preg}\n"
+                else:
+                    contenido += "- Ninguna\n"
                 
                 return {
                     'success': True,
@@ -2614,14 +2812,15 @@ async def generar_practica(datos: dict):
             num_preguntas['mcq'] = num_mcq
         if num_verdadero_falso > 0:
             num_preguntas['true_false'] = num_verdadero_falso
+        if num_cloze > 0:
+            num_preguntas['cloze'] = num_cloze
         if num_open_question > 0:
             num_preguntas['open_question'] = num_open_question
         if num_caso_estudio > 0:
             num_preguntas['case_study'] = num_caso_estudio
         
         # Por ahora, los demás tipos se tratan como short_answer
-        tipos_adicionales = (num_cloze + 
-                           num_reading_comprehension + num_reading_true_false + num_reading_cloze +
+        tipos_adicionales = (num_reading_comprehension + num_reading_true_false + num_reading_cloze +
                            num_reading_skill + num_reading_matching + num_reading_sequence +
                            num_writing_short + num_writing_paraphrase + num_writing_correction +
                            num_writing_transformation + num_writing_essay + num_writing_sentence_builder +
@@ -2654,6 +2853,43 @@ async def generar_practica(datos: dict):
         # Convertir a formato JSON
         callback_progreso(95, "Finalizando...")
         preguntas_json = [p.to_dict() for p in preguntas]
+        
+        # Post-procesar preguntas tipo cloze para aplanar metadata
+        for pregunta_json in preguntas_json:
+            try:
+                # CLOZE: Aplanar metadata anidada
+                if pregunta_json.get('tipo') == 'cloze' and 'metadata' in pregunta_json:
+                    # Si metadata tiene metadata anidada, aplanar
+                    if isinstance(pregunta_json['metadata'], dict) and 'metadata' in pregunta_json['metadata']:
+                        metadata_interna = pregunta_json['metadata']['metadata']
+                        if isinstance(metadata_interna, dict):
+                            # Mover los campos importantes al nivel superior de metadata
+                            if 'text_with_gaps' in metadata_interna:
+                                pregunta_json['metadata']['text_with_gaps'] = metadata_interna['text_with_gaps']
+                            if 'answers' in metadata_interna:
+                                pregunta_json['metadata']['answers'] = metadata_interna['answers']
+                            if 'hint' in metadata_interna:
+                                pregunta_json['metadata']['hint'] = metadata_interna['hint']
+                            # Eliminar la metadata duplicada
+                            del pregunta_json['metadata']['metadata']
+                
+                # OPEN_QUESTION: Aplanar metadata anidada
+                elif pregunta_json.get('tipo') == 'open_question' and 'metadata' in pregunta_json:
+                    if isinstance(pregunta_json['metadata'], dict) and 'metadata' in pregunta_json['metadata']:
+                        metadata_interna = pregunta_json['metadata']['metadata']
+                        if isinstance(metadata_interna, dict):
+                            # Mover campos importantes
+                            if 'key_points' in metadata_interna:
+                                pregunta_json['metadata']['key_points'] = metadata_interna['key_points']
+                            if 'expected_length' in metadata_interna:
+                                pregunta_json['metadata']['expected_length'] = metadata_interna['expected_length']
+                            if 'evaluation_criteria' in metadata_interna:
+                                pregunta_json['metadata']['evaluation_criteria'] = metadata_interna['evaluation_criteria']
+                            # Eliminar metadata duplicada
+                            del pregunta_json['metadata']['metadata']
+            except Exception as e:
+                print(f"⚠️ Error al aplanar metadata de pregunta {pregunta_json.get('tipo')}: {e}")
+                continue
         
         # Marcar como completado
         progreso_generacion[session_id] = {
@@ -2732,12 +2968,19 @@ async def evaluar_examen(datos: dict):
             if not isinstance(respuestas, dict):
                 raise HTTPException(status_code=400, detail="El campo 'respuestas' debe ser un diccionario.")
 
-            # Validar que cada respuesta sea una cadena válida
+            # Validar que cada respuesta sea una cadena válida o array (para cloze)
             for key, value in respuestas.items():
                 if value is None:
                     respuestas[key] = ""
+                elif isinstance(value, list):
+                    # Para tipo cloze, puede ser array de respuestas
+                    # Convertir a string separado por comas para procesamiento
+                    respuestas[key] = ", ".join(str(v) for v in value)
+                elif isinstance(value, str) and '|||' in value:
+                    # Frontend envía respuestas cloze separadas por |||, convertir a comas
+                    respuestas[key] = value.replace('|||', ', ')
                 elif not isinstance(value, str):
-                    raise HTTPException(status_code=400, detail=f"La respuesta para la pregunta {key} debe ser una cadena de texto.")
+                    respuestas[key] = str(value)
 
             # Continuar con la lógica existente
             resultados = []
@@ -2749,6 +2992,12 @@ async def evaluar_examen(datos: dict):
                 respuesta_usuario = respuestas.get(str(i), "")
                 if respuesta_usuario is None:
                     respuesta_usuario = ""
+                elif isinstance(respuesta_usuario, list):
+                    # Para tipo cloze, convertir array a string
+                    respuesta_usuario = ", ".join(str(v) for v in respuesta_usuario)
+                elif isinstance(respuesta_usuario, str) and '|||' in respuesta_usuario:
+                    # Frontend envía respuestas cloze separadas por |||, convertir a comas
+                    respuesta_usuario = respuesta_usuario.replace('|||', ', ')
                 elif not isinstance(respuesta_usuario, str):
                     respuesta_usuario = str(respuesta_usuario)
 

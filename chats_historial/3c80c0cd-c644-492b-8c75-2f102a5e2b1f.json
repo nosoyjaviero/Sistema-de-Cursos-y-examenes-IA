@@ -1,0 +1,17 @@
+{
+  "id": "3c80c0cd-c644-492b-8c75-2f102a5e2b1f",
+  "nombre": "Chat 26/11/2025",
+  "fecha": "2025-11-26T15:08:21.884439",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "que preguntas contiene?",
+      "hora": "15:08"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "El documento \"Práctica: caso_2\" contiene 4 preguntas:\n\n1. **Categoría:** [CLOZE] - 3 puntos\n   * Pregunta:** Los principios jurídicos en el diseño se dividen en cuatro categorías principales: {} y {}.\n     Respuesta correcta: percepción y comportamiento, relación y jerarquía\n\n2. **Categoría:** [CLOZE] - 3 puntos\n   * Pregunta:** Un diseño visualmente {} puede influir en la percepción de su usabilidad.\n    Respuesta correcta: atractivo\n\n3. **Categoría:** [CLOZE] - 3 puntos\n   * Pregunta:** Los principios jurídicos no solo fortalecen la defensa de tus decisiones de diseño, sino que también aseguran que tus productos sean {}.\n     Respuesta correcta: intuitivos y fáciles de usar\n\n4. **Categoría:** [OPEN_QUESTION] - 5 puntos\n   * Pregunta:** Explora cómo los principios jurídicos de la percepción y el comportamiento influyen en la experiencia del usuario durante su interacción con un producto digital, teniendo en cuenta la importancia de la estética y la usabilidad.",
+      "hora": "15:08"
+    }
+  ]
+}

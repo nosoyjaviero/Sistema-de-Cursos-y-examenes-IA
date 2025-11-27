@@ -1,0 +1,17 @@
+{
+  "id": "82bec3f0-9365-4dea-aabe-1e10c1af38f7",
+  "nombre": "Chat 26/11/2025",
+  "fecha": "2025-11-26T15:05:53.767810",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "que preguntas contiene el archivo?",
+      "hora": "15:05"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "El archivo contiene 3 preguntas con un enunciado y una opción de respuesta por cada pregunta, estas son:\n\n1. Los principios jurídicos se dividen en cuatro categorías principales: {X}, {Y} y {Z}.\n2. Un diseño visualmente {X} puede influir en la percepción de su usabilidad.\n3. Los principios jurídicas aseguran que tus productos sean {X} y fáciles de usar.\n\nNo se proporciona información sobre las opciones de respuesta o las respuestas correctas para cada pregunta, solo el formato y los puntos posibles por cada una.",
+      "hora": "15:05"
+    }
+  ]
+}
