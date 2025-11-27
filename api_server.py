@@ -45,50 +45,97 @@ generador_unificado = None  # GeneradorUnificado para GPU/CPU
 progreso_generacion = {}  # {session_id: {progreso, mensaje, completado}}
 
 
+def normalizar_examen_completo(examen: dict) -> dict:
+    """
+    Normaliza un examen completo después de generarlo y antes de guardarlo.
+    
+    Correcciones aplicadas:
+    1. Tipos de pregunta: "verdadero-falso" → "verdadero_falso"
+    2. Intervalos SM-2: decimales → enteros (0.5 → 1)
+    3. Rutas: backslash → forward slash (Platzi\\Prueba → Platzi/Prueba)
+    4. Campos requeridos para Spaced Repetition
+    """
+    # Normalizar carpeta_ruta (Windows → Unix)
+    if "carpeta_ruta" in examen and examen["carpeta_ruta"]:
+        examen["carpeta_ruta"] = examen["carpeta_ruta"].replace("\\", "/")
+    if "carpeta" in examen and examen["carpeta"]:
+        examen["carpeta"] = examen["carpeta"].replace("\\", "/")
+    
+    # Normalizar preguntas
+    if "preguntas" in examen and isinstance(examen["preguntas"], list):
+        for pregunta in examen["preguntas"]:
+            pregunta = normalizar_pregunta_spaced_repetition(pregunta)
+    
+    # Normalizar resultados (si existen)
+    if "resultados" in examen and isinstance(examen["resultados"], list):
+        for resultado in examen["resultados"]:
+            resultado = normalizar_pregunta_spaced_repetition(resultado)
+    
+    # Asegurar intervalos enteros en el examen mismo
+    if "intervalo" in examen and isinstance(examen["intervalo"], (int, float)):
+        examen["intervalo"] = max(1, int(round(examen["intervalo"])))
+    
+    return examen
+
 def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
     """
     Normaliza una pregunta para incluir todos los campos necesarios para Spaced Repetition.
     
-    Reglas:
-    1. Si los campos ya existen, los respeta
-    2. Si faltan, los agrega con valores por defecto
-    3. Mantiene intacta la estructura original de la pregunta
-    4. Genera ID único si no existe
-    
-    Campos agregados:
-    - id: Identificador único
-    - ease_factor: Factor de facilidad (2.5 por defecto)
-    - interval: Intervalo en días (0 por defecto)
-    - repetitions: Número de repeticiones (0 por defecto)
-    - last_review: Última fecha de revisión (null por defecto)
-    - next_review: Próxima fecha de revisión (null por defecto)
-    - state: Estado de la pregunta ('new' por defecto)
+    Correcciones aplicadas:
+    1. Tipos de pregunta: "verdadero-falso" → "verdadero_falso", "multiple" → "mcq"
+    2. Intervalos: decimales → enteros, mínimo 1 día
+    3. Campos SM-2: asegura todos los campos requeridos
     """
+    # 🔥 CORRECCIÓN 1: Normalizar tipo de pregunta
+    tipo_mapa = {
+        "verdadero-falso": "verdadero_falso",
+        "true_false": "verdadero_falso",
+        "true-false": "verdadero_falso",
+        "vf": "verdadero_falso",
+        "multiple": "mcq",
+        "opcion_multiple": "mcq",
+        "multiple_choice": "mcq",
+        "corta": "short_answer",
+        "short-answer": "short_answer",
+        "desarrollo": "open_question",
+        "abierta": "open_question"
+    }
+    
+    if 'tipo' in pregunta_dict:
+        tipo_original = pregunta_dict['tipo']
+        pregunta_dict['tipo'] = tipo_mapa.get(tipo_original, tipo_original)
+    
+    # 🔥 CORRECCIÓN 2: Intervalos enteros (no decimales)
+    if 'intervalo' in pregunta_dict and isinstance(pregunta_dict['intervalo'], (int, float)):
+        pregunta_dict['intervalo'] = max(1, int(round(pregunta_dict['intervalo'])))
+    
+    if 'interval' in pregunta_dict and isinstance(pregunta_dict['interval'], (int, float)):
+        pregunta_dict['interval'] = max(1, int(round(pregunta_dict['interval'])))
+    
     # Generar ID único si no existe
     if 'id' not in pregunta_dict or not pregunta_dict['id']:
-        # Usar timestamp + tipo + índice aleatorio
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         tipo = pregunta_dict.get('tipo', pregunta_dict.get('type', 'question'))
         pregunta_dict['id'] = f"{tipo}_{timestamp}_{uuid.uuid4().hex[:8]}"
     
-    # Agregar campos de Spaced Repetition solo si no existen
-    if 'ease_factor' not in pregunta_dict:
-        pregunta_dict['ease_factor'] = 2.5
+    # Campos de Spaced Repetition (nomenclatura española)
+    if 'facilidad' not in pregunta_dict:
+        pregunta_dict['facilidad'] = 2.5
     
-    if 'interval' not in pregunta_dict:
-        pregunta_dict['interval'] = 0
+    if 'intervalo' not in pregunta_dict:
+        pregunta_dict['intervalo'] = 1  # Mínimo 1 día
     
-    if 'repetitions' not in pregunta_dict:
-        pregunta_dict['repetitions'] = 0
+    if 'repeticiones' not in pregunta_dict:
+        pregunta_dict['repeticiones'] = 0
     
-    if 'last_review' not in pregunta_dict:
-        pregunta_dict['last_review'] = None
+    if 'ultimaRevision' not in pregunta_dict:
+        pregunta_dict['ultimaRevision'] = None
     
-    if 'next_review' not in pregunta_dict:
-        pregunta_dict['next_review'] = None
+    if 'proximaRevision' not in pregunta_dict:
+        pregunta_dict['proximaRevision'] = None
     
-    if 'state' not in pregunta_dict:
-        pregunta_dict['state'] = 'new'
+    if 'estadoRevision' not in pregunta_dict:
+        pregunta_dict['estadoRevision'] = 'nueva'
     
     return pregunta_dict
 
@@ -1382,6 +1429,76 @@ async def obtener_archivos_recientes(limite: int = 30):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/archivos/listar_documentos")
+async def listar_documentos_carpeta(carpeta: str = "", recursivo: bool = False):
+    """
+    Lista documentos de una carpeta específica
+    Si recursivo=True, incluye subcarpetas
+    """
+    try:
+        print(f"📂 LISTAR DOCUMENTOS: carpeta='{carpeta}', recursivo={recursivo}")
+        documentos = []
+        
+        # Base path
+        if carpeta:
+            carpeta_base = EXTRACCIONES_PATH / carpeta
+        else:
+            carpeta_base = EXTRACCIONES_PATH
+        
+        if not carpeta_base.exists():
+            return {"documentos": []}
+        
+        def procesar_carpeta(ruta_carpeta: Path, ruta_relativa: str = ""):
+            """Procesa una carpeta y retorna sus documentos"""
+            docs_encontrados = []
+            
+            # Buscar archivos .txt (documentos extraídos)
+            for archivo in ruta_carpeta.glob("*.txt"):
+                # Ignorar carpetas de resultados
+                if 'resultados' in archivo.parts or 'resultado' in archivo.parts:
+                    continue
+                
+                try:
+                    stat = archivo.stat()
+                    nombre_relativo = str(archivo.relative_to(EXTRACCIONES_PATH))
+                    
+                    docs_encontrados.append({
+                        'nombre': archivo.name,
+                        'ruta': nombre_relativo,
+                        'ruta_completa': str(archivo),
+                        'tamaño_kb': round(stat.st_size / 1024, 2),
+                        'carpeta': ruta_relativa or carpeta
+                    })
+                except Exception as e:
+                    print(f"⚠️ Error procesando {archivo}: {e}")
+            
+            # Si es recursivo, procesar subcarpetas
+            if recursivo:
+                for subcarpeta in ruta_carpeta.iterdir():
+                    if subcarpeta.is_dir():
+                        # Ignorar carpetas de resultados
+                        if 'resultados' in subcarpeta.name or 'resultado' in subcarpeta.name:
+                            continue
+                        
+                        subruta_relativa = str(subcarpeta.relative_to(carpeta_base))
+                        docs_subcarpeta = procesar_carpeta(subcarpeta, subruta_relativa)
+                        docs_encontrados.extend(docs_subcarpeta)
+            
+            return docs_encontrados
+        
+        # Procesar carpeta
+        documentos = procesar_carpeta(carpeta_base, "")
+        
+        print(f"✅ Documentos encontrados: {len(documentos)}")
+        return {"documentos": documentos}
+    
+    except Exception as e:
+        print(f"❌ Error listando documentos: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/archivos/explorar")
 async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
     """Explora archivos filtrados por tipo (notas, examenes, practicas, cursos)"""
@@ -1491,28 +1608,95 @@ async def explorar_archivos_por_tipo(tipo: str, ruta: str = ""):
         
         # Para examenes, buscar en carpeta examenes/
         if tipo == 'examenes':
-            examenes_path = Path("examenes")
-            if examenes_path.exists():
-                for archivo_examen in examenes_path.glob("*.json"):
-                    stat = archivo_examen.stat()
-                    archivos.append({
-                        'nombre': archivo_examen.name,
-                        'ruta_completa': str(archivo_examen),
-                        'tipo': 'Examen',
-                        'extension': '.json',
-                        'tamaño': stat.st_size,
-                        'modificado': stat.st_mtime
-                    })
+            examenes_base = EXAMENES_PATH  # Path("examenes")
             
-            # Ordenar por fecha de modificación descendente (más recientes primero)
-            archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+            if not examenes_base.exists():
+                return {
+                    'carpetas': [],
+                    'archivos': [],
+                    'ruta_actual': ruta,
+                    'tipo': tipo
+                }
             
-            return {
-                'carpetas': [],
-                'archivos': archivos,
-                'ruta_actual': '',
-                'tipo': tipo
-            }
+            # Si ruta está vacía, mostrar carpetas disponibles
+            if not ruta:
+                carpetas_examenes = []
+                for carpeta in examenes_base.iterdir():
+                    if carpeta.is_dir():
+                        # Contar exámenes en esta carpeta (archivos examen_*.json)
+                        num_examenes = len(list(carpeta.glob("examen_*.json")))
+                        if num_examenes > 0:
+                            carpetas_examenes.append({
+                                'nombre': carpeta.name,
+                                'ruta': carpeta.name,
+                                'num_archivos': num_examenes
+                            })
+                
+                return {
+                    'carpetas': carpetas_examenes,
+                    'archivos': [],
+                    'ruta_actual': '',
+                    'tipo': tipo
+                }
+            
+            # Si hay ruta específica, listar exámenes de esa carpeta
+            else:
+                carpeta_seleccionada = examenes_base / ruta
+                print(f"📂 Buscando exámenes en: {carpeta_seleccionada}")
+                print(f"📂 ¿Existe?: {carpeta_seleccionada.exists()}")
+                
+                if carpeta_seleccionada.exists() and carpeta_seleccionada.is_dir():
+                    for archivo_examen in carpeta_seleccionada.glob("examen_*.json"):
+                        try:
+                            stat = archivo_examen.stat()
+                            
+                            # Leer examen para obtener metadatos
+                            with open(archivo_examen, 'r', encoding='utf-8') as f:
+                                examen_data = json.load(f)
+                            
+                            # Generar título descriptivo
+                            titulo = examen_data.get('titulo', archivo_examen.stem)
+                            porcentaje = examen_data.get('resultado', {}).get('porcentaje', 
+                                                        examen_data.get('porcentaje', 0))
+                            
+                            # Obtener fecha de completado
+                            fecha_completado = examen_data.get('fecha_completado', '')
+                            try:
+                                if fecha_completado:
+                                    from datetime import datetime
+                                    dt = datetime.fromisoformat(fecha_completado.replace('Z', '+00:00'))
+                                    timestamp = dt.timestamp()
+                                else:
+                                    timestamp = stat.st_mtime
+                            except:
+                                timestamp = stat.st_mtime
+                            
+                            archivos.append({
+                                'nombre': f"{titulo}.json",
+                                'ruta_completa': str(archivo_examen),
+                                'tipo': 'Examen',
+                                'extension': '.json',
+                                'tamaño': stat.st_size,
+                                'modificado': timestamp,
+                                'carpeta': ruta,
+                                'item_original': examen_data
+                            })
+                            print(f"✅ Examen encontrado: {titulo}")
+                        except Exception as e:
+                            print(f"⚠️ Error leyendo {archivo_examen}: {e}")
+                
+                # Ordenar por fecha de modificación descendente (más recientes primero)
+                archivos.sort(key=lambda x: x.get('modificado', 0), reverse=True)
+                
+                print(f"📊 Total exámenes encontrados: {len(archivos)}")
+                
+                return {
+                    'carpetas': [],
+                    'archivos': archivos,
+                    'ruta_actual': ruta,
+                    'tipo': tipo
+                }
+
         
         # Para prácticas, buscar en extracciones/*/practicas.json
         if tipo == 'practicas':
@@ -2689,6 +2873,17 @@ async def generar_practica(datos: dict):
     tipo_caso = datos.get("tipo_caso", "decision")
     session_id = datos.get("session_id", str(uuid.uuid4()))
     
+    # 🔥 NUEVOS PARÁMETROS PARA MÚLTIPLES DOCUMENTOS
+    documentos = datos.get("documentos", [])  # Array de rutas de documentos
+    tipo_fuente = datos.get("tipo_fuente", "carpeta")  # 'carpeta' o 'documento'
+    
+    print(f"📚 Tipo de fuente: {tipo_fuente}")
+    print(f"📄 Documentos recibidos: {documentos}")
+    print(f"📄 Cantidad de documentos: {len(documentos)}")
+    print(f"🔍 Tipo de documentos: {type(documentos)}")
+    if documentos:
+        print(f"   Primer documento: {documentos[0] if len(documentos) > 0 else 'N/A'}")
+    
     # Contadores de tipos de preguntas
     num_flashcards = datos.get("num_flashcards", 0)
     num_mcq = datos.get("num_mcq", 0)
@@ -2716,9 +2911,82 @@ async def generar_practica(datos: dict):
     num_writing_picture_description = datos.get("num_writing_picture_description", 0)
     num_writing_email = datos.get("num_writing_email", 0)
     
-    # Cargar contenido desde la ruta
+    # Cargar contenido desde la ruta o múltiples documentos
     contenido = ""
-    if ruta:
+    
+    # 🔥 PRIORIDAD: Si hay lista de documentos, cargar todos
+    if documentos and len(documentos) > 0:
+        print(f"📚 Cargando {len(documentos)} documentos...")
+        contenidos_documentos = []
+        
+        for idx, ruta_doc in enumerate(documentos, 1):
+            try:
+                ruta_path = Path(ruta_doc)
+                print(f"   📄 {idx}/{len(documentos)}: {ruta_path.name}")
+                
+                # Si la ruta no es absoluta, intentar desde extracciones/
+                if not ruta_path.exists():
+                    ruta_alternativa = EXTRACCIONES_PATH / ruta_doc
+                    if ruta_alternativa.exists():
+                        ruta_path = ruta_alternativa
+                
+                if ruta_path.exists():
+                    texto_doc = obtener_texto(str(ruta_path))
+                    if texto_doc:
+                        # Agregar separador con nombre del documento
+                        contenidos_documentos.append(f"\n\n{'='*60}\n")
+                        contenidos_documentos.append(f"DOCUMENTO: {ruta_path.name}\n")
+                        contenidos_documentos.append(f"{'='*60}\n\n")
+                        contenidos_documentos.append(texto_doc)
+                        print(f"      ✅ Cargado: {len(texto_doc)} caracteres")
+                else:
+                    print(f"      ⚠️ No encontrado: {ruta_doc}")
+            except Exception as e:
+                print(f"      ❌ Error cargando {ruta_doc}: {e}")
+        
+        if contenidos_documentos:
+            contenido = "".join(contenidos_documentos)
+            print(f"✅ Total contenido cargado: {len(contenido)} caracteres de {len(documentos)} documentos")
+    
+    # 🔥 FALLBACK: Si es tipo carpeta pero no hay documentos cargados, buscar archivos en la carpeta
+    elif tipo_fuente == "carpeta" and ruta:
+        print(f"⚠️ No se recibieron documentos pero es tipo carpeta. Buscando archivos en: {ruta}")
+        try:
+            carpeta_path = EXTRACCIONES_PATH / ruta
+            print(f"   📂 Carpeta completa: {carpeta_path}")
+            
+            if carpeta_path.exists() and carpeta_path.is_dir():
+                # Buscar todos los .txt recursivamente
+                archivos_txt = list(carpeta_path.glob('**/*.txt'))
+                print(f"   📄 Encontrados {len(archivos_txt)} archivos .txt")
+                
+                contenidos_documentos = []
+                for idx, archivo in enumerate(archivos_txt, 1):
+                    try:
+                        texto_doc = obtener_texto(str(archivo))
+                        if texto_doc:
+                            contenidos_documentos.append(f"\n\n{'='*60}\n")
+                            contenidos_documentos.append(f"DOCUMENTO: {archivo.name}\n")
+                            contenidos_documentos.append(f"{'='*60}\n\n")
+                            contenidos_documentos.append(texto_doc)
+                            print(f"      ✅ {idx}/{len(archivos_txt)}: {archivo.name} ({len(texto_doc)} chars)")
+                    except Exception as e:
+                        print(f"      ❌ Error con {archivo.name}: {e}")
+                
+                if contenidos_documentos:
+                    contenido = "".join(contenidos_documentos)
+                    print(f"✅ FALLBACK exitoso: {len(contenido)} caracteres de {len(archivos_txt)} archivos")
+                else:
+                    print(f"⚠️ No se pudo cargar ningún archivo de la carpeta")
+            else:
+                print(f"❌ La carpeta no existe: {carpeta_path}")
+        except Exception as e:
+            print(f"❌ Error en fallback de carpeta: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Fallback: Cargar desde ruta única (comportamiento original)
+    elif ruta:
         try:
             ruta_path = Path(ruta)
             print(f"🔍 DEBUG - Ruta recibida: {ruta}")
@@ -3114,27 +3382,28 @@ async def evaluar_examen(datos: dict):
             
             # Guardar resultados SIEMPRE (con o sin carpeta)
             try:
-                # Determinar la carpeta de destino
+                # 🔥 GUARDAR EN extracciones/{carpeta}/examen.json
                 if not carpeta_path:
-                    # Sin carpeta: usar carpeta por defecto en raíz
+                    # Sin carpeta: usar carpeta por defecto en extracciones
                     if es_practica:
                         carpeta_path = "Practicas_Generales"
                         carpeta_nombre = "Prácticas Generales"
                     else:
                         carpeta_path = "Examenes_Generales"
                         carpeta_nombre = "Exámenes Generales"
-                    carpeta_destino = Path(tipo_carpeta) / carpeta_path
+                    carpeta_destino = EXTRACCIONES_PATH / carpeta_path
                     print(f"💾 Guardando en carpeta por defecto: {carpeta_destino}")
                 else:
-                    # Con carpeta: guardar en extracciones/[carpeta]/
+                    # 🔥 GUARDAR EN LA MISMA CARPETA DE EXTRACCIONES
                     print(f"💾 Guardando resultados para carpeta: {carpeta_path}")
+                    print(f"🔥🔥🔥 USANDO EXTRACCIONES_PATH = {EXTRACCIONES_PATH}")
                     
                     # Extraer el nombre de la carpeta
                     carpeta_nombre = carpeta_path.split('/')[-1] if '/' in carpeta_path else carpeta_path.split('\\')[-1]
                     
-                    # Crear subcarpeta específica para resultados dentro de extracciones
-                    tipo_subcarpeta = "resultados_practicas" if es_practica else "resultados_examenes"
-                    carpeta_destino = Path("extracciones") / carpeta_path / tipo_subcarpeta
+                    # 🔥 GUARDAR DIRECTAMENTE EN extracciones/{carpeta}/
+                    carpeta_destino = EXTRACCIONES_PATH / carpeta_path
+                    print(f"🔥🔥🔥 CARPETA DESTINO FINAL = {carpeta_destino}")
                 
                 # Crear estructura de carpetas
                 carpeta_destino.mkdir(parents=True, exist_ok=True)
@@ -3150,23 +3419,27 @@ async def evaluar_examen(datos: dict):
                     "id": fecha,
                     "archivo": f"examen_{fecha}.json",
                     "fecha_completado": datetime.now().isoformat(),
-                    "carpeta_ruta": carpeta_path,
+                    "carpeta_ruta": carpeta_path.replace("\\", "/"),  # 🔥 Normalizar rutas
                     "carpeta_nombre": carpeta_nombre,
                     "puntos_obtenidos": puntos_obtenidos,
                     "puntos_totales": puntos_totales,
                     "porcentaje": porcentaje,
+                    "preguntas": preguntas_data,  # 🔥 Guardar preguntas originales para el frontend
                     "resultados": resultados,
                     "tipo": "completado",
                     "es_practica": es_practica,
                     # Campos para repetición espaciada (SM-2)
                     "proximaRevision": proxima_revision,
                     "ultimaRevision": ahora.isoformat(),
-                    "intervalo": 1,
+                    "intervalo": 1,  # 🔥 Entero, no decimal
                     "repeticiones": 0,
                     "facilidad": 2.5,
                     "estadoRevision": "nueva",
                     "titulo": carpeta_nombre
                 }
+                
+                # 🔥 NORMALIZAR ANTES DE GUARDAR
+                resultado_completo = normalizar_examen_completo(resultado_completo)
 
                 with open(archivo_resultado, 'w', encoding='utf-8') as f:
                     json.dump(resultado_completo, f, ensure_ascii=False, indent=2)
@@ -3499,21 +3772,39 @@ async def eliminar_carpeta_examenes(ruta: str, forzar: bool = False):
 async def eliminar_examen(ruta: str, archivo: str):
     """Elimina un examen específico (completado o en progreso)"""
     try:
-        base_examenes = Path("examenes")
+        print(f"\n🗑️ DELETE /api/examenes/examen")
+        print(f"   Ruta recibida: '{ruta}'")
+        print(f"   Archivo recibido: '{archivo}'")
+        
+        # 🔥 CAMBIO: Buscar en extracciones/ donde se guardan ahora los exámenes
+        base_examenes = EXTRACCIONES_PATH
+        print(f"   Base de búsqueda: {base_examenes}")
         
         # Puede ser un examen completado o en progreso
         archivo_completo = base_examenes / ruta / archivo
+        print(f"   Intentando: {archivo_completo} - Existe: {archivo_completo.exists()}")
         
         if not archivo_completo.exists():
-            # Intentar en la carpeta de progreso
+            # Intentar en la carpeta de progreso (legacy)
             archivo_completo = base_examenes / ruta / "examenes_progreso" / archivo
+            print(f"   Intentando progreso: {archivo_completo} - Existe: {archivo_completo.exists()}")
         
         if not archivo_completo.exists():
+            # Intentar en la vieja estructura (examenes/)
+            old_base = Path("examenes")
+            archivo_completo = old_base / ruta / archivo
+            print(f"   Intentando legacy: {archivo_completo} - Existe: {archivo_completo.exists()}")
+            if not archivo_completo.exists():
+                archivo_completo = old_base / ruta / "examenes_progreso" / archivo
+                print(f"   Intentando legacy progreso: {archivo_completo} - Existe: {archivo_completo.exists()}")
+        
+        if not archivo_completo.exists():
+            print(f"   ❌ Archivo no encontrado en ninguna ubicación")
             raise HTTPException(status_code=404, detail="Examen no encontrado")
         
         # Eliminar archivo
         archivo_completo.unlink()
-        print(f"🗑️ Examen eliminado: {archivo}")
+        print(f"   ✅ Examen eliminado: {archivo_completo}")
         
         return {"success": True, "mensaje": "Examen eliminado"}
     except HTTPException:
@@ -3525,15 +3816,22 @@ async def eliminar_examen(ruta: str, archivo: str):
 
 @app.get("/api/examenes/carpetas")
 async def listar_carpetas_examenes(ruta: str = ""):
-    """Lista carpetas y exámenes en una ruta de examenes/ (estructura paralela)"""
+    """Lista carpetas y exámenes en una ruta de extracciones/ (donde se guardan los ExamenGeneral.json)"""
     try:
-        base_examenes = Path("examenes")
+        print(f"\n{'='*60}")
+        print(f"🔍 GET /api/examenes/carpetas - ruta: '{ruta}'")
+        print(f"{'='*60}")
+        
+        base_examenes = EXTRACCIONES_PATH  # 🔥 Cambio: buscar en extracciones/
         
         # Construir ruta completa
         if ruta:
             ruta_completa = base_examenes / ruta
         else:
             ruta_completa = base_examenes
+        
+        print(f"📁 Ruta completa: {ruta_completa}")
+        print(f"   Existe: {ruta_completa.exists()}")
         
         if not ruta_completa.exists():
             raise HTTPException(status_code=404, detail="Ruta no encontrada")
@@ -3545,27 +3843,61 @@ async def listar_carpetas_examenes(ruta: str = ""):
         
         # Si estamos en la raíz, buscar TODOS los exámenes en progreso recursivamente
         if not ruta:
-            print("📊 Buscando todos los exámenes en progreso...")
-            for carpeta in base_examenes.rglob("*"):
-                if carpeta.is_dir() and carpeta.name == "examenes_progreso":
-                    for archivo in sorted(carpeta.glob("examen_progreso_*.json"), reverse=True):
-                        try:
-                            with open(archivo, 'r', encoding='utf-8') as f:
-                                examen = json.load(f)
-                                examenes_progreso_global.append(examen)
-                        except Exception as e:
-                            print(f"Error leyendo {archivo}: {e}")
+            print("📊 Buscando todos los exámenes en progreso en extracciones/...")
+            # Buscar ExamenGeneral.json sin completar
+            for archivo in base_examenes.rglob("ExamenGeneral.json"):
+                try:
+                    with open(archivo, 'r', encoding='utf-8') as f:
+                        examen = json.load(f)
+                        # Tratar null como False (no completado)
+                        if examen.get("completado") is not True:
+                            # 🔥 AGREGAR información de ruta y archivo para poder eliminar
+                            carpeta_relativa = archivo.parent.relative_to(base_examenes)
+                            examen["carpeta_ruta"] = str(carpeta_relativa).replace("\\", "/")
+                            examen["archivo"] = "ExamenGeneral.json"
+                            examenes_progreso_global.append(examen)
+                except Exception as e:
+                    print(f"Error leyendo {archivo}: {e}")
             print(f"   ✅ Encontrados {len(examenes_progreso_global)} exámenes en progreso")
         
         # Listar carpetas
         for item in sorted(ruta_completa.iterdir()):
-            if item.is_dir() and item.name != "examenes_progreso":
+            if item.is_dir():
                 # Contar exámenes en la carpeta
-                num_completados = len(list(item.glob("examen_*.json")))
+                num_completados = 0
                 num_progreso = 0
-                carpeta_progreso = item / "examenes_progreso"
-                if carpeta_progreso.exists():
-                    num_progreso = len(list(carpeta_progreso.glob("examen_progreso_*.json")))
+                
+                # 🔥 Verificar ExamenGeneral.json (nuevo formato)
+                examen_general = item / "ExamenGeneral.json"
+                if examen_general.exists():
+                    try:
+                        with open(examen_general, 'r', encoding='utf-8') as f:
+                            examen = json.load(f)
+                            if examen.get("completado", False):
+                                num_completados += 1
+                            else:
+                                num_progreso += 1
+                    except Exception as e:
+                        print(f"Error leyendo {examen_general}: {e}")
+                
+                # 🔥 También contar archivos legacy (examen_*.json) para no ignorarlos
+                for archivo_legacy in item.glob("examen_*.json"):
+                    try:
+                        with open(archivo_legacy, 'r', encoding='utf-8') as f:
+                            examen = json.load(f)
+                            # Verificar que NO sea práctica
+                            if not examen.get("es_practica", False):
+                                # 🔥 Verificar completado: usar campo "completado" O campo "tipo"
+                                esta_completado = (
+                                    examen.get("completado") is True or 
+                                    examen.get("tipo") == "completado"
+                                )
+                                if esta_completado:
+                                    num_completados += 1
+                                else:
+                                    num_progreso += 1
+                    except Exception as e:
+                        print(f"Error leyendo {archivo_legacy}: {e}")
                 
                 carpetas.append({
                     "nombre": item.name,
@@ -3576,26 +3908,89 @@ async def listar_carpetas_examenes(ruta: str = ""):
                 })
         
         # Listar exámenes completados en esta carpeta
-        for archivo in sorted(ruta_completa.glob("examen_*.json"), reverse=True):
+        # 🔥 Buscar ExamenGeneral.json
+        examen_general = ruta_completa / "ExamenGeneral.json"
+        if examen_general.exists():
             try:
-                with open(archivo, 'r', encoding='utf-8') as f:
+                with open(examen_general, 'r', encoding='utf-8') as f:
                     examen = json.load(f)
-                    if examen.get("tipo") == "completado":
+                    # Tratar null como False
+                    if examen.get("completado") is True:
+                        # 🔥 AGREGAR metadatos de ruta y archivo
+                        carpeta_relativa = ruta_completa.relative_to(base_examenes) if ruta else Path(".")
+                        examen["carpeta_ruta"] = str(carpeta_relativa).replace("\\", "/")
+                        examen["archivo"] = "ExamenGeneral.json"
                         examenes_completados.append(examen)
             except Exception as e:
-                print(f"Error leyendo {archivo}: {e}")
+                print(f"Error leyendo {examen_general}: {e}")
+        
+        # 🔥 También buscar archivos legacy (examen_*.json)
+        for archivo_legacy in sorted(ruta_completa.glob("examen_*.json"), reverse=True):
+            try:
+                with open(archivo_legacy, 'r', encoding='utf-8') as f:
+                    examen = json.load(f)
+                    # Verificar que NO sea práctica y esté completado
+                    # 🔥 Usar campo "completado" O campo "tipo"
+                    esta_completado = (
+                        examen.get("completado") is True or 
+                        examen.get("tipo") == "completado"
+                    )
+                    if not examen.get("es_practica", False) and esta_completado:
+                        # 🔥 AGREGAR metadatos de ruta y archivo (solo si no existen)
+                        if ruta:
+                            carpeta_relativa = ruta_completa.relative_to(base_examenes)
+                            if not examen.get("carpeta_ruta"):
+                                examen["carpeta_ruta"] = str(carpeta_relativa).replace("\\", "/")
+                        if not examen.get("archivo"):
+                            examen["archivo"] = archivo_legacy.name
+                        examenes_completados.append(examen)
+            except Exception as e:
+                print(f"Error leyendo {archivo_legacy}: {e}")
         
         # Listar exámenes en progreso en esta carpeta específica (solo si no es raíz)
         if ruta:
-            carpeta_progreso = ruta_completa / "examenes_progreso"
-            if carpeta_progreso.exists():
-                for archivo in sorted(carpeta_progreso.glob("examen_progreso_*.json"), reverse=True):
-                    try:
-                        with open(archivo, 'r', encoding='utf-8') as f:
-                            examen = json.load(f)
+            # 🔥 Buscar ExamenGeneral.json sin completar
+            examen_general = ruta_completa / "ExamenGeneral.json"
+            if examen_general.exists():
+                try:
+                    with open(examen_general, 'r', encoding='utf-8') as f:
+                        examen = json.load(f)
+                        # Tratar null como False (no completado)
+                        if examen.get("completado") is not True:
+                            # 🔥 AGREGAR metadatos de ruta y archivo
+                            carpeta_relativa = ruta_completa.relative_to(base_examenes)
+                            examen["carpeta_ruta"] = str(carpeta_relativa).replace("\\", "/")
+                            examen["archivo"] = "ExamenGeneral.json"
                             examenes_progreso.append(examen)
-                    except Exception as e:
-                        print(f"Error leyendo {archivo}: {e}")
+                except Exception as e:
+                    print(f"Error leyendo {examen_general}: {e}")
+            
+            # 🔥 También buscar archivos legacy sin completar
+            for archivo_legacy in sorted(ruta_completa.glob("examen_*.json"), reverse=True):
+                try:
+                    with open(archivo_legacy, 'r', encoding='utf-8') as f:
+                        examen = json.load(f)
+                        # Verificar que NO sea práctica y NO esté completado
+                        # 🔥 Usar campo "completado" O campo "tipo"
+                        esta_completado = (
+                            examen.get("completado") is True or 
+                            examen.get("tipo") == "completado"
+                        )
+                        if not examen.get("es_practica", False) and not esta_completado:
+                            # 🔥 AGREGAR metadatos de ruta y archivo
+                            carpeta_relativa = ruta_completa.relative_to(base_examenes)
+                            examen["carpeta_ruta"] = str(carpeta_relativa).replace("\\", "/")
+                            examen["archivo"] = archivo_legacy.name
+                            examenes_progreso.append(examen)
+                except Exception as e:
+                    print(f"Error leyendo {archivo_legacy}: {e}")
+        
+        print(f"\n📊 RESULTADOS:")
+        print(f"   Carpetas: {len(carpetas)}")
+        print(f"   Exámenes completados: {len(examenes_completados)}")
+        print(f"   Exámenes en progreso: {len(examenes_progreso)}")
+        print(f"   Exámenes progreso global: {len(examenes_progreso_global)}")
+        print(f"{'='*60}\n")
         
         return {
             "ruta_actual": ruta,
@@ -3706,6 +4101,8 @@ async def actualizar_examen(datos: dict):
 # GESTIÓN DE DATOS PERSISTENTES (NOTAS, FLASHCARDS, PRÁCTICAS)
 # =============================
 EXTRACCIONES_PATH = Path("extracciones")
+EXAMENES_PATH = Path("examenes")  # 🔥 NUEVA RUTA PARA EXÁMENES (paralela a extracciones/)
+PRACTICAS_PATH = Path("practicas")  # 🔥 NUEVA RUTA PARA PRÁCTICAS (paralela a extracciones/)
 
 @app.get("/datos/{tipo}")
 def get_datos(tipo: str):
@@ -4020,91 +4417,76 @@ def delete_flashcard(flashcard_id: str, carpeta: str = ""):
 
 @app.post("/datos/examenes/carpeta")
 async def guardar_examen_carpeta(request: Request):
-    """Guarda un examen completado en su carpeta correspondiente"""
+    """
+    🚫 ENDPOINT DESHABILITADO - YA NO GUARDA DUPLICADOS
+    
+    Los exámenes ya se guardan en /api/evaluar_examen como examen_TIMESTAMP.json
+    Este endpoint causaba duplicados al guardar el mismo examen como ExamenGeneral.json
+    
+    Ahora solo retorna éxito sin guardar nada (el examen ya fue guardado en evaluar_examen)
+    """
     try:
         data = await request.json()
         examen = data.get("examen")
         carpeta = data.get("carpeta", "")
         
-        if not examen:
-            return JSONResponse(content={"error": "No se proporcionó examen"}, status_code=400)
+        print(f"\n{'='*70}")
+        print(f"⚠️ ENDPOINT /datos/examenes/carpeta LLAMADO (DESHABILITADO)")
+        print(f"{'='*70}")
+        print(f"📦 Examen ID: {examen.get('id') if examen else 'N/A'}")
+        print(f"📁 Carpeta: {carpeta}")
+        print(f"✅ El examen YA fue guardado en /api/evaluar_examen")
+        print(f"   No se creará archivo duplicado ExamenGeneral.json")
+        print(f"{'='*70}\n")
         
-        # 🔥 NORMALIZAR PREGUNTAS DEL EXAMEN ANTES DE GUARDAR
-        if 'preguntas' in examen and isinstance(examen['preguntas'], list):
-            print(f"🔄 Normalizando {len(examen['preguntas'])} preguntas del examen...")
-            examen['preguntas'] = [
-                normalizar_pregunta_spaced_repetition(p) 
-                for p in examen['preguntas']
-            ]
-            print(f"✅ Preguntas normalizadas para Spaced Repetition")
-        
-        # Determinar carpeta destino en extracciones/
-        if carpeta:
-            carpeta_destino = EXTRACCIONES_PATH / carpeta
-        else:
-            carpeta_destino = EXTRACCIONES_PATH / "examenes"
-        
-        carpeta_destino.mkdir(parents=True, exist_ok=True)
-        archivo = carpeta_destino / "examenes.json"
-        
-        # Leer exámenes existentes
-        examenes = []
-        if archivo.exists():
-            with open(archivo, "r", encoding="utf-8") as f:
-                examenes = json.load(f)
-        
-        # 🔥 NORMALIZAR PREGUNTAS DE TODOS LOS EXÁMENES EXISTENTES
-        print(f"🔄 Normalizando preguntas de {len(examenes)} exámenes existentes...")
-        for examen_existente in examenes:
-            if 'preguntas' in examen_existente and isinstance(examen_existente['preguntas'], list):
-                examen_existente['preguntas'] = [
-                    normalizar_pregunta_spaced_repetition(p)
-                    for p in examen_existente['preguntas']
-                ]
-        print(f"✅ Todos los exámenes normalizados")
-        
-        # Buscar si ya existe por ID y actualizar, o agregar nuevo
-        examen_id = examen.get("id")
-        encontrado = False
-        for i, e in enumerate(examenes):
-            if e.get("id") == examen_id:
-                examenes[i] = examen
-                encontrado = True
-                break
-        
-        if not encontrado:
-            examenes.append(examen)
-        
-        # Guardar
-        with open(archivo, "w", encoding="utf-8") as f:
-            json.dump(examenes, f, indent=2, ensure_ascii=False)
-        
-        print(f"✅ Examen guardado en: {archivo}")
+        # Retornar éxito sin guardar (el examen ya existe como examen_TIMESTAMP.json)
         return JSONResponse(content={
             "success": True,
-            "count": len(examenes),
-            "carpeta": str(carpeta_destino.name)
+            "archivo": examen.get('archivo', 'examen_existente.json'),
+            "carpeta": carpeta,
+            "message": "Examen ya guardado previamente (sin duplicado)"
         })
     except Exception as e:
-        print(f"❌ Error guardando examen: {e}")
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/datos/examenes")
 def get_examenes():
-    """Obtiene todos los exámenes de todas las carpetas (examenes.json y resultados_examenes/*.json)"""
+    """Obtiene todos los exámenes de todas las carpetas (examenes.json y archivos individuales)"""
     try:
         todos_examenes = []
         
-        # 1. Buscar recursivamente todos los examenes.json
+        # 🔥 BUSCAR EN extracciones/{carpeta}/examen_*.json
+        if EXTRACCIONES_PATH.exists():
+            # 🚫 YA NO BUSCAR ExamenGeneral.json (causaba duplicados)
+            # El endpoint /datos/examenes/carpeta fue deshabilitado
+            # Solo se guardan archivos examen_TIMESTAMP.json en /api/evaluar_examen
+            
+            # Buscar examen_*.json
+            for archivo in EXTRACCIONES_PATH.rglob("examen_*.json"):
+                try:
+                    with open(archivo, "r", encoding="utf-8") as f:
+                        examen = json.load(f)
+                        # Verificar que NO sea práctica
+                        if not examen.get("es_practica"):
+                            todos_examenes.append(examen)
+                except Exception as e:
+                    print(f"Error leyendo {archivo}: {e}")
+        
+        # 1. LEGACY: Buscar recursivamente todos los examenes.json en extracciones/
         for archivo in EXTRACCIONES_PATH.rglob("examenes.json"):
             try:
                 with open(archivo, "r", encoding="utf-8") as f:
                     examenes = json.load(f)
-                    todos_examenes.extend(examenes)
+                    # Filtrar prácticas
+                    examenes_filtrados = [e for e in examenes if not e.get("es_practica")]
+                    todos_examenes.extend(examenes_filtrados)
             except Exception as e:
                 print(f"Error leyendo {archivo}: {e}")
         
-        # 2. 🔥 BUSCAR TAMBIÉN EN resultados_examenes/*.json (archivos individuales)
+        # 2. LEGACY: Buscar en resultados_examenes/*.json (archivos individuales en extracciones/)
         for carpeta in EXTRACCIONES_PATH.iterdir():
             if carpeta.is_dir():
                 resultados_path = carpeta / "resultados_examenes"
@@ -4119,21 +4501,164 @@ def get_examenes():
                         except Exception as e:
                             print(f"Error leyendo {archivo}: {e}")
         
-        print(f"📊 Total exámenes cargados: {len(todos_examenes)}")
+        print(f"📊 Total archivos de exámenes encontrados: {len(todos_examenes)}")
         
-        # 🔥 NORMALIZAR PREGUNTAS DE TODOS LOS EXÁMENES AL CARGAR
-        print(f"🔄 Normalizando preguntas en {len(todos_examenes)} exámenes...")
+        # 🔥 NORMALIZAR TODOS LOS EXÁMENES AL CARGAR
+        print(f"🔄 Normalizando {len(todos_examenes)} exámenes completos...")
         for examen in todos_examenes:
-            if 'preguntas' in examen and isinstance(examen['preguntas'], list):
-                examen['preguntas'] = [
-                    normalizar_pregunta_spaced_repetition(p)
-                    for p in examen['preguntas']
-                ]
-        print(f"✅ Todos los exámenes normalizados para Spaced Repetition")
+            # Normalizar el examen completo (rutas, intervalos, tipos)
+            examen = normalizar_examen_completo(examen)
+        print(f"✅ Todos los exámenes normalizados")
+        
+        # 🔥 DEDUPLICAR EXÁMENES POR CARPETA + FECHA (evitar duplicados)
+        print(f"\n🔍 DEDUPLICACIÓN DE EXÁMENES:")
+        examenes_unicos = {}
+        for idx, examen in enumerate(todos_examenes):
+            # Usar carpeta_ruta + fecha_completado como clave única
+            carpeta = examen.get('carpeta_ruta', 'sin-carpeta')
+            fecha = examen.get('fecha_completado', 'sin-fecha')
+            examen_id = examen.get('id', 'sin-id')
+            archivo = examen.get('archivo', 'sin-archivo')
+            
+            print(f"   Examen #{idx + 1}: carpeta={carpeta}, fecha={fecha}, id={examen_id}, archivo={archivo}")
+            
+            # 🔥 CLAVE ÚNICA: carpeta + fecha completado (más confiable que archivo)
+            # Esto evita duplicados cuando hay múltiples archivos examen_*.json
+            clave_unica = f"{carpeta}|{fecha}"
+            
+            print(f"      → Clave única: {clave_unica}")
+            
+            if clave_unica not in examenes_unicos:
+                examenes_unicos[clave_unica] = examen
+                print(f"      ✅ AGREGADO (nuevo)")
+            else:
+                print(f"      ⏭️  DUPLICADO (ya existe)")
+                # Si ya existe, mantener el que tenga más datos completos
+                examen_existente = examenes_unicos[clave_unica]
+                
+                # Preferencias de reemplazo:
+                # 1. Preferir el que tenga preguntas
+                # 2. Preferir el que tenga más resultados
+                # 3. Preferir el que sea más reciente (por nombre de archivo)
+                
+                debe_reemplazar = False
+                
+                if not examen_existente.get('preguntas') and examen.get('preguntas'):
+                    debe_reemplazar = True
+                    print(f"      🔄 REEMPLAZAR: tiene preguntas")
+                elif len(examen_existente.get('resultados', [])) < len(examen.get('resultados', [])):
+                    debe_reemplazar = True
+                    print(f"      🔄 REEMPLAZAR: más resultados ({len(examen.get('resultados', []))} vs {len(examen_existente.get('resultados', []))})")
+                elif examen.get('archivo', '') > examen_existente.get('archivo', ''):
+                    # Archivo más reciente (orden alfabético de timestamps)
+                    debe_reemplazar = True
+                    print(f"      🔄 REEMPLAZAR: archivo más reciente")
+                
+                if debe_reemplazar:
+                    examenes_unicos[clave_unica] = examen
+        
+        todos_examenes = list(examenes_unicos.values())
+        print(f"📋 Exámenes cargados: {len(todos_examenes)} total (únicos después de deduplicar)\n")
         
         return JSONResponse(content=todos_examenes)
     except Exception as e:
         print(f"❌ Error obteniendo exámenes: {e}")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/examenes/normalizar")
+async def normalizar_todos_examenes():
+    """
+    Normaliza TODOS los exámenes en examenes.json y archivos individuales
+    Aplica:
+    1. Tipos: "verdadero-falso" → "verdadero_falso"
+    2. Intervalos: 0.5 → 1 (enteros >= 1)
+    3. Rutas: "Platzi\\Prueba" → "Platzi/Prueba"
+    """
+    try:
+        print(f"\n{'='*70}")
+        print(f"🔧 NORMALIZACIÓN MASIVA DE EXÁMENES")
+        print(f"{'='*70}")
+        
+        archivos_normalizados = 0
+        examenes_normalizados = 0
+        
+        # 1️⃣ Normalizar archivos individuales en extracciones/
+        if EXTRACCIONES_PATH.exists():
+            # Normalizar ExamenGeneral.json
+            for archivo in EXTRACCIONES_PATH.rglob("ExamenGeneral.json"):
+                try:
+                    with open(archivo, "r", encoding="utf-8") as f:
+                        examen = json.load(f)
+                    
+                    # Normalizar
+                    examen_normalizado = normalizar_examen_completo(examen)
+                    
+                    # Guardar
+                    with open(archivo, "w", encoding="utf-8") as f:
+                        json.dump(examen_normalizado, f, ensure_ascii=False, indent=2)
+                    
+                    archivos_normalizados += 1
+                    examenes_normalizados += 1
+                    print(f"   ✅ {archivo.relative_to(EXTRACCIONES_PATH)}")
+                except Exception as e:
+                    print(f"   ❌ Error en {archivo}: {e}")
+            
+            # Normalizar examen_*.json (legacy)
+            for archivo in EXTRACCIONES_PATH.rglob("examen_*.json"):
+                try:
+                    with open(archivo, "r", encoding="utf-8") as f:
+                        examen = json.load(f)
+                    
+                    # Normalizar
+                    examen_normalizado = normalizar_examen_completo(examen)
+                    
+                    # Guardar
+                    with open(archivo, "w", encoding="utf-8") as f:
+                        json.dump(examen_normalizado, f, ensure_ascii=False, indent=2)
+                    
+                    archivos_normalizados += 1
+                    examenes_normalizados += 1
+                    print(f"   ✅ {archivo.relative_to(EXTRACCIONES_PATH)}")
+                except Exception as e:
+                    print(f"   ❌ Error en {archivo}: {e}")
+        
+        # 2️⃣ Normalizar examenes.json (legacy)
+        for archivo in EXTRACCIONES_PATH.rglob("examenes.json"):
+            try:
+                with open(archivo, "r", encoding="utf-8") as f:
+                    examenes = json.load(f)
+                
+                # Normalizar cada examen
+                examenes_normalizados_en_archivo = [
+                    normalizar_examen_completo(e) for e in examenes
+                ]
+                
+                # Guardar
+                with open(archivo, "w", encoding="utf-8") as f:
+                    json.dump(examenes_normalizados_en_archivo, f, ensure_ascii=False, indent=2)
+                
+                archivos_normalizados += 1
+                examenes_normalizados += len(examenes_normalizados_en_archivo)
+                print(f"   ✅ {archivo.relative_to(EXTRACCIONES_PATH)} ({len(examenes)} exámenes)")
+            except Exception as e:
+                print(f"   ❌ Error en {archivo}: {e}")
+        
+        print(f"\n{'='*70}")
+        print(f"📊 RESUMEN DE NORMALIZACIÓN")
+        print(f"{'='*70}")
+        print(f"✅ Archivos procesados: {archivos_normalizados}")
+        print(f"✅ Exámenes normalizados: {examenes_normalizados}")
+        print(f"{'='*70}\n")
+        
+        return JSONResponse(content={
+            "success": True,
+            "archivos_normalizados": archivos_normalizados,
+            "examenes_normalizados": examenes_normalizados
+        })
+    except Exception as e:
+        print(f"❌ Error en normalización masiva: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.post("/datos/practicas/carpeta")
@@ -4163,7 +4688,7 @@ async def guardar_practica_carpeta(request: Request):
             carpeta_destino = EXTRACCIONES_PATH / "practicas"
         
         carpeta_destino.mkdir(parents=True, exist_ok=True)
-        archivo = carpeta_destino / "practicas.json"
+        archivo = carpeta_destino / "practicasArchivos.json"
         
         # Leer prácticas existentes
         practicas = []
@@ -4216,18 +4741,19 @@ def get_practicas():
     try:
         todas_practicas = []
         
-        # 1. Buscar recursivamente todos los practicas.json
+        # 1. Buscar recursivamente todos los practicas.json y practicasArchivos.json
         practicas_json_count = 0
-        print(f"📁 Buscando practicas.json en: {EXTRACCIONES_PATH.absolute()}")
-        for archivo in EXTRACCIONES_PATH.rglob("practicas.json"):
-            try:
-                print(f"   Encontrado: {archivo}")
-                with open(archivo, "r", encoding="utf-8") as f:
-                    practicas = json.load(f)
-                    todas_practicas.extend(practicas)
-                    practicas_json_count += len(practicas)
-            except Exception as e:
-                print(f"Error leyendo {archivo}: {e}")
+        print(f"📁 Buscando practicas.json y practicasArchivos.json en: {EXTRACCIONES_PATH.absolute()}")
+        for patron in ["practicas.json", "practicasArchivos.json"]:
+            for archivo in EXTRACCIONES_PATH.rglob(patron):
+                try:
+                    print(f"   Encontrado: {archivo}")
+                    with open(archivo, "r", encoding="utf-8") as f:
+                        practicas = json.load(f)
+                        todas_practicas.extend(practicas)
+                        practicas_json_count += len(practicas)
+                except Exception as e:
+                    print(f"Error leyendo {archivo}: {e}")
         
         print(f"📁 Prácticas desde practicas.json: {practicas_json_count}")
         
@@ -4266,8 +4792,8 @@ def get_practicas():
                 else:
                     print(f"      ⏭️ No existe resultados_practicas/")
         
-        print(f"\n📁 Prácticas individuales: {practicas_individuales_count}")
-        print(f"📊 Total prácticas cargadas: {len(todas_practicas)}")
+        print(f"\n📁 Archivos de prácticas encontrados: {practicas_json_count} (json) + {practicas_individuales_count} (individuales)")
+        print(f"📊 Total archivos de prácticas: {len(todas_practicas)}")
         
         # 🔥 NORMALIZAR PREGUNTAS DE TODAS LAS PRÁCTICAS AL CARGAR
         print(f"🔄 Normalizando preguntas en {len(todas_practicas)} prácticas...")
@@ -4278,6 +4804,16 @@ def get_practicas():
                     for p in practica['preguntas']
                 ]
         print(f"✅ Todas las prácticas normalizadas para Spaced Repetition")
+        
+        # 🔥 DEDUPLICAR PRÁCTICAS POR ID (evitar duplicados)
+        practicas_unicas = {}
+        for practica in todas_practicas:
+            practica_id = practica.get('id')
+            if practica_id and practica_id not in practicas_unicas:
+                practicas_unicas[practica_id] = practica
+        
+        todas_practicas = list(practicas_unicas.values())
+        print(f"🎯 Prácticas cargadas: {len(todas_practicas)} total (únicas después de deduplicar)")
         
         return JSONResponse(content=todas_practicas)
     except Exception as e:
@@ -4291,41 +4827,48 @@ def delete_practica(practica_id: str, carpeta: str = ""):
         print(f"\n🔍 DELETE práctica: ID={practica_id}, carpeta={carpeta}")
         archivo = None
         
-        # 1. Si se especifica carpeta, buscar primero ahí
+        # 1. Si se especifica carpeta, buscar primero ahí (en ambos archivos)
         if carpeta:
-            archivo_carpeta = EXTRACCIONES_PATH / carpeta / "practicas.json"
-            print(f"   Buscando en: {archivo_carpeta}")
-            if archivo_carpeta.exists():
-                with open(archivo_carpeta, "r", encoding="utf-8") as f:
-                    practicas = json.load(f)
-                print(f"   Prácticas en {carpeta}: {len(practicas)}")
-                # Verificar si está en esta carpeta
-                if any(str(p.get("id")) == str(practica_id) for p in practicas):
-                    archivo = archivo_carpeta
-                    print(f"   ✓ Encontrada en carpeta especificada")
+            for nombre_archivo in ["practicas.json", "practicasArchivos.json"]:
+                archivo_carpeta = EXTRACCIONES_PATH / carpeta / nombre_archivo
+                print(f"   Buscando en: {archivo_carpeta}")
+                if archivo_carpeta.exists():
+                    with open(archivo_carpeta, "r", encoding="utf-8") as f:
+                        practicas = json.load(f)
+                    print(f"   Prácticas en {carpeta}/{nombre_archivo}: {len(practicas)}")
+                    # Verificar si está en esta carpeta
+                    if any(str(p.get("id")) == str(practica_id) for p in practicas):
+                        archivo = archivo_carpeta
+                        print(f"   ✓ Encontrada en carpeta especificada: {nombre_archivo}")
+                        break
+            if archivo:
+                pass  # Ya encontrada, salir del if
         
         # 2. Si no se encontró, buscar en TODAS las carpetas (incluyendo legacy)
         if archivo is None:
             print(f"   No encontrada en carpeta especificada, buscando en todas...")
-            for carpeta_path in EXTRACCIONES_PATH.rglob("practicas.json"):
-                try:
-                    with open(carpeta_path, "r", encoding="utf-8") as f:
-                        practicas = json.load(f)
-                    
-                    print(f"   Revisando {carpeta_path}: {len(practicas)} prácticas")
-                    if practicas:
-                        print(f"      IDs: {[str(p.get('id')) for p in practicas[:3]]}")
-                    
-                    # Comparar tanto string como int
-                    practica_encontrada = any(
-                        str(p.get("id")) == str(practica_id) for p in practicas
-                    )
-                    if practica_encontrada:
-                        archivo = carpeta_path
-                        print(f"   ✓✓ Práctica encontrada en: {archivo}")
-                        break
-                except Exception as e:
-                    print(f"   Error leyendo {carpeta_path}: {e}")
+            for patron in ["practicas.json", "practicasArchivos.json"]:
+                for carpeta_path in EXTRACCIONES_PATH.rglob(patron):
+                    try:
+                        with open(carpeta_path, "r", encoding="utf-8") as f:
+                            practicas = json.load(f)
+                        
+                        print(f"   Revisando {carpeta_path}: {len(practicas)} prácticas")
+                        if practicas:
+                            print(f"      IDs: {[str(p.get('id')) for p in practicas[:3]]}")
+                        
+                        # Comparar tanto string como int
+                        practica_encontrada = any(
+                            str(p.get("id")) == str(practica_id) for p in practicas
+                        )
+                        if practica_encontrada:
+                            archivo = carpeta_path
+                            print(f"   ✓✓ Práctica encontrada en: {archivo}")
+                            break
+                    except Exception as e:
+                        print(f"   Error leyendo {carpeta_path}: {e}")
+                if archivo:  # Si ya encontró, salir del loop de patrones
+                    break
         
         if archivo is None:
             print(f"   ❌ No encontrada en ninguna carpeta")
@@ -4420,7 +4963,7 @@ async def actualizar_archivo_practica(request: Request):
 
 @app.post("/datos/examenes/actualizar_archivo")
 async def actualizar_archivo_examen(request: Request):
-    """Actualiza un archivo individual de examen en resultados_examenes/"""
+    """Actualiza un archivo individual de examen"""
     try:
         data = await request.json()
         examen = data.get("examen")
@@ -4435,17 +4978,42 @@ async def actualizar_archivo_examen(request: Request):
         if not carpeta_ruta:
             return JSONResponse(content={"error": "No se especificó carpeta_ruta"}, status_code=400)
         
-        # Construir ruta al archivo
-        carpeta_destino = EXTRACCIONES_PATH / carpeta_ruta / "resultados_examenes"
+        # 🔥 BUSCAR EN NUEVA ESTRUCTURA: examenes/{carpeta}/examen_*.json
+        carpeta_destino_nueva = EXAMENES_PATH / carpeta_ruta
         
-        # Si tiene nombre de archivo específico, usarlo
-        if archivo_nombre:
-            archivo_path = carpeta_destino / archivo_nombre
-        else:
-            # Buscar por ID
-            archivo_path = None
-            if carpeta_destino.exists():
-                for archivo in carpeta_destino.glob("*.json"):
+        # LEGACY: También buscar en extracciones/{carpeta}/resultados_examenes/
+        carpeta_destino_legacy = EXTRACCIONES_PATH / carpeta_ruta / "resultados_examenes"
+        
+        archivo_path = None
+        
+        # 1. Buscar primero en nueva estructura (examenes/)
+        if archivo_nombre and carpeta_destino_nueva.exists():
+            archivo_candidato = carpeta_destino_nueva / archivo_nombre
+            if archivo_candidato.exists():
+                archivo_path = archivo_candidato
+        
+        # 2. Si no se encontró y no hay nombre específico, buscar por ID en nueva estructura
+        if not archivo_path and carpeta_destino_nueva.exists():
+            for archivo in carpeta_destino_nueva.glob("examen_*.json"):
+                try:
+                    with open(archivo, "r", encoding="utf-8") as f:
+                        data_existente = json.load(f)
+                        if data_existente.get("id") == examen_id:
+                            archivo_path = archivo
+                            break
+                except:
+                    continue
+        
+        # 3. LEGACY: Buscar en resultados_examenes/ (estructura antigua)
+        if not archivo_path:
+            if archivo_nombre and carpeta_destino_legacy.exists():
+                archivo_candidato = carpeta_destino_legacy / archivo_nombre
+                if archivo_candidato.exists():
+                    archivo_path = archivo_candidato
+            
+            # Buscar por ID en legacy
+            if not archivo_path and carpeta_destino_legacy.exists():
+                for archivo in carpeta_destino_legacy.glob("*.json"):
                     try:
                         with open(archivo, "r", encoding="utf-8") as f:
                             data_existente = json.load(f)
@@ -4459,7 +5027,7 @@ async def actualizar_archivo_examen(request: Request):
             return JSONResponse(content={"error": f"No se encontró archivo de examen con ID {examen_id}"}, status_code=404)
         
         # Guardar archivo actualizado
-        carpeta_destino.mkdir(parents=True, exist_ok=True)
+        archivo_path.parent.mkdir(parents=True, exist_ok=True)
         with open(archivo_path, "w", encoding="utf-8") as f:
             json.dump(examen, f, indent=2, ensure_ascii=False)
         

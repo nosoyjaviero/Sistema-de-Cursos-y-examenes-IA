@@ -30,6 +30,7 @@ import ProbabilityToolbar from './ProbabilityToolbar';
 import VisualModeSelector from './VisualModeSelector';
 import ArtCanvas from './components/ArtCanvas';
 import ArtToolbar from './components/ArtToolbar';
+import { normalizarExamenes } from './utils/normalizarExamenes';
 
 // ========================================
 // FUNCIONES HELPER PARA DATOS PERSISTENTES
@@ -37,8 +38,8 @@ import ArtToolbar from './components/ArtToolbar';
 const SERVER_IP = window.location.hostname;
 
 /**
- * Obtiene datos (notas, flashcards, practicas) desde el backend
- * @param {string} tipo - 'notas', 'flashcards' o 'practicas'
+ * Obtiene datos (notas, flashcards, practicas, examenes) desde el backend
+ * @param {string} tipo - 'notas', 'flashcards', 'practicas' o 'examenes'
  * @returns {Promise<Array>} Array de datos o array vacío si falla
  */
 async function getDatos(tipo) {
@@ -48,7 +49,13 @@ async function getDatos(tipo) {
       console.error(`Error al obtener ${tipo}: ${response.status}`);
       return [];
     }
-    const data = await response.json();
+    let data = await response.json();
+    
+    // 🔥 NORMALIZAR EXÁMENES AUTOMÁTICAMENTE
+    if (tipo === 'examenes' && Array.isArray(data)) {
+      data = normalizarExamenes(data);
+    }
+    
     return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error(`Error de red al obtener ${tipo}:`, error);
@@ -299,6 +306,11 @@ function App() {
   const [editorInlineActivo, setEditorInlineActivo] = useState(false) // editor de notas inline
   const [fuentePracticaSeleccionada, setFuentePracticaSeleccionada] = useState('documento') // documento, carpeta, curso, pegado, actual
   const [textoPegadoPractica, setTextoPegadoPractica] = useState('') // para generar desde texto pegado
+  
+  // Estados para modal de ruta de archivo
+  const [modalRutaAbierto, setModalRutaAbierto] = useState(false)
+  const [rutaArchivoSeleccionado, setRutaArchivoSeleccionado] = useState('')
+  const [nombreArchivoSeleccionado, setNombreArchivoSeleccionado] = useState('')
   
   // Estados para Fase 4 - Contenido Nuevo
   const [tabContenidoActivo, setTabContenidoActivo] = useState(0) // 0: Lectura, 1: Notas, 2: Flashcards
@@ -708,6 +720,58 @@ function App() {
 
   const API_URL = getApiUrl()
 
+  // Función para recargar datos del calendario
+  const recargarCalendarioRepasos = async () => {
+    try {
+      console.log('🔄 Recargando datos del calendario...');
+      const flashcards = await cargarTodasFlashcards();
+      const notas = await getDatos('notas');
+      let practicas = await getDatos('practicas');
+      let examenes = await getDatos('examenes');
+      
+      console.log('📋 Exámenes recibidos del backend:', examenes.length);
+      console.log('   IDs de exámenes:', examenes.map(e => e.id || e.archivo));
+      
+      // Normalizar prácticas
+      practicas = practicas.map(p => ({
+        ...p,
+        proximaRevision: p.proximaRevision || p.proxima_revision,
+        ultimaRevision: p.ultimaRevision || p.ultima_revision,
+        fechaCreacion: p.fechaCreacion || p.fecha_creacion || p.fecha,
+        resultados: p.resultados || p.resultado?.resultados || [],
+        preguntas: p.preguntas || []
+      }));
+      
+      // Normalizar exámenes
+      examenes = examenes.map(e => ({
+        ...e,
+        proximaRevision: e.proximaRevision || e.proxima_revision,
+        ultimaRevision: e.ultimaRevision || e.ultima_revision,
+        fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado,
+        resultados: e.resultados || [],
+        preguntas: e.preguntas || [],
+        respuestas: e.respuestas || {}
+      }));
+      
+      console.log('✅ Calendario recargado:', {
+        flashcards: flashcards.length,
+        notas: notas.length,
+        practicas: practicas.length,
+        examenes: examenes.length
+      });
+      console.log('   IDs después de normalizar:', examenes.map(e => e.id || e.archivo));
+      
+      setDatosCalendarioRepasos({
+        flashcards,
+        notas,
+        practicas,
+        examenes
+      });
+    } catch (error) {
+      console.error('❌ Error recargando calendario:', error);
+    }
+  };
+
   // Auto-ocultar mensajes después de 8 segundos
   useEffect(() => {
     if (mensaje) {
@@ -834,12 +898,30 @@ function App() {
             fechaCreacion: p.fechaCreacion || p.fecha_creacion || p.fecha
           }));
           
+          console.log('📅 Prácticas cargadas para calendario:', practicas.length);
+          console.log('📋 Primera práctica:', practicas[0]);
+          console.log('   - Tiene preguntas:', !!practicas[0]?.preguntas);
+          console.log('   - Num preguntas:', practicas[0]?.preguntas?.length);
+          
           examenes = examenes.map(e => ({
             ...e,
             proximaRevision: e.proximaRevision || e.proxima_revision,
             ultimaRevision: e.ultimaRevision || e.ultima_revision,
-            fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado
+            fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado,
+            // Asegurar que resultados y preguntas se mantengan
+            resultados: e.resultados || [],
+            preguntas: e.preguntas || [],
+            respuestas: e.respuestas || {}
           }));
+          
+          console.log('📋 Exámenes normalizados para calendario:', examenes.length);
+          if (examenes.length > 0) {
+            console.log('   - Primer examen:', examenes[0]);
+            console.log('   - Tiene resultados:', !!examenes[0]?.resultados);
+            console.log('   - Num resultados:', examenes[0]?.resultados?.length);
+            console.log('   - Tiene preguntas:', !!examenes[0]?.preguntas);
+            console.log('   - Num preguntas:', examenes[0]?.preguntas?.length);
+          }
           
           setDatosCalendarioRepasos({
             flashcards,
@@ -1420,8 +1502,15 @@ function App() {
   const cargarCarpetasExamenes = async (ruta = '') => {
     setLoading(true)
     try {
+      console.log('📂 Cargando carpetas de exámenes, ruta:', ruta)
       const response = await fetch(`${API_URL}/api/examenes/carpetas?ruta=${encodeURIComponent(ruta)}`)
       const data = await response.json()
+      
+      console.log('📊 Datos recibidos del backend:', data)
+      console.log('   - Carpetas:', data.carpetas?.length || 0)
+      console.log('   - Exámenes completados:', data.examenes_completados?.length || 0)
+      console.log('   - Exámenes en progreso:', data.examenes_progreso?.length || 0)
+      console.log('   - Exámenes en progreso global:', data.examenes_progreso_global?.length || 0)
       
       setCarpetasExamenes(data.carpetas || [])
       setExamenesCompletados(data.examenes_completados || [])
@@ -1429,9 +1518,7 @@ function App() {
       setExamenesProgresoGlobal(data.examenes_progreso_global || [])
       setRutaActualExamenes(ruta)
       
-      console.log('Carpetas exámenes:', data.carpetas)
-      console.log('Exámenes en progreso (carpeta actual):', data.examenes_progreso)
-      console.log('Exámenes en progreso (global):', data.examenes_progreso_global)
+      console.log('✅ Estado actualizado con los datos recibidos')
     } catch (error) {
       console.error('Error cargando exámenes:', error)
       setMensaje({
@@ -2156,7 +2243,9 @@ function App() {
               carpeta_ruta: examen.carpeta_ruta || examen.carpeta, // 🔥 NECESARIO para actualizar archivo individual
               fecha: examen.fecha_completado,
               carpeta: examen.carpeta_nombre,
-              es_practica: examen.es_practica, // 🔥 Para distinguir entre examen y práctica
+              // 🔥 CAMPO EXPLÍCITO: es_practica (false para exámenes, true para prácticas)
+              es_practica: examen.es_practica === true, // Asegurar boolean explícito
+              tipo_item: examen.es_practica ? 'practica' : 'examen', // Campo adicional para claridad
               porcentaje_obtenido: porcentaje
             });
           } else if (porcentaje < 60 && resultado.corregido) {
@@ -2418,10 +2507,15 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     if (respuestaErrorSeleccionada && respuestaErrorSeleccionada.startsWith(errorActual.respuesta_correcta)) {
       esCorrecta = true;
       console.log('✅ Respuesta de opción múltiple CORRECTA');
-    } else if (feedbackIA && (feedbackIA.porcentaje_similitud >= 70 || feedbackIA.puntos >= 2)) {
-      // Si es respuesta de texto y la IA la calificó bien
+    } else if (feedbackIA && (feedbackIA.esSuficiente || feedbackIA.puntaje >= 70)) {
+      // 🔥 CORRECCIÓN: Usar campos reales de feedbackIA (esSuficiente, puntaje)
+      // feedbackIA viene de evaluarRespuestaTextual() con estructura:
+      // { texto, puntaje: 0-100, esSuficiente: boolean }
       esCorrecta = true;
-      console.log('✅ Respuesta de texto CORRECTA (similitud:', feedbackIA.porcentaje_similitud, '%, puntos:', feedbackIA.puntos, ')');
+      console.log('✅ Respuesta de texto CORRECTA (aprobada por IA):', {
+        esSuficiente: feedbackIA.esSuficiente,
+        puntaje: feedbackIA.puntaje
+      });
     }
     
     // Si el usuario respondió correctamente, actualizar el examen/práctica original
@@ -2429,11 +2523,16 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       console.log('✅ Error corregido. Actualizando examen/práctica original...');
       
       try {
-        // 🔥 OPTIMIZACIÓN: Buscar directamente por ID del error
-        const esExamen = !errorActual.es_practica;
+        // 🔥 DETERMINAR TIPO: Usar campo explícito es_practica
+        const esExamen = errorActual.es_practica !== true; // false si es undefined/null/false
+        const tipoItem = errorActual.tipo_item || (esExamen ? 'examen' : 'practica');
         const listaABuscar = esExamen ? await getDatos('examenes') : await getDatos('practicas');
         
-        console.log(`📦 Buscando en ${listaABuscar.length} ${esExamen ? 'exámenes' : 'prácticas'}`);
+        console.log(`📦 Buscando en ${listaABuscar.length} ${tipoItem}s`, {
+          esExamen,
+          es_practica: errorActual.es_practica,
+          tipo_item: tipoItem
+        });
         console.log('   🔍 Buscando ID:', errorActual.examen_id);
         console.log('   📂 Archivo:', errorActual.archivo);
         console.log('   📁 Carpeta:', errorActual.carpeta_ruta);
@@ -3044,6 +3143,18 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
 
   // Función auxiliar para guardar exámenes en su carpeta correspondiente
   const guardarExamenEnCarpeta = async (examen) => {
+    console.log('\n' + '🔵'.repeat(35));
+    console.log('📥 guardarExamenEnCarpeta - INICIO');
+    console.log('🔵'.repeat(35));
+    console.log('📦 Examen recibido:', {
+      id: examen.id,
+      carpeta: examen.carpeta,
+      carpeta_ruta: examen.carpeta_ruta,
+      completado: examen.completado,
+      es_practica: examen.es_practica,
+      archivo: examen.archivo
+    });
+    
     const carpeta = examen.carpeta || '';
     
     if (!carpeta) {
@@ -3054,6 +3165,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     try {
       // 🔥 VERIFICAR SI ES ARCHIVO INDIVIDUAL (resultados_examenes/examen_*.json)
       const esArchivoIndividual = examen.carpeta_ruta && examen.archivo;
+      console.log('🔍 esArchivoIndividual:', esArchivoIndividual);
       
       if (esArchivoIndividual) {
         // Usar endpoint para actualizar archivo individual
@@ -3070,7 +3182,19 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         
         return await response.json();
       } else {
-        // Usar endpoint legacy para examenes.json
+        // Usar endpoint para estructura paralela examenes/
+        console.log('🌐 Enviando POST a /datos/examenes/carpeta');
+        console.log('   📦 Body:', JSON.stringify({
+          examen: {
+            id: examen.id,
+            carpeta: examen.carpeta,
+            carpeta_ruta: examen.carpeta_ruta,
+            completado: examen.completado,
+            es_practica: examen.es_practica
+          },
+          carpeta: examen.carpeta
+        }, null, 2));
+        
         const response = await fetch(`${API_URL}/datos/examenes/carpeta`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3080,9 +3204,18 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           })
         });
 
-        if (!response.ok) throw new Error('Error al guardar examen');
+        console.log('📬 Response status:', response.status);
         
-        return await response.json();
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error response:', errorText);
+          throw new Error(`Error al guardar examen: ${response.status} - ${errorText}`);
+        }
+        
+        const resultado = await response.json();
+        console.log('✅ Respuesta del backend:', resultado);
+        console.log('🔵'.repeat(35) + '\n');
+        return resultado;
       }
     } catch (error) {
       console.error('Error guardando examen en carpeta:', error);
@@ -4733,7 +4866,12 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     setArchivosEncontrados(archivos);
     setArchivosExcluidos([]);
     setTipoCarpeta(tipo);
-    setCarpetaExamen({ ruta, nombre: nombreCarpeta });
+    // 🔥 GUARDAR INFO COMPLETA DE CARPETA PARA USAR AL GUARDAR EXAMEN
+    setCarpetaExamen({ 
+      ruta,  // Ruta completa para guardar en la misma ubicación
+      nombre: nombreCarpeta,
+      tipo: tipo  // curso, capitulo, clase, leccion
+    });
     setModalSeleccionArchivos(true);
     setGenerandoExamen(false);
     
@@ -4980,6 +5118,54 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
   }
 
   // Eliminar examen individual
+  // Eliminar práctica individual
+  const eliminarPractica = async (practica) => {
+    const confirmMsg = `¿Eliminar la práctica "${practica.titulo || 'Sin título'}"?`
+    if (!confirm(confirmMsg)) return
+
+    try {
+      console.log('🗑️ Eliminando práctica:', practica);
+      
+      const carpetaParam = practica.carpeta_ruta || practica.carpeta || '';
+      const url = `${API_URL}/datos/practicas/${practica.id}${carpetaParam ? `?carpeta=${encodeURIComponent(carpetaParam)}` : ''}`;
+      
+      console.log('🔗 DELETE URL:', url);
+      
+      const response = await fetch(url, {
+        method: 'DELETE'
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Error ${response.status}: ${errorText}`)
+      }
+      
+      const data = await response.json()
+      if (data.success) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Práctica eliminada'
+        })
+        
+        // Recargar calendario para reflejar cambios
+        await recargarCalendarioRepasos()
+        
+        // Recargar las carpetas de prácticas si estamos en esa vista
+        if (rutaActualPracticas !== undefined) {
+          await cargarCarpetasPracticas(rutaActualPracticas)
+        }
+      } else {
+        throw new Error(data.message || 'Error desconocido')
+      }
+    } catch (error) {
+      console.error('Error eliminando práctica:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error eliminando práctica: ${error.message}`
+      })
+    }
+  }
+
   const eliminarExamen = async (examen, tipo) => {
     const tipoTexto = tipo === 'progreso' ? 'en progreso' : 'completado'
     const confirmMsg = `¿Eliminar el examen ${tipoTexto} "${examen.carpeta_nombre}"?`
@@ -4987,19 +5173,20 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
 
     try {
       // Determinar el nombre del archivo según el tipo
-      let nombreArchivo
-      if (tipo === 'progreso') {
-        // Los exámenes en progreso están en examenes_progreso/
-        nombreArchivo = examen.archivo || `examen_progreso_${examen.id}.json`
-      } else {
-        // Los exámenes completados están en la raíz de la carpeta
-        nombreArchivo = examen.archivo || `examen_${examen.id}.json`
-      }
-
+      let nombreArchivo = examen.archivo || (tipo === 'progreso' ? `examen_progreso_${examen.id}.json` : `examen_${examen.id}.json`)
       const ruta = examen.carpeta_ruta || rutaActualExamenes
+      const examenId = examen.id || examen.archivo
+      
+      console.log('🗑️ Eliminando examen:', { ruta, nombreArchivo, examenId, examen });
+      
       const response = await fetch(`${API_URL}/api/examenes/examen?ruta=${encodeURIComponent(ruta)}&archivo=${encodeURIComponent(nombreArchivo)}`, {
         method: 'DELETE'
       })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Error ${response.status}: ${errorText}`)
+      }
 
       const data = await response.json()
       if (data.success) {
@@ -5015,18 +5202,58 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           }
         }
         
+        // 🔥 ACTUALIZAR ESTADO LOCAL INMEDIATAMENTE
+        // Eliminar del calendario sin esperar recarga
+        setDatosCalendarioRepasos(prev => ({
+          ...prev,
+          examenes: prev.examenes.filter(e => 
+            (e.id || e.archivo) !== examenId
+          )
+        }))
+        
         setMensaje({
           tipo: 'success',
           texto: '✅ Examen eliminado'
         })
+        
+        // Recargar la lista de carpetas y exámenes
         cargarCarpetasExamenes(rutaActualExamenes)
+        
+        // Recargar calendario después de un breve delay para asegurar que el archivo fue eliminado
+        setTimeout(() => {
+          recargarCalendarioRepasos()
+        }, 500)
       }
     } catch (error) {
+      console.error('Error eliminando examen:', error)
       setMensaje({
         tipo: 'error',
         texto: `❌ ${error.message}`
       })
     }
+  }
+
+  // Mostrar modal con la ruta del archivo
+  const mostrarRutaArchivo = (ruta, nombre, tipo = 'archivo') => {
+    setRutaArchivoSeleccionado(ruta)
+    setNombreArchivoSeleccionado(nombre || 'Sin nombre')
+    setModalRutaAbierto(true)
+  }
+
+  const copiarRutaAlPortapapeles = () => {
+    navigator.clipboard.writeText(rutaArchivoSeleccionado)
+      .then(() => {
+        setMensaje({
+          tipo: 'success',
+          texto: '📋 Ruta copiada al portapapeles'
+        })
+      })
+      .catch(() => {
+        setMensaje({
+          tipo: 'error',
+          texto: '❌ Error al copiar ruta'
+        })
+      })
   }
 
   // Renombrar carpeta
@@ -7429,6 +7656,11 @@ JSON:`
   
   // Enviar examen para calificar
   const enviarExamen = async () => {
+    console.log('🚀 =============== INICIO enviarExamen ===============');
+    console.log('📋 Respuestas del usuario:', Object.keys(respuestasUsuario).length);
+    console.log('📂 carpetaExamen completo:', carpetaExamen);
+    console.log('🔍 esPractica:', esPractica);
+    
     if (Object.keys(respuestasUsuario).length === 0) {
       setMensaje({
         tipo: 'error',
@@ -7571,21 +7803,37 @@ JSON:`
           }
         } else if (!esPractica) {
           // 🔥 SI ES UN EXAMEN (NO PRÁCTICA), GUARDARLO EN SU CARPETA
-          console.log('📝 Guardando examen completado en carpeta:', carpetaExamen?.ruta);
+          // 🔥 IMPORTANTE: Guardar en la MISMA carpeta que el documento origen
+          const carpetaRuta = carpetaExamen?.ruta || 'Sin carpeta';
+          
+          console.log('\n' + '='.repeat(70));
+          console.log('🎯 GUARDANDO EXAMEN COMPLETADO (NO ES PRÁCTICA)');
+          console.log('='.repeat(70));
+          console.log('📂 carpetaExamen COMPLETO:', JSON.stringify(carpetaExamen, null, 2));
+          console.log('📁 carpetaRuta:', carpetaRuta);
+          console.log('📝 carpetaExamen.ruta:', carpetaExamen?.ruta);
+          console.log('📛 carpetaExamen.nombre:', carpetaExamen?.nombre);
+          console.log('📊 Preguntas:', preguntasExamen.length);
+          console.log('✅ Respuestas:', Object.keys(respuestasUsuario).length);
+          
           const ahora = new Date();
           const manana = new Date(ahora);
           manana.setDate(manana.getDate() + 1);
           
           const nuevoExamen = {
-            id: `examen_${Date.now()}`,
+            id: Date.now(),
             preguntas: preguntasExamen,
             respuestas: respuestasUsuario,
             completado: true,
-            carpeta: carpetaExamen?.ruta || 'Sin carpeta',
+            es_practica: false, // 🔥 CAMPO EXPLÍCITO: es examen, no práctica
+            // 🔥 GUARDAR RUTA COMPLETA PARA PARALELISMO extracciones/ ↔ examenes/
+            carpeta: carpetaRuta,
+            carpeta_ruta: carpetaRuta,
+            carpeta_nombre: carpetaExamen?.nombre || 'Sin nombre',
             titulo: `Examen ${data.puntos_obtenidos}/${data.puntos_totales}`,
             fecha: ahora.toISOString(),
             fecha_creacion: ahora.toISOString(),
-            fecha_completada: ahora.toISOString(),
+            fecha_completado: ahora.toISOString(),
             ultimaRevision: ahora.toISOString(),
             proximaRevision: manana.toISOString(),
             intervalo: 1,
@@ -7600,8 +7848,27 @@ JSON:`
             }
           };
           
-          await guardarExamenEnCarpeta(nuevoExamen);
-          console.log('✅ Examen guardado en carpeta:', nuevoExamen.carpeta);
+          console.log('\n💾 ➡️ LLAMANDO A guardarExamenEnCarpeta');
+          console.log('   📦 Examen a guardar:', {
+            id: nuevoExamen.id,
+            carpeta: nuevoExamen.carpeta,
+            carpeta_ruta: nuevoExamen.carpeta_ruta,
+            completado: nuevoExamen.completado,
+            es_practica: nuevoExamen.es_practica
+          });
+          
+          // 🔥 GUARDAR USANDO LA FUNCIÓN QUE MANEJA CARPETAS
+          try {
+            const resultado = await guardarExamenEnCarpeta(nuevoExamen);
+            console.log('✅ ✅ ✅ Examen guardado exitosamente!');
+            console.log('   📁 Carpeta:', carpetaRuta);
+            console.log('   📄 Resultado:', resultado);
+            console.log('='.repeat(70) + '\n');
+          } catch (error) {
+            console.error('❌ ❌ ❌ ERROR guardando examen:', error);
+            console.error('   Stack:', error.stack);
+            throw error;
+          }
         } else {
           console.log('⚠️ No se encontró práctica activa para actualizar');
         }
@@ -7617,6 +7884,8 @@ JSON:`
         cargarExamenesGuardados()
         // Recargar carpetas de exámenes para actualizar contadores
         cargarCarpetasExamenes(rutaActualExamenes)
+        // Recargar calendario para mostrar datos actualizados en el modal
+        await recargarCalendarioRepasos()
       } else {
         throw new Error(data.message || 'Error al evaluar')
       }
@@ -7713,14 +7982,42 @@ JSON:`
   
   // Reintentar examen completado
   const reintentarExamen = (examen) => {
-    // Cargar las preguntas del examen
-    setPreguntasExamen(examen.resultados.map((r, idx) => ({
-      pregunta: r.pregunta,
-      tipo: r.tipo,
-      opciones: r.opciones || [],
-      respuesta_correcta: r.respuesta_correcta,
-      puntos: r.puntos_maximos
-    })))
+    console.log('🔄 Reintentando examen:', examen);
+    
+    // Verificar que el examen tenga preguntas originales O resultados
+    const tienePreguntas = examen.preguntas && Array.isArray(examen.preguntas) && examen.preguntas.length > 0;
+    const tieneResultados = examen.resultados && Array.isArray(examen.resultados) && examen.resultados.length > 0;
+    
+    console.log('📋 Verificación:', { tienePreguntas, tieneResultados });
+    
+    if (!tienePreguntas && !tieneResultados) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Este examen no tiene preguntas disponibles para reintentar'
+      })
+      return
+    }
+    
+    // Preferir preguntas originales, si no usar resultados
+    let preguntasParaReintentar;
+    if (tienePreguntas) {
+      preguntasParaReintentar = examen.preguntas;
+      console.log('✅ Usando preguntas originales:', preguntasParaReintentar.length);
+    } else {
+      // Reconstruir desde resultados
+      preguntasParaReintentar = examen.resultados.map((r, idx) => ({
+        id: r.id || `pregunta_${idx}`,
+        pregunta: r.pregunta,
+        tipo: r.tipo,
+        opciones: r.opciones || [],
+        respuesta_correcta: r.respuesta_correcta,
+        puntos: r.puntos_maximos || r.puntos || 1
+      }));
+      console.log('✅ Reconstruidas desde resultados:', preguntasParaReintentar.length);
+      console.log('Primera pregunta:', preguntasParaReintentar[0]);
+    }
+    
+    setPreguntasExamen(preguntasParaReintentar)
     
     // Configurar la carpeta
     setCarpetaExamen({
@@ -7816,6 +8113,8 @@ JSON:`
   const [promptPractica, setPromptPractica] = useState('');
   const [carpetaPractica, setCarpetaPractica] = useState(null);
   const [tipoFuentePractica, setTipoFuentePractica] = useState('carpeta'); // 'carpeta' o 'documento'
+  const [documentosPractica, setDocumentosPractica] = useState([]); // Documentos que se cargarán al modelo
+  const [cargandoDocumentosPractica, setCargandoDocumentosPractica] = useState(false);
   
   // Configuración de tipos de práctica - Generales
   const [numFlashcards, setNumFlashcards] = useState(0);
@@ -7861,7 +8160,7 @@ JSON:`
   const [numWritingPictureDescription, setNumWritingPictureDescription] = useState(0);
   const [numWritingEmail, setNumWritingEmail] = useState(0);
 
-  const abrirModalPractica = (ruta, tipo = 'carpeta') => {
+  const abrirModalPractica = async (ruta, tipo = 'carpeta') => {
     // Limpiar estado anterior
     setPreguntasExamen([]);
     setRespuestasUsuario({});
@@ -7872,6 +8171,44 @@ JSON:`
     setCarpetaPractica(ruta);
     setTipoFuentePractica(tipo);
     setPromptPractica(''); 
+    setDocumentosPractica([]);
+    
+    // 🔥 Si es carpeta, cargar todos los documentos (incluido subcarpetas)
+    if (tipo === 'carpeta') {
+      setCargandoDocumentosPractica(true);
+      try {
+        // Intentar nuevo endpoint primero
+        const response = await fetch(`${API_URL}/api/archivos/listar_documentos?carpeta=${encodeURIComponent(ruta)}&recursivo=true`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📄 Documentos encontrados:', data.documentos?.length || 0);
+          setDocumentosPractica(data.documentos || []);
+        } else {
+          // 🔥 FALLBACK: Si el endpoint no existe (servidor no reiniciado), usar ruta directa
+          console.warn('⚠️ Endpoint /api/archivos/listar_documentos no disponible. Usando fallback.');
+          console.log('📄 Asumiendo que la carpeta tiene documentos. Generando práctica con ruta de carpeta.');
+          
+          // En lugar de fallar, enviamos la ruta de la carpeta directamente
+          // El backend usará la ruta como fallback
+          setDocumentosPractica([]);
+        }
+      } catch (error) {
+        console.error('Error al cargar documentos:', error);
+        console.log('📄 Usando fallback: enviará ruta de carpeta al backend');
+        setDocumentosPractica([]);
+      } finally {
+        setCargandoDocumentosPractica(false);
+      }
+    } else if (tipo === 'documento') {
+      // Si es documento único, agregarlo directamente
+      setDocumentosPractica([{
+        nombre: ruta.split('/').pop(),
+        ruta: ruta,
+        tamaño_kb: 0
+      }]);
+    }
+    
     setModalPracticaAbierto(true);
   };
 
@@ -7882,6 +8219,12 @@ JSON:`
     setExamenCompletado(false);
     setResultadoExamen(null);
     setFlashcardsVolteadas({});
+    
+    console.log('🔍 DEBUG - confirmarGenerarPractica');
+    console.log('   documentosPractica:', documentosPractica);
+    console.log('   documentosPractica.length:', documentosPractica.length);
+    console.log('   carpetaPractica:', carpetaPractica);
+    console.log('   tipoFuentePractica:', tipoFuentePractica);
     
     setModalPracticaAbierto(false);
     if (!carpetaPractica) return;
@@ -8414,39 +8757,51 @@ EJEMPLO DE ESTRUCTURA CORRECTA:
 
 Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
 
+      console.log('📤 DEBUG - Enviando request a /api/generar_practica');
+      console.log('   documentosPractica:', documentosPractica);
+      console.log('   rutas extraídas:', documentosPractica.map(d => d.ruta));
+      
+      const requestBody = { 
+        ruta: carpetaPractica, 
+        prompt: promptCompleto,
+        tipo_caso: tipoCasoEstudio,
+        tipo_flashcard: tipoFlashcard,
+        // 🔥 NUEVOS CAMPOS PARA MÚLTIPLES DOCUMENTOS
+        documentos: documentosPractica.map(d => d.ruta), // Array de rutas de documentos
+        tipo_fuente: tipoFuentePractica, // 'carpeta' o 'documento'
+        // Tipos generales
+        num_flashcards: numFlashcards,
+        num_mcq: numMCQ,
+        num_verdadero_falso: numVerdaderoFalso,
+        num_cloze: numCloze,
+        num_respuesta_corta: numRespuestaCorta,
+        num_open_question: numOpenQuestion,
+        num_caso_estudio: numCasoEstudio,
+        // Reading types
+        num_reading_comprehension: numReadingComprehension,
+        num_reading_true_false: numReadingTrueFalse,
+        num_reading_cloze: numReadingCloze,
+        num_reading_skill: numReadingSkill,
+        num_reading_matching: numReadingMatching,
+        num_reading_sequence: numReadingSequence,
+        // Writing types
+        num_writing_short: numWritingShort,
+        num_writing_paraphrase: numWritingParaphrase,
+        num_writing_correction: numWritingCorrection,
+        num_writing_transformation: numWritingTransformation,
+        num_writing_essay: numWritingEssay,
+        num_writing_sentence_builder: numWritingSentenceBuilder,
+        num_writing_picture_description: numWritingPictureDescription,
+        num_writing_email: numWritingEmail
+      };
+      
+      console.log('   Request body.documentos:', requestBody.documentos);
+      console.log('   Request body.tipo_fuente:', requestBody.tipo_fuente);
+
       const response = await fetch(`${API_URL}/api/generar_practica`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ruta: carpetaPractica, 
-          prompt: promptCompleto,
-          tipo_caso: tipoCasoEstudio, // Tipo de caso de estudio
-          tipo_flashcard: tipoFlashcard, // 'respuesta_corta' o 'seleccion_confusa'
-          // Tipos generales
-          num_flashcards: numFlashcards,
-          num_mcq: numMCQ,
-          num_verdadero_falso: numVerdaderoFalso,
-          num_cloze: numCloze,
-          num_respuesta_corta: numRespuestaCorta,
-          num_open_question: numOpenQuestion,
-          num_caso_estudio: numCasoEstudio,
-          // Reading types
-          num_reading_comprehension: numReadingComprehension,
-          num_reading_true_false: numReadingTrueFalse,
-          num_reading_cloze: numReadingCloze,
-          num_reading_skill: numReadingSkill,
-          num_reading_matching: numReadingMatching,
-          num_reading_sequence: numReadingSequence,
-          // Writing types
-          num_writing_short: numWritingShort,
-          num_writing_paraphrase: numWritingParaphrase,
-          num_writing_correction: numWritingCorrection,
-          num_writing_transformation: numWritingTransformation,
-          num_writing_essay: numWritingEssay,
-          num_writing_sentence_builder: numWritingSentenceBuilder,
-          num_writing_picture_description: numWritingPictureDescription,
-          num_writing_email: numWritingEmail
-        }),
+        body: JSON.stringify(requestBody),
       });
       
       if (response.ok) {
@@ -11310,7 +11665,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               <div className="examen-detalle">
                                 <h4 className="examen-titulo">{examen.carpeta_nombre || 'Examen'}</h4>
                                 <div className="examen-nota-grande">
-                                  <span className="nota-valor">{examen.porcentaje.toFixed(1)}</span>
+                                  <span className="nota-valor">{(examen.porcentaje || 0).toFixed(1)}</span>
                                   <span className="nota-simbolo">%</span>
                                 </div>
                                 <div className="examen-fecha">
@@ -13889,13 +14244,6 @@ Shortcuts:
                                 }}>
                                   🧑‍💻 Generar Práctica
                                 </button>
-                                <button onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuAbierto(null);
-                                  generarExamenDesdeDocumento(doc);
-                                }}>
-                                  📝 Generar Examen
-                                </button>
                               </div>
                             )}
                           </div>
@@ -14241,12 +14589,12 @@ Shortcuts:
                             <div className="header-badges">
                               <span 
                                 className={`badge ${
-                                  examen.porcentaje >= 70 ? 'badge-success' : 
-                                  examen.porcentaje >= 50 ? 'badge-warning' : 
+                                  (examen.porcentaje || 0) >= 70 ? 'badge-success' : 
+                                  (examen.porcentaje || 0) >= 50 ? 'badge-warning' : 
                                   'badge-danger'
                                 }`}
                               >
-                                {examen.porcentaje.toFixed(1)}%
+                                {(examen.porcentaje || 0).toFixed(1)}%
                               </span>
                               <button 
                                 className="btn-menu-dots"
@@ -14259,6 +14607,15 @@ Shortcuts:
                               </button>
                               {menuAbierto === `examen-completado-${idx}` && (
                                 <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    const nombreArchivo = examen.archivo || 'ExamenGeneral.json';
+                                    const rutaCompleta = `extracciones/${examen.carpeta_ruta}/${nombreArchivo}`;
+                                    mostrarRutaArchivo(rutaCompleta, examen.carpeta_nombre, 'examen');
+                                  }}>
+                                    📍 Ver Ruta
+                                  </button>
                                   <button onClick={(e) => {
                                     e.stopPropagation();
                                     setMenuAbierto(null);
@@ -14284,12 +14641,12 @@ Shortcuts:
                               <div className="resultado-item">
                                 <span className="resultado-label">Estado:</span>
                                 <span className={`resultado-estado ${
-                                  examen.porcentaje >= 70 ? 'aprobado' : 
-                                  examen.porcentaje >= 50 ? 'regular' : 
+                                  (examen.porcentaje || 0) >= 70 ? 'aprobado' : 
+                                  (examen.porcentaje || 0) >= 50 ? 'regular' : 
                                   'reprobado'
                                 }`}>
-                                  {examen.porcentaje >= 70 ? '✅ Aprobado' : 
-                                   examen.porcentaje >= 50 ? '⚠️ Regular' : 
+                                  {(examen.porcentaje || 0) >= 70 ? '✅ Aprobado' : 
+                                   (examen.porcentaje || 0) >= 50 ? '⚠️ Regular' : 
                                    '❌ Reprobado'}
                                 </span>
                               </div>
@@ -14329,7 +14686,28 @@ Shortcuts:
 
         {selectedMenu === 'historial' && (
           <div className="content-section">
-            <h1>📅 Calendario de Repasos</h1>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
+              <h1>📅 Calendario de Repasos</h1>
+              <button 
+                onClick={() => recargarCalendarioRepasos()}
+                className="btn-recargar-calendario"
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+                title="Recargar datos del calendario"
+              >
+                🔄 Actualizar
+              </button>
+            </div>
             
             {/* Calendario de Repasos */}
             <div className="calendario-repasos">
@@ -14383,7 +14761,9 @@ Shortcuts:
                     tipo: '📋 Examen', 
                     tipoInterno: 'examen',
                     titulo: e.titulo || e.nombre || 'Examen sin título',
-                    preguntas: e.preguntas || []
+                    preguntas: e.preguntas || [],
+                    resultados: e.resultados || [], // ← CRÍTICO: incluir resultados con datos de spaced repetition
+                    respuestas: e.respuestas || {}
                   }))
                 ];
                 
@@ -14636,7 +15016,21 @@ Shortcuts:
                                 <div 
                                   key={idx} 
                                   className="detalle-item"
-                                  onClick={() => setItemMapaRepeticion(item)}
+                                  onClick={() => {
+                                    console.log('🔍 Abriendo modal para item:', item);
+                                    console.log('   - Tipo:', item.tipo);
+                                    console.log('   - Tiene preguntas:', !!item.preguntas, '- Num:', item.preguntas?.length);
+                                    console.log('   - Tiene resultados:', !!item.resultados, '- Num:', item.resultados?.length);
+                                    if (item.resultados?.length > 0) {
+                                      console.log('   - Primer resultado:', item.resultados[0]);
+                                      console.log('   - Campos del resultado:', Object.keys(item.resultados[0]));
+                                    }
+                                    if (item.preguntas?.length > 0) {
+                                      console.log('   - Primera pregunta:', item.preguntas[0]);
+                                      console.log('   - Campos de pregunta:', Object.keys(item.preguntas[0]));
+                                    }
+                                    setItemMapaRepeticion(item);
+                                  }}
                                 >
                                   <span className="item-icono">{item.tipo.split(' ')[0]}</span>
                                   <div className="item-texto">
@@ -14689,6 +15083,12 @@ Shortcuts:
                             onClick={() => setFiltroTipoHistorial('practica')}
                           >
                             🎯 Prácticas ({totalPracticas})
+                          </button>
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'examen' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('examen')}
+                          >
+                            📋 Exámenes ({totalExamenes})
                           </button>
                         </div>
                       </div>
@@ -14814,7 +15214,11 @@ Shortcuts:
                                     <div 
                                       key={itemIdx} 
                                       className="item-repaso item-repaso-clickable"
-                                      onClick={() => setItemMapaRepeticion(item)}
+                                      onClick={() => {
+                                        console.log('🔍 Abriendo modal (lista hoy):', item);
+                                        console.log('   - Tiene preguntas:', !!item.preguntas, '- Num:', item.preguntas?.length);
+                                        setItemMapaRepeticion(item);
+                                      }}
                                       title="Clic para ver mapa de repeticiones"
                                     >
                                       <span className="item-repaso-tipo">{item.tipo}</span>
@@ -14868,7 +15272,11 @@ Shortcuts:
                             <div 
                               key={idx} 
                               className="item-nuevo-card"
-                              onClick={() => setItemMapaRepeticion(item)}
+                              onClick={() => {
+                                console.log('🔍 Abriendo modal (items nuevos):', item);
+                                console.log('   - Tiene preguntas:', !!item.preguntas, '- Num:', item.preguntas?.length);
+                                setItemMapaRepeticion(item);
+                              }}
                               title="Clic para ver proyección de repeticiones"
                             >
                               <span className="item-nuevo-tipo">{item.tipo}</span>
@@ -15268,6 +15676,18 @@ Shortcuts:
                           >
                             📁 Guardar TXT en carpeta
                           </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rutaCompleta = nota.carpeta 
+                                ? `notas/${nota.carpeta}/notas.json`
+                                : 'notas/notas.json';
+                              mostrarRutaArchivo(rutaCompleta, nota.titulo, 'nota');
+                              setDropdownNotaAbierto(null);
+                            }}
+                          >
+                            📍 Ver Ruta
+                          </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -15441,7 +15861,35 @@ Shortcuts:
                       </h2>
                       <div className="practicas-grid">
                         {sinCompletar.map((practica) => (
-                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #ff9800'}}>
+                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #ff9800', position: 'relative'}}>
+                            {/* Menú de tres puntitos en esquina superior derecha */}
+                            <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `practica-progreso-${practica.id}` ? null : `practica-progreso-${practica.id}`);
+                                }}
+                                title="Más opciones"
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `practica-progreso-${practica.id}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    const rutaCompleta = practica.carpeta 
+                                      ? `extracciones/${practica.carpeta}/practicasArchivos.json`
+                                      : `extracciones/practicasArchivos.json`;
+                                    mostrarRutaArchivo(rutaCompleta, practica.ruta?.split('/').pop() || 'Práctica', 'practica');
+                                  }}>
+                                    📍 Ver Ruta
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
                             <div className="practica-header">
                               <div className="practica-icon">
                                 {practica.tipo === 'documento' ? '📄' : '📁'}
@@ -15519,25 +15967,7 @@ Shortcuts:
                               </button>
                               <button 
                                 className="btn-eliminar"
-                                onClick={async () => {
-                                  if (confirm(`¿Eliminar esta práctica?`)) {
-                                    const carpeta = practica.carpeta || '';
-                                    
-                                    try {
-                                      // 🔥 ELIMINAR USANDO ENDPOINT DELETE
-                                      const response = await fetch(`${API_URL}/datos/practicas/${practica.id}?carpeta=${encodeURIComponent(carpeta)}`, {
-                                        method: 'DELETE'
-                                      });
-                                      
-                                      if (response.ok) {
-                                        const todasPracticas = await getDatos('practicas');
-                                        setPracticas(todasPracticas);
-                                      }
-                                    } catch (error) {
-                                      console.error('Error eliminando práctica:', error);
-                                    }
-                                  }
-                                }}
+                                onClick={() => eliminarPractica(practica)}
                                 title="Eliminar práctica"
                               >
                                 🗑️
@@ -15557,7 +15987,35 @@ Shortcuts:
                       </h2>
                       <div className="practicas-grid">
                         {completadas.map((practica) => (
-                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #4caf50'}}>
+                          <div key={practica.id} className="practica-card" style={{borderLeft: '4px solid #4caf50', position: 'relative'}}>
+                            {/* Menú de tres puntitos en esquina superior derecha */}
+                            <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `practica-${practica.id}` ? null : `practica-${practica.id}`);
+                                }}
+                                title="Más opciones"
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `practica-${practica.id}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    const rutaCompleta = practica.carpeta 
+                                      ? `extracciones/${practica.carpeta}/practicasArchivos.json`
+                                      : `extracciones/practicasArchivos.json`;
+                                    mostrarRutaArchivo(rutaCompleta, practica.ruta?.split('/').pop() || 'Práctica', 'practica');
+                                  }}>
+                                    📍 Ver Ruta
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
                             <div className="practica-header">
                               <div className="practica-icon">
                                 {practica.tipo === 'documento' ? '📄' : '📁'}
@@ -15720,25 +16178,7 @@ Shortcuts:
                               </button>
                               <button 
                                 className="btn-eliminar"
-                                onClick={async () => {
-                                  if (confirm(`¿Eliminar esta práctica?`)) {
-                                    const carpeta = practica.carpeta || '';
-                                    
-                                    try {
-                                      // 🔥 ELIMINAR USANDO ENDPOINT DELETE
-                                      const response = await fetch(`${API_URL}/datos/practicas/${practica.id}?carpeta=${encodeURIComponent(carpeta)}`, {
-                                        method: 'DELETE'
-                                      });
-                                      
-                                      if (response.ok) {
-                                        const todasPracticas = await getDatos('practicas');
-                                        setPracticas(todasPracticas);
-                                      }
-                                    } catch (error) {
-                                      console.error('Error eliminando práctica:', error);
-                                    }
-                                  }
-                                }}
+                                onClick={() => eliminarPractica(practica)}
                                 title="Eliminar práctica"
                               >
                                 🗑️
@@ -16099,12 +16539,36 @@ Shortcuts:
                                     📋
                                   </button>
                                   <button 
-                                    className="btn-flashcard-action danger"
-                                    onClick={() => eliminarFlashcard(flashcard.id)}
-                                    title="Eliminar"
+                                    className="btn-menu-dots"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMenuAbierto(menuAbierto === `flashcard-${flashcard.id}` ? null : `flashcard-${flashcard.id}`);
+                                    }}
+                                    title="Más opciones"
                                   >
-                                    🗑️
+                                    ⋮
                                   </button>
+                                  {menuAbierto === `flashcard-${flashcard.id}` && (
+                                    <div className="menu-dropdown">
+                                      <button onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuAbierto(null);
+                                        const rutaCompleta = flashcard.carpeta 
+                                          ? `flashcards/${flashcard.carpeta}/flashcards.json`
+                                          : 'flashcards/flashcards.json';
+                                        mostrarRutaArchivo(rutaCompleta, flashcard.titulo, 'flashcard');
+                                      }}>
+                                        📍 Ver Ruta
+                                      </button>
+                                      <button onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMenuAbierto(null);
+                                        eliminarFlashcard(flashcard.id);
+                                      }} className="btn-menu-eliminar">
+                                        🗑️ Eliminar
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -20500,9 +20964,9 @@ Shortcuts:
                       <div className="resultado-puntuacion">
                         <h3>Calificación: {resultadoExamen.puntos_obtenidos} / {resultadoExamen.puntos_totales}</h3>
                         <div className="resultado-porcentaje" style={{
-                          color: resultadoExamen.porcentaje >= 70 ? '#22c55e' : resultadoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                          color: (resultadoExamen.porcentaje || 0) >= 70 ? '#22c55e' : (resultadoExamen.porcentaje || 0) >= 50 ? '#fbbf24' : '#ef4444'
                         }}>
-                          {resultadoExamen.porcentaje.toFixed(1)}%
+                          {(resultadoExamen.porcentaje || 0).toFixed(1)}%
                         </div>
                       </div>
                       
@@ -20654,16 +21118,16 @@ Shortcuts:
                   <div className="resultado-puntuacion">
                     <h3>Calificación: {viendoExamen.puntos_obtenidos} / {viendoExamen.puntos_totales}</h3>
                     <div className="resultado-porcentaje" style={{
-                      color: viendoExamen.porcentaje >= 70 ? '#22c55e' : viendoExamen.porcentaje >= 50 ? '#fbbf24' : '#ef4444'
+                      color: (viendoExamen.porcentaje || 0) >= 70 ? '#22c55e' : (viendoExamen.porcentaje || 0) >= 50 ? '#fbbf24' : '#ef4444'
                     }}>
-                      {viendoExamen.porcentaje.toFixed(1)}%
+                      {(viendoExamen.porcentaje || 0).toFixed(1)}%
                     </div>
                   </div>
                   
                   <div className="resultado-estado">
-                    {viendoExamen.porcentaje >= 70 ? (
+                    {(viendoExamen.porcentaje || 0) >= 70 ? (
                       <span className="estado-aprobado">✅ APROBADO</span>
-                    ) : viendoExamen.porcentaje >= 50 ? (
+                    ) : (viendoExamen.porcentaje || 0) >= 50 ? (
                       <span className="estado-regular">⚠️ REGULAR</span>
                     ) : (
                       <span className="estado-reprobado">❌ REPROBADO</span>
@@ -20672,7 +21136,8 @@ Shortcuts:
                 </div>
 
                 <div className="resultados-detalle">
-                  {viendoExamen.resultados.map((resultado, index) => (
+                  {viendoExamen.resultados && Array.isArray(viendoExamen.resultados) && viendoExamen.resultados.length > 0 ? (
+                    viendoExamen.resultados.map((resultado, index) => (
                     <div key={index} className="resultado-pregunta">
                       <div className="resultado-pregunta-header">
                         <span className="pregunta-numero">Pregunta {index + 1}</span>
@@ -20706,7 +21171,13 @@ Shortcuts:
                         <p>{resultado.feedback}</p>
                       </div>
                     </div>
-                  ))}
+                  ))
+                  ) : (
+                    <div className="sin-resultados">
+                      <p>⚠️ No hay resultados detallados disponibles para este examen.</p>
+                      <p className="hint">Este examen puede haber sido creado con una versión anterior del sistema.</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="examen-acciones">
@@ -20737,6 +21208,98 @@ Shortcuts:
               </div>
               
               <div className="modal-body">
+                {/* 🔥 LISTA DE DOCUMENTOS QUE SE CARGARÁN */}
+                {documentosPractica.length > 0 && (
+                  <div className="config-section" style={{
+                    marginBottom: '1.5rem',
+                    padding: '1rem',
+                    background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
+                    borderRadius: '12px',
+                    border: '2px solid rgba(59, 130, 246, 0.3)'
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '0.75rem'
+                    }}>
+                      <h3 style={{
+                        margin: 0,
+                        fontSize: '1.1rem',
+                        fontWeight: '600',
+                        color: '#93c5fd',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        📚 Documentos que se cargarán al modelo
+                        <span style={{
+                          background: '#3b82f6',
+                          color: 'white',
+                          padding: '2px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.9rem',
+                          fontWeight: 'bold'
+                        }}>
+                          {documentosPractica.length}
+                        </span>
+                      </h3>
+                    </div>
+                    
+                    {cargandoDocumentosPractica ? (
+                      <div style={{
+                        textAlign: 'center',
+                        padding: '1rem',
+                        color: '#cbd5e1',
+                        fontSize: '0.95rem'
+                      }}>
+                        🔄 Cargando documentos...
+                      </div>
+                    ) : (
+                      <div style={{
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        background: 'rgba(15, 23, 42, 0.5)',
+                        borderRadius: '8px',
+                        padding: '0.5rem'
+                      }}>
+                        {documentosPractica.map((doc, idx) => (
+                          <div key={idx} style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.5rem',
+                            marginBottom: '0.25rem',
+                            background: 'rgba(30, 41, 59, 0.8)',
+                            borderRadius: '6px',
+                            color: '#e2e8f0',
+                            fontSize: '0.9rem'
+                          }}>
+                            <span style={{fontSize: '1.2rem'}}>📄</span>
+                            <span style={{flex: 1}}>{doc.nombre}</span>
+                            <span style={{
+                              color: '#94a3b8',
+                              fontSize: '0.85rem'
+                            }}>
+                              {doc.tamaño_kb > 0 ? `${doc.tamaño_kb.toFixed(1)} KB` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <p style={{
+                      marginTop: '0.75rem',
+                      marginBottom: 0,
+                      fontSize: '0.85rem',
+                      color: '#cbd5e1',
+                      lineHeight: '1.4'
+                    }}>
+                      💡 El modelo generará preguntas basándose en el contenido de {tipoFuentePractica === 'documento' ? 'este documento' : 'todos estos documentos'}.
+                    </p>
+                  </div>
+                )}
+                
                 {/* Flashcards */}
                 <details className="practice-type-section" open>
                   <summary className="practice-type-header">
@@ -21608,7 +22171,7 @@ Shortcuts:
                   <div className="info-icon">ℹ️</div>
                   <div className="info-content">
                     <p><strong>Total:</strong> {numFlashcards + numMCQ + numVerdaderoFalso + numCloze + numRespuestaCorta + numOpenQuestion + numCasoEstudio + numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail} preguntas</p>
-                    <p><strong>Fuente:</strong> {tipoFuentePractica === 'documento' ? 'Documento' : 'Carpeta + subcarpetas'}</p>
+                    <p><strong>Fuente:</strong> {tipoFuentePractica === 'documento' ? 'Documento único' : `Carpeta completa (${documentosPractica.length} documentos)`}</p>
                     <p><strong>Carpeta:</strong> {carpetaPractica || 'Raíz'}</p>
                   </div>
                 </div>
@@ -28849,33 +29412,438 @@ Shortcuts:
                           </div>
                         )}
                       </div>
+                      
+                      {/* 🔥 Estadísticas de Respuestas (Correctas/Incorrectas) */}
+                      {(itemMapaRepeticion.tipo?.includes('🎯') || itemMapaRepeticion.tipo?.includes('📋')) && 
+                       itemMapaRepeticion.preguntas && itemMapaRepeticion.preguntas.length > 0 && (
+                        <div className="mapa-estadisticas-respuestas">
+                          {(() => {
+                            // 🐛 DEBUG: Ver datos del item
+                            console.log('🔍 Item para estadísticas:', {
+                              tipo: itemMapaRepeticion.tipo,
+                              tienePreguntas: !!itemMapaRepeticion.preguntas,
+                              numPreguntas: itemMapaRepeticion.preguntas?.length,
+                              tieneResultados: !!itemMapaRepeticion.resultados,
+                              numResultados: itemMapaRepeticion.resultados?.length,
+                              tieneRespuestas: !!itemMapaRepeticion.respuestas,
+                              primerasPreguntasIds: itemMapaRepeticion.preguntas?.slice(0, 2).map(p => p.id),
+                              resultadosIds: itemMapaRepeticion.resultados?.slice(0, 2).map(r => r.id)
+                            });
+                            
+                            // Calcular estadísticas de respuestas
+                            let correctas = 0;
+                            let incorrectas = 0;
+                            let sinResponder = 0;
+                            
+                            itemMapaRepeticion.preguntas.forEach(pregunta => {
+                              // Para exámenes completados: usar resultados
+                              if (itemMapaRepeticion.resultados && Array.isArray(itemMapaRepeticion.resultados)) {
+                                const resultado = itemMapaRepeticion.resultados.find(r => r.id === pregunta.id);
+                                if (resultado) {
+                                  if (resultado.puntos > 0) {
+                                    correctas++;
+                                  } else if (resultado.respuesta_usuario) {
+                                    incorrectas++;
+                                  } else {
+                                    sinResponder++;
+                                  }
+                                }
+                              }
+                              // Para prácticas: usar respuestas
+                              else if (itemMapaRepeticion.respuestas) {
+                                const respuesta = itemMapaRepeticion.respuestas[pregunta.id];
+                                if (respuesta !== undefined && respuesta !== null && respuesta !== '') {
+                                  // Verificar si es correcta comparando con respuesta_correcta
+                                  if (pregunta.respuesta_correcta) {
+                                    if (String(respuesta).toLowerCase().trim() === String(pregunta.respuesta_correcta).toLowerCase().trim()) {
+                                      correctas++;
+                                    } else {
+                                      incorrectas++;
+                                    }
+                                  } else {
+                                    // Si no hay respuesta correcta, contar como respondida
+                                    correctas++;
+                                  }
+                                } else {
+                                  sinResponder++;
+                                }
+                              } else {
+                                sinResponder++;
+                              }
+                            });
+                            
+                            const total = itemMapaRepeticion.preguntas.length;
+                            const porcentajeCorrectas = total > 0 ? (correctas / total * 100) : 0;
+                            
+                            // 🔥 CALCULAR PRÓXIMAS REPETICIONES SEGÚN SM-2
+                            const calcularProximaRevision = (calidad) => {
+                              const hoy = new Date();
+                              let intervalo;
+                              
+                              if (calidad >= 3) {
+                                // Respuesta correcta (Fácil: 5, Bien: 4, Normal: 3)
+                                const repeticiones = itemMapaRepeticion.repeticiones || 0;
+                                const facilidad = itemMapaRepeticion.facilidad || 2.5;
+                                
+                                if (repeticiones === 0) {
+                                  intervalo = 1; // 1 día
+                                } else if (repeticiones === 1) {
+                                  intervalo = 6; // 6 días
+                                } else {
+                                  intervalo = Math.round((itemMapaRepeticion.intervalo || 1) * facilidad);
+                                }
+                              } else {
+                                // Respuesta incorrecta (Difícil: 2, Muy difícil: 1, Error: 0)
+                                intervalo = 1; // Reiniciar a 1 día
+                              }
+                              
+                              const fechaProxima = new Date(hoy);
+                              fechaProxima.setDate(fechaProxima.getDate() + intervalo);
+                              
+                              return {
+                                intervalo,
+                                fecha: fechaProxima.toLocaleDateString('es-ES', {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short'
+                                })
+                              };
+                            };
+                            
+                            const proximaCorrecta = calcularProximaRevision(4); // Calidad "Bien"
+                            const proximaIncorrecta = calcularProximaRevision(0); // Calidad "Error"
+                            
+                            return (
+                              <>
+                              <div className="estadisticas-respuestas-grid">
+                                <div className="stat-card stat-correctas">
+                                  <div className="stat-icon">✅</div>
+                                  <div className="stat-content">
+                                    <div className="stat-numero">{correctas}</div>
+                                    <div className="stat-etiqueta">Correctas</div>
+                                    <div className="stat-porcentaje">{porcentajeCorrectas.toFixed(0)}%</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="stat-card stat-incorrectas">
+                                  <div className="stat-icon">❌</div>
+                                  <div className="stat-content">
+                                    <div className="stat-numero">{incorrectas}</div>
+                                    <div className="stat-etiqueta">Incorrectas</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="stat-card stat-pendientes">
+                                  <div className="stat-icon">⏸️</div>
+                                  <div className="stat-content">
+                                    <div className="stat-numero">{sinResponder}</div>
+                                    <div className="stat-etiqueta">Sin Responder</div>
+                                  </div>
+                                </div>
+                                
+                                <div className="stat-card stat-total">
+                                  <div className="stat-icon">📊</div>
+                                  <div className="stat-content">
+                                    <div className="stat-numero">{total}</div>
+                                    <div className="stat-etiqueta">Total Preguntas</div>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Proyección de próximas repeticiones */}
+                              <div className="mapa-proyeccion-repeticiones">
+                                <h4>📅 Proyección de Próximas Repeticiones</h4>
+                                <div className="proyeccion-grid">
+                                  <div className="proyeccion-card proyeccion-correctas">
+                                    <div className="proyeccion-header">
+                                      <span className="proyeccion-icon">✅</span>
+                                      <span className="proyeccion-titulo">Si respondes correctamente</span>
+                                    </div>
+                                    <div className="proyeccion-body">
+                                      <div className="proyeccion-intervalo">
+                                        <span className="intervalo-numero">{proximaCorrecta.intervalo}</span>
+                                        <span className="intervalo-unidad">{proximaCorrecta.intervalo === 1 ? 'día' : 'días'}</span>
+                                      </div>
+                                      <div className="proyeccion-fecha">
+                                        Próxima revisión: <strong>{proximaCorrecta.fecha}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="proyeccion-card proyeccion-incorrectas">
+                                    <div className="proyeccion-header">
+                                      <span className="proyeccion-icon">❌</span>
+                                      <span className="proyeccion-titulo">Si respondes incorrectamente</span>
+                                    </div>
+                                    <div className="proyeccion-body">
+                                      <div className="proyeccion-intervalo">
+                                        <span className="intervalo-numero">{proximaIncorrecta.intervalo}</span>
+                                        <span className="intervalo-unidad">{proximaIncorrecta.intervalo === 1 ? 'día' : 'días'}</span>
+                                      </div>
+                                      <div className="proyeccion-fecha">
+                                        Próxima revisión: <strong>{proximaIncorrecta.fecha}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Preguntas a repasar (para prácticas y exámenes) */}
-                    {(itemMapaRepeticion.tipo?.includes('🎯') || itemMapaRepeticion.tipo?.includes('📝 Examen')) && itemMapaRepeticion.preguntas && itemMapaRepeticion.preguntas.length > 0 && (
+                    {(itemMapaRepeticion.tipo?.includes('🎯') || itemMapaRepeticion.tipo?.includes('📋')) && itemMapaRepeticion.preguntas && itemMapaRepeticion.preguntas.length > 0 && (
                       <div className="mapa-preguntas-repaso">
-                        <h4>📋 Preguntas a Repasar ({itemMapaRepeticion.preguntas.length})</h4>
+                        <h4>📋 Preguntas con Proyección de Repetición ({itemMapaRepeticion.preguntas.length})</h4>
                         <div className="preguntas-lista-preview">
-                          {itemMapaRepeticion.preguntas.slice(0, 5).map((pregunta, idx) => (
-                            <div key={idx} className="pregunta-preview-item">
-                              <span className="pregunta-numero">#{idx + 1}</span>
-                              <div className="pregunta-info">
-                                <span className="pregunta-tipo">[{pregunta.tipo?.toUpperCase() || 'PREGUNTA'}]</span>
-                                <span className="pregunta-texto">
-                                  {pregunta.pregunta?.substring(0, 80) || 'Sin texto'}
-                                  {pregunta.pregunta?.length > 80 ? '...' : ''}
-                                </span>
-                                {pregunta.puntos && (
-                                  <span className="pregunta-puntos">{pregunta.puntos} pts</span>
-                                )}
+                          {itemMapaRepeticion.preguntas.map((pregunta, idx) => {
+                            // 🔥 Buscar la fecha programada en múltiples lugares
+                            let proximaRevisionProgramada = null;
+                            let mostrarProyeccion = true;
+                            let datosSpacedRepetition = null;
+                            
+                            // 1. Buscar en la pregunta misma
+                            if (pregunta.proximaRevision) {
+                              const fechaProgramada = new Date(pregunta.proximaRevision);
+                              const hoy = new Date();
+                              const diffTime = fechaProgramada.getTime() - hoy.getTime();
+                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                              
+                              proximaRevisionProgramada = {
+                                intervalo: pregunta.intervalo || 1,
+                                facilidad: pregunta.facilidad || 2.5,
+                                repeticiones: pregunta.repeticiones || 0,
+                                fechaCompleta: fechaProgramada.toLocaleDateString('es-ES', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                }),
+                                diasRestantes: diffDays
+                              };
+                              mostrarProyeccion = false;
+                            }
+                            
+                            // 2. Buscar en los resultados del examen/práctica (si fue completado)
+                            // Para exámenes: itemMapaRepeticion.resultados
+                            // Para prácticas: itemMapaRepeticion.resultado.resultados
+                            const resultadosArray = itemMapaRepeticion.resultados || itemMapaRepeticion.resultado?.resultados;
+                            
+                            if (!proximaRevisionProgramada && resultadosArray && Array.isArray(resultadosArray)) {
+                              // Primero intentar por índice (el orden se preserva), luego por coincidencia de texto
+                              const resultado = resultadosArray[idx] || 
+                                               resultadosArray.find(r => 
+                                                 r.pregunta === pregunta.pregunta || 
+                                                 r.pregunta === pregunta.texto ||
+                                                 r.id === pregunta.id
+                                               );
+                              
+                              if (idx === 0) {
+                                console.log(`🔎 [Pregunta #${idx + 1}] Buscando en resultados:`);
+                                console.log('   - resultadosArray length:', resultadosArray.length);
+                                console.log('   - pregunta.pregunta:', pregunta.pregunta?.substring(0, 50));
+                                console.log('   - pregunta.texto:', pregunta.texto?.substring(0, 50));
+                                console.log('   - pregunta.id:', pregunta.id);
+                                console.log('   - Resultado encontrado:', !!resultado);
+                                if (resultado) {
+                                  console.log('   - resultado.pregunta:', resultado.pregunta?.substring(0, 50));
+                                  console.log('   - resultado.id:', resultado.id);
+                                  console.log('   - resultado.proximaRevision:', resultado.proximaRevision);
+                                  console.log('   - resultado.intervalo:', resultado.intervalo);
+                                  console.log('   - resultado.puntos:', resultado.puntos);
+                                }
+                              }
+                              if (resultado && resultado.proximaRevision) {
+                                const fechaProgramada = new Date(resultado.proximaRevision);
+                                const hoy = new Date();
+                                const diffTime = fechaProgramada.getTime() - hoy.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                
+                                proximaRevisionProgramada = {
+                                  intervalo: resultado.intervalo || 1,
+                                  facilidad: resultado.facilidad || 2.5,
+                                  repeticiones: resultado.repeticiones || 0,
+                                  fechaCompleta: fechaProgramada.toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  }),
+                                  diasRestantes: diffDays
+                                };
+                                
+                                datosSpacedRepetition = {
+                                  intervalo: resultado.intervalo,
+                                  facilidad: resultado.facilidad,
+                                  repeticiones: resultado.repeticiones,
+                                  estadoRevision: resultado.estadoRevision
+                                };
+                                mostrarProyeccion = false;
+                              }
+                            }
+                            
+                            // 3. Buscar en respuestas de práctica
+                            if (!proximaRevisionProgramada && itemMapaRepeticion.respuestas) {
+                              // Las prácticas guardan datos de spaced repetition por pregunta
+                              const preguntaConDatos = itemMapaRepeticion.preguntas[idx];
+                              if (preguntaConDatos && preguntaConDatos.proximaRevision) {
+                                const fechaProgramada = new Date(preguntaConDatos.proximaRevision);
+                                const hoy = new Date();
+                                const diffTime = fechaProgramada.getTime() - hoy.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                
+                                proximaRevisionProgramada = {
+                                  intervalo: preguntaConDatos.intervalo || 1,
+                                  facilidad: preguntaConDatos.facilidad || 2.5,
+                                  repeticiones: preguntaConDatos.repeticiones || 0,
+                                  fechaCompleta: fechaProgramada.toLocaleDateString('es-ES', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric'
+                                  }),
+                                  diasRestantes: diffDays
+                                };
+                                mostrarProyeccion = false;
+                              }
+                            }
+                            
+                            // Calcular próxima repetición para esta pregunta específica (solo si no está programada)
+                            const calcularProximaRevisionPregunta = (calidad) => {
+                              const hoy = new Date();
+                              let intervalo;
+                              
+                              // Usar datos de la pregunta individual si existen, si no usar del item general
+                              const repeticiones = pregunta.repeticiones ?? itemMapaRepeticion.repeticiones ?? 0;
+                              const facilidad = pregunta.facilidad ?? itemMapaRepeticion.facilidad ?? 2.5;
+                              const intervaloActual = pregunta.intervalo ?? itemMapaRepeticion.intervalo ?? 1;
+                              
+                              if (calidad >= 3) {
+                                // Respuesta correcta
+                                if (repeticiones === 0) {
+                                  intervalo = 1;
+                                } else if (repeticiones === 1) {
+                                  intervalo = 6;
+                                } else {
+                                  intervalo = Math.round(intervaloActual * facilidad);
+                                }
+                              } else {
+                                // Respuesta incorrecta - reiniciar
+                                intervalo = 1;
+                              }
+                              
+                              const fechaProxima = new Date(hoy);
+                              fechaProxima.setDate(fechaProxima.getDate() + intervalo);
+                              
+                              return {
+                                intervalo,
+                                fecha: fechaProxima.toLocaleDateString('es-ES', {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short'
+                                }),
+                                fechaCompleta: fechaProxima.toLocaleDateString('es-ES', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })
+                              };
+                            };
+                            
+                            const proximaCorrecta = mostrarProyeccion ? calcularProximaRevisionPregunta(4) : null;
+                            const proximaIncorrecta = mostrarProyeccion ? calcularProximaRevisionPregunta(0) : null;
+                            
+                            // Determinar si la pregunta fue respondida correctamente
+                            let estadoRespuesta = 'sin-responder';
+                            // Buscar en resultados (exámenes) o resultado.resultados (prácticas)
+                            const resultadosParaEstado = itemMapaRepeticion.resultados || itemMapaRepeticion.resultado?.resultados;
+                            
+                            if (resultadosParaEstado && Array.isArray(resultadosParaEstado)) {
+                              // Buscar por índice primero (más confiable), luego por texto/id
+                              const resultado = resultadosParaEstado[idx] || 
+                                               resultadosParaEstado.find(r => 
+                                                 r.pregunta === pregunta.pregunta || 
+                                                 r.pregunta === pregunta.texto ||
+                                                 r.id === pregunta.id
+                                               );
+                              if (resultado) {
+                                estadoRespuesta = resultado.puntos > 0 ? 'correcta' : 'incorrecta';
+                              }
+                            } else if (itemMapaRepeticion.respuestas) {
+                              const respuesta = itemMapaRepeticion.respuestas[pregunta.id];
+                              if (respuesta !== undefined && respuesta !== null && respuesta !== '') {
+                                if (pregunta.respuesta_correcta) {
+                                  estadoRespuesta = String(respuesta).toLowerCase().trim() === String(pregunta.respuesta_correcta).toLowerCase().trim() ? 'correcta' : 'incorrecta';
+                                }
+                              }
+                            }
+                            
+                            return (
+                              <div key={idx} className={`pregunta-preview-item estado-${estadoRespuesta}`}>
+                                <span className="pregunta-numero">#{idx + 1}</span>
+                                <div className="pregunta-info">
+                                  <div className="pregunta-header-row">
+                                    <span className="pregunta-tipo">[{pregunta.tipo?.toUpperCase() || 'PREGUNTA'}]</span>
+                                    {estadoRespuesta === 'correcta' && <span className="estado-badge correcta">✅ Correcta</span>}
+                                    {estadoRespuesta === 'incorrecta' && <span className="estado-badge incorrecta">❌ Incorrecta</span>}
+                                    {estadoRespuesta === 'sin-responder' && <span className="estado-badge pendiente">⏸️ Pendiente</span>}
+                                  </div>
+                                  <span className="pregunta-texto">
+                                    {pregunta.pregunta?.substring(0, 120) || 'Sin texto'}
+                                    {pregunta.pregunta?.length > 120 ? '...' : ''}
+                                  </span>
+                                  
+                                  {/* Proyección de repetición para esta pregunta */}
+                                  <div className="pregunta-proyeccion">
+                                    {proximaRevisionProgramada ? (
+                                      // Mostrar la fecha ya programada
+                                      <div className="proyeccion-programada">
+                                        <div className="proyeccion-programada-header">
+                                          <span className="proyeccion-mini-icon">📅</span>
+                                          <span className="proyeccion-mini-texto">
+                                            Próxima revisión programada: <strong>{proximaRevisionProgramada.fechaCompleta}</strong>
+                                            <span className="proyeccion-mini-intervalo">
+                                              ({proximaRevisionProgramada.diasRestantes > 0 
+                                                ? `en ${proximaRevisionProgramada.diasRestantes}d` 
+                                                : proximaRevisionProgramada.diasRestantes === 0 
+                                                  ? 'hoy' 
+                                                  : `hace ${Math.abs(proximaRevisionProgramada.diasRestantes)}d`})
+                                            </span>
+                                          </span>
+                                        </div>
+                                        <span className="proyeccion-mini-detalle">
+                                          Intervalo actual: <strong>{proximaRevisionProgramada.intervalo}</strong> días • 
+                                          Facilidad: <strong>{proximaRevisionProgramada.facilidad.toFixed(1)}</strong> • 
+                                          Repeticiones: <strong>{proximaRevisionProgramada.repeticiones}×</strong>
+                                          {datosSpacedRepetition?.estadoRevision && (
+                                            <> • Estado: <strong>{datosSpacedRepetition.estadoRevision}</strong></>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      // Mostrar proyección para próximas respuestas
+                                      <>
+                                        <div className="proyeccion-mini correcta">
+                                          <span className="proyeccion-mini-icon">✅</span>
+                                          <span className="proyeccion-mini-texto">
+                                            Si aciertas: <strong>{proximaCorrecta.fechaCompleta}</strong>
+                                            <span className="proyeccion-mini-intervalo">({proximaCorrecta.intervalo}d)</span>
+                                          </span>
+                                        </div>
+                                        <div className="proyeccion-mini incorrecta">
+                                          <span className="proyeccion-mini-icon">❌</span>
+                                          <span className="proyeccion-mini-texto">
+                                            Si fallas: <strong>{proximaIncorrecta.fechaCompleta}</strong>
+                                            <span className="proyeccion-mini-intervalo">({proximaIncorrecta.intervalo}d)</span>
+                                          </span>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                          {itemMapaRepeticion.preguntas.length > 5 && (
-                            <div className="preguntas-mas">
-                              + {itemMapaRepeticion.preguntas.length - 5} pregunta{itemMapaRepeticion.preguntas.length - 5 > 1 ? 's' : ''} más
-                            </div>
-                          )}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -29134,6 +30102,75 @@ Shortcuts:
                   </>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ver Ruta de Archivo */}
+      {modalRutaAbierto && (
+        <div className="modal-overlay" onClick={() => setModalRutaAbierto(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '600px'}}>
+            <div className="modal-header">
+              <h2>📍 Ruta del Archivo</h2>
+              <button className="btn-close-modal" onClick={() => setModalRutaAbierto(false)}>✕</button>
+            </div>
+            
+            <div className="modal-body">
+              <div style={{marginBottom: '1.5rem'}}>
+                <label style={{display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#888'}}>
+                  Nombre:
+                </label>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'rgba(255,255,255,0.05)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  wordBreak: 'break-word'
+                }}>
+                  {nombreArchivoSeleccionado}
+                </div>
+              </div>
+
+              <div style={{marginBottom: '1.5rem'}}>
+                <label style={{display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#888'}}>
+                  Ruta completa:
+                </label>
+                <div style={{
+                  padding: '0.75rem',
+                  background: 'rgba(255,255,255,0.05)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  fontFamily: 'monospace',
+                  fontSize: '0.9rem',
+                  wordBreak: 'break-all',
+                  maxHeight: '150px',
+                  overflowY: 'auto'
+                }}>
+                  {rutaArchivoSeleccionado}
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button 
+                  className="btn-primary"
+                  onClick={copiarRutaAlPortapapeles}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    justifyContent: 'center'
+                  }}
+                >
+                  📋 Copiar Ruta
+                </button>
+                <button 
+                  className="btn-secondary"
+                  onClick={() => setModalRutaAbierto(false)}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
