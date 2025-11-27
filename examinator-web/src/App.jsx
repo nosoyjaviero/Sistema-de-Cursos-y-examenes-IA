@@ -2667,7 +2667,9 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     if (nuevaFacilidad < 1.3) nuevaFacilidad = 1.3;
     
     // Calcular próxima fecha de revisión
+    // 🔥 NORMALIZAR AL INICIO DEL DÍA (00:00:00) para evitar bug de comparación por hora
     const proximaFecha = new Date();
+    proximaFecha.setHours(0, 0, 0, 0);
     proximaFecha.setDate(proximaFecha.getDate() + nuevoIntervalo);
     
     const itemActualizado = {
@@ -2780,19 +2782,23 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       }
       
       // 🔥 REGLA 4: Si tiene proximaRevision, verificar si ya llegó la fecha
+      // Comparar solo DÍA CALENDARIO, no hora exacta
       const fechaRevision = new Date(item.proximaRevision);
-      const debeRepasar = fechaRevision <= ahora;
+      const diaRevision = new Date(fechaRevision.getFullYear(), fechaRevision.getMonth(), fechaRevision.getDate());
+      const diaHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
+      const debeRepasar = diaRevision <= diaHoy;
       
       if (debeRepasar) {
         console.log(`✅ INCLUIDO (fecha llegada, ${revisionesHoy}/2 revisiones): ${titulo}`, {
-          proximaRevision: fechaRevision.toISOString(),
-          ahora: ahora.toISOString(),
+          diaRevision: diaRevision.toISOString().split('T')[0],
+          diaHoy: diaHoy.toISOString().split('T')[0],
           revisionesHoy: revisionesHoy
         });
       } else {
         console.log(`⏭️ EXCLUIDO (fecha no llegada): ${titulo}`, {
-          proximaRevision: fechaRevision.toISOString(),
-          faltanHoras: Math.round((fechaRevision - ahora) / (1000 * 60 * 60))
+          diaRevision: diaRevision.toISOString().split('T')[0],
+          diaHoy: diaHoy.toISOString().split('T')[0],
+          faltanDias: Math.round((diaRevision - diaHoy) / (1000 * 60 * 60 * 24))
         });
       }
       
@@ -7559,124 +7565,8 @@ JSON:`
           console.log('⚠️ No se encontró práctica activa para actualizar');
         }
         
-        // 🔥 CONVERTIR ERRORES Y ACIERTOS EN FLASHCARDS AUTOMÁTICAMENTE
-        if (data.resultados && Array.isArray(data.resultados)) {
-          const ahora = new Date();
-          const manana = new Date(ahora);
-          manana.setDate(manana.getDate() + 1);
-          
-          const errores = data.resultados.filter(r => {
-            const porcentaje = (r.puntos / r.puntos_maximos) * 100;
-            return porcentaje < 60; // Menos de 60% = error
-          });
-          
-          const aciertos = data.resultados.filter(r => {
-            const porcentaje = (r.puntos / r.puntos_maximos) * 100;
-            return porcentaje >= 60; // 60% o más = acierto
-          });
-          
-          // 🎯 ERRORES: Revisión mañana
-          if (errores.length > 0) {
-            console.log(`🎯 Creando ${errores.length} flashcards de errores`);
-            
-            for (const error of errores) {
-              const nuevaFlashcard = {
-                id: Date.now() + Math.random(),
-                tipo: 'clasica',
-                titulo: error.pregunta,
-                contenido: error.respuesta_correcta || error.feedback || '',
-                opciones: error.opciones || [],
-                respuestaCorrecta: error.respuesta_correcta || '',
-                explicacion: error.feedback || '',
-                tema: 'Error de examen',
-                subtema: '',
-                carpeta: carpetaExamen?.ruta || 'Sin carpeta',
-                fecha: ahora.toISOString(),
-                fecha_creacion: ahora.toISOString(),
-                proximaRevision: manana.toISOString(), // 🔥 Próxima revisión MAÑANA
-                intervalo: 1,
-                repeticiones: 0,
-                facilidad: 2.5,
-                estadoRevision: 'nueva',
-                archivos: [],
-                imagenes: [],
-                latex: false,
-                dificultad: 'medio'
-              };
-              
-              // Guardar flashcard en carpeta
-              try {
-                await fetch(`${API_URL}/datos/flashcards/carpeta`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    flashcard: nuevaFlashcard,
-                    carpeta: carpetaExamen?.ruta || 'Sin carpeta'
-                  })
-                });
-              } catch (error) {
-                console.error('Error guardando flashcard de error:', error);
-              }
-            }
-            console.log(`✅ ${errores.length} flashcards de errores creadas para revisión mañana`);
-          }
-          
-          // ✅ ACIERTOS: Revisión entre 3 y 10 días
-          if (aciertos.length > 0) {
-            console.log(`✅ Creando ${aciertos.length} flashcards de aciertos`);
-            
-            for (const acierto of aciertos) {
-              const diasAleatorios = Math.floor(Math.random() * 8) + 3; // 3-10 días
-              const fechaRevision = new Date(ahora);
-              fechaRevision.setDate(fechaRevision.getDate() + diasAleatorios);
-              
-              const nuevaFlashcard = {
-                id: Date.now() + Math.random(),
-                tipo: 'clasica',
-                titulo: acierto.pregunta,
-                contenido: acierto.respuesta_correcta || acierto.feedback || '',
-                opciones: acierto.opciones || [],
-                respuestaCorrecta: acierto.respuesta_correcta || '',
-                explicacion: acierto.feedback || '',
-                tema: 'Acierto de examen',
-                subtema: '',
-                carpeta: carpetaExamen?.ruta || 'Sin carpeta',
-                fecha: ahora.toISOString(),
-                fecha_creacion: ahora.toISOString(),
-                proximaRevision: fechaRevision.toISOString(), // 🔥 Revisión en 3-10 días
-                intervalo: diasAleatorios,
-                repeticiones: 1,
-                facilidad: 2.6, // Un poco más fácil porque ya acertó
-                estadoRevision: 'en_progreso',
-                archivos: [],
-                imagenes: [],
-                latex: false,
-                dificultad: 'medio'
-              };
-              
-              // Guardar flashcard en carpeta
-              try {
-                await fetch(`${API_URL}/datos/flashcards/carpeta`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    flashcard: nuevaFlashcard,
-                    carpeta: carpetaExamen?.ruta || 'Sin carpeta'
-                  })
-                });
-              } catch (error) {
-                console.error('Error guardando flashcard de acierto:', error);
-              }
-            }
-            console.log(`✅ ${aciertos.length} flashcards de aciertos creadas para revisión en 3-10 días`);
-          }
-          
-          // Recargar flashcards si se creó alguna
-          if (errores.length > 0 || aciertos.length > 0) {
-            const todasFlashcards = await cargarTodasFlashcards();
-            setFlashcardsActuales(todasFlashcards);
-          }
-        }
+        // ❌ CONVERSIÓN AUTOMÁTICA A FLASHCARDS DESHABILITADA
+        // El usuario prefiere NO convertir preguntas de exámenes en flashcards automáticamente
         
         setMensaje({
           tipo: 'success',

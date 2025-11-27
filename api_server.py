@@ -45,6 +45,54 @@ generador_unificado = None  # GeneradorUnificado para GPU/CPU
 progreso_generacion = {}  # {session_id: {progreso, mensaje, completado}}
 
 
+def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
+    """
+    Normaliza una pregunta para incluir todos los campos necesarios para Spaced Repetition.
+    
+    Reglas:
+    1. Si los campos ya existen, los respeta
+    2. Si faltan, los agrega con valores por defecto
+    3. Mantiene intacta la estructura original de la pregunta
+    4. Genera ID único si no existe
+    
+    Campos agregados:
+    - id: Identificador único
+    - ease_factor: Factor de facilidad (2.5 por defecto)
+    - interval: Intervalo en días (0 por defecto)
+    - repetitions: Número de repeticiones (0 por defecto)
+    - last_review: Última fecha de revisión (null por defecto)
+    - next_review: Próxima fecha de revisión (null por defecto)
+    - state: Estado de la pregunta ('new' por defecto)
+    """
+    # Generar ID único si no existe
+    if 'id' not in pregunta_dict or not pregunta_dict['id']:
+        # Usar timestamp + tipo + índice aleatorio
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        tipo = pregunta_dict.get('tipo', pregunta_dict.get('type', 'question'))
+        pregunta_dict['id'] = f"{tipo}_{timestamp}_{uuid.uuid4().hex[:8]}"
+    
+    # Agregar campos de Spaced Repetition solo si no existen
+    if 'ease_factor' not in pregunta_dict:
+        pregunta_dict['ease_factor'] = 2.5
+    
+    if 'interval' not in pregunta_dict:
+        pregunta_dict['interval'] = 0
+    
+    if 'repetitions' not in pregunta_dict:
+        pregunta_dict['repetitions'] = 0
+    
+    if 'last_review' not in pregunta_dict:
+        pregunta_dict['last_review'] = None
+    
+    if 'next_review' not in pregunta_dict:
+        pregunta_dict['next_review'] = None
+    
+    if 'state' not in pregunta_dict:
+        pregunta_dict['state'] = 'new'
+    
+    return pregunta_dict
+
+
 def cargar_config():
     """Carga la configuración guardada"""
     if config_path.exists():
@@ -2523,6 +2571,11 @@ async def generar_examen(datos: dict):
                 p_dict['tipo'] = tipo_map[p_dict['tipo']]
             preguntas_json.append(p_dict)
         
+        # 🔥 NORMALIZAR TODAS LAS PREGUNTAS PARA SPACED REPETITION
+        print(f"🔄 Normalizando {len(preguntas_json)} preguntas para Spaced Repetition...")
+        preguntas_json = [normalizar_pregunta_spaced_repetition(p) for p in preguntas_json]
+        print(f"✅ Preguntas normalizadas con campos de repetición espaciada")
+        
         # Marcar como completado
         progreso_generacion[session_id] = {
             'progreso': 100,
@@ -2890,6 +2943,11 @@ async def generar_practica(datos: dict):
             except Exception as e:
                 print(f"⚠️ Error al aplanar metadata de pregunta {pregunta_json.get('tipo')}: {e}")
                 continue
+        
+        # 🔥 NORMALIZAR TODAS LAS PREGUNTAS PARA SPACED REPETITION
+        print(f"🔄 Normalizando {len(preguntas_json)} preguntas para Spaced Repetition...")
+        preguntas_json = [normalizar_pregunta_spaced_repetition(p) for p in preguntas_json]
+        print(f"✅ Preguntas normalizadas con campos de repetición espaciada")
         
         # Marcar como completado
         progreso_generacion[session_id] = {
@@ -3971,6 +4029,15 @@ async def guardar_examen_carpeta(request: Request):
         if not examen:
             return JSONResponse(content={"error": "No se proporcionó examen"}, status_code=400)
         
+        # 🔥 NORMALIZAR PREGUNTAS DEL EXAMEN ANTES DE GUARDAR
+        if 'preguntas' in examen and isinstance(examen['preguntas'], list):
+            print(f"🔄 Normalizando {len(examen['preguntas'])} preguntas del examen...")
+            examen['preguntas'] = [
+                normalizar_pregunta_spaced_repetition(p) 
+                for p in examen['preguntas']
+            ]
+            print(f"✅ Preguntas normalizadas para Spaced Repetition")
+        
         # Determinar carpeta destino en extracciones/
         if carpeta:
             carpeta_destino = EXTRACCIONES_PATH / carpeta
@@ -3985,6 +4052,16 @@ async def guardar_examen_carpeta(request: Request):
         if archivo.exists():
             with open(archivo, "r", encoding="utf-8") as f:
                 examenes = json.load(f)
+        
+        # 🔥 NORMALIZAR PREGUNTAS DE TODOS LOS EXÁMENES EXISTENTES
+        print(f"🔄 Normalizando preguntas de {len(examenes)} exámenes existentes...")
+        for examen_existente in examenes:
+            if 'preguntas' in examen_existente and isinstance(examen_existente['preguntas'], list):
+                examen_existente['preguntas'] = [
+                    normalizar_pregunta_spaced_repetition(p)
+                    for p in examen_existente['preguntas']
+                ]
+        print(f"✅ Todos los exámenes normalizados")
         
         # Buscar si ya existe por ID y actualizar, o agregar nuevo
         examen_id = examen.get("id")
@@ -4043,6 +4120,17 @@ def get_examenes():
                             print(f"Error leyendo {archivo}: {e}")
         
         print(f"📊 Total exámenes cargados: {len(todos_examenes)}")
+        
+        # 🔥 NORMALIZAR PREGUNTAS DE TODOS LOS EXÁMENES AL CARGAR
+        print(f"🔄 Normalizando preguntas en {len(todos_examenes)} exámenes...")
+        for examen in todos_examenes:
+            if 'preguntas' in examen and isinstance(examen['preguntas'], list):
+                examen['preguntas'] = [
+                    normalizar_pregunta_spaced_repetition(p)
+                    for p in examen['preguntas']
+                ]
+        print(f"✅ Todos los exámenes normalizados para Spaced Repetition")
+        
         return JSONResponse(content=todos_examenes)
     except Exception as e:
         print(f"❌ Error obteniendo exámenes: {e}")
@@ -4059,6 +4147,15 @@ async def guardar_practica_carpeta(request: Request):
         if not practica:
             return JSONResponse(content={"error": "No se proporcionó práctica"}, status_code=400)
         
+        # 🔥 NORMALIZAR PREGUNTAS DE LA PRÁCTICA ANTES DE GUARDAR
+        if 'preguntas' in practica and isinstance(practica['preguntas'], list):
+            print(f"🔄 Normalizando {len(practica['preguntas'])} preguntas de la práctica...")
+            practica['preguntas'] = [
+                normalizar_pregunta_spaced_repetition(p) 
+                for p in practica['preguntas']
+            ]
+            print(f"✅ Preguntas normalizadas para Spaced Repetition")
+        
         # Determinar carpeta destino en extracciones/
         if carpeta:
             carpeta_destino = EXTRACCIONES_PATH / carpeta
@@ -4073,6 +4170,16 @@ async def guardar_practica_carpeta(request: Request):
         if archivo.exists():
             with open(archivo, "r", encoding="utf-8") as f:
                 practicas = json.load(f)
+        
+        # 🔥 NORMALIZAR PREGUNTAS DE TODAS LAS PRÁCTICAS EXISTENTES
+        print(f"🔄 Normalizando preguntas de {len(practicas)} prácticas existentes...")
+        for practica_existente in practicas:
+            if 'preguntas' in practica_existente and isinstance(practica_existente['preguntas'], list):
+                practica_existente['preguntas'] = [
+                    normalizar_pregunta_spaced_repetition(p)
+                    for p in practica_existente['preguntas']
+                ]
+        print(f"✅ Todas las prácticas normalizadas")
         
         # Buscar si ya existe por ID y actualizar, o agregar nuevo
         practica_id = practica.get("id")
@@ -4161,6 +4268,17 @@ def get_practicas():
         
         print(f"\n📁 Prácticas individuales: {practicas_individuales_count}")
         print(f"📊 Total prácticas cargadas: {len(todas_practicas)}")
+        
+        # 🔥 NORMALIZAR PREGUNTAS DE TODAS LAS PRÁCTICAS AL CARGAR
+        print(f"🔄 Normalizando preguntas en {len(todas_practicas)} prácticas...")
+        for practica in todas_practicas:
+            if 'preguntas' in practica and isinstance(practica['preguntas'], list):
+                practica['preguntas'] = [
+                    normalizar_pregunta_spaced_repetition(p)
+                    for p in practica['preguntas']
+                ]
+        print(f"✅ Todas las prácticas normalizadas para Spaced Repetition")
+        
         return JSONResponse(content=todas_practicas)
     except Exception as e:
         print(f"❌ Error obteniendo prácticas: {e}")

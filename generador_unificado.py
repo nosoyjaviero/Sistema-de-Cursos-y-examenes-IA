@@ -1482,8 +1482,49 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
             
             json_str = respuesta[inicio:fin]
             
-            # Parsear
-            datos = json.loads(json_str)
+            # Limpiar JSON: eliminar saltos de línea dentro de strings
+            # Esto soluciona cuando el modelo genera JSON con saltos de línea en opciones
+            try:
+                # Intentar parsear directamente primero
+                datos = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"  ⚠️  Error inicial de JSON: {e}")
+                print(f"  🔧 Intentando limpiar JSON...")
+                
+                # Estrategia de limpieza: reemplazar saltos de línea dentro de strings
+                # pero preservar la estructura del JSON
+                import re
+                
+                # Opción 1: Intentar con json.loads con strict=False
+                try:
+                    datos = json.loads(json_str, strict=False)
+                except:
+                    # Opción 2: Limpiar múltiples problemas comunes
+                    json_limpio = json_str
+                    
+                    # 1. Limpiar saltos de línea entre elementos de array
+                    # Patrón: "texto",\n      "texto2" → "texto", "texto2"
+                    json_limpio = re.sub(r'",\s*\n\s*"', '", "', json_limpio)
+                    
+                    # 2. Limpiar saltos de línea después de corchetes de apertura
+                    # Patrón: [\n      "texto" → ["texto"
+                    json_limpio = re.sub(r'\[\s*\n\s*"', '["', json_limpio)
+                    
+                    # 3. Limpiar saltos de línea antes de corchetes de cierre
+                    # Patrón: "texto"\n      ] → "texto"]
+                    json_limpio = re.sub(r'"\s*\n\s*\]', '"]', json_limpio)
+                    
+                    # 4. Normalizar espacios múltiples
+                    json_limpio = re.sub(r'\s+', ' ', json_limpio)
+                    
+                    try:
+                        datos = json.loads(json_limpio)
+                        print(f"  ✅ JSON limpiado exitosamente")
+                    except Exception as e2:
+                        print(f"  ❌ Error después de limpiar: {e2}")
+                        print(f"  📄 JSON problemático (primeros 500 chars):")
+                        print(f"  {json_limpio[:500]}")
+                        raise e  # Re-lanzar error original
             
             # Extraer array de preguntas
             lista_preguntas = []
