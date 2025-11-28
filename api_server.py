@@ -976,6 +976,79 @@ async def guardar_nota_txt(datos: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/subir-imagen-nota")
+async def subir_imagen_nota(file: UploadFile = File(...), carpeta: str = Form("")):
+    """Sube una imagen y la guarda en la carpeta de la nota"""
+    try:
+        import base64
+        
+        # Crear carpeta de imágenes dentro de la carpeta de la nota
+        if carpeta:
+            carpeta_imagenes = cursos_db.base_path / carpeta / "imagenes"
+        else:
+            carpeta_imagenes = cursos_db.base_path / "imagenes"
+        
+        carpeta_imagenes.mkdir(parents=True, exist_ok=True)
+        
+        # Generar nombre único para la imagen
+        extension = Path(file.filename).suffix or ".png"
+        nombre_imagen = f"img_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}{extension}"
+        ruta_imagen = carpeta_imagenes / nombre_imagen
+        
+        # Guardar imagen
+        contenido = await file.read()
+        with open(ruta_imagen, 'wb') as f:
+            f.write(contenido)
+        
+        # Retornar ruta relativa para usar en el frontend
+        ruta_relativa = str(ruta_imagen.relative_to(cursos_db.base_path))
+        
+        print(f"✅ Imagen guardada: {ruta_imagen}")
+        
+        return {
+            "success": True,
+            "ruta": ruta_relativa,
+            "url": f"/api/imagen/{ruta_relativa.replace(chr(92), '/')}",
+            "nombre": nombre_imagen
+        }
+    except Exception as e:
+        print(f"❌ Error subiendo imagen: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/imagen/{ruta:path}")
+async def obtener_imagen(ruta: str):
+    """Sirve una imagen guardada"""
+    try:
+        from fastapi.responses import FileResponse
+        
+        ruta_imagen = cursos_db.base_path / ruta
+        
+        if not ruta_imagen.exists():
+            raise HTTPException(status_code=404, detail="Imagen no encontrada")
+        
+        # Determinar tipo MIME
+        extension = ruta_imagen.suffix.lower()
+        mimes = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml'
+        }
+        mime = mimes.get(extension, 'application/octet-stream')
+        
+        return FileResponse(ruta_imagen, media_type=mime)
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error sirviendo imagen: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/guardar_contexto_ejercicio")
 async def guardar_contexto_ejercicio(datos: dict):
     """Guarda el contenido de una nota como contexto TXT para generar ejercicios"""
@@ -5480,12 +5553,24 @@ def get_notas():
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.delete("/datos/notas/{nota_id}")
-def delete_nota(nota_id: int, carpeta: str = ""):
+def delete_nota(nota_id: str, carpeta: str = ""):
     """Elimina una nota de su carpeta"""
     try:
+        archivo = None
+        
         if carpeta:
             archivo = EXTRACCIONES_PATH / carpeta / "notas.json"
-        else:
+            if not archivo.exists():
+                # Intentar buscar en subcarpetas
+                for carpeta_path in EXTRACCIONES_PATH.rglob("notas.json"):
+                    if carpeta in str(carpeta_path):
+                        with open(carpeta_path, "r", encoding="utf-8") as f:
+                            notas = json.load(f)
+                        if any(str(n.get("id")) == str(nota_id) for n in notas):
+                            archivo = carpeta_path
+                            break
+        
+        if not archivo or not archivo.exists():
             # Buscar en todas las carpetas
             for carpeta_path in EXTRACCIONES_PATH.rglob("notas.json"):
                 with open(carpeta_path, "r", encoding="utf-8") as f:

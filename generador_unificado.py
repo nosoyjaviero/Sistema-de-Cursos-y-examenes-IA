@@ -1445,12 +1445,20 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         print(f"  📥 Extrayendo preguntas de tipo '{tipo_esperado}'...")
         
         try:
-            # Buscar el bloque JSON (objeto o array)
-            inicio = respuesta.find('{')
-            if inicio == -1:
-                inicio = respuesta.find('[')
+            # 🔥 CORREGIDO: Buscar PRIMERO el array '[' porque esperamos una lista de preguntas
+            inicio_array = respuesta.find('[')
+            inicio_objeto = respuesta.find('{')
             
-            if inicio == -1:
+            # Priorizar el array si existe y viene antes o justo después del objeto
+            if inicio_array != -1 and (inicio_objeto == -1 or inicio_array < inicio_objeto):
+                inicio = inicio_array
+            elif inicio_objeto != -1:
+                # Si el objeto viene primero, verificar si está dentro de un array
+                if inicio_array != -1 and inicio_array < inicio_objeto + 5:
+                    inicio = inicio_array  # Usar el array que contiene los objetos
+                else:
+                    inicio = inicio_objeto
+            else:
                 print(f"  ❌ No se encontró JSON en la respuesta")
                 return []
             

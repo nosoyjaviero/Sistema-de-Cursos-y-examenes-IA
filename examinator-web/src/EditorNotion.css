@@ -9,6 +9,8 @@
   background: #0f172a;
   border-radius: 12px;
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Sidebar izquierdo */
@@ -222,13 +224,20 @@
   color: #64748b;
 }
 
-/* Vista dividida */
+/* Vista dividida - Estilo Modal Editor Fullscreen */
 .editor-split-view {
   flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
   overflow: hidden;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .editor-panel,
@@ -239,23 +248,26 @@
 }
 
 .editor-panel {
-  border-right: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(15, 23, 42, 0.6);
+  border-right: 1px solid rgba(148, 163, 184, 0.15);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.8) 100%);
 }
 
 .preview-panel {
-  background: rgba(30, 41, 59, 0.4);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.6) 0%, rgba(30, 41, 59, 0.4) 100%);
 }
 
 .panel-label {
-  padding: 0.75rem 1.25rem;
-  background: rgba(100, 108, 255, 0.1);
-  color: #94a3b8;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(90deg, rgba(100, 108, 255, 0.15) 0%, rgba(240, 147, 251, 0.1) 100%);
+  color: #e2e8f0;
   font-size: 0.85rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .editor-textarea-notion {
@@ -263,17 +275,36 @@
   width: 100%;
   background: transparent;
   border: none;
-  color: #e2e8f0;
+  color: #f1f5f9;
   font-size: 1rem;
-  line-height: 1.7;
+  line-height: 1.8;
   padding: 1.5rem;
   resize: none;
   outline: none;
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: 'Consolas', 'Monaco', 'SF Mono', monospace;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+.editor-textarea-notion::-webkit-scrollbar {
+  width: 8px;
+}
+
+.editor-textarea-notion::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor-textarea-notion::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+.editor-textarea-notion::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
 }
 
 .editor-textarea-notion::placeholder {
-  color: #475569;
+  color: #64748b;
   line-height: 1.6;
 }
 
@@ -282,7 +313,26 @@
   padding: 1.5rem;
   overflow-y: auto;
   color: #e2e8f0;
-  line-height: 1.7;
+  line-height: 1.8;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+.preview-content-notion::-webkit-scrollbar {
+  width: 8px;
+}
+
+.preview-content-notion::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.preview-content-notion::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+
+.preview-content-notion::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
 }
 
 /* Estilos de los bloques renderizados estilo Notion */

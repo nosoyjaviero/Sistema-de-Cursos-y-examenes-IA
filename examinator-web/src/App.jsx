@@ -37,6 +37,18 @@ import { normalizarExamenes } from './utils/normalizarExamenes';
 // ========================================
 const SERVER_IP = window.location.hostname;
 
+// 🔥 API_URL calculado una sola vez al cargar el módulo (no en cada render)
+const API_URL_GLOBAL = (() => {
+  const hostname = window.location.hostname;
+  const apiUrl = (hostname === 'localhost' || hostname === '127.0.0.1') 
+    ? 'http://localhost:8000' 
+    : `http://${hostname}:8000`;
+  // Log solo una vez al cargar
+  console.log(`🌐 Frontend: ${hostname}:${window.location.port}`);
+  console.log(`🔌 Backend API: ${apiUrl}`);
+  return apiUrl;
+})();
+
 /**
  * Obtiene datos (notas, flashcards, practicas, examenes) desde el backend
  * @param {string} tipo - 'notas', 'flashcards', 'practicas' o 'examenes'
@@ -263,7 +275,8 @@ function App() {
   const [tiempoSesion, setTiempoSesion] = useState(30) // minutos
   const [tiempoPersonalizado, setTiempoPersonalizado] = useState('') // input personalizado
   const [modoLibreActivo, setModoLibreActivo] = useState(false) // sin límite de tiempo
-  const [prioridadSesion, setPrioridadSesion] = useState('errores') // 'errores', 'flashcards', 'contenido'
+  const [prioridadSesion, setPrioridadSesion] = useState('errores') // 'errores', 'flashcards', 'contenido', 'notas', 'todo'
+  const [fasesExcluidas, setFasesExcluidas] = useState([]) // fases que el usuario no quiere en su sesión
   const [sesionActiva, setSesionActiva] = useState(false)
   const [sesionPersistente, setSesionPersistente] = useState(null) // datos de sesión guardada
   const [estadoGuardado, setEstadoGuardado] = useState(false) // indicador de guardado
@@ -299,6 +312,22 @@ function App() {
   const [contenidoSesion, setContenidoSesion] = useState(null)
   const [notaSesion, setNotaSesion] = useState('')
   const [reflexionSesion, setReflexionSesion] = useState('')
+  
+  // 🔥 ESTADOS PARA FASE DE REPASO DE NOTAS
+  const [notasRepasoSesion, setNotasRepasoSesion] = useState([]) // Notas que toca repasar
+  const [indiceNotaRepasoActual, setIndiceNotaRepasoActual] = useState(0)
+  const [notaRepasoExpandida, setNotaRepasoExpandida] = useState(false)
+  
+  // 🔥 ESTADOS PARA FASE DE REPASO DE ACIERTOS
+  const [aciertosRepaso, setAciertosRepaso] = useState([]) // Preguntas acertadas que toca repasar
+  const [indiceAciertoActual, setIndiceAciertoActual] = useState(0)
+  const [respuestaAciertoSeleccionada, setRespuestaAciertoSeleccionada] = useState(null)
+  const [aciertoYaRespondido, setAciertoYaRespondido] = useState(false)
+  const [respuestaTextualAcierto, setRespuestaTextualAcierto] = useState('')
+  const [historialIntentosAcierto, setHistorialIntentosAcierto] = useState([])
+  const [evaluandoRespuestaAcierto, setEvaluandoRespuestaAcierto] = useState(false)
+  const [feedbackIAAcierto, setFeedbackIAAcierto] = useState(null)
+  
   const [timerMinimizado, setTimerMinimizado] = useState(false)
   const [selectorCursosAbierto, setSelectorCursosAbierto] = useState(false) // panel lateral de cursos
   const [busquedaCursos, setBusquedaCursos] = useState('') // búsqueda en el selector de cursos
@@ -345,6 +374,8 @@ function App() {
   const [tipoNotaEditor, setTipoNotaEditor] = useState('normal') // 'normal' | 'linguistica' | 'matematica'
   const [vincularADocumento, setVincularADocumento] = useState(true)
   const [guardandoNota, setGuardandoNota] = useState(false)
+  const [notasSesionActual, setNotasSesionActual] = useState([]) // Notas temporales de la sesión actual
+  const [notaSeleccionadaId, setNotaSeleccionadaId] = useState(null) // ID de nota actualmente en edición
   const [modalFlashcardCreator, setModalFlashcardCreator] = useState(false)
   const [textoSeleccionadoFlashcard, setTextoSeleccionadoFlashcard] = useState('')
   const [modoConversionFlashcard, setModoConversionFlashcard] = useState('linea') // linea, parrafo, manual
@@ -535,6 +566,56 @@ function App() {
   const [rutaCarpetasChat, setRutaCarpetasChat] = useState('')
   const [practicas, setPracticas] = useState([])
 
+  // ========== ESTADOS PARA SISTEMA DE JERARQUÍAS ==========
+  const [modalJerarquiaAbierto, setModalJerarquiaAbierto] = useState(false)
+  const [jerarquiaActual, setJerarquiaActual] = useState([]) // Array de nodos de la jerarquía
+  const [nodoEditando, setNodoEditando] = useState(null) // Nodo que se está editando
+  const [nombreNuevoNodo, setNombreNuevoNodo] = useState('')
+  const [tipoNodoSeleccionado, setTipoNodoSeleccionado] = useState('plataforma') // Tipo de nodo a crear
+  const [tabJerarquia, setTabJerarquia] = useState('crear') // 'crear' o 'rendimiento'
+  const [rendimientoJerarquias, setRendimientoJerarquias] = useState({}) // Datos de rendimiento por carpeta
+  const [carpetasExpandidas, setCarpetasExpandidas] = useState({}) // Control de dropdowns expandidos
+  const [sumarHijosEnRendimiento, setSumarHijosEnRendimiento] = useState(true) // Sumar progreso de subcarpetas al padre
+
+  // Función para toggle de carpeta expandida
+  const toggleCarpetaExpandida = (carpeta) => {
+    setCarpetasExpandidas(prev => ({
+      ...prev,
+      [carpeta]: !prev[carpeta]
+    }));
+  };
+
+  // Expandir/Colapsar todas las carpetas
+  const expandirTodasCarpetas = (expandir) => {
+    const nuevosExpandidos = {};
+    Object.keys(rendimientoJerarquias).forEach(carpeta => {
+      nuevosExpandidos[carpeta] = expandir;
+    });
+    setCarpetasExpandidas(nuevosExpandidos);
+  };
+
+  // Tipos de nodos disponibles en la jerarquía (del más alto al más bajo)
+  const TIPOS_JERARQUIA = [
+    { id: 'plataforma', nombre: 'Plataforma', emoji: '🌐', descripcion: 'Platzi, Udemy, Coursera...', color: '#6366f1' },
+    { id: 'escuela', nombre: 'Escuela', emoji: '🏫', descripcion: 'Escuela de Desarrollo Web, Data Science...', color: '#8b5cf6' },
+    { id: 'ruta', nombre: 'Ruta', emoji: '🛤️', descripcion: 'Frontend Developer, Backend Developer...', color: '#a855f7' },
+    { id: 'curso', nombre: 'Curso', emoji: '📚', descripcion: 'Introducción al Desarrollo Web...', color: '#d946ef' },
+    { id: 'modulo', nombre: 'Módulo', emoji: '📦', descripcion: 'Módulo 1: Introducción...', color: '#ec4899' },
+    { id: 'clase', nombre: 'Clase', emoji: '🎬', descripcion: 'Clase 1: Bienvenida...', color: '#f43f5e' },
+    { id: 'subtema', nombre: 'Subtema', emoji: '📋', descripcion: '¿Quién es el profesor?...', color: '#ef4444' },
+    { id: 'concepto', nombre: 'Concepto', emoji: '💡', descripcion: 'Trayectoria profesional...', color: '#f97316' },
+    { id: 'microconcepto', nombre: 'Microconcepto', emoji: '🔬', descripcion: 'Roles desempeñados...', color: '#eab308' },
+    { id: 'detalle', nombre: 'Detalle', emoji: '📌', descripcion: 'Frontend JR, React...', color: '#84cc16' },
+    { id: 'recurso', nombre: 'Recurso', emoji: '📎', descripcion: 'PDF, Cheatsheet...', color: '#22c55e' },
+    { id: 'actividad', nombre: 'Actividad', emoji: '✅', descripcion: 'Configurar entorno...', color: '#14b8a6' },
+    { id: 'proyecto', nombre: 'Proyecto', emoji: '🚀', descripcion: 'Página personal...', color: '#06b6d4' },
+    // Nuevas categorías de patrones cognitivos
+    { id: 'patron_cognitivo', nombre: 'Patrón Cognitivo', emoji: '🧠', descripcion: 'Cómo aprende el cerebro esto', color: '#7c3aed' },
+    { id: 'errores_tipicos', nombre: 'Errores Típicos', emoji: '⚠️', descripcion: 'Trampas mentales comunes', color: '#dc2626' },
+    { id: 'relacion_areas', nombre: 'Relación con Áreas', emoji: '🔗', descripcion: 'Matemática, diseño, UX, arquitectura...', color: '#0891b2' },
+    { id: 'habitos', nombre: 'Hábitos para Dominar', emoji: '🎯', descripcion: 'Diseño de hábitos para dominarlo', color: '#059669' }
+  ]
+
   // 🧠 MÓDULO ASISTENTE LaTeX INTELIGENTE
   // Convierte lenguaje natural a LaTeX perfecto (6 niveles)
   const asistenteLaTeX = (promptNatural) => {
@@ -679,11 +760,22 @@ function App() {
   const [carpetasModalNotaRef, setCarpetasModalNotaRef] = useState([])
   const [dropdownNotaAbierto, setDropdownNotaAbierto] = useState(null) // ID de la nota con dropdown abierto
 
+  // Estados para mover notas
+  const [modalMoverNota, setModalMoverNota] = useState(false)
+  const [notaAMover, setNotaAMover] = useState(null)
+  const [carpetaDestinoNota, setCarpetaDestinoNota] = useState('')
+  const [carpetasDisponiblesNota, setCarpetasDisponiblesNota] = useState([])
+
   // Estados para instalador de modelos Ollama
   const [modalInstaladorModelo, setModalInstaladorModelo] = useState(false)
   const [archivoModeloGGUF, setArchivoModeloGGUF] = useState(null)
   const [nombreModeloNuevo, setNombreModeloNuevo] = useState('')
   const [instalandoModelo, setInstalandoModelo] = useState(false)
+
+  // Estados para visor de preguntas en chatbot
+  const [examenVisorPreguntas, setExamenVisorPreguntas] = useState(null) // Examen/práctica seleccionado
+  const [preguntasVisor, setPreguntasVisor] = useState([]) // Preguntas del examen
+  const [preguntaSeleccionadaChat, setPreguntaSeleccionadaChat] = useState(null) // Pregunta a enviar al chat
 
   // Ref para el editor de notas
   const editorRef = useRef(null)
@@ -696,29 +788,15 @@ function App() {
     examenes: []
   });
   const calendarioCargandoRef = useRef(false);
+  const flashcardsCargandoRef = useRef(false); // 🔥 Evitar cargas simultáneas de flashcards
 
   // Estados para mini calendario visual
   const [mesCalendario, setMesCalendario] = useState(new Date().getMonth());
   const [anioCalendario, setAnioCalendario] = useState(new Date().getFullYear());
   const [fechaSeleccionada, setFechaSeleccionada] = useState(null);
 
-  // Detectar automáticamente la URL del API
-  // Si accedes desde otra IP (móvil/tablet), usa esa IP para el backend
-  // Si accedes desde localhost, usa localhost
-  const getApiUrl = () => {
-    const hostname = window.location.hostname
-    const apiUrl = (hostname === 'localhost' || hostname === '127.0.0.1') 
-      ? 'http://localhost:8000' 
-      : `http://${hostname}:8000`
-    
-    // Debug: mostrar en consola qué URL está usando
-    console.log(`🌐 Frontend: ${window.location.hostname}:${window.location.port}`)
-    console.log(`🔌 Backend API: ${apiUrl}`)
-    
-    return apiUrl
-  }
-
-  const API_URL = getApiUrl()
+  // 🔥 Usar la constante global en lugar de recalcular en cada render
+  const API_URL = API_URL_GLOBAL
 
   // Función para recargar datos del calendario
   const recargarCalendarioRepasos = async () => {
@@ -838,7 +916,22 @@ function App() {
         const flashcards = await cargarTodasFlashcards();
         
         if (notas && notas.length > 0) {
-          setNotasGuardadas(notas);
+          // 🔥 DEDUPLICAR NOTAS: Eliminar notas con IDs duplicados (mantener la más reciente)
+          const notasMap = new Map();
+          notas.forEach(nota => {
+            const idNormalizado = String(nota.id);
+            const existente = notasMap.get(idNormalizado);
+            if (!existente || new Date(nota.fechaModificacion || nota.fecha) > new Date(existente.fechaModificacion || existente.fecha)) {
+              notasMap.set(idNormalizado, nota);
+            }
+          });
+          const notasDeduplicadas = Array.from(notasMap.values());
+          
+          if (notasDeduplicadas.length < notas.length) {
+            console.log(`🔧 Deduplicadas ${notas.length - notasDeduplicadas.length} notas duplicadas`);
+          }
+          
+          setNotasGuardadas(notasDeduplicadas);
         }
         
         if (flashcards && flashcards.length > 0) {
@@ -1107,38 +1200,72 @@ function App() {
   // Event listener para clicks en enlaces de referencia a notas
   useEffect(() => {
     const handleNotaClick = async (e) => {
-      const link = e.target.closest('a[data-nota-id]');
+      // Buscar el enlace más cercano con data-nota-id
+      let target = e.target;
+      let link = null;
+      
+      // Subir por el DOM buscando un enlace con data-nota-id
+      while (target && target !== document.body) {
+        if (target.tagName === 'A' && target.hasAttribute('data-nota-id')) {
+          link = target;
+          break;
+        }
+        target = target.parentElement;
+      }
+      
       if (link) {
         e.preventDefault();
-        const notaId = parseInt(link.getAttribute('data-nota-id'));
-        const notasActuales = await getDatos('notas');
-        const nota = notasActuales.find(n => n.id === notaId);
-        if (nota) {
-          // Actualizar el estado de notas guardadas primero
-          setNotasGuardadas(notasActuales);
-          setSelectedMenu('notas');
-          // Navegar a la carpeta de la nota
-          if (nota.carpeta) {
-            setRutaNotasActual(nota.carpeta);
-            cargarCarpetasNotas(nota.carpeta);
-          } else {
-            setRutaNotasActual('');
-            cargarCarpetasNotas('');
-          }
-          // Abrir la nota después de un breve delay para que cargue la vista
-          setTimeout(() => {
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
+        const notaIdStr = link.getAttribute('data-nota-id');
+        const notaId = parseInt(notaIdStr);
+        
+        console.log('📝 Click en referencia a nota:', notaId);
+        
+        try {
+          const notasActuales = await getDatos('notas');
+          const nota = notasActuales.find(n => n.id === notaId);
+          
+          if (nota) {
+            console.log('✅ Nota encontrada:', nota.titulo);
+            
+            // Actualizar el estado de notas guardadas primero
+            setNotasGuardadas(notasActuales);
+            setSelectedMenu('notas');
+            
+            // Navegar a la carpeta de la nota
+            if (nota.carpeta) {
+              setRutaNotasActual(nota.carpeta);
+              cargarCarpetasNotas(nota.carpeta);
+            } else {
+              setRutaNotasActual('');
+              cargarCarpetasNotas('');
+            }
+            
+            // Abrir la nota directamente
             setNotaActual(nota);
             setTituloNota(nota.titulo);
             setContenidoNota(nota.contenido);
             setCarpetaNota(nota.carpeta || '');
             setModoSoloLectura(true);
             setEditorNotaAbierto(true);
-          }, 250);
+            console.log('📖 Editor de nota abierto:', nota.titulo);
+          } else {
+            console.warn('⚠️ Nota no encontrada con ID:', notaId);
+            setMensaje({ tipo: 'warning', texto: '⚠️ La nota referenciada no existe' });
+          }
+        } catch (error) {
+          console.error('❌ Error abriendo nota:', error);
         }
+        
+        return false;
       }
     };
-    document.addEventListener('click', handleNotaClick);
-    return () => document.removeEventListener('click', handleNotaClick);
+    
+    // Usar capture: true para interceptar antes que otros handlers
+    document.addEventListener('click', handleNotaClick, true);
+    return () => document.removeEventListener('click', handleNotaClick, true);
   }, []);
 
   // Cerrar dropdowns de notas al hacer clic fuera
@@ -1265,18 +1392,35 @@ function App() {
           <div class="control-seccion">
             <div class="control-titulo">Tamaño</div>
             <div class="control-grupo">
-              <button class="control-btn" onclick="window.ajustarImagen('pequeña')">Pequeña</button>
-              <button class="control-btn" onclick="window.ajustarImagen('mediana')">Mediana</button>
-              <button class="control-btn" onclick="window.ajustarImagen('grande')">Grande</button>
-              <button class="control-btn" onclick="window.ajustarImagen('completa')">Completa</button>
+              <button class="control-btn" onclick="window.ajustarImagen('pequeña')">S</button>
+              <button class="control-btn" onclick="window.ajustarImagen('mediana')">M</button>
+              <button class="control-btn" onclick="window.ajustarImagen('grande')">L</button>
+              <button class="control-btn" onclick="window.ajustarImagen('completa')">XL</button>
             </div>
           </div>
           <div class="control-separador"></div>
           <div class="control-seccion">
-            <div class="control-titulo">Posición</div>
+            <div class="control-titulo">Alineación</div>
             <div class="control-grupo">
-              <button class="control-btn" onclick="window.cambiarZIndex('delante')">Al Frente</button>
-              <button class="control-btn" onclick="window.cambiarZIndex('detras')">Atrás</button>
+              <button class="control-btn" onclick="window.alinearImagen('izquierda')" title="Izquierda">◀</button>
+              <button class="control-btn" onclick="window.alinearImagen('centro')" title="Centro">◆</button>
+              <button class="control-btn" onclick="window.alinearImagen('derecha')" title="Derecha">▶</button>
+            </div>
+          </div>
+          <div class="control-separador"></div>
+          <div class="control-seccion">
+            <div class="control-titulo">Mover en texto</div>
+            <div class="control-grupo">
+              <button class="control-btn" onclick="window.moverImagenEnTexto('arriba')" title="Mover arriba">⬆️</button>
+              <button class="control-btn" onclick="window.moverImagenEnTexto('abajo')" title="Mover abajo">⬇️</button>
+            </div>
+          </div>
+          <div class="control-separador"></div>
+          <div class="control-seccion">
+            <div class="control-titulo">Capa</div>
+            <div class="control-grupo">
+              <button class="control-btn" onclick="window.cambiarZIndex('delante')">↑ Frente</button>
+              <button class="control-btn" onclick="window.cambiarZIndex('detras')">↓ Atrás</button>
             </div>
           </div>
           <div class="control-separador"></div>
@@ -1388,6 +1532,68 @@ function App() {
         const anchos = { pequeña: 200, mediana: 400, grande: 600, completa: '100%' };
         window.imagenSeleccionada.style.width = typeof anchos[tamaño] === 'number' ? anchos[tamaño] + 'px' : anchos[tamaño];
         window.imagenSeleccionada.style.height = 'auto';
+      };
+      
+      window.alinearImagen = function(alineacion) {
+        if (!window.imagenSeleccionada) return;
+        const contenedor = window.imagenSeleccionada.parentElement;
+        
+        // Reset estilos
+        contenedor.style.float = 'none';
+        contenedor.style.marginLeft = '';
+        contenedor.style.marginRight = '';
+        contenedor.style.textAlign = '';
+        
+        switch(alineacion) {
+          case 'izquierda':
+            contenedor.style.marginRight = 'auto';
+            contenedor.style.marginLeft = '0';
+            break;
+          case 'centro':
+            contenedor.style.marginLeft = 'auto';
+            contenedor.style.marginRight = 'auto';
+            break;
+          case 'derecha':
+            contenedor.style.marginLeft = 'auto';
+            contenedor.style.marginRight = '0';
+            break;
+        }
+      };
+      
+      window.moverImagenEnTexto = function(direccion) {
+        if (!window.imagenSeleccionada) return;
+        const contenedor = window.imagenSeleccionada.parentElement;
+        const parent = contenedor.parentElement;
+        
+        if (direccion === 'arriba') {
+          // Encontrar el elemento anterior (puede ser p, div, etc.)
+          let anterior = contenedor.previousElementSibling;
+          while (anterior && anterior.classList && anterior.classList.contains('controles-imagen')) {
+            anterior = anterior.previousElementSibling;
+          }
+          if (anterior) {
+            parent.insertBefore(contenedor, anterior);
+          }
+        } else if (direccion === 'abajo') {
+          // Encontrar el elemento siguiente
+          let siguiente = contenedor.nextElementSibling;
+          while (siguiente && siguiente.classList && (siguiente.classList.contains('controles-imagen') || siguiente.classList.contains('resize-handle'))) {
+            siguiente = siguiente.nextElementSibling;
+          }
+          if (siguiente) {
+            // Insertar después del siguiente
+            if (siguiente.nextElementSibling) {
+              parent.insertBefore(contenedor, siguiente.nextElementSibling);
+            } else {
+              parent.appendChild(contenedor);
+            }
+          }
+        }
+        
+        // Re-mostrar controles
+        setTimeout(() => {
+          window.mostrarControlesImagen(window.imagenSeleccionada);
+        }, 50);
       };
       
       window.cambiarZIndex = function(direccion) {
@@ -1554,10 +1760,217 @@ function App() {
     }
   }
 
-  // Crear carpeta
-  const crearCarpeta = async () => {
-    const nombre = prompt('Nombre de la nueva carpeta:')
-    if (!nombre) return
+  // Crear carpeta - Ahora abre el modal de jerarquías
+  const crearCarpeta = () => {
+    // Inicializar jerarquía vacía
+    setJerarquiaActual([])
+    setNodoEditando(null)
+    setNombreNuevoNodo('')
+    setTipoNodoSeleccionado('plataforma')
+    setModalJerarquiaAbierto(true)
+  }
+
+  // ========== FUNCIONES PARA SISTEMA DE JERARQUÍAS ==========
+  
+  // Agregar un nuevo nodo a la jerarquía
+  const agregarNodoJerarquia = () => {
+    if (!nombreNuevoNodo.trim()) return
+    
+    const tipoInfo = TIPOS_JERARQUIA.find(t => t.id === tipoNodoSeleccionado)
+    const nuevoNodo = {
+      id: Date.now().toString(),
+      tipo: tipoNodoSeleccionado,
+      nombre: nombreNuevoNodo.trim(),
+      emoji: tipoInfo?.emoji || '📁',
+      color: tipoInfo?.color || '#6366f1',
+      hijos: [],
+      padre: nodoEditando?.id || null,
+      estadisticas: {
+        examenes: { total: 0, aprobados: 0, reprobados: 0 },
+        practicas: { total: 0, completadas: 0 },
+        errores: { total: 0, corregidos: 0 },
+        flashcards: { total: 0, dominadas: 0 }
+      }
+    }
+    
+    if (nodoEditando) {
+      // Agregar como hijo del nodo seleccionado
+      setJerarquiaActual(prev => {
+        const actualizarNodo = (nodos) => {
+          return nodos.map(nodo => {
+            if (nodo.id === nodoEditando.id) {
+              return { ...nodo, hijos: [...nodo.hijos, nuevoNodo] }
+            }
+            if (nodo.hijos.length > 0) {
+              return { ...nodo, hijos: actualizarNodo(nodo.hijos) }
+            }
+            return nodo
+          })
+        }
+        return actualizarNodo(prev)
+      })
+    } else {
+      // Agregar a la raíz
+      setJerarquiaActual(prev => [...prev, nuevoNodo])
+    }
+    
+    setNombreNuevoNodo('')
+    // Sugerir el siguiente tipo en la jerarquía
+    const indexActual = TIPOS_JERARQUIA.findIndex(t => t.id === tipoNodoSeleccionado)
+    if (indexActual < TIPOS_JERARQUIA.length - 1) {
+      setTipoNodoSeleccionado(TIPOS_JERARQUIA[indexActual + 1].id)
+    }
+  }
+
+  // Eliminar un nodo de la jerarquía
+  const eliminarNodoJerarquia = (nodoId) => {
+    const eliminarRecursivo = (nodos) => {
+      return nodos.filter(nodo => {
+        if (nodo.id === nodoId) return false
+        if (nodo.hijos.length > 0) {
+          nodo.hijos = eliminarRecursivo(nodo.hijos)
+        }
+        return true
+      })
+    }
+    setJerarquiaActual(prev => eliminarRecursivo(prev))
+    if (nodoEditando?.id === nodoId) {
+      setNodoEditando(null)
+    }
+  }
+
+  // Crear las carpetas de la jerarquía en el sistema de archivos
+  const crearCarpetasDesdeJerarquia = async () => {
+    if (jerarquiaActual.length === 0) {
+      setMensaje({ tipo: 'error', texto: '❌ Agrega al menos un elemento a la jerarquía' })
+      return
+    }
+
+    setLoading(true)
+    let carpetasCreadas = 0
+    let errores = []
+
+    // Función recursiva para crear carpetas anidadas
+    const crearRecursivo = async (nodos, rutaPadre) => {
+      for (const nodo of nodos) {
+        try {
+          const tipoInfo = TIPOS_JERARQUIA.find(t => t.id === nodo.tipo)
+          // Incluir emoji + tipo + nombre para mejor organización
+          const nombreCarpeta = `${nodo.emoji} ${tipoInfo?.nombre || ''} - ${nodo.nombre}`
+          const response = await fetch(`${API_URL}/api/carpetas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              ruta_padre: rutaPadre, 
+              nombre: nombreCarpeta,
+              metadata: {
+                tipo_jerarquia: nodo.tipo,
+                estadisticas: nodo.estadisticas,
+                color: nodo.color
+              }
+            })
+          })
+
+          const data = await response.json()
+          if (data.success) {
+            carpetasCreadas++
+            // Crear subcarpetas recursivamente DENTRO de esta carpeta
+            if (nodo.hijos.length > 0) {
+              // Usar backslash para Windows, construir ruta completa
+              const nuevaRuta = rutaPadre 
+                ? `${rutaPadre}\\${nombreCarpeta}` 
+                : nombreCarpeta
+              await crearRecursivo(nodo.hijos, nuevaRuta)
+            }
+          } else {
+            errores.push(`${nodo.nombre}: ${data.error || 'Error desconocido'}`)
+          }
+        } catch (error) {
+          errores.push(`${nodo.nombre}: ${error.message}`)
+        }
+      }
+    }
+
+    await crearRecursivo(jerarquiaActual, rutaActual)
+
+    setLoading(false)
+    setModalJerarquiaAbierto(false)
+
+    if (errores.length > 0) {
+      setMensaje({
+        tipo: 'warning',
+        texto: `⚠️ Se crearon ${carpetasCreadas} carpetas. Errores: ${errores.slice(0, 3).join(', ')}${errores.length > 3 ? '...' : ''}`
+      })
+    } else {
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Jerarquía creada: ${carpetasCreadas} carpetas`
+      })
+    }
+
+    cargarCarpeta(rutaActual)
+  }
+
+  // Renderizar la vista previa del árbol de jerarquía (estilo texto como en terminal)
+  const renderizarArbolJerarquia = (nodos, nivel = 0, prefijo = '') => {
+    return nodos.map((nodo, index) => {
+      const esUltimo = index === nodos.length - 1
+      const tipoInfo = TIPOS_JERARQUIA.find(t => t.id === nodo.tipo)
+      
+      // Construir las líneas del árbol según el nivel
+      let lineaActual = ''
+      let prefijoHijos = ''
+      
+      if (nivel === 0) {
+        // Elementos raíz: sin línea, pero los hijos tendrán prefijo vacío
+        lineaActual = ''
+        prefijoHijos = ''
+      } else {
+        // Elementos hijos: mostrar líneas de conexión
+        lineaActual = esUltimo ? '└── ' : '├── '
+        prefijoHijos = prefijo + (esUltimo ? '    ' : '│   ')
+      }
+      
+      return (
+        <div key={nodo.id} className="jerarquia-nodo-container">
+          <div 
+            className={`jerarquia-nodo ${nodoEditando?.id === nodo.id ? 'activo seleccionado' : ''}`}
+            onClick={() => setNodoEditando(nodoEditando?.id === nodo.id ? null : nodo)}
+            title={nodoEditando?.id === nodo.id 
+              ? `✓ Seleccionado - Los nuevos elementos se agregarán como hijos de "${nodo.nombre}"` 
+              : `Click para agregar hijos dentro de "${nodo.nombre}"`}
+          >
+            <span className="jerarquia-prefijo">
+              {prefijo}{lineaActual}
+            </span>
+            <span className="jerarquia-emoji">{nodo.emoji}</span>
+            <span className="jerarquia-nombre">
+              <strong>{tipoInfo?.nombre}:</strong> {nodo.nombre}
+            </span>
+            <span className="jerarquia-tipo-badge" style={{ backgroundColor: nodo.color }}>
+              {tipoInfo?.nombre}
+            </span>
+            <button 
+              className="btn-eliminar-nodo"
+              onClick={(e) => { e.stopPropagation(); eliminarNodoJerarquia(nodo.id) }}
+              title="Eliminar este nodo y sus hijos"
+            >
+              ✕
+            </button>
+          </div>
+          {nodo.hijos.length > 0 && (
+            <div className="jerarquia-hijos">
+              {renderizarArbolJerarquia(nodo.hijos, nivel + 1, nivel === 0 ? '' : prefijoHijos)}
+            </div>
+          )}
+        </div>
+      )
+    })
+  }
+
+  // Crear carpeta simple (sin jerarquía)
+  const crearCarpetaSimple = async (nombre) => {
+    if (!nombre?.trim()) return
 
     try {
       const response = await fetch(`${API_URL}/api/carpetas`, {
@@ -1565,7 +1978,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           ruta_padre: rutaActual, 
-          nombre: nombre 
+          nombre: nombre.trim() 
         })
       })
 
@@ -1573,15 +1986,251 @@ function App() {
       if (data.success) {
         setMensaje({
           tipo: 'success',
-          texto: `✅ Carpeta "${nombre}" creada exitosamente`
+          texto: `✅ Carpeta "${nombre}" creada`
         })
+        setModalJerarquiaAbierto(false)
         cargarCarpeta(rutaActual)
+      } else {
+        setMensaje({
+          tipo: 'error',
+          texto: `❌ ${data.error || 'Error al crear carpeta'}`
+        })
       }
     } catch (error) {
       setMensaje({
         tipo: 'error',
-        texto: `❌ Error al crear carpeta: ${error.message}`
+        texto: `❌ ${error.message}`
       })
+    }
+  }
+
+  // Calcular rendimiento por jerarquía de carpetas
+  const calcularRendimientoJerarquias = async () => {
+    try {
+      // Obtener todos los datos
+      const errores = await getDatos('errores') || []
+      const flashcards = await getDatos('flashcards') || []
+      const examenes = await getDatos('examenes') || []
+      const practicasData = await getDatos('practicas') || []
+      const notas = await getDatos('notas') || []
+      
+      const rendimiento = {}
+      
+      // Función para normalizar ruta
+      const normalizarRuta = (ruta) => (ruta || '').replace(/\//g, '\\').replace(/\\\\/g, '\\')
+      
+      // Función para obtener todas las carpetas padre de una ruta
+      const obtenerCarpetasPadre = (ruta) => {
+        const partes = normalizarRuta(ruta).split('\\').filter(Boolean)
+        const carpetas = []
+        let acumulado = ''
+        for (const parte of partes) {
+          acumulado = acumulado ? `${acumulado}\\${parte}` : parte
+          carpetas.push(acumulado)
+        }
+        return carpetas
+      }
+      
+      // Función para inicializar una carpeta en rendimiento
+      const inicializarCarpeta = (carpeta) => {
+        if (!rendimiento[carpeta]) {
+          const partes = carpeta.split('\\')
+          rendimiento[carpeta] = {
+            nombre: partes[partes.length - 1] || carpeta,
+            nivel: partes.length,
+            padre: partes.length > 1 ? partes.slice(0, -1).join('\\') : null,
+            errores: { total: 0, corregidos: 0, pendientes: 0 },
+            flashcards: { total: 0, dominadas: 0, pendientes: 0, enProgreso: 0 },
+            examenes: { total: 0, aprobados: 0, reprobados: 0, puntosTotal: 0, notaPromedio: 0 },
+            practicas: { total: 0, completadas: 0, puntosTotal: 0, puntosObtenidos: 0 },
+            notas: { total: 0, revisadas: 0 },
+            hijos: []
+          }
+        }
+      }
+      
+      // Procesar errores por carpeta
+      errores.forEach(error => {
+        const ruta = normalizarRuta(error.carpeta || error.ruta_documento?.split('\\').slice(0, -1).join('\\') || '')
+        if (!ruta) return
+        
+        // Inicializar toda la jerarquía de carpetas
+        obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
+        
+        rendimiento[ruta].errores.total++
+        if (error.corregido || error.estado === 'corregido') {
+          rendimiento[ruta].errores.corregidos++
+        } else {
+          rendimiento[ruta].errores.pendientes++
+        }
+      })
+      
+      // Procesar flashcards por carpeta
+      flashcards.forEach(fc => {
+        const ruta = normalizarRuta(fc.carpeta || fc.ruta || '')
+        if (!ruta) return
+        
+        obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
+        
+        rendimiento[ruta].flashcards.total++
+        const facilidad = fc.facilidad || 2.5
+        const intervalo = fc.intervalo || 1
+        
+        if (facilidad >= 2.8 && intervalo >= 21) {
+          rendimiento[ruta].flashcards.dominadas++
+        } else if (intervalo > 1) {
+          rendimiento[ruta].flashcards.enProgreso++
+        } else {
+          rendimiento[ruta].flashcards.pendientes++
+        }
+      })
+      
+      // Procesar exámenes por carpeta
+      examenes.forEach(ex => {
+        const ruta = normalizarRuta(ex.carpeta || ex.ruta || '')
+        if (!ruta) return
+        
+        obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
+        
+        rendimiento[ruta].examenes.total++
+        const nota = ex.calificacion || ex.nota || ex.porcentaje || 0
+        rendimiento[ruta].examenes.puntosTotal += nota
+        
+        if (nota >= 60) {
+          rendimiento[ruta].examenes.aprobados++
+        } else {
+          rendimiento[ruta].examenes.reprobados++
+        }
+      })
+      
+      // Procesar prácticas por carpeta
+      practicasData.forEach(pr => {
+        const ruta = normalizarRuta(pr.carpeta || pr.carpeta_ruta || '')
+        if (!ruta) return
+        
+        obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
+        
+        rendimiento[ruta].practicas.total++
+        if (pr.completada) {
+          rendimiento[ruta].practicas.completadas++
+        }
+        if (pr.resultado) {
+          rendimiento[ruta].practicas.puntosTotal += pr.resultado.puntos_totales || 0
+          rendimiento[ruta].practicas.puntosObtenidos += pr.resultado.puntos_obtenidos || 0
+        }
+      })
+      
+      // Procesar notas por carpeta
+      notas.forEach(nota => {
+        const ruta = normalizarRuta(nota.carpeta || '')
+        if (!ruta) return
+        
+        obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
+        
+        rendimiento[ruta].notas.total++
+        if (nota.ultimoRepaso || nota.repeticiones > 0) {
+          rendimiento[ruta].notas.revisadas++
+        }
+      })
+      
+      // Construir jerarquía de hijos
+      Object.keys(rendimiento).forEach(carpeta => {
+        const r = rendimiento[carpeta]
+        
+        // Agregar como hijo a su padre
+        if (r.padre && rendimiento[r.padre]) {
+          if (!rendimiento[r.padre].hijos.includes(carpeta)) {
+            rendimiento[r.padre].hijos.push(carpeta)
+          }
+        }
+      })
+      
+      // Si está activada la suma de hijos, propagar datos de hijos a padres
+      if (sumarHijosEnRendimiento) {
+        // Función recursiva para sumar datos de los hijos
+        const sumarDatosHijos = (carpeta) => {
+          const r = rendimiento[carpeta]
+          if (!r.hijos || r.hijos.length === 0) return r
+          
+          // Primero procesar todos los hijos recursivamente
+          r.hijos.forEach(hijo => sumarDatosHijos(hijo))
+          
+          // Luego sumar los datos de los hijos a este nodo
+          r.hijos.forEach(hijo => {
+            const h = rendimiento[hijo]
+            if (h) {
+              // Sumar errores
+              r.errores.total += h.errores.total
+              r.errores.corregidos += h.errores.corregidos
+              r.errores.pendientes += h.errores.pendientes
+              // Sumar flashcards
+              r.flashcards.total += h.flashcards.total
+              r.flashcards.dominadas += h.flashcards.dominadas
+              r.flashcards.pendientes += h.flashcards.pendientes
+              r.flashcards.enProgreso += h.flashcards.enProgreso
+              // Sumar exámenes
+              r.examenes.total += h.examenes.total
+              r.examenes.aprobados += h.examenes.aprobados
+              r.examenes.reprobados += h.examenes.reprobados
+              r.examenes.puntosTotal += h.examenes.puntosTotal
+              // Sumar prácticas
+              r.practicas.total += h.practicas.total
+              r.practicas.completadas += h.practicas.completadas
+              r.practicas.puntosTotal += h.practicas.puntosTotal
+              r.practicas.puntosObtenidos += h.practicas.puntosObtenidos
+              // Sumar notas
+              r.notas.total += h.notas.total
+              r.notas.revisadas += h.notas.revisadas
+            }
+          })
+          
+          return r
+        }
+        
+        // Procesar solo las carpetas raíz (nivel 1)
+        Object.keys(rendimiento)
+          .filter(c => rendimiento[c].nivel === 1)
+          .forEach(c => sumarDatosHijos(c))
+      }
+      
+      // Calcular porcentajes para todas las carpetas
+      Object.keys(rendimiento).forEach(carpeta => {
+        const r = rendimiento[carpeta]
+        
+        // Calcular nota promedio de exámenes
+        if (r.examenes.total > 0) {
+          r.examenes.notaPromedio = Math.round(r.examenes.puntosTotal / r.examenes.total)
+        }
+        
+        // Calcular porcentaje general
+        let totalItems = 0
+        let itemsCompletados = 0
+        
+        totalItems += r.errores.total
+        itemsCompletados += r.errores.corregidos
+        
+        totalItems += r.flashcards.total
+        itemsCompletados += r.flashcards.dominadas
+        
+        totalItems += r.examenes.total
+        itemsCompletados += r.examenes.aprobados
+        
+        totalItems += r.practicas.total
+        itemsCompletados += r.practicas.completadas
+        
+        totalItems += r.notas.total
+        itemsCompletados += r.notas.revisadas
+        
+        r.porcentajeGeneral = totalItems > 0 ? Math.round((itemsCompletados / totalItems) * 100) : 0
+        r.totalItems = totalItems
+      })
+      
+      console.log('📊 Rendimiento calculado:', Object.keys(rendimiento).length, 'carpetas')
+      setRendimientoJerarquias(rendimiento)
+      return rendimiento
+    } catch (error) {
+      console.error('Error calculando rendimiento:', error)
+      return {}
     }
   }
 
@@ -1710,30 +2359,22 @@ function App() {
   
   // ========== FUNCIONES PARA SESIÓN DE ESTUDIO ==========
   
-  // Calcular tiempo de descanso óptimo según la ciencia
+  // Calcular tiempo de descanso óptimo
   const calcularTiempoDescanso = (tiempoTotalMinutos) => {
-    // Basado en estudios de neurociencia y técnica Pomodoro
+    // Solo se aplica descanso si la sesión es mayor a 80 minutos
+    // El descanso inicia con un contador de 70 minutos
     
     if (tiempoTotalMinutos <= 0 || !isFinite(tiempoTotalMinutos)) {
-      // Modo infinito: usar máximo recomendado (90 min = límite de atención)
-      return 5400; // 90 minutos en segundos
+      // Modo infinito: descanso cada 70 minutos
+      return 4200; // 70 minutos en segundos
     }
     
-    if (tiempoTotalMinutos <= 25) {
-      // Sesión corta (≤25 min): 1 descanso al final
-      return tiempoTotalMinutos * 60; // Todo el tiempo sin interrupciones
-    } else if (tiempoTotalMinutos <= 50) {
-      // Sesión media (26-50 min): Pomodoro estándar - descanso a los 25 min
-      return 1500; // 25 minutos
-    } else if (tiempoTotalMinutos <= 90) {
-      // Sesión larga (51-90 min): Ultradian rhythm - descanso cada 30-35 min
-      return 1800; // 30 minutos
-    } else if (tiempoTotalMinutos <= 120) {
-      // Sesión muy larga (91-120 min): descanso cada 40 min
-      return 2400; // 40 minutos
+    if (tiempoTotalMinutos > 80) {
+      // Sesiones largas (>80 min): descanso cada 70 min
+      return 4200; // 70 minutos en segundos
     } else {
-      // Sesión extensa (>120 min): descanso cada 50 min (máximo recomendado)
-      return 3000; // 50 minutos
+      // Sesiones de 80 min o menos: sin descanso
+      return tiempoTotalMinutos * 60; // Todo el tiempo sin interrupciones
     }
   };
   
@@ -1819,7 +2460,14 @@ function App() {
   
   const obtenerNombreFase = (fase) => {
     const fases = {
-      'repaso': 'Repaso de Flashcards 📚',
+      'calentamiento': 'Calentamiento 🔥',
+      'errores': 'Refuerzo de Errores ❌',
+      'flashcards': 'Flashcards 🎴',
+      'repaso': 'Repaso de Aciertos 🔄',
+      'contenido': 'Estudio Nuevo 📚',
+      'notas': 'Repaso de Notas 📝',
+      'generar_practicas': 'Generar Prácticas 🧑‍💻',
+      'cierre': 'Cierre y Resumen ✅',
       'practica': 'Práctica Activa ✍️',
       'examen': 'Evaluación Final 🎯',
       'descanso': 'Descanso 🧘'
@@ -1829,7 +2477,13 @@ function App() {
   
   const obtenerSiguienteFase = (faseActual) => {
     const fases = {
-      'repaso': 'Práctica Activa',
+      'calentamiento': 'Errores / Flashcards',
+      'errores': 'Repaso de Aciertos',
+      'flashcards': 'Contenido Nuevo',
+      'repaso': 'Notas',
+      'contenido': 'Generar Prácticas',
+      'notas': 'Cierre',
+      'generar_practicas': 'Cierre',
       'practica': 'Evaluación Final',
       'examen': 'Sesión Completa'
     };
@@ -2035,7 +2689,7 @@ function App() {
     
     // Calcular tiempo de descanso óptimo según el tiempo de sesión
     const tiempoDescansoOptimo = modoLibreActivo 
-      ? 5400 // Modo libre: 90 min (límite máximo de atención)
+      ? 4200 // Modo libre: 70 min (límite óptimo de atención según estudios científicos)
       : calcularTiempoDescanso(tiempoSesion);
     
     // Si es modo libre, configurar fases sin límite de tiempo
@@ -2051,8 +2705,8 @@ function App() {
         { tipo: 'cierre', nombre: 'Cierre', duracion: Infinity, emoji: '✅' }
       ];
     } else {
-      // Modo con tiempo: calcular distribución según prioridad
-      fases = calcularFasesSesion(tiempoSesion, prioridadSesion);
+      // Modo con tiempo: calcular distribución según prioridad y fases excluidas
+      fases = calcularFasesSesion(tiempoSesion, prioridadSesion, fasesExcluidas);
     }
     
     setFasesSesion(fases);
@@ -2087,92 +2741,209 @@ function App() {
     setTimeout(() => guardarEstadoSesion(), 1000);
   };
   
-  const calcularFasesSesion = (minutos, prioridad) => {
+  const calcularFasesSesion = (minutos, prioridad, excluidas = []) => {
     const segundos = minutos * 60;
-    const fases = [];
+    let fases = [];
     
-    if (minutos <= 15) {
-      // Sesión corta (15 min)
-      fases.push(
+    // Modo TODO: incluye todas las fases disponibles con tiempo equitativo
+    if (prioridad === 'todo') {
+      const todasLasFases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', emoji: '🔥' },
+        { tipo: 'errores', nombre: 'Refuerzo de Errores', emoji: '🎯' },
+        { tipo: 'flashcards', nombre: 'Flashcards', emoji: '🃏' },
+        { tipo: 'notas', nombre: 'Repaso de Notas', emoji: '📝' },
+        { tipo: 'contenido', nombre: 'Estudio Nuevo', emoji: '📚' },
+        { tipo: 'repaso', nombre: 'Repaso de Aciertos', emoji: '🔄' },
+        { tipo: 'generar_practicas', nombre: 'Generar Prácticas', emoji: '🧑‍💻' },
+        { tipo: 'cierre', nombre: 'Cierre y Resumen', emoji: '✅' }
+      ];
+      
+      // Filtrar fases excluidas
+      const fasesActivas = todasLasFases.filter(f => !excluidas.includes(f.tipo));
+      const numFases = fasesActivas.length;
+      
+      if (numFases > 0) {
+        // Distribuir tiempo: calentamiento y cierre 10% cada uno, resto equitativo
+        const tiempoCalentamiento = fasesActivas.some(f => f.tipo === 'calentamiento') ? Math.floor(segundos * 0.10) : 0;
+        const tiempoCierre = fasesActivas.some(f => f.tipo === 'cierre') ? Math.floor(segundos * 0.10) : 0;
+        const tiempoRestante = segundos - tiempoCalentamiento - tiempoCierre;
+        const fasesIntermedias = fasesActivas.filter(f => f.tipo !== 'calentamiento' && f.tipo !== 'cierre');
+        const tiempoPorFase = fasesIntermedias.length > 0 ? Math.floor(tiempoRestante / fasesIntermedias.length) : 0;
+        
+        fasesActivas.forEach(fase => {
+          if (fase.tipo === 'calentamiento') {
+            fases.push({ ...fase, duracion: tiempoCalentamiento });
+          } else if (fase.tipo === 'cierre') {
+            fases.push({ ...fase, duracion: tiempoCierre });
+          } else {
+            fases.push({ ...fase, duracion: tiempoPorFase });
+          }
+        });
+      }
+      
+      return fases;
+    }
+    
+    // ===== MODOS ESPECÍFICOS - Fases simples y enfocadas =====
+    
+    if (prioridad === 'errores') {
+      // REFORZAR ERRORES: Solo calentamiento + errores + cierre
+      fases = [
         { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.15), emoji: '🔥' },
-        prioridad === 'errores' 
-          ? { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.70), emoji: '🎯' }
-          : prioridad === 'flashcards'
-          ? { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.70), emoji: '🃏' }
-          : { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.70), emoji: '📚' },
+        { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.70), emoji: '🎯' },
         { tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.15), emoji: '✅' }
-      );
-    } else if (minutos <= 30) {
-      // Sesión media (30 min)
-      fases.push(
-        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.10), emoji: '🔥' }
-      );
+      ];
+    } else if (prioridad === 'contenido') {
+      // AVANZAR CONTENIDO: Calentamiento + Estudio Nuevo + Generar Prácticas + Cierre
+      fases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.10), emoji: '🔥' },
+        { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.45), emoji: '📚' },
+        { tipo: 'practicas', nombre: 'Generar Prácticas', duracion: Math.floor(segundos * 0.35), emoji: '✍️' },
+        { tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.10), emoji: '✅' }
+      ];
+    } else if (prioridad === 'flashcards') {
+      // MANTENER MEMORIA: Calentamiento + Flashcards + Notas + Repaso Aciertos + Cierre
+      fases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.10), emoji: '🔥' },
+        { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.35), emoji: '🃏' },
+        { tipo: 'notas', nombre: 'Repaso de Notas', duracion: Math.floor(segundos * 0.20), emoji: '📝' },
+        { tipo: 'repaso', nombre: 'Repaso de Aciertos', duracion: Math.floor(segundos * 0.25), emoji: '🔄' },
+        { tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.10), emoji: '✅' }
+      ];
+    } else if (prioridad === 'notas') {
+      // REPASAR NOTAS: Solo calentamiento + notas + cierre
+      fases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.15), emoji: '🔥' },
+        { tipo: 'notas', nombre: 'Repaso de Notas', duracion: Math.floor(segundos * 0.70), emoji: '📝' },
+        { tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.15), emoji: '✅' }
+      ];
+    } else if (prioridad === 'practicas') {
+      // GENERAR PRÁCTICAS: Solo calentamiento + generar prácticas + cierre
+      fases = [
+        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.10), emoji: '🔥' },
+        { tipo: 'practicas', nombre: 'Generar Prácticas', duracion: Math.floor(segundos * 0.80), emoji: '✍️' },
+        { tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.10), emoji: '✅' }
+      ];
+    }
+    
+    // Filtrar fases excluidas y redistribuir tiempo (solo aplica en modo 'todo')
+    if (excluidas.length > 0 && prioridad === 'todo') {
+      const fasesOriginales = [...fases];
+      const tiempoExcluido = fasesOriginales
+        .filter(f => excluidas.includes(f.tipo))
+        .reduce((acc, f) => acc + f.duracion, 0);
       
-      if (prioridad === 'errores') {
-        fases.push(
-          { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.50), emoji: '🎯' },
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.30), emoji: '🃏' }
-        );
-      } else if (prioridad === 'flashcards') {
-        fases.push(
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.50), emoji: '🃏' },
-          { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.30), emoji: '🎯' }
-        );
-      } else {
-        fases.push(
-          { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.50), emoji: '📚' },
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.30), emoji: '🃏' }
-        );
+      fases = fasesOriginales.filter(f => !excluidas.includes(f.tipo));
+      
+      // Redistribuir el tiempo excluido entre las fases restantes (excepto calentamiento y cierre)
+      const fasesRedistribuir = fases.filter(f => f.tipo !== 'calentamiento' && f.tipo !== 'cierre');
+      if (fasesRedistribuir.length > 0 && tiempoExcluido > 0) {
+        const tiempoExtra = Math.floor(tiempoExcluido / fasesRedistribuir.length);
+        fases = fases.map(f => {
+          if (f.tipo !== 'calentamiento' && f.tipo !== 'cierre') {
+            return { ...f, duracion: f.duracion + tiempoExtra };
+          }
+          return f;
+        });
       }
-      
-      fases.push({ tipo: 'cierre', nombre: 'Cierre', duracion: Math.floor(segundos * 0.10), emoji: '✅' });
-    } else {
-      // Sesión larga (45-60 min)
-      fases.push(
-        { tipo: 'calentamiento', nombre: 'Calentamiento', duracion: Math.floor(segundos * 0.08), emoji: '🔥' }
-      );
-      
-      if (prioridad === 'errores') {
-        fases.push(
-          { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.35), emoji: '🎯' },
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.25), emoji: '🃏' },
-          { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.25), emoji: '📚' }
-        );
-      } else if (prioridad === 'flashcards') {
-        fases.push(
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.35), emoji: '🃏' },
-          { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.25), emoji: '🎯' },
-          { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.25), emoji: '📚' }
-        );
-      } else {
-        fases.push(
-          { tipo: 'contenido', nombre: 'Estudio Nuevo', duracion: Math.floor(segundos * 0.35), emoji: '📚' },
-          { tipo: 'flashcards', nombre: 'Flashcards', duracion: Math.floor(segundos * 0.25), emoji: '🃏' },
-          { tipo: 'errores', nombre: 'Refuerzo de Errores', duracion: Math.floor(segundos * 0.25), emoji: '🎯' }
-        );
-      }
-      
-      fases.push({ tipo: 'cierre', nombre: 'Cierre y Resumen', duracion: Math.floor(segundos * 0.07), emoji: '✅' });
     }
     
     return fases;
   };
   
+  // Función para excluir/incluir una fase
+  const toggleFaseExcluida = (tipoFase) => {
+    setFasesExcluidas(prev => {
+      if (prev.includes(tipoFase)) {
+        return prev.filter(f => f !== tipoFase);
+      } else {
+        return [...prev, tipoFase];
+      }
+    });
+  };
+  
   const cargarDatosSesion = async () => {
     try {
-      // Cargar datos de calentamiento (últimos exámenes y flashcards)
-      const responseExamenes = await fetch(`${API_URL}/api/examenes/listar`);
-      const dataExamenes = await responseExamenes.json();
+      // 🔥 CARGAR TANTO EXÁMENES COMO PRÁCTICAS
+      // Cargar exámenes
+      const responseExamenes = await fetch(`${API_URL}/datos/examenes`);
+      const examenes = await responseExamenes.json();
+      
+      // Cargar prácticas
+      const responsePracticas = await fetch(`${API_URL}/datos/practicas`);
+      const practicas = await responsePracticas.json();
+      
+      console.log('📊 Datos cargados para errores:', {
+        examenes: examenes.length,
+        practicas: practicas.length
+      });
+      
+      // Combinar exámenes y prácticas para extraer errores
+      const todosLosItems = [
+        ...examenes.map(e => ({ ...e, es_practica: false })),
+        ...practicas.map(p => ({ ...p, es_practica: true }))
+      ];
       
       setDatosCalentamiento({
-        ultimosExamenes: dataExamenes.completados?.slice(0, 5) || [],
+        ultimosExamenes: todosLosItems.slice(0, 5) || [],
         carpetaActual: rutaActual
       });
       
       // Cargar errores (preguntas con bajo rendimiento)
-      const errores = extraerErroresDeExamenes(dataExamenes.completados || []);
+      const errores = extraerErroresDeExamenes(todosLosItems);
+      console.log('❌ Errores encontrados:', errores.length);
       setErroresActuales(errores);
       setIndiceErrorActual(0);
+      
+      // 🔥 CARGAR ACIERTOS PARA REPASO
+      const aciertos = extraerAciertosParaRepaso(todosLosItems);
+      console.log('✅ Aciertos para repaso:', aciertos.length);
+      setAciertosRepaso(aciertos);
+      setIndiceAciertoActual(0);
+      
+      // 🔥 CARGAR NOTAS PARA REPASO
+      const cargarNotasParaRepaso = async () => {
+        try {
+          const todasNotas = await getDatos('notas');
+          const hoy = new Date();
+          const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
+          hoy.setHours(0, 0, 0, 0);
+          
+          // Filtrar notas que necesitan repaso (según repetición espaciada)
+          // Y que NO hayan sido repasadas HOY
+          const notasParaRepasar = todasNotas.filter(nota => {
+            // Si ya fue repasada hoy, no mostrar
+            if (nota.ultimoRepaso) {
+              const ultimoRepasoStr = new Date(nota.ultimoRepaso).toISOString().split('T')[0];
+              if (ultimoRepasoStr === hoyStr) {
+                return false; // Ya repasada hoy
+              }
+            }
+            
+            if (!nota.proximaRevision) return true; // Nuevas siempre se muestran
+            const fechaRepaso = new Date(nota.proximaRevision);
+            return fechaRepaso <= hoy;
+          });
+          
+          // Filtrar por carpeta actual si existe
+          const notasFiltradas = rutaActual 
+            ? notasParaRepasar.filter(n => n.carpeta === rutaActual)
+            : notasParaRepasar;
+          
+          console.log('📝 Notas para repasar:', {
+            total: todasNotas.length,
+            paraRepasar: notasParaRepasar.length,
+            enCarpeta: notasFiltradas.length
+          });
+          
+          setNotasRepasoSesion(notasFiltradas);
+          setIndiceNotaRepasoActual(0);
+        } catch (error) {
+          console.error('Error cargando notas:', error);
+          setNotasRepasoSesion([]);
+        }
+      };
+      cargarNotasParaRepaso();
       
       // Cargar flashcards desde archivo
       const cargarFlashcardsAsync = async () => {
@@ -2195,7 +2966,9 @@ function App() {
             enProgreso: flashcardsParaRepasar.filter(f => f.estadoRevision === 'en_progreso').length
           });
           
-          setFlashcardsSesion(flashcardsFiltradas.length > 0 ? flashcardsFiltradas : todasFlashcards.slice(0, 10));
+          // 🔥 SOLO mostrar flashcards que realmente necesitan repaso
+          // NO hacer fallback a todas las flashcards
+          setFlashcardsSesion(flashcardsFiltradas);
           setIndiceFlashcardActual(0);
         } catch (error) {
           console.error('Error parseando flashcards:', error);
@@ -2209,10 +2982,20 @@ function App() {
     }
   };
   
-  const extraerErroresDeExamenes = (examenes) => {
+  // 🔥 SISTEMA DE ERRORES CON REPETICIÓN ESPACIADA
+  // Estados: nuevo → fallo → critical → ok
+  // - nuevo: primer error, no tiene estado aún
+  // - fallo: falló, revisar mañana (D+1)
+  // - critical: falló 2+ veces seguidas, revisar mañana con prioridad
+  // - ok: finalmente acertó, intervalo expandido (D+3 a D+6)
+  
+  const extraerErroresDeExamenes = (examenes, soloAtrasados = true) => {
     const errores = [];
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Inicio del día
     
     console.log('🔍 Extrayendo errores de', examenes.length, 'exámenes/prácticas');
+    console.log('   📅 Solo atrasados:', soloAtrasados, '| Hoy:', hoy.toISOString().split('T')[0]);
     
     examenes.forEach(examen => {
       // 🔥 BUSCAR EN AMBAS ESTRUCTURAS: resultados directos Y resultado.resultados
@@ -2228,51 +3011,229 @@ function App() {
         resultados.forEach(resultado => {
           const porcentaje = (resultado.puntos / resultado.puntos_maximos) * 100;
           
-          // Considerar error si obtuvo menos del 60% Y no ha sido corregido
-          if (porcentaje < 60 && !resultado.corregido) {
-            console.log('❌ Error encontrado:', {
+          // Considerar error si obtuvo menos del 60%
+          if (porcentaje < 60) {
+            // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" Y aún no toca repaso, IGNORAR
+            if (resultado.corregido && resultado.estado_error === 'ok') {
+              const proximaRev = resultado.proximaRevisionError ? new Date(resultado.proximaRevisionError) : null;
+              if (proximaRev && proximaRev > hoy) {
+                console.log('✅ Error OK, aún no toca:', {
+                  pregunta: resultado.pregunta.substring(0, 40) + '...',
+                  proximaRevision: proximaRev.toISOString().split('T')[0]
+                });
+                return; // Skip this error
+              }
+            }
+            
+            // 🔥 DETERMINAR SI ES ATRASADO
+            // Un error es "atrasado" si:
+            // 1. Nunca se ha revisado (sin proximaRevisionError) Y no es de hoy
+            // 2. proximaRevisionError < hoy
+            // 3. estado_error es 'fallo' o 'critical' y toca revisión
+            
+            const fechaExamen = examen.fecha_completado ? new Date(examen.fecha_completado) : new Date();
+            fechaExamen.setHours(0, 0, 0, 0);
+            const esDeHoy = fechaExamen.getTime() === hoy.getTime();
+            
+            const proximaRev = resultado.proximaRevisionError ? new Date(resultado.proximaRevisionError) : null;
+            let esAtrasado = false;
+            
+            if (!resultado.estado_error) {
+              // Error nuevo: atrasado solo si no es de hoy
+              esAtrasado = !esDeHoy;
+            } else if (proximaRev) {
+              // Tiene fecha de revisión: atrasado si ya pasó o es hoy pero tiene estado fallo/critical
+              esAtrasado = proximaRev <= hoy;
+            } else {
+              // Tiene estado pero no fecha: considerarlo atrasado si no es de hoy
+              esAtrasado = !esDeHoy;
+            }
+            
+            // 🔥 FILTRAR: Si soloAtrasados y no es atrasado, skip
+            if (soloAtrasados && !esAtrasado) {
+              console.log('⏳ Error de hoy (ignorado):', {
+                pregunta: resultado.pregunta.substring(0, 40) + '...',
+                esDeHoy,
+                estado: resultado.estado_error
+              });
+              return;
+            }
+            
+            console.log('❌ Error para revisión:', {
               examen_id: examen.id,
-              archivo: examen.archivo,
-              pregunta: resultado.pregunta.substring(0, 50) + '...',
+              pregunta: resultado.pregunta.substring(0, 40) + '...',
               porcentaje: porcentaje.toFixed(2) + '%',
-              puntos: resultado.puntos,
-              maximos: resultado.puntos_maximos,
-              corregido: resultado.corregido
+              estado: resultado.estado_error || 'nuevo',
+              veces_fallada: resultado.veces_fallada || 0,
+              esAtrasado
             });
             
             errores.push({
               ...resultado,
               examen_id: examen.id,
-              archivo: examen.archivo, // 🔥 NECESARIO para actualizar archivo individual
-              carpeta_ruta: examen.carpeta_ruta || examen.carpeta, // 🔥 NECESARIO para actualizar archivo individual
+              archivo: examen.archivo,
+              carpeta_ruta: examen.carpeta_ruta || examen.carpeta,
               fecha: examen.fecha_completado,
               carpeta: examen.carpeta_nombre,
-              // 🔥 CAMPO EXPLÍCITO: es_practica (false para exámenes, true para prácticas)
-              es_practica: examen.es_practica === true, // Asegurar boolean explícito
-              tipo_item: examen.es_practica ? 'practica' : 'examen', // Campo adicional para claridad
-              porcentaje_obtenido: porcentaje
-            });
-          } else if (porcentaje < 60 && resultado.corregido) {
-            console.log('✅ Error ya corregido (ignorado):', {
-              examen_id: examen.id,
-              pregunta: resultado.pregunta.substring(0, 50) + '...',
-              porcentaje: porcentaje.toFixed(2) + '%',
-              corregido: resultado.corregido,
-              fechaCorreccion: resultado.fechaCorreccion
+              es_practica: examen.es_practica === true,
+              tipo_item: examen.es_practica ? 'practica' : 'examen',
+              porcentaje_obtenido: porcentaje,
+              // 🔥 CAMPOS DE REPETICIÓN ESPACIADA
+              estado_error: resultado.estado_error || 'nuevo',
+              veces_fallada: resultado.veces_fallada || 0,
+              proximaRevisionError: resultado.proximaRevisionError,
+              ultimaRevisionError: resultado.ultimaRevisionError
             });
           }
         });
       }
     });
     
-    console.log('📊 Total errores encontrados:', errores.length);
-    return errores;
+    // Ordenar: primero los críticos, luego por veces falladas, luego por fecha más antigua
+    const erroresOrdenados = errores.sort((a, b) => {
+      // Prioridad por estado
+      const prioridad = { 'critical': 0, 'fallo': 1, 'nuevo': 2, 'ok': 3 };
+      const prioA = prioridad[a.estado_error] ?? 2;
+      const prioB = prioridad[b.estado_error] ?? 2;
+      if (prioA !== prioB) return prioA - prioB;
+      
+      // Luego por veces falladas (más falladas primero)
+      if (a.veces_fallada !== b.veces_fallada) {
+        return (b.veces_fallada || 0) - (a.veces_fallada || 0);
+      }
+      
+      // Finalmente por fecha más antigua
+      const fechaA = new Date(a.fecha || 0);
+      const fechaB = new Date(b.fecha || 0);
+      return fechaA - fechaB;
+    });
     
-    // Ordenar por peor rendimiento primero
-    return errores.sort((a, b) => a.porcentaje_obtenido - b.porcentaje_obtenido);
+    console.log('📊 Total errores para revisión:', erroresOrdenados.length);
+    return erroresOrdenados;
   };
   
-  const avanzarFase = () => {
+  // 🔥 SISTEMA DE REPASO DE ACIERTOS
+  // Extrae preguntas que el usuario acertó (>=60%) y cuya proximaRevision ya llegó
+  // Si falla ahora → retrocede a estado "fallo", pierde intervalo, revisa mañana
+  const extraerAciertosParaRepaso = (examenes) => {
+    const aciertos = [];
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    
+    console.log('🎯 Extrayendo aciertos para repaso de', examenes.length, 'exámenes/prácticas');
+    
+    examenes.forEach(examen => {
+      let resultados = null;
+      
+      if (examen.resultados && Array.isArray(examen.resultados)) {
+        resultados = examen.resultados;
+      } else if (examen.resultado?.resultados && Array.isArray(examen.resultado.resultados)) {
+        resultados = examen.resultado.resultados;
+      }
+      
+      if (resultados) {
+        resultados.forEach(resultado => {
+          const porcentaje = (resultado.puntos / resultado.puntos_maximos) * 100;
+          
+          // Solo considerar ACIERTOS (>=60%)
+          if (porcentaje >= 60) {
+            // Verificar si tiene proximaRevision y ya llegó el momento
+            const proximaRev = resultado.proximaRevision ? new Date(resultado.proximaRevision) : null;
+            
+            // Una pregunta acertada necesita repaso si:
+            // 1. Tiene proximaRevision y ya pasó o es hoy
+            // 2. Tiene estado 'ok' (de error corregido) y proximaRevisionError llegó
+            let necesitaRepaso = false;
+            let fuente = 'pregunta'; // 'pregunta' o 'error_corregido'
+            
+            if (proximaRev && proximaRev <= hoy) {
+              necesitaRepaso = true;
+              fuente = 'pregunta';
+            }
+            
+            // También incluir errores corregidos (estado='ok') cuya proximaRevisionError llegó
+            if (resultado.estado_error === 'ok' && resultado.proximaRevisionError) {
+              const proximaRevError = new Date(resultado.proximaRevisionError);
+              if (proximaRevError <= hoy) {
+                necesitaRepaso = true;
+                fuente = 'error_corregido';
+              }
+            }
+            
+            if (necesitaRepaso) {
+              console.log('✅ Acierto para repaso:', {
+                pregunta: resultado.pregunta.substring(0, 40) + '...',
+                porcentaje: porcentaje.toFixed(2) + '%',
+                fuente,
+                proximaRevision: proximaRev?.toISOString().split('T')[0]
+              });
+              
+              aciertos.push({
+                ...resultado,
+                examen_id: examen.id,
+                archivo: examen.archivo,
+                carpeta_ruta: examen.carpeta_ruta || examen.carpeta,
+                fecha: examen.fecha_completado,
+                carpeta: examen.carpeta_nombre,
+                es_practica: examen.es_practica === true,
+                tipo_item: examen.es_practica ? 'practica' : 'examen',
+                porcentaje_obtenido: porcentaje,
+                fuente_repaso: fuente,
+                // Campos de repetición espaciada
+                intervalo: resultado.intervalo || 1,
+                repeticiones: resultado.repeticiones || 0,
+                facilidad: resultado.facilidad || 2.5,
+                estado_repaso: resultado.estado_repaso || 'pendiente' // pendiente, correcto, fallado
+              });
+            }
+          }
+        });
+      }
+    });
+    
+    // Ordenar por fecha de próxima revisión más antigua primero
+    const aciertosOrdenados = aciertos.sort((a, b) => {
+      const fechaA = new Date(a.proximaRevision || a.proximaRevisionError || 0);
+      const fechaB = new Date(b.proximaRevision || b.proximaRevisionError || 0);
+      return fechaA - fechaB;
+    });
+    
+    console.log('📊 Total aciertos para repaso:', aciertosOrdenados.length);
+    return aciertosOrdenados;
+  };
+  
+  const avanzarFase = async () => {
+    // 🔥 VERIFICAR si hay notas pendientes de guardar
+    if ((faseActual === 'contenido' || faseActual === 'notas')) {
+      const hayNotaEditorPendiente = editorNotaContenido.trim() || editorNotaTitulo.trim();
+      const hayNotasSesionPendientes = notasSesionActual.some(n => 
+        !n.guardada && (n.contenido?.trim() || n.titulo?.trim())
+      );
+      
+      if (hayNotaEditorPendiente || hayNotasSesionPendientes) {
+        const cantidadPendientes = (hayNotaEditorPendiente ? 1 : 0) + 
+          notasSesionActual.filter(n => !n.guardada && (n.contenido?.trim() || n.titulo?.trim())).length;
+        
+        const confirmacion = window.confirm(
+          `⚠️ Tienes ${cantidadPendientes} nota(s) sin guardar.\n\n` +
+          `¿Deseas guardarlas antes de continuar?\n\n` +
+          `• "Aceptar" = Guardar notas y continuar\n` +
+          `• "Cancelar" = Descartar notas y continuar`
+        );
+        
+        if (confirmacion) {
+          await guardarTodasNotasPendientes();
+        } else {
+          // Limpiar sin guardar
+          setEditorNotaTitulo('');
+          setEditorNotaContenido('');
+          setEditorNotaTags('');
+          setNotasSesionActual([]);
+          setNotaSeleccionadaId(null);
+        }
+      }
+    }
+    
     const siguienteIndice = indiceFaseActual + 1;
     
     if (siguienteIndice < fasesSesion.length) {
@@ -2309,6 +3270,28 @@ function App() {
       // Sesión completada
       finalizarSesion();
     }
+  };
+  
+  // Generar título automático basado en el contenido
+  const generarTituloAutomatico = (contenido) => {
+    if (!contenido) return `Nota ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+    
+    // Buscar primera línea con contenido
+    const lineas = contenido.split('\n').filter(l => l.trim());
+    if (lineas.length === 0) return `Nota ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+    
+    let titulo = lineas[0]
+      .replace(/^#+\s*/, '') // Quitar # de markdown
+      .replace(/\*+/g, '') // Quitar asteriscos
+      .replace(/`+/g, '') // Quitar backticks
+      .trim();
+    
+    // Limitar longitud
+    if (titulo.length > 50) {
+      titulo = titulo.substring(0, 47) + '...';
+    }
+    
+    return titulo || `Nota ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   };
   
   const pausarReanudarSesion = () => {
@@ -2385,13 +3368,33 @@ function App() {
     }
   };
   
-  // Función para seleccionar respuesta al error
+  // Función para seleccionar respuesta al error (MCQ y V/F)
   const seleccionarRespuestaError = (opcion) => {
     setRespuestaErrorSeleccionada(opcion);
     setErrorYaRespondido(true);
     
     const errorActual = erroresActuales[indiceErrorActual];
-    const esCorrecta = opcion.startsWith(errorActual.respuesta_correcta);
+    
+    // 🔥 VERIFICAR CORRECTA: MCQ usa startsWith, V/F usa normalización
+    let esCorrecta = false;
+    const respCorrecta = errorActual.respuesta_correcta?.trim().toLowerCase();
+    const opcionLower = opcion.toLowerCase();
+    
+    // Detectar si es V/F
+    const esVerdaderoFalso = errorActual.tipo === 'verdadero_falso' || 
+      errorActual.tipo === 'true_false' ||
+      errorActual.tipo === 'verdadero-falso' ||
+      ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+    
+    if (esVerdaderoFalso) {
+      // Normalizar respuesta correcta y comparar
+      const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+      const opcionEsVerdadero = opcionLower === 'verdadero';
+      esCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+    } else {
+      // MCQ: comparar inicio
+      esCorrecta = opcion.startsWith(errorActual.respuesta_correcta);
+    }
     
     if (esCorrecta) {
       console.log('✅ ¡Respuesta correcta! El error fue comprendido.');
@@ -2504,87 +3507,122 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       pregunta: errorActual.pregunta.substring(0, 50) + '...',
       respuestaSeleccionada: respuestaErrorSeleccionada,
       respuestaTextual: respuestaTextual,
-      feedbackIA: feedbackIA
+      feedbackIA: feedbackIA,
+      estado_error: errorActual.estado_error,
+      veces_fallada: errorActual.veces_fallada
     });
     
-    // Verificar si la respuesta es correcta (puede ser de opción múltiple o texto)
-    if (respuestaErrorSeleccionada && respuestaErrorSeleccionada.startsWith(errorActual.respuesta_correcta)) {
-      esCorrecta = true;
-      console.log('✅ Respuesta de opción múltiple CORRECTA');
+    // 🔥 VERIFICAR SI ES CORRECTA - Considerar MCQ, V/F y texto
+    const respCorrecta = errorActual.respuesta_correcta?.trim().toLowerCase();
+    
+    // Detectar si es V/F
+    const esVerdaderoFalso = errorActual.tipo === 'verdadero_falso' || 
+      errorActual.tipo === 'true_false' ||
+      errorActual.tipo === 'verdadero-falso' ||
+      ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+    
+    if (respuestaErrorSeleccionada) {
+      if (esVerdaderoFalso) {
+        // V/F: normalizar y comparar
+        const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+        const opcionEsVerdadero = respuestaErrorSeleccionada.toLowerCase() === 'verdadero';
+        esCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+      } else {
+        // MCQ: comparar inicio
+        esCorrecta = respuestaErrorSeleccionada.startsWith(errorActual.respuesta_correcta);
+      }
+      if (esCorrecta) console.log('✅ Respuesta MCQ/V/F CORRECTA');
     } else if (feedbackIA && (feedbackIA.esSuficiente || feedbackIA.puntaje >= 70)) {
-      // 🔥 CORRECCIÓN: Usar campos reales de feedbackIA (esSuficiente, puntaje)
-      // feedbackIA viene de evaluarRespuestaTextual() con estructura:
-      // { texto, puntaje: 0-100, esSuficiente: boolean }
       esCorrecta = true;
-      console.log('✅ Respuesta de texto CORRECTA (aprobada por IA):', {
-        esSuficiente: feedbackIA.esSuficiente,
-        puntaje: feedbackIA.puntaje
-      });
+      console.log('✅ Respuesta de texto CORRECTA (aprobada por IA)');
     }
     
-    // Si el usuario respondió correctamente, actualizar el examen/práctica original
+    // 🔥 CALCULAR NUEVO ESTADO DE ERROR
+    const ahora = new Date();
+    const hoy = new Date(ahora);
+    hoy.setHours(0, 0, 0, 0);
+    
+    let nuevoEstado = errorActual.estado_error || 'nuevo';
+    let nuevasVecesFallada = errorActual.veces_fallada || 0;
+    let nuevaProximaRevision = null;
+    
     if (esCorrecta) {
-      console.log('✅ Error corregido. Actualizando examen/práctica original...');
+      // ✅ RESPONDIÓ CORRECTAMENTE → estado 'ok', intervalo 3-6 días
+      nuevoEstado = 'ok';
+      nuevasVecesFallada = 0; // Resetear contador
       
-      try {
-        // 🔥 DETERMINAR TIPO: Usar campo explícito es_practica
-        const esExamen = errorActual.es_practica !== true; // false si es undefined/null/false
-        const tipoItem = errorActual.tipo_item || (esExamen ? 'examen' : 'practica');
-        const listaABuscar = esExamen ? await getDatos('examenes') : await getDatos('practicas');
-        
-        console.log(`📦 Buscando en ${listaABuscar.length} ${tipoItem}s`, {
-          esExamen,
-          es_practica: errorActual.es_practica,
-          tipo_item: tipoItem
-        });
-        console.log('   🔍 Buscando ID:', errorActual.examen_id);
-        console.log('   📂 Archivo:', errorActual.archivo);
-        console.log('   📁 Carpeta:', errorActual.carpeta_ruta);
-        
-        // Buscar por ID
-        const itemEncontrado = listaABuscar.find(item => item.id === errorActual.examen_id);
-        
-        if (!itemEncontrado) {
-          console.error('❌ No se encontró el item con ID:', errorActual.examen_id);
-          throw new Error(`Item con ID ${errorActual.examen_id} no encontrado`);
-        }
-        
-        console.log('✅ Item encontrado:', {
-          id: itemEncontrado.id,
-          archivo: itemEncontrado.archivo,
-          carpeta_ruta: itemEncontrado.carpeta_ruta,
-          tiene_archivo: !!itemEncontrado.archivo,
-          tiene_carpeta_ruta: !!itemEncontrado.carpeta_ruta
-        });
-        
-        // Obtener resultados
-        let resultados = null;
-        let esEstructuraDirecta = false;
-        
-        if (itemEncontrado.resultado?.resultados) {
-          resultados = itemEncontrado.resultado.resultados;
-          esEstructuraDirecta = false;
-        } else if (itemEncontrado.resultados && Array.isArray(itemEncontrado.resultados)) {
-          resultados = itemEncontrado.resultados;
-          esEstructuraDirecta = true;
-        }
-        
-        if (!resultados) {
-          console.error('❌ No se encontraron resultados en el item');
-          throw new Error('No se encontraron resultados');
-        }
-        
-        // Buscar la pregunta específica
-        const preguntaIndex = resultados.findIndex(r => r.pregunta === errorActual.pregunta);
-        
-        if (preguntaIndex === -1) {
-          console.error('❌ Pregunta no encontrada en resultados');
-          throw new Error('Pregunta no encontrada');
-        }
-        
-        console.log(`📝 Pregunta encontrada en índice ${preguntaIndex}`);
-        
-        // Actualizar la respuesta a correcta
+      // Intervalo aleatorio 3-6 días
+      const diasIntervalo = 3 + Math.floor(Math.random() * 4); // 3, 4, 5 o 6
+      nuevaProximaRevision = new Date(hoy);
+      nuevaProximaRevision.setDate(nuevaProximaRevision.getDate() + diasIntervalo);
+      
+      console.log(`✅ Error corregido → estado='ok', próxima revisión en ${diasIntervalo} días`);
+    } else {
+      // ❌ RESPONDIÓ INCORRECTAMENTE → incrementar fallos
+      nuevasVecesFallada += 1;
+      
+      if (nuevasVecesFallada >= 3) {
+        // 🔥 "Incendio cognitivo" - 3+ fallos seguidos
+        nuevoEstado = 'critical';
+        console.log(`🔥 INCENDIO COGNITIVO: ${nuevasVecesFallada} fallos consecutivos → critical`);
+      } else if (nuevasVecesFallada >= 2 || errorActual.estado_error === 'fallo') {
+        // 2+ fallos → critical
+        nuevoEstado = 'critical';
+        console.log(`❌ 2+ fallos → estado='critical'`);
+      } else {
+        // Primer fallo → fallo
+        nuevoEstado = 'fallo';
+        console.log(`⚠️ Primer fallo → estado='fallo'`);
+      }
+      
+      // Siempre revisar mañana cuando falla
+      nuevaProximaRevision = new Date(hoy);
+      nuevaProximaRevision.setDate(nuevaProximaRevision.getDate() + 1);
+      
+      console.log(`📅 Error mal respondido → revisión mañana, veces_fallada=${nuevasVecesFallada}`);
+    }
+    
+    // 🔥 ACTUALIZAR EN EL ARCHIVO JSON
+    try {
+      const esExamen = errorActual.es_practica !== true;
+      const tipoItem = errorActual.tipo_item || (esExamen ? 'examen' : 'practica');
+      const listaABuscar = esExamen ? await getDatos('examenes') : await getDatos('practicas');
+      
+      console.log(`📦 Buscando en ${listaABuscar.length} ${tipoItem}s`);
+      
+      const itemEncontrado = listaABuscar.find(item => item.id === errorActual.examen_id);
+      
+      if (!itemEncontrado) {
+        console.error('❌ No se encontró el item con ID:', errorActual.examen_id);
+        throw new Error(`Item con ID ${errorActual.examen_id} no encontrado`);
+      }
+      
+      // Obtener resultados
+      let resultados = null;
+      let esEstructuraDirecta = false;
+      
+      if (itemEncontrado.resultado?.resultados) {
+        resultados = itemEncontrado.resultado.resultados;
+        esEstructuraDirecta = false;
+      } else if (itemEncontrado.resultados && Array.isArray(itemEncontrado.resultados)) {
+        resultados = itemEncontrado.resultados;
+        esEstructuraDirecta = true;
+      }
+      
+      if (!resultados) throw new Error('No se encontraron resultados');
+      
+      // Buscar la pregunta específica
+      const preguntaIndex = resultados.findIndex(r => r.pregunta === errorActual.pregunta);
+      if (preguntaIndex === -1) throw new Error('Pregunta no encontrada');
+      
+      // 🔥 ACTUALIZAR CAMPOS DE REPETICIÓN ESPACIADA
+      resultados[preguntaIndex].estado_error = nuevoEstado;
+      resultados[preguntaIndex].veces_fallada = nuevasVecesFallada;
+      resultados[preguntaIndex].proximaRevisionError = nuevaProximaRevision?.toISOString();
+      resultados[preguntaIndex].ultimaRevisionError = ahora.toISOString();
+      
+      if (esCorrecta) {
+        // Solo si es correcta, actualizar respuesta y puntos
         if (respuestaErrorSeleccionada) {
           resultados[preguntaIndex].respuesta_usuario = errorActual.respuesta_correcta;
         } else if (respuestaTextual) {
@@ -2592,14 +3630,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         }
         resultados[preguntaIndex].puntos = resultados[preguntaIndex].puntos_maximos;
         resultados[preguntaIndex].corregido = true;
-        resultados[preguntaIndex].fechaCorreccion = new Date().toISOString();
-        
-        console.log('   ✅ Pregunta marcada como corregida:', {
-          corregido: resultados[preguntaIndex].corregido,
-          fechaCorreccion: resultados[preguntaIndex].fechaCorreccion,
-          puntos_antes: errorActual.puntos,
-          puntos_despues: resultados[preguntaIndex].puntos
-        });
+        resultados[preguntaIndex].fechaCorreccion = ahora.toISOString();
         
         // Recalcular puntos totales
         const nuevosPuntosObtenidos = resultados.reduce((sum, r) => sum + (r.puntos || 0), 0);
@@ -2613,52 +3644,27 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           itemEncontrado.resultado.puntos_obtenidos = nuevosPuntosObtenidos;
           itemEncontrado.resultado.porcentaje = nuevoPorcentaje;
         }
-        
-        // Guardar usando la función correcta
-        console.log('   💾 Guardando item actualizado...');
-        if (esExamen) {
-          await guardarExamenEnCarpeta(itemEncontrado);
-        } else {
-          await guardarPracticaEnCarpeta(itemEncontrado);
-        }
-        
-        console.log('✅ Item actualizado y guardado - Nuevo porcentaje:', nuevoPorcentaje.toFixed(2) + '%');
-        
-        // 🔥 RECARGAR DATOS DESDE BACKEND PARA VERIFICAR QUE SE GUARDÓ
-        console.log('🔄 Recargando desde backend...');
-        const itemsActualizados = esExamen ? await getDatos('examenes') : await getDatos('practicas');
-        console.log('📦 Recargados:', itemsActualizados.length, esExamen ? 'exámenes' : 'prácticas');
-        
-        // Refiltrar errores con los datos actualizados
-        const todosItems = [...await getDatos('examenes'), ...await getDatos('practicas')];
-        const erroresRefrescados = extraerErroresDeExamenes(todosItems);
-        console.log('🔍 Errores después de recargar:', erroresRefrescados.length);
-        
-        // Verificar que la pregunta ya NO esté en la lista
-        const preguntaAunEnLista = erroresRefrescados.find(e => 
-          e.pregunta === errorActual.pregunta && e.examen_id === errorActual.examen_id
-        );
-        if (preguntaAunEnLista) {
-          console.error('❌ ERROR: La pregunta sigue en la lista después de marcarla como corregida!', {
-            pregunta: errorActual.pregunta.substring(0, 50),
-            id: preguntaAunEnLista.examen_id,
-            archivo: preguntaAunEnLista.archivo,
-            corregido: preguntaAunEnLista.corregido,
-            puntos: preguntaAunEnLista.puntos
-          });
-        } else {
-          console.log('✅ VERIFICADO: La pregunta ya NO está en la lista de errores');
-        }
-        
-      } catch (error) {
-        console.error('❌ Error actualizando item:', error);
       }
-    } else {
-      console.log('⚠️ El usuario no respondió correctamente, no se actualiza el examen.');
       
-      // Si respondió mal, programar para mañana
-      const errorConRevision = calcularProximaRevision(errorActual, 'dificil');
-      console.log('📅 Error mal respondido, revisión para:', errorConRevision.proximaRevision);
+      console.log('   📝 Pregunta actualizada:', {
+        estado_error: resultados[preguntaIndex].estado_error,
+        veces_fallada: resultados[preguntaIndex].veces_fallada,
+        proximaRevisionError: resultados[preguntaIndex].proximaRevisionError,
+        corregido: resultados[preguntaIndex].corregido
+      });
+      
+      // Guardar
+      console.log('   💾 Guardando...');
+      if (esExamen) {
+        await guardarExamenEnCarpeta(itemEncontrado);
+      } else {
+        await guardarPracticaEnCarpeta(itemEncontrado);
+      }
+      
+      console.log('✅ Item actualizado y guardado');
+      
+    } catch (error) {
+      console.error('❌ Error actualizando item:', error);
     }
     
     // Si fue corregido, eliminarlo de la lista de errores actuales
@@ -2701,6 +3707,288 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
   };
   
   // ============================================
+  // 🔄 FASE DE REPASO DE ACIERTOS
+  // ============================================
+  
+  // Función para seleccionar respuesta en repaso de aciertos (MCQ y V/F)
+  const seleccionarRespuestaAcierto = (opcion) => {
+    setRespuestaAciertoSeleccionada(opcion);
+    setAciertoYaRespondido(true);
+    
+    const aciertoActual = aciertosRepaso[indiceAciertoActual];
+    
+    // Verificar si es correcta (MCQ, V/F)
+    let esCorrecta = false;
+    const respCorrecta = aciertoActual.respuesta_correcta?.trim().toLowerCase();
+    const opcionLower = opcion.toLowerCase();
+    
+    const esVerdaderoFalso = aciertoActual.tipo === 'verdadero_falso' || 
+      aciertoActual.tipo === 'true_false' ||
+      aciertoActual.tipo === 'verdadero-falso' ||
+      ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+    
+    if (esVerdaderoFalso) {
+      const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+      const opcionEsVerdadero = opcionLower === 'verdadero';
+      esCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+    } else {
+      esCorrecta = opcion.startsWith(aciertoActual.respuesta_correcta);
+    }
+    
+    if (esCorrecta) {
+      console.log('✅ ¡Respuesta correcta en repaso de acierto!');
+    } else {
+      console.log('❌ Respuesta incorrecta en repaso. El acierto retrocede a fallo.');
+    }
+  };
+
+  // Evaluar respuesta textual en repaso de aciertos
+  const evaluarRespuestaTextualAcierto = async () => {
+    if (!respuestaTextualAcierto.trim()) {
+      alert('Por favor escribe una respuesta antes de enviar');
+      return;
+    }
+
+    const aciertoActual = aciertosRepaso[indiceAciertoActual];
+    setEvaluandoRespuestaAcierto(true);
+
+    try {
+      const modelo = configuracion?.modelo_ollama_activo || modeloSeleccionado;
+      
+      if (!modelo) {
+        alert('⚠️ No hay un modelo seleccionado. Por favor, activa un modelo en la configuración.');
+        setEvaluandoRespuestaAcierto(false);
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/api/evaluar-respuesta-textual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pregunta: aciertoActual.pregunta,
+          respuesta_usuario: respuestaTextualAcierto,
+          respuesta_correcta: aciertoActual.respuesta_correcta,
+          intentos_previos: historialIntentosAcierto,
+          modelo: modelo
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Error del servidor: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const evaluacion = data.evaluacion;
+      const puntaje = Math.round((evaluacion.puntuacion / 10) * 100);
+      
+      const feedbackTexto = `Puntaje: ${puntaje}/100 (${evaluacion.puntuacion}/10)\n\n${evaluacion.feedback}\n\n${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
+
+      setHistorialIntentosAcierto(prev => [...prev, {
+        respuesta: respuestaTextualAcierto,
+        feedback: feedbackTexto,
+        puntaje: puntaje,
+        timestamp: new Date().toISOString()
+      }]);
+
+      setFeedbackIAAcierto({
+        texto: feedbackTexto,
+        puntaje: puntaje,
+        esSuficiente: evaluacion.aprobada || puntaje >= 70
+      });
+
+      if (evaluacion.aprobada || puntaje >= 70) {
+        setRespuestaAciertoSeleccionada(respuestaTextualAcierto);
+        setAciertoYaRespondido(true);
+      }
+
+    } catch (error) {
+      console.error('❌ Error al evaluar respuesta:', error);
+      alert(`❌ ${error.message}`);
+    } finally {
+      setEvaluandoRespuestaAcierto(false);
+    }
+  };
+
+  // Marcar acierto como repasado y actualizar su estado
+  const marcarAciertoRepasado = async () => {
+    const aciertoActual = aciertosRepaso[indiceAciertoActual];
+    let esCorrecta = false;
+    
+    console.log('🔄 MARCANDO ACIERTO REPASADO:', {
+      pregunta: aciertoActual.pregunta.substring(0, 50) + '...',
+      respuestaSeleccionada: respuestaAciertoSeleccionada,
+      respuestaTextual: respuestaTextualAcierto,
+      feedbackIA: feedbackIAAcierto
+    });
+    
+    // Verificar si es correcta
+    const respCorrecta = aciertoActual.respuesta_correcta?.trim().toLowerCase();
+    const esVerdaderoFalso = aciertoActual.tipo === 'verdadero_falso' || 
+      aciertoActual.tipo === 'true_false' ||
+      aciertoActual.tipo === 'verdadero-falso' ||
+      ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+    
+    if (respuestaAciertoSeleccionada) {
+      if (esVerdaderoFalso) {
+        const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+        const opcionEsVerdadero = respuestaAciertoSeleccionada.toLowerCase() === 'verdadero';
+        esCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+      } else {
+        esCorrecta = respuestaAciertoSeleccionada.startsWith(aciertoActual.respuesta_correcta);
+      }
+    } else if (feedbackIAAcierto && (feedbackIAAcierto.esSuficiente || feedbackIAAcierto.puntaje >= 70)) {
+      esCorrecta = true;
+    }
+    
+    // Calcular nuevo estado según resultado
+    const ahora = new Date();
+    const hoy = new Date(ahora);
+    hoy.setHours(0, 0, 0, 0);
+    
+    let nuevoEstado, nuevaProximaRevision, nuevoIntervalo, nuevaFacilidad, nuevasRepeticiones;
+    
+    if (esCorrecta) {
+      // ✅ RESPONDIÓ CORRECTAMENTE → mantener/aumentar intervalo
+      nuevoEstado = 'correcto';
+      nuevasRepeticiones = (aciertoActual.repeticiones || 0) + 1;
+      nuevaFacilidad = Math.min(3.0, (aciertoActual.facilidad || 2.5) + 0.1);
+      
+      // Calcular nuevo intervalo según repeticiones
+      if (nuevasRepeticiones === 1) {
+        nuevoIntervalo = 3; // 3 días
+      } else if (nuevasRepeticiones === 2) {
+        nuevoIntervalo = 7; // 1 semana
+      } else {
+        nuevoIntervalo = Math.round((aciertoActual.intervalo || 1) * nuevaFacilidad);
+      }
+      nuevoIntervalo = Math.min(nuevoIntervalo, 365); // Máximo 1 año
+      
+      nuevaProximaRevision = new Date(hoy);
+      nuevaProximaRevision.setDate(nuevaProximaRevision.getDate() + nuevoIntervalo);
+      
+      console.log(`✅ Acierto mantenido → intervalo=${nuevoIntervalo} días, próxima=${nuevaProximaRevision.toISOString().split('T')[0]}`);
+    } else {
+      // ❌ FALLÓ UN ACIERTO → RETROCEDE EN LA CURVA DE MEMORIA
+      // Se convierte en un "error" y se reactiva para revisión mañana
+      nuevoEstado = 'fallo';
+      nuevasRepeticiones = 0; // Reiniciar
+      nuevaFacilidad = Math.max(1.3, (aciertoActual.facilidad || 2.5) - 0.2);
+      nuevoIntervalo = 1; // Revisar mañana
+      
+      nuevaProximaRevision = new Date(hoy);
+      nuevaProximaRevision.setDate(nuevaProximaRevision.getDate() + 1);
+      
+      console.log(`❌ ACIERTO FALLÓ → retrocede a estado='fallo', revisar mañana`);
+    }
+    
+    // Actualizar en el archivo JSON
+    try {
+      const esExamen = aciertoActual.es_practica !== true;
+      const listaABuscar = esExamen ? await getDatos('examenes') : await getDatos('practicas');
+      
+      const itemEncontrado = listaABuscar.find(item => item.id === aciertoActual.examen_id);
+      
+      if (!itemEncontrado) {
+        throw new Error(`Item con ID ${aciertoActual.examen_id} no encontrado`);
+      }
+      
+      let resultados = null;
+      let esEstructuraDirecta = false;
+      
+      if (itemEncontrado.resultado?.resultados) {
+        resultados = itemEncontrado.resultado.resultados;
+      } else if (itemEncontrado.resultados && Array.isArray(itemEncontrado.resultados)) {
+        resultados = itemEncontrado.resultados;
+        esEstructuraDirecta = true;
+      }
+      
+      if (!resultados) throw new Error('No se encontraron resultados');
+      
+      const preguntaIndex = resultados.findIndex(r => r.pregunta === aciertoActual.pregunta);
+      if (preguntaIndex === -1) throw new Error('Pregunta no encontrada');
+      
+      // Actualizar campos de repetición espaciada
+      resultados[preguntaIndex].estado_repaso = nuevoEstado;
+      resultados[preguntaIndex].proximaRevision = nuevaProximaRevision.toISOString();
+      resultados[preguntaIndex].ultimaRevision = ahora.toISOString();
+      resultados[preguntaIndex].intervalo = nuevoIntervalo;
+      resultados[preguntaIndex].repeticiones = nuevasRepeticiones;
+      resultados[preguntaIndex].facilidad = nuevaFacilidad;
+      
+      // Si falló, también marcar como error para que aparezca en fase de errores
+      if (!esCorrecta) {
+        resultados[preguntaIndex].estado_error = 'fallo';
+        resultados[preguntaIndex].veces_fallada = (resultados[preguntaIndex].veces_fallada || 0) + 1;
+        resultados[preguntaIndex].proximaRevisionError = nuevaProximaRevision.toISOString();
+        // NO marcar como corregido, así aparece en errores
+        resultados[preguntaIndex].corregido = false;
+      }
+      
+      console.log('   📝 Pregunta actualizada:', {
+        estado_repaso: nuevoEstado,
+        proximaRevision: nuevaProximaRevision.toISOString().split('T')[0],
+        intervalo: nuevoIntervalo,
+        repeticiones: nuevasRepeticiones
+      });
+      
+      // Guardar
+      if (esExamen) {
+        await guardarExamenEnCarpeta(itemEncontrado);
+      } else {
+        await guardarPracticaEnCarpeta(itemEncontrado);
+      }
+      
+      console.log('✅ Acierto actualizado y guardado');
+      
+    } catch (error) {
+      console.error('❌ Error actualizando acierto:', error);
+    }
+    
+    // Avanzar al siguiente acierto
+    const nuevosAciertos = aciertosRepaso.filter((_, idx) => idx !== indiceAciertoActual);
+    setAciertosRepaso(nuevosAciertos);
+    
+    if (nuevosAciertos.length === 0) {
+      setMensaje({
+        tipo: 'success',
+        texto: '🎉 ¡Has repasado todos los aciertos!'
+      });
+      setRespuestaAciertoSeleccionada(null);
+      setAciertoYaRespondido(false);
+      setRespuestaTextualAcierto('');
+      setHistorialIntentosAcierto([]);
+      setFeedbackIAAcierto(null);
+      avanzarFase();
+      return;
+    }
+    
+    if (indiceAciertoActual >= nuevosAciertos.length) {
+      setIndiceAciertoActual(nuevosAciertos.length - 1);
+    }
+    
+    // Resetear estados
+    setRespuestaAciertoSeleccionada(null);
+    setAciertoYaRespondido(false);
+    setRespuestaTextualAcierto('');
+    setHistorialIntentosAcierto([]);
+    setFeedbackIAAcierto(null);
+  };
+  
+  const siguienteAcierto = () => {
+    if (indiceAciertoActual < aciertosRepaso.length - 1) {
+      setIndiceAciertoActual(indiceAciertoActual + 1);
+      setRespuestaAciertoSeleccionada(null);
+      setAciertoYaRespondido(false);
+      setRespuestaTextualAcierto('');
+      setHistorialIntentosAcierto([]);
+      setFeedbackIAAcierto(null);
+    } else {
+      avanzarFase();
+    }
+  };
+  
+  // ============================================
   // 🧠 ALGORITMO SM-2 DE REPETICIÓN ESPACIADA
   // ============================================
   
@@ -2711,253 +3999,143 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
    * @returns {Object} Item actualizado con nuevos valores de revisión
    */
   const calcularProximaRevision = (item, dificultad) => {
+    // dificultad: 'facil', 'medio', 'dificil'
     let { intervalo, repeticiones, facilidad } = item;
     let nuevoIntervalo = intervalo || 1;
     let nuevasRepeticiones = repeticiones || 0;
     let nuevaFacilidad = facilidad || 2.5;
     
-    // 🔥 CONTADOR DE REVISIONES DIARIAS (máximo 2 por día)
     const ahora = new Date();
-    const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
-    const ultimaRevision = item.ultima_revision || item.ultimaRevision;
-    let revisionesHoy = item.revisionesHoy || 0;
     
-    console.log('📊 calcularProximaRevision - Estado inicial:', {
+    console.log('📊 calcularProximaRevision:', {
       titulo: item.titulo || item.frente || item.pregunta,
-      ultimaRevision: ultimaRevision,
-      revisionesHoyActual: revisionesHoy,
-      horaActual: ahora.toISOString(),
-      inicioDia: hoyInicio.toISOString()
+      dificultad,
+      intervaloActual: intervalo,
+      repeticionesActuales: repeticiones
     });
     
-    // 🔥 RESETEO INTELIGENTE DEL CONTADOR DIARIO
-    if (ultimaRevision) {
-      const fechaUltima = new Date(ultimaRevision);
-      const diaUltimaRevision = new Date(
-        fechaUltima.getFullYear(),
-        fechaUltima.getMonth(),
-        fechaUltima.getDate()
-      );
-      
-      // Comparar DÍA CALENDARIO
-      if (diaUltimaRevision.getTime() === hoyInicio.getTime()) {
-        // Misma fecha → Incrementar
-        const anteriorRevisionesHoy = revisionesHoy;
-        revisionesHoy += 1;
-        
-        // 🚨 LÍMITE ABSOLUTO: No permitir más de 2 revisiones
-        if (revisionesHoy > 2) {
-          console.warn(`🚫 LÍMITE EXCEDIDO: revisionesHoy = ${revisionesHoy}, FORZANDO a 2`);
-          revisionesHoy = 2;
-        }
-        
-        console.log(`✅ Última revisión HOY → revisionesHoy: ${anteriorRevisionesHoy} → ${revisionesHoy}`);
-      } else {
-        // Diferente fecha → Resetear a 1 (nueva revisión de hoy)
-        console.log(`🔄 Nuevo día detectado → resetear revisionesHoy: ${revisionesHoy} → 1`);
-        revisionesHoy = 1;
-      }
-    } else {
-      // Sin historial → Primera revisión
-      console.log(`🆕 Primera revisión → revisionesHoy: 0 → 1`);
-      revisionesHoy = 1;
-    }
-    
-    // Calidad de respuesta: facil=5, medio=3, dificil=1
-    const calidad = dificultad === 'facil' ? 5 : dificultad === 'medio' ? 3 : 1;
-    
-    if (calidad >= 3) {
-      // Respuesta correcta
+    // 🔥 LÓGICA SIMPLIFICADA SEGÚN BOTÓN PRESIONADO
+    if (dificultad === 'dificil') {
+      // 😰 Lo Olvidé - Revisar pronto (mañana)
+      nuevoIntervalo = 1;
+      nuevasRepeticiones = 0; // Reiniciar contador
+      nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.2);
+    } else if (dificultad === 'medio') {
+      // 🤔 Me Costó - Intervalo medio
       if (nuevasRepeticiones === 0) {
-        nuevoIntervalo = 1; // 1 día
-      } else if (nuevasRepeticiones === 1) {
-        nuevoIntervalo = 6; // 6 días
+        nuevoIntervalo = 3; // 3 días
       } else {
-        nuevoIntervalo = Math.round(intervalo * nuevaFacilidad);
+        nuevoIntervalo = Math.round((intervalo || 1) * 1.5); // 1.5x intervalo anterior
       }
       nuevasRepeticiones += 1;
-    } else {
-      // Respuesta incorrecta - reiniciar
-      nuevasRepeticiones = 0;
-      nuevoIntervalo = 1;
+      nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.1);
+    } else if (dificultad === 'facil') {
+      // 😎 Lo Recordé Fácil - Intervalo largo
+      if (nuevasRepeticiones === 0) {
+        nuevoIntervalo = 7; // 7 días
+      } else if (nuevasRepeticiones === 1) {
+        nuevoIntervalo = 14; // 14 días
+      } else {
+        nuevoIntervalo = Math.round((intervalo || 1) * nuevaFacilidad); // Factor de facilidad
+      }
+      nuevasRepeticiones += 1;
+      nuevaFacilidad = nuevaFacilidad + 0.1;
     }
     
-    // Actualizar factor de facilidad
-    nuevaFacilidad = nuevaFacilidad + (0.1 - (5 - calidad) * (0.08 + (5 - calidad) * 0.02));
-    if (nuevaFacilidad < 1.3) nuevaFacilidad = 1.3;
+    // Límites de intervalo
+    nuevoIntervalo = Math.max(1, Math.min(nuevoIntervalo, 365));
+    nuevaFacilidad = Math.max(1.3, Math.min(nuevaFacilidad, 3.0));
     
-    // Calcular próxima fecha de revisión
-    // 🔥 NORMALIZAR AL INICIO DEL DÍA (00:00:00) para evitar bug de comparación por hora
-    const proximaFecha = new Date();
+    // Calcular próxima fecha de revisión (inicio del día)
+    const proximaFecha = new Date(ahora);
     proximaFecha.setHours(0, 0, 0, 0);
     proximaFecha.setDate(proximaFecha.getDate() + nuevoIntervalo);
     
     const itemActualizado = {
       ...item,
-      fechaRevision: new Date().toISOString(),
-      ultima_revision: new Date().toISOString(), // Para control de repetición diaria
+      ultima_revision: ahora.toISOString(),
+      fechaRevision: ahora.toISOString(),
       proximaRevision: proximaFecha.toISOString(),
       intervalo: nuevoIntervalo,
       repeticiones: nuevasRepeticiones,
       facilidad: nuevaFacilidad,
-      estadoRevision: nuevasRepeticiones >= 3 ? 'dominada' : nuevasRepeticiones > 0 ? 'en_progreso' : 'nueva',
-      revisionesHoy: revisionesHoy  // 🔥 Contador de revisiones diarias
+      estadoRevision: nuevasRepeticiones >= 5 ? 'dominada' : nuevasRepeticiones >= 2 ? 'en_progreso' : 'nueva',
+      vistasHoy: 1 // 🔥 Marcar que ya se vio hoy
     };
     
-    console.log('📊 calcularProximaRevision - Estado final:', {
-      revisionesHoy: itemActualizado.revisionesHoy,
-      proximaRevision: itemActualizado.proximaRevision,
-      intervalo: itemActualizado.intervalo
+    console.log('📊 Resultado:', {
+      nuevoIntervalo,
+      nuevasRepeticiones,
+      proximaFecha: proximaFecha.toISOString().split('T')[0]
     });
     
     return itemActualizado;
   };
   
   /**
-   * Filtra items que necesitan repaso según su fecha de próxima revisión
-   * @param {Array} items - Array de items (flashcards, notas, prácticas)
-   * @returns {Array} Items que necesitan repaso ordenados por prioridad
+   * 🔥 FILTRA FLASHCARDS QUE SE PUEDEN VER HOY
+   * Reglas:
+   * 1. Solo 1 vez al día por flashcard
+   * 2. Si es nueva, esperar 45 minutos desde creación
+   * 3. Si tiene proximaRevision, solo si la fecha ya llegó o pasó
    */
   const filtrarItemsParaRepasar = (items) => {
     const ahora = new Date();
     const hoyInicio = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate(), 0, 0, 0);
     
-    console.log('🔍 FILTRANDO ITEMS PARA REPASAR:', {
-      totalItems: items.length,
-      horaActual: ahora.toISOString(),
-      inicioDia: hoyInicio.toISOString()
+    console.log('🔍 Filtrando flashcards para hoy:', {
+      total: items.length,
+      hora: ahora.toLocaleTimeString()
     });
     
     const itemsParaRepasar = items.filter(item => {
-      const titulo = item.titulo || item.frente || item.pregunta || item.id;
+      const titulo = item.titulo || item.frente || item.id;
       
-      // 🔥 INICIALIZAR revisionesHoy si no existe
-      if (item.revisionesHoy === undefined || item.revisionesHoy === null) {
-        // Verificar si la última revisión fue hoy para inicializar correctamente
-        const ultimaRevision = item.ultima_revision || item.ultimaRevision || item.fechaRevision;
-        if (ultimaRevision) {
-          const fechaUltima = new Date(ultimaRevision);
-          if (fechaUltima >= hoyInicio) {
-            // Ya fue revisado hoy, pero no tiene contador - asumir 1 revisión
-            item.revisionesHoy = 1;
-            console.log(`⚠️ Flashcard sin contador, inicializando a 1 (revisada hoy): ${titulo}`);
-          } else {
-            // Revisado en otro día - inicializar a 0
-            item.revisionesHoy = 0;
-          }
-        } else {
-          // Nunca revisado - inicializar a 0
-          item.revisionesHoy = 0;
-        }
-      }
-      
-      // 🔥 REGLA 1: BLOQUEO ABSOLUTO - Máximo 2 revisiones por día (sistema Anki)
-      const revisionesHoy = item.revisionesHoy || 0;
-      
-      // 🚨 VERIFICACIÓN CRÍTICA: Si tiene 2 o más revisiones, BLOQUEAR INMEDIATAMENTE
-      if (revisionesHoy >= 2) {
-        console.log(`🚫 BLOQUEADO (${revisionesHoy} revisiones hoy, límite 2/día): ${titulo}`);
-        return false; // ← SALIDA INMEDIATA, NO CONTINUAR
-      }
-      
-      // 🔥 REGLA 2: Verificar si fue revisado HOY (doble validación)
+      // 🔥 REGLA 1: Si ya se vio hoy, NO mostrar
       const ultimaRevision = item.ultima_revision || item.ultimaRevision || item.fechaRevision;
       if (ultimaRevision) {
-        const fechaUltimaRevision = new Date(ultimaRevision);
-        const diaUltimaRevision = new Date(
-          fechaUltimaRevision.getFullYear(),
-          fechaUltimaRevision.getMonth(),
-          fechaUltimaRevision.getDate()
-        );
+        const fechaUltima = new Date(ultimaRevision);
+        const mismodia = fechaUltima >= hoyInicio;
         
-        // Comparar DÍA CALENDARIO (no hora)
-        if (diaUltimaRevision.getTime() === hoyInicio.getTime()) {
-          // 🚨 REVISADO HOY - Verificar contador NUEVAMENTE
-          if (revisionesHoy >= 2) {
-            console.log(`🚫 BLOQUEADO DOBLE CHECK (revisado hoy ${revisionesHoy} veces): ${titulo}`);
-            return false; // ← BLOQUEO REDUNDANTE por seguridad
-          }
-          
-          // Si tiene 1 revisión, puede aparecer UNA VEZ MÁS
-          if (revisionesHoy === 1) {
-            console.log(`⚠️ ÚLTIMA OPORTUNIDAD HOY (${revisionesHoy}/2): ${titulo}`);
-          } else if (revisionesHoy === 0) {
-            console.log(`✅ Revisado hoy pero contador en 0 (inconsistencia corregida): ${titulo}`);
-            item.revisionesHoy = 1; // Corregir inconsistencia
-          }
-        } else {
-          // Última revisión fue en otro día - debería tener revisionesHoy = 0
-          if (revisionesHoy > 0) {
-            console.log(`🔄 CORRIGIENDO contador obsoleto: ${titulo} (${revisionesHoy} → 0)`);
-            item.revisionesHoy = 0;
-          }
-        }
-      }
-      
-      // 🔥 REGLA 3: Si NO tiene proximaRevision, es nuevo (mostrar solo si nunca revisado)
-      if (!item.proximaRevision) {
-        // Solo mostrar si NUNCA ha sido revisado O si fue revisado hace días
-        const esNuevo = !ultimaRevision;
-        const revisadoHacetiempo = ultimaRevision && new Date(ultimaRevision) < hoyInicio;
-        
-        if (esNuevo) {
-          console.log(`✅ INCLUIDO (nuevo, nunca revisado): ${titulo}`);
-          return true;
-        } else if (revisadoHacetiempo && revisionesHoy === 0) {
-          console.log(`✅ INCLUIDO (revisado antes, pero no hoy): ${titulo}`);
-          return true;
-        }
-        return false;
-      }
-      
-      // 🔥 REGLA 4: Si tiene proximaRevision, verificar si ya llegó la fecha
-      // Comparar solo DÍA CALENDARIO, no hora exacta
-      const fechaRevision = new Date(item.proximaRevision);
-      const diaRevision = new Date(fechaRevision.getFullYear(), fechaRevision.getMonth(), fechaRevision.getDate());
-      const diaHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
-      
-      // 🚨 COMPARACIÓN ESTRICTA: Solo si la fecha de revisión es HOY o ANTES
-      const debeRepasar = diaRevision.getTime() <= diaHoy.getTime();
-      
-      if (debeRepasar) {
-        // 🔥 VERIFICACIÓN ADICIONAL: Asegurar que no excede límite diario
-        if (revisionesHoy >= 2) {
-          console.log(`🚫 BLOQUEADO POR LÍMITE DIARIO (${revisionesHoy}/2): ${titulo}`, {
-            diaRevision: diaRevision.toISOString().split('T')[0],
-            diaHoy: diaHoy.toISOString().split('T')[0]
-          });
+        if (mismodia) {
+          console.log(`🚫 Ya vista hoy: ${titulo}`);
           return false;
         }
-        
-        console.log(`✅ INCLUIDO (fecha llegada, ${revisionesHoy}/2 revisiones): ${titulo}`, {
-          diaRevision: diaRevision.toISOString().split('T')[0],
-          diaHoy: diaHoy.toISOString().split('T')[0],
-          revisionesHoy: revisionesHoy,
-          timestampRevision: diaRevision.getTime(),
-          timestampHoy: diaHoy.getTime()
-        });
-      } else {
-        console.log(`⏭️ EXCLUIDO (fecha NO llegada): ${titulo}`, {
-          diaRevision: diaRevision.toISOString().split('T')[0],
-          diaHoy: diaHoy.toISOString().split('T')[0],
-          faltanDias: Math.round((diaRevision.getTime() - diaHoy.getTime()) / (1000 * 60 * 60 * 24)),
-          timestampRevision: diaRevision.getTime(),
-          timestampHoy: diaHoy.getTime()
-        });
       }
       
-      return debeRepasar;
+      // 🔥 REGLA 2: Si es nueva (sin proximaRevision), esperar 45 minutos desde creación
+      if (!item.proximaRevision) {
+        const fechaCreacion = item.fecha_creacion || item.fecha;
+        if (fechaCreacion) {
+          const creacion = new Date(fechaCreacion);
+          const minutosDesdeCreacion = (ahora - creacion) / (1000 * 60);
+          
+          if (minutosDesdeCreacion < 45) {
+            const minutosRestantes = Math.ceil(45 - minutosDesdeCreacion);
+            console.log(`⏳ Esperar ${minutosRestantes} min más: ${titulo}`);
+            return false;
+          }
+        }
+        console.log(`✅ Nueva lista para revisar: ${titulo}`);
+        return true;
+      }
+      
+      // 🔥 REGLA 3: Si tiene proximaRevision, verificar si la fecha ya llegó
+      const fechaRevision = new Date(item.proximaRevision);
+      const diaRevision = new Date(fechaRevision.getFullYear(), fechaRevision.getMonth(), fechaRevision.getDate());
+      
+      if (diaRevision <= hoyInicio) {
+        console.log(`✅ Toca hoy o antes: ${titulo}`);
+        return true;
+      } else {
+        console.log(`⏭️ Programada para después: ${titulo} (${diaRevision.toISOString().split('T')[0]})`);
+        return false;
+      }
     });
     
-    console.log(`📊 RESULTADO FILTRADO: ${itemsParaRepasar.length} de ${items.length} items para repasar`);
+    console.log(`📊 Resultado: ${itemsParaRepasar.length}/${items.length} flashcards para hoy`);
     
-    // Ordenar por prioridad: nuevos primero, luego por fecha de revisión
-    return itemsParaRepasar.sort((a, b) => {
-      if (!a.proximaRevision && !b.proximaRevision) return 0;
-      if (!a.proximaRevision) return -1; // Nuevos primero
-      if (!b.proximaRevision) return 1;
-      return new Date(a.proximaRevision) - new Date(b.proximaRevision);
-    });
+    return itemsParaRepasar;
   };
   
   /**
@@ -3266,6 +4444,78 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       throw error;
     }
   };
+
+  // Función para obtener carpetas disponibles para mover notas
+  const obtenerCarpetasDisponiblesParaNotas = () => {
+    // Obtener carpetas únicas de las notas existentes
+    const carpetasDeNotas = [...new Set((notasGuardadas || []).map(n => n.carpeta).filter(Boolean))];
+    
+    // Agregar carpeta raíz
+    const todasCarpetas = ['', ...carpetasDeNotas].sort();
+    
+    return todasCarpetas.map(c => ({
+      nombre: c || 'Raíz',
+      ruta: c
+    }));
+  };
+
+  // Función para abrir modal de mover nota
+  const abrirModalMoverNota = (nota) => {
+    setNotaAMover(nota);
+    setCarpetaDestinoNota(nota.carpeta || '');
+    setCarpetasDisponiblesNota(obtenerCarpetasDisponiblesParaNotas());
+    setModalMoverNota(true);
+    setDropdownNotaAbierto(null);
+  };
+
+  // Función para mover nota a otra carpeta
+  const moverNota = async () => {
+    if (!notaAMover) return;
+    
+    const carpetaAnterior = notaAMover.carpeta || '';
+    
+    // Si es la misma carpeta, no hacer nada
+    if (carpetaAnterior === carpetaDestinoNota) {
+      setModalMoverNota(false);
+      return;
+    }
+    
+    try {
+      // Primero eliminar de la carpeta anterior
+      await fetch(`${API_URL}/datos/notas/${notaAMover.id}?carpeta=${encodeURIComponent(carpetaAnterior)}`, {
+        method: 'DELETE'
+      });
+      
+      // Luego guardar en la nueva carpeta
+      const notaActualizada = {
+        ...notaAMover,
+        carpeta: carpetaDestinoNota,
+        fechaModificacion: new Date().toISOString()
+      };
+      
+      await guardarNotaEnCarpeta(notaActualizada);
+      
+      // Actualizar estado local
+      const notasActualizadas = (notasGuardadas || []).map(n => 
+        n.id === notaAMover.id ? notaActualizada : n
+      );
+      setNotasGuardadas(notasActualizadas);
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `📁 Nota movida a "${carpetaDestinoNota || 'Raíz'}"`
+      });
+      
+      setModalMoverNota(false);
+      setNotaAMover(null);
+    } catch (error) {
+      console.error('Error al mover nota:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Error al mover la nota'
+      });
+    }
+  };
   
   const evaluarFlashcard = async (dificultad) => {
     // dificultad: 'facil', 'medio', 'dificil'
@@ -3344,7 +4594,28 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         console.log('✅ Correcto: Flashcard eliminada de la lista de repaso');
       }
       
+      // 🔥 ACTUALIZAR SESIÓN Y DECIDIR QUÉ HACER
       setFlashcardsSesion(flashcardsParaRepasar);
+      
+      setEstadisticasSesion(prev => ({
+        ...prev,
+        flashcardsRepasadas: prev.flashcardsRepasadas + 1
+      }));
+      
+      // 🔥 LÓGICA CORREGIDA: Usar la lista NUEVA para decidir
+      if (flashcardsParaRepasar.length === 0) {
+        // No quedan más flashcards para repasar
+        console.log('✅ Todas las flashcards repasadas, avanzando de fase');
+        setIndiceFlashcardActual(0);
+        setFlashcardsVolteadas({});
+        avanzarFase();
+      } else {
+        // Aún quedan flashcards - reiniciar índice a 0 ya que la lista cambió
+        console.log(`📝 Quedan ${flashcardsParaRepasar.length} flashcards por repasar`);
+        setIndiceFlashcardActual(0);
+        setFlashcardsVolteadas({});
+      }
+      
     } catch (error) {
       console.error('Error guardando flashcard evaluada:', error);
       setMensaje({
@@ -3353,26 +4624,6 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       });
       return;
     }
-    
-    setEstadisticasSesion(prev => ({
-      ...prev,
-      flashcardsRepasadas: prev.flashcardsRepasadas + 1
-    }));
-    
-    // Avanzar a siguiente flashcard O terminar fase
-    // Usar setTimeout para dar tiempo a que se actualice flashcardsSesion
-    setTimeout(() => {
-      if (indiceFlashcardActual >= flashcardsSesion.length - 1) {
-        // No hay más flashcards, avanzar de fase
-        console.log('✅ Todas las flashcards repasadas, avanzando de fase');
-        avanzarFase();
-      } else {
-        // Hay más flashcards, avanzar al siguiente índice
-        setIndiceFlashcardActual(prev => prev + 1);
-        // Resetear estado de volteo para nueva flashcard
-        setFlashcardsVolteadas({});
-      }
-    }, 100);
   };
   
   // ============================================
@@ -5142,14 +6393,28 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     try {
       console.log('🗑️ Eliminando práctica:', practica);
       
-      const carpetaParam = practica.carpeta_ruta || practica.carpeta || '';
-      const url = `${API_URL}/datos/practicas/${practica.id}${carpetaParam ? `?carpeta=${encodeURIComponent(carpetaParam)}` : ''}`;
+      const archivo = practica.archivo;
+      const carpeta_ruta = practica.carpeta_ruta || practica.carpeta || '';
       
-      console.log('🔗 DELETE URL:', url);
+      if (!archivo) {
+        throw new Error('No se encontró el nombre del archivo de la práctica');
+      }
       
-      const response = await fetch(url, {
-        method: 'DELETE'
-      })
+      if (!carpeta_ruta) {
+        throw new Error('No se encontró la carpeta de la práctica');
+      }
+      
+      console.log('📁 Archivo:', archivo);
+      console.log('📁 Carpeta:', carpeta_ruta);
+      
+      const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          archivo: archivo,
+          carpeta_ruta: carpeta_ruta
+        })
+      });
       
       if (!response.ok) {
         const errorText = await response.text()
@@ -5167,8 +6432,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         await recargarCalendarioRepasos()
         
         // Recargar las carpetas de prácticas si estamos en esa vista
-        if (rutaActualPracticas !== undefined) {
-          await cargarCarpetasPracticas(rutaActualPracticas)
+        if (rutaPracticasActual !== undefined) {
+          await cargarCarpetasPracticas(rutaPracticasActual)
         }
       } else {
         throw new Error(data.message || 'Error desconocido')
@@ -5283,6 +6548,144 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       })
   }
 
+  // Actualizar rutas en todos los datos almacenados cuando se renombra/mueve una carpeta
+  const actualizarRutasEnDatos = async (rutaAntigua, rutaNueva) => {
+    const normalizarRuta = (r) => (r || '').replace(/\//g, '\\').replace(/\\\\/g, '\\')
+    const rutaAntiguaNorm = normalizarRuta(rutaAntigua)
+    const rutaNuevaNorm = normalizarRuta(rutaNueva)
+    
+    console.log(`🔄 Actualizando rutas:`)
+    console.log(`   Antigua: "${rutaAntiguaNorm}"`)
+    console.log(`   Nueva: "${rutaNuevaNorm}"`)
+    
+    // Función para actualizar una ruta (exacta o como prefijo)
+    const actualizarRuta = (ruta) => {
+      if (!ruta) return ruta
+      const rutaNorm = normalizarRuta(ruta)
+      
+      // Coincidencia exacta
+      if (rutaNorm === rutaAntiguaNorm) {
+        console.log(`   ✓ Ruta exacta actualizada: "${ruta}" → "${rutaNuevaNorm}"`)
+        return rutaNuevaNorm
+      }
+      
+      // Coincidencia como prefijo (subcarpeta)
+      if (rutaNorm.startsWith(rutaAntiguaNorm + '\\')) {
+        const nuevaRuta = rutaNuevaNorm + rutaNorm.slice(rutaAntiguaNorm.length)
+        console.log(`   ✓ Subruta actualizada: "${ruta}" → "${nuevaRuta}"`)
+        return nuevaRuta
+      }
+      
+      return ruta
+    }
+    
+    let totalActualizados = 0
+    
+    try {
+      // Actualizar errores
+      const errores = await getDatos('errores') || []
+      let erroresModificados = 0
+      const erroresActualizados = errores.map(e => {
+        const nuevaCarpeta = actualizarRuta(e.carpeta)
+        const nuevaRutaDoc = actualizarRuta(e.ruta_documento)
+        if (nuevaCarpeta !== e.carpeta || nuevaRutaDoc !== e.ruta_documento) erroresModificados++
+        return {
+          ...e,
+          carpeta: nuevaCarpeta,
+          ruta_documento: nuevaRutaDoc
+        }
+      })
+      if (erroresModificados > 0) {
+        await setDatos('errores', erroresActualizados)
+        console.log(`   📝 Errores actualizados: ${erroresModificados}`)
+        totalActualizados += erroresModificados
+      }
+      
+      // Actualizar flashcards
+      const flashcards = await getDatos('flashcards') || []
+      let flashcardsModificadas = 0
+      const flashcardsActualizadas = flashcards.map(fc => {
+        const nuevaCarpeta = actualizarRuta(fc.carpeta)
+        const nuevaRuta = actualizarRuta(fc.ruta)
+        if (nuevaCarpeta !== fc.carpeta || nuevaRuta !== fc.ruta) flashcardsModificadas++
+        return {
+          ...fc,
+          carpeta: nuevaCarpeta,
+          ruta: nuevaRuta
+        }
+      })
+      if (flashcardsModificadas > 0) {
+        await setDatos('flashcards', flashcardsActualizadas)
+        console.log(`   🃏 Flashcards actualizadas: ${flashcardsModificadas}`)
+        totalActualizados += flashcardsModificadas
+      }
+      
+      // Actualizar exámenes
+      const examenes = await getDatos('examenes') || []
+      let examenesModificados = 0
+      const examenesActualizados = examenes.map(ex => {
+        const nuevaCarpeta = actualizarRuta(ex.carpeta)
+        const nuevaRuta = actualizarRuta(ex.ruta)
+        if (nuevaCarpeta !== ex.carpeta || nuevaRuta !== ex.ruta) examenesModificados++
+        return {
+          ...ex,
+          carpeta: nuevaCarpeta,
+          ruta: nuevaRuta
+        }
+      })
+      if (examenesModificados > 0) {
+        await setDatos('examenes', examenesActualizados)
+        console.log(`   📝 Exámenes actualizados: ${examenesModificados}`)
+        totalActualizados += examenesModificados
+      }
+      
+      // Actualizar prácticas
+      const practicas = await getDatos('practicas') || []
+      let practicasModificadas = 0
+      const practicasActualizadas = practicas.map(pr => {
+        const nuevaCarpeta = actualizarRuta(pr.carpeta)
+        const nuevaCarpetaRuta = actualizarRuta(pr.carpeta_ruta)
+        if (nuevaCarpeta !== pr.carpeta || nuevaCarpetaRuta !== pr.carpeta_ruta) practicasModificadas++
+        return {
+          ...pr,
+          carpeta: nuevaCarpeta,
+          carpeta_ruta: nuevaCarpetaRuta
+        }
+      })
+      if (practicasModificadas > 0) {
+        await setDatos('practicas', practicasActualizadas)
+        console.log(`   🧑‍💻 Prácticas actualizadas: ${practicasModificadas}`)
+        totalActualizados += practicasModificadas
+      }
+      
+      // Actualizar notas
+      const notas = await getDatos('notas') || []
+      let notasModificadas = 0
+      const notasActualizadas = notas.map(n => {
+        const nuevaCarpeta = actualizarRuta(n.carpeta)
+        if (nuevaCarpeta !== n.carpeta) notasModificadas++
+        return {
+          ...n,
+          carpeta: nuevaCarpeta
+        }
+      })
+      if (notasModificadas > 0) {
+        await setDatos('notas', notasActualizadas)
+        console.log(`   📒 Notas actualizadas: ${notasModificadas}`)
+        totalActualizados += notasModificadas
+      }
+      
+      console.log(`✅ Total de items actualizados: ${totalActualizados}`)
+      
+      // Esperar a que el servidor procese los cambios y luego recalcular
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await calcularRendimientoJerarquias()
+      
+    } catch (error) {
+      console.error('❌ Error actualizando rutas en datos:', error)
+    }
+  }
+
   // Renombrar carpeta
   const renombrarCarpeta = async (ruta, nombreActual) => {
     const nuevoNombre = prompt(`Renombrar carpeta "${nombreActual}":`, nombreActual)
@@ -5300,6 +6703,14 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
 
       const data = await response.json()
       if (data.success) {
+        // Calcular la nueva ruta
+        const partes = ruta.split('\\')
+        partes[partes.length - 1] = nuevoNombre
+        const nuevaRuta = partes.join('\\')
+        
+        // Actualizar rutas en todos los datos almacenados
+        await actualizarRutasEnDatos(ruta, nuevaRuta)
+        
         setMensaje({
           tipo: 'success',
           texto: `✅ Carpeta renombrada a "${nuevoNombre}"`
@@ -5374,6 +6785,15 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       const data = await response.json()
       
       if (response.ok && data.success) {
+        // Calcular la nueva ruta de la carpeta
+        const nombreCarpeta = moverCarpeta.nombre
+        const nuevaRuta = rutaDestinoSeleccionada 
+          ? `${rutaDestinoSeleccionada}\\${nombreCarpeta}`
+          : nombreCarpeta
+        
+        // Actualizar rutas en todos los datos almacenados
+        await actualizarRutasEnDatos(moverCarpeta.ruta, nuevaRuta)
+        
         setMensaje({
           tipo: 'success',
           texto: `✅ Carpeta "${moverCarpeta.nombre}" movida exitosamente`
@@ -6399,6 +7819,146 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     setMensaje({
       tipo: 'info',
       texto: '🗑️ Contexto limpiado'
+    })
+  }
+
+  // ===== FUNCIONES PARA VISOR DE PREGUNTAS EN CHATBOT =====
+  
+  // Cargar preguntas de un examen/práctica para el visor
+  const cargarPreguntasVisor = async (archivo) => {
+    try {
+      console.log('📋 Cargando preguntas de:', archivo)
+      const response = await fetch(`${API_URL}/api/archivos/leer-contenido`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta: archivo.ruta_completa })
+      })
+      
+      const data = await response.json()
+      if (!data.contenido) {
+        throw new Error('No se pudo leer el archivo')
+      }
+      
+      // Parsear el JSON del examen/práctica
+      const examenData = JSON.parse(data.contenido)
+      console.log('📊 Examen cargado:', examenData)
+      
+      // Obtener preguntas del examen
+      const preguntas = examenData.preguntas || examenData.examen?.preguntas || []
+      
+      setExamenVisorPreguntas({
+        nombre: archivo.nombre,
+        ruta: archivo.ruta_completa,
+        tipo: archivo.tipo,
+        es_practica: examenData.es_practica || false,
+        fecha: examenData.fecha || examenData.examen?.fecha || 'Sin fecha',
+        carpeta: archivo.carpeta,
+        total_preguntas: preguntas.length,
+        datos_completos: examenData
+      })
+      setPreguntasVisor(preguntas)
+      setPreguntaSeleccionadaChat(null)
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `📋 ${preguntas.length} preguntas cargadas de "${archivo.nombre}"`
+      })
+    } catch (error) {
+      console.error('Error al cargar preguntas:', error)
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al cargar preguntas: ${error.message}`
+      })
+    }
+  }
+  
+  // Cerrar visor de preguntas
+  const cerrarVisorPreguntas = () => {
+    setExamenVisorPreguntas(null)
+    setPreguntasVisor([])
+    setPreguntaSeleccionadaChat(null)
+  }
+  
+  // Enviar pregunta al chat como contexto
+  const enviarPreguntaAlChat = (pregunta, incluirRespuesta = false) => {
+    let textoContexto = `📋 **Pregunta de ${examenVisorPreguntas?.es_practica ? 'Práctica' : 'Examen'}:**\n\n`
+    textoContexto += `**Pregunta:** ${pregunta.pregunta}\n\n`
+    
+    if (pregunta.opciones && pregunta.opciones.length > 0) {
+      textoContexto += `**Opciones:**\n`
+      pregunta.opciones.forEach((op, i) => {
+        const letra = String.fromCharCode(65 + i)
+        textoContexto += `${letra}) ${op}\n`
+      })
+      textoContexto += '\n'
+    }
+    
+    if (pregunta.respuesta_usuario) {
+      textoContexto += `**Mi respuesta:** ${pregunta.respuesta_usuario}\n`
+    }
+    
+    if (incluirRespuesta && pregunta.respuesta_correcta) {
+      textoContexto += `**Respuesta correcta:** ${pregunta.respuesta_correcta}\n`
+      if (pregunta.explicacion) {
+        textoContexto += `**Explicación:** ${pregunta.explicacion}\n`
+      }
+    }
+    
+    // Calcular si fue correcta
+    const esCorrecta = pregunta.respuesta_usuario === pregunta.respuesta_correcta ||
+                       (pregunta.respuesta_usuario && pregunta.respuesta_correcta && 
+                        pregunta.respuesta_usuario.toLowerCase().trim() === pregunta.respuesta_correcta.toLowerCase().trim())
+    
+    if (pregunta.respuesta_usuario) {
+      textoContexto += `\n**Resultado:** ${esCorrecta ? '✅ Correcta' : '❌ Incorrecta'}\n`
+    }
+    
+    // Agregar al input del chat o enviar directamente
+    setInputChat(prev => prev ? `${prev}\n\n${textoContexto}` : textoContexto)
+    
+    setMensaje({
+      tipo: 'success', 
+      texto: '📤 Pregunta agregada al chat'
+    })
+  }
+  
+  // Enviar todas las preguntas fallidas al chat
+  const enviarFallidasAlChat = () => {
+    const fallidas = preguntasVisor.filter(p => {
+      const esCorrecta = p.respuesta_usuario === p.respuesta_correcta ||
+                         (p.respuesta_usuario && p.respuesta_correcta && 
+                          p.respuesta_usuario.toLowerCase().trim() === p.respuesta_correcta.toLowerCase().trim())
+      return p.respuesta_usuario && !esCorrecta
+    })
+    
+    if (fallidas.length === 0) {
+      setMensaje({
+        tipo: 'info',
+        texto: '✅ No hay preguntas fallidas en este examen'
+      })
+      return
+    }
+    
+    let textoContexto = `📋 **Preguntas que fallé en ${examenVisorPreguntas?.es_practica ? 'la práctica' : 'el examen'}:**\n\n`
+    
+    fallidas.forEach((p, idx) => {
+      textoContexto += `---\n**${idx + 1}. ${p.pregunta}**\n`
+      if (p.opciones && p.opciones.length > 0) {
+        p.opciones.forEach((op, i) => {
+          const letra = String.fromCharCode(65 + i)
+          textoContexto += `   ${letra}) ${op}\n`
+        })
+      }
+      textoContexto += `Mi respuesta: ${p.respuesta_usuario}\n`
+      textoContexto += `Correcta: ${p.respuesta_correcta}\n\n`
+    })
+    
+    textoContexto += '\n¿Puedes explicarme por qué fallé estas preguntas?'
+    
+    setInputChat(textoContexto)
+    setMensaje({
+      tipo: 'success',
+      texto: `📤 ${fallidas.length} preguntas fallidas agregadas al chat`
     })
   }
 
@@ -9566,17 +11126,26 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   const eliminarNota = async (idNota) => {
     if (!confirm('¿Estás seguro de eliminar esta nota?')) return
     
-    const nota = (notasGuardadas || []).find(n => n.id === idNota);
+    // Normalizar ID para comparación (puede ser string o número)
+    const idNormalizado = String(idNota);
+    const nota = (notasGuardadas || []).find(n => String(n.id) === idNormalizado);
     const carpeta = nota?.carpeta || '';
     
     try {
-      const response = await fetch(`${API_URL}/datos/notas/${idNota}?carpeta=${encodeURIComponent(carpeta)}`, {
+      const response = await fetch(`${API_URL}/datos/notas/${idNormalizado}?carpeta=${encodeURIComponent(carpeta)}`, {
         method: 'DELETE'
       });
       
-      if (!response.ok) throw new Error('Error al eliminar');
+      // Si es 404, la nota no existe en el servidor pero sí localmente (duplicado fantasma)
+      // En ese caso, solo eliminarla del estado local sin error
+      if (response.status === 404) {
+        console.log('⚠️ Nota no encontrada en servidor, eliminando del estado local:', idNormalizado);
+      } else if (!response.ok) {
+        throw new Error('Error al eliminar');
+      }
       
-      const notasActualizadas = (notasGuardadas || []).filter(n => n.id !== idNota)
+      // Filtrar todas las notas con ese ID (eliminar duplicados también)
+      const notasActualizadas = (notasGuardadas || []).filter(n => String(n.id) !== idNormalizado)
       setNotasGuardadas(notasActualizadas)
       
       setMensaje({
@@ -9614,6 +11183,192 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     });
   };
   
+  // 🔥 FUNCIÓN PARA GUARDAR TODAS LAS NOTAS PENDIENTES
+  const guardarTodasNotasPendientes = async () => {
+    let notasGuardadasCount = 0;
+    
+    try {
+      // 1. Guardar la nota actual del editor (si tiene contenido)
+      if (editorNotaContenido.trim() || editorNotaTitulo.trim()) {
+        const tituloFinal = editorNotaTitulo.trim() || generarTituloAutomatico(editorNotaContenido);
+        const nuevaNotaEditor = {
+          id: Date.now(),
+          titulo: tituloFinal,
+          contenido: editorNotaContenido,
+          carpeta: rutaNotasActual || '',
+          tags: editorNotaTags ? editorNotaTags.split(',').map(t => t.trim()).filter(Boolean) : [],
+          fecha: new Date().toISOString(),
+          fechaModificacion: new Date().toISOString(),
+          proximaRevision: new Date().toISOString(),
+          intervaloActual: 1
+        };
+        
+        await guardarNotaEnCarpeta(nuevaNotaEditor);
+        setNotasGuardadas(prev => {
+          if (prev.some(n => String(n.id) === String(nuevaNotaEditor.id))) {
+            return prev;
+          }
+          return [...prev, nuevaNotaEditor];
+        });
+        notasGuardadasCount++;
+        console.log('📝 Nota del editor guardada:', tituloFinal);
+      }
+      
+      // 2. Guardar todas las notas de sesión pendientes
+      for (const notaSesion of notasSesionActual) {
+        if (!notaSesion.guardada && (notaSesion.contenido?.trim() || notaSesion.titulo?.trim())) {
+          const notaParaGuardar = {
+            id: Date.now() + notasGuardadasCount, // ID único sin decimales
+            titulo: notaSesion.titulo || generarTituloAutomatico(notaSesion.contenido),
+            contenido: notaSesion.contenido || '',
+            carpeta: rutaNotasActual || '',
+            tags: notaSesion.tags ? notaSesion.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+            fecha: notaSesion.fechaCreacion || new Date().toISOString(),
+            fechaModificacion: new Date().toISOString(),
+            proximaRevision: new Date().toISOString(),
+            intervaloActual: 1
+          };
+          
+          await guardarNotaEnCarpeta(notaParaGuardar);
+          setNotasGuardadas(prev => [...prev, notaParaGuardar]);
+          notasGuardadasCount++;
+          console.log('📝 Nota de sesión guardada:', notaParaGuardar.titulo);
+          
+          // Marcar como guardada en notasSesionActual
+          setNotasSesionActual(prev => prev.map(n => 
+            n.id === notaSesion.id ? { ...n, guardada: true } : n
+          ));
+        }
+      }
+      
+      // 3. Limpiar editor después de guardar
+      setEditorNotaTitulo('');
+      setEditorNotaContenido('');
+      setEditorNotaTags('');
+      setNotasSesionActual([]);
+      setNotaSeleccionadaId(null);
+      
+      if (notasGuardadasCount > 0) {
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ ${notasGuardadasCount} nota(s) guardada(s) en ${rutaNotasActual || 'raíz'}`
+        });
+      }
+      
+      return notasGuardadasCount;
+    } catch (error) {
+      console.error('Error al guardar notas:', error);
+      setMensaje({ tipo: 'error', texto: '❌ Error al guardar notas' });
+      return 0;
+    }
+  };
+
+  // Función para guardar solo la nota actual del editor
+  const guardarNotaActualEnCarpeta = async () => {
+    if (!editorNotaContenido.trim() && !editorNotaTitulo.trim()) {
+      setMensaje({ tipo: 'warning', texto: '⚠️ No hay contenido para guardar' });
+      return;
+    }
+    
+    const tituloFinal = editorNotaTitulo.trim() || generarTituloAutomatico(editorNotaContenido);
+    const carpetaDestino = rutaNotasActual || rutaCalentamientoActual || '';
+    
+    const nuevaNota = {
+      id: Date.now(),
+      titulo: tituloFinal,
+      contenido: editorNotaContenido,
+      carpeta: carpetaDestino,
+      tags: editorNotaTags ? editorNotaTags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      fecha: new Date().toISOString(),
+      fechaModificacion: new Date().toISOString(),
+      proximaRevision: new Date().toISOString(),
+      intervaloActual: 1
+    };
+    
+    try {
+      await guardarNotaEnCarpeta(nuevaNota);
+      setNotasGuardadas(prev => [...prev, nuevaNota]);
+      
+      // Marcar la nota de sesión como guardada si es una
+      if (notaSeleccionadaId && notaSeleccionadaId.startsWith('nota_sesion_')) {
+        setNotasSesionActual(prev => prev.map(n => 
+          n.id === notaSeleccionadaId ? { ...n, guardada: true, titulo: tituloFinal, contenido: editorNotaContenido } : n
+        ));
+      }
+      
+      // Limpiar editor
+      setEditorNotaTitulo('');
+      setEditorNotaContenido('');
+      setEditorNotaTags('');
+      setNotaSeleccionadaId(null);
+      
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Nota guardada en ${carpetaDestino || 'raíz'}`
+      });
+    } catch (error) {
+      console.error('Error guardando nota:', error);
+      setMensaje({ tipo: 'error', texto: '❌ Error al guardar nota' });
+    }
+  };
+  
+  // 🔥 FUNCIONES PARA NOTAS DE SESIÓN
+  const crearNuevaNotaSesion = () => {
+    const nuevaNota = {
+      id: `nota_sesion_${Date.now()}`,
+      titulo: '',
+      contenido: '',
+      tags: '',
+      fechaCreacion: new Date().toISOString(),
+      guardada: false
+    };
+    setNotasSesionActual(prev => [nuevaNota, ...prev]);
+    setNotaSeleccionadaId(nuevaNota.id);
+    setEditorNotaTitulo('');
+    setEditorNotaContenido('');
+    setEditorNotaTags('');
+    setMensaje({
+      tipo: 'info',
+      texto: '📝 Nueva nota creada'
+    });
+  };
+
+  const actualizarNotaSesion = (id, campo, valor) => {
+    setNotasSesionActual(prev => prev.map(nota => 
+      nota.id === id ? { ...nota, [campo]: valor } : nota
+    ));
+  };
+
+  const seleccionarNotaSesion = (nota) => {
+    // Guardar cambios de la nota actual antes de cambiar
+    if (notaSeleccionadaId) {
+      setNotasSesionActual(prev => prev.map(n => 
+        n.id === notaSeleccionadaId 
+          ? { ...n, titulo: editorNotaTitulo, contenido: editorNotaContenido, tags: editorNotaTags }
+          : n
+      ));
+    }
+    // Cargar la nota seleccionada
+    setNotaSeleccionadaId(nota.id);
+    setEditorNotaTitulo(nota.titulo || '');
+    setEditorNotaContenido(nota.contenido || '');
+    setEditorNotaTags(nota.tags || '');
+  };
+
+  const eliminarNotaSesion = (id) => {
+    setNotasSesionActual(prev => prev.filter(nota => nota.id !== id));
+    if (notaSeleccionadaId === id) {
+      setNotaSeleccionadaId(null);
+      setEditorNotaTitulo('');
+      setEditorNotaContenido('');
+      setEditorNotaTags('');
+    }
+    setMensaje({
+      tipo: 'info',
+      texto: '🗑️ Nota eliminada'
+    });
+  };
+
   // Evaluar práctica con repetición espaciada
   const evaluarPractica = async (idPractica, dificultad) => {
     const practicasActuales = await getDatos('practicas');
@@ -9708,11 +11463,33 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // FUNCIONES DEL SISTEMA DE FLASHCARDS
   // ============================================
 
+  // 🔥 Cache para evitar cargas simultáneas
+  const flashcardsCache = useRef({ data: null, timestamp: 0 });
+  const CACHE_TTL = 1000; // 1 segundo de cache
+
   // Función auxiliar para cargar todas las flashcards desde el nuevo sistema
-  const cargarTodasFlashcards = async () => {
+  const cargarTodasFlashcards = async (forzar = false) => {
     try {
-      // 🔥 Agregar timestamp para evitar caché del navegador
-      const timestamp = Date.now();
+      const ahora = Date.now();
+      
+      // 🔥 Usar cache si está fresco (menos de 1 segundo)
+      if (!forzar && flashcardsCache.current.data && 
+          (ahora - flashcardsCache.current.timestamp) < CACHE_TTL) {
+        return flashcardsCache.current.data;
+      }
+      
+      // 🔥 Evitar cargas simultáneas
+      if (flashcardsCargandoRef.current) {
+        // Si ya hay una carga en progreso, esperar y devolver cache
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (flashcardsCache.current.data) {
+          return flashcardsCache.current.data;
+        }
+      }
+      
+      flashcardsCargandoRef.current = true;
+      
+      const timestamp = ahora;
       const response = await fetch(`${API_URL}/datos/flashcards?_t=${timestamp}`);
       let flashcards = await response.json();
       
@@ -9755,11 +11532,16 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         return fc;
       });
       
-      console.log(`📚 cargarTodasFlashcards: ${flashcards.length} flashcards cargadas (timestamp: ${timestamp})`);
+      // 🔥 Actualizar cache
+      flashcardsCache.current = { data: flashcards, timestamp: Date.now() };
+      flashcardsCargandoRef.current = false;
+      
+      console.log(`📚 cargarTodasFlashcards: ${flashcards.length} flashcards cargadas`);
       return flashcards;
     } catch (error) {
       console.error('Error cargando flashcards:', error);
-      return [];
+      flashcardsCargandoRef.current = false;
+      return flashcardsCache.current.data || [];
     }
   };
 
@@ -10765,24 +12547,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     setModalCarpetasNotaAbierto(false)
   }
 
-  const moverNota = async (idNota, nuevaCarpeta) => {
-    const nota = (notasGuardadas || []).find(n => n.id === idNota);
-    if (!nota) return;
-    
-    const notaActualizada = { ...nota, carpeta: nuevaCarpeta };
-    await guardarNotaEnCarpeta(notaActualizada);
-    
-    const notasActualizadas = (notasGuardadas || []).map(n => 
-      n.id === idNota ? notaActualizada : n
-    )
-    setNotasGuardadas(notasActualizadas)
-    
-    setMensaje({
-      tipo: 'success',
-      texto: '✅ Nota movida a ' + (nuevaCarpeta || 'Raíz')
-    })
-  }
-
   const exportarNotaTXTCarpeta = async (nota) => {
     try {
       // Extraer texto plano del HTML
@@ -11121,6 +12885,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                        faseActual === 'errores' ? '❌' :
                        faseActual === 'flashcards' ? '🎴' :
                        faseActual === 'contenido' ? '📚' :
+                       faseActual === 'generar_practicas' ? '🧑‍💻' :
                        faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
                        '📊'}
                     </span>
@@ -11150,8 +12915,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         ></div>
                       </div>
                       
-                      {/* Contador de descanso - siempre visible */}
-                      {!enDescanso && (
+                      {/* Contador de descanso - solo visible si sesión >= 70 min */}
+                      {!enDescanso && tiempoSesion >= 70 && (
                         <div className="contador-descanso">
                           <span className="descanso-label">Descanso en:</span>
                           <span className="descanso-tiempo">
@@ -11168,8 +12933,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     </div>
                   ) : (
                     <div className="sidebar-modo-libre">
-                      <span>♾️</span>
-                      <span>Modo Libre</span>
+                      {/* Contador de descanso en modo libre - siempre visible */}
+                      {!enDescanso && (
+                        <div className="contador-descanso modo-libre-descanso">
+                          <span className="descanso-label">♾️ Descanso en:</span>
+                          <span className="descanso-tiempo">
+                            {Math.floor(tiempoHastaDescanso / 60)}:{String(tiempoHastaDescanso % 60).padStart(2, '0')}
+                          </span>
+                          <div className="descanso-progreso">
+                            <div 
+                              className="descanso-progreso-barra"
+                              style={{width: `${(tiempoHastaDescanso / intervaloDescansoInicial) * 100}%`}}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                   
@@ -11237,6 +13015,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           >
             <span className="icon">📅</span>
             <span>Calendario</span>
+          </button>
+          <button 
+            className={`nav-item ${selectedMenu === 'rendimiento' ? 'active' : ''}`}
+            onClick={() => { 
+              setSelectedMenu('rendimiento');
+              calcularRendimientoJerarquias();
+              setMenuMovilAbierto(false); 
+            }}
+          >
+            <span className="icon">📊</span>
+            <span>Rendimiento</span>
           </button>
           <button 
             className={`nav-item ${selectedMenu === 'chat' ? 'active' : ''}`}
@@ -12040,13 +13829,24 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <span className="tag tag-rendimiento">
                             📊 {erroresActuales[indiceErrorActual]?.porcentaje_obtenido?.toFixed(0) || erroresActuales[indiceErrorActual]?.porcentaje?.toFixed(0) || 0}%
                           </span>
-                          {erroresActuales[indiceErrorActual]?.proximaRevision && (
+                          {/* 🔥 ESTADO DEL ERROR */}
+                          {(() => {
+                            const estado = erroresActuales[indiceErrorActual]?.estado_error || 'nuevo';
+                            const vecesFallada = erroresActuales[indiceErrorActual]?.veces_fallada || 0;
+                            const iconos = { nuevo: '🆕', fallo: '⚠️', critical: '🔥', ok: '✅' };
+                            const nombres = { nuevo: 'Nuevo', fallo: 'Revisar', critical: '¡Crítico!', ok: 'OK' };
+                            return (
+                              <span className={`tag error-estado-badge error-estado-${estado}`}>
+                                {iconos[estado]} {nombres[estado]}
+                                {vecesFallada > 0 && <span className="error-veces-fallada"> ({vecesFallada}x)</span>}
+                              </span>
+                            );
+                          })()}
+                          {erroresActuales[indiceErrorActual]?.proximaRevisionError && (
                             <span className="tag tag-proxima-revision" title="Próxima revisión programada">
-                              🔄 {new Date(erroresActuales[indiceErrorActual].proximaRevision).toLocaleDateString('es-ES', { 
+                              🔄 {new Date(erroresActuales[indiceErrorActual].proximaRevisionError).toLocaleDateString('es-ES', { 
                                 day: 'numeric', 
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
+                                month: 'short'
                               })}
                             </span>
                           )}
@@ -12062,8 +13862,116 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </h3>
                         </div>
 
-                        {/* Opciones si existen (preguntas tipo multiple) */}
-                        {erroresActuales[indiceErrorActual]?.opciones?.length > 0 && (
+                        {/* 🔥 Helper: Detectar si es pregunta Verdadero/Falso */}
+                        {(() => {
+                          const errorActual = erroresActuales[indiceErrorActual];
+                          const esVerdaderoFalso = errorActual?.tipo === 'verdadero_falso' || 
+                            errorActual?.tipo === 'true_false' ||
+                            errorActual?.tipo === 'verdadero-falso' ||
+                            ['Verdadero', 'Falso', 'verdadero', 'falso', 'V', 'F', 'True', 'False'].includes(errorActual?.respuesta_correcta?.trim());
+                          const tieneOpciones = errorActual?.opciones?.length > 0;
+                          
+                          // CASO 1: Tiene opciones MCQ → mostrar grid de opciones
+                          if (tieneOpciones && !esVerdaderoFalso) {
+                            return (
+                              <div className="error-opciones">
+                                <h4 className="opciones-label">
+                                  {errorYaRespondido ? 'Tu respuesta:' : '🎯 Intenta responder correctamente:'}
+                                </h4>
+                                <div className="opciones-grid">
+                                  {errorActual.opciones.map((opcion, idx) => {
+                                    const esRespuestaOriginal = opcion.startsWith(errorActual.respuesta_usuario || '');
+                                    const esRespuestaCorrecta = opcion.startsWith(errorActual.respuesta_correcta || '');
+                                    const esSeleccionada = respuestaErrorSeleccionada && opcion === respuestaErrorSeleccionada;
+                                    
+                                    let claseOpcion = 'opcion-item';
+                                    if (errorYaRespondido) {
+                                      if (esRespuestaCorrecta) claseOpcion += ' correcta';
+                                      else if (esSeleccionada && !esRespuestaCorrecta) claseOpcion += ' incorrecta';
+                                    } else {
+                                      claseOpcion += ' clickeable';
+                                      if (esRespuestaOriginal) claseOpcion += ' tu-error-anterior';
+                                    }
+                                    
+                                    return (
+                                      <div 
+                                        key={idx}
+                                        className={claseOpcion}
+                                        onClick={() => !errorYaRespondido && seleccionarRespuestaError(opcion)}
+                                        style={{ cursor: errorYaRespondido ? 'default' : 'pointer' }}
+                                      >
+                                        <span className="opcion-letra">{String.fromCharCode(65 + idx)}</span>
+                                        <span className="opcion-texto">{opcion}</span>
+                                        {errorYaRespondido && esRespuestaCorrecta && <span className="opcion-icon">✓</span>}
+                                        {errorYaRespondido && esSeleccionada && !esRespuestaCorrecta && <span className="opcion-icon">✗</span>}
+                                        {!errorYaRespondido && esRespuestaOriginal && <span className="opcion-hint" title="Esta fue tu respuesta anterior">⚠️</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {!errorYaRespondido && <p className="opciones-instruccion">💡 Haz clic en la opción que crees correcta</p>}
+                              </div>
+                            );
+                          }
+                          
+                          // CASO 2: Es Verdadero/Falso → mostrar botones V/F
+                          if (esVerdaderoFalso) {
+                            const opcionesVF = ['Verdadero', 'Falso'];
+                            return (
+                              <div className="error-opciones error-vf">
+                                <h4 className="opciones-label">
+                                  {errorYaRespondido ? 'Tu respuesta:' : '🎯 ¿Verdadero o Falso?'}
+                                </h4>
+                                <div className="opciones-grid vf-grid">
+                                  {opcionesVF.map((opcion, idx) => {
+                                    const respCorrecta = errorActual.respuesta_correcta?.trim().toLowerCase();
+                                    const esRespuestaCorrecta = opcion.toLowerCase() === respCorrecta || 
+                                      (respCorrecta === 'v' && opcion === 'Verdadero') ||
+                                      (respCorrecta === 'f' && opcion === 'Falso') ||
+                                      (respCorrecta === 'true' && opcion === 'Verdadero') ||
+                                      (respCorrecta === 'false' && opcion === 'Falso');
+                                    const respUsuario = errorActual.respuesta_usuario?.trim().toLowerCase();
+                                    const esRespuestaOriginal = opcion.toLowerCase() === respUsuario ||
+                                      (respUsuario === 'v' && opcion === 'Verdadero') ||
+                                      (respUsuario === 'f' && opcion === 'Falso');
+                                    const esSeleccionada = respuestaErrorSeleccionada === opcion;
+                                    
+                                    let claseOpcion = 'opcion-item vf-item';
+                                    if (errorYaRespondido) {
+                                      if (esRespuestaCorrecta) claseOpcion += ' correcta';
+                                      else if (esSeleccionada && !esRespuestaCorrecta) claseOpcion += ' incorrecta';
+                                    } else {
+                                      claseOpcion += ' clickeable';
+                                      if (esRespuestaOriginal) claseOpcion += ' tu-error-anterior';
+                                    }
+                                    
+                                    return (
+                                      <div 
+                                        key={idx}
+                                        className={claseOpcion}
+                                        onClick={() => !errorYaRespondido && seleccionarRespuestaError(opcion)}
+                                        style={{ cursor: errorYaRespondido ? 'default' : 'pointer' }}
+                                      >
+                                        <span className="opcion-letra vf-letra">{opcion === 'Verdadero' ? '✓' : '✗'}</span>
+                                        <span className="opcion-texto">{opcion}</span>
+                                        {errorYaRespondido && esRespuestaCorrecta && <span className="opcion-icon">✓</span>}
+                                        {errorYaRespondido && esSeleccionada && !esRespuestaCorrecta && <span className="opcion-icon">✗</span>}
+                                        {!errorYaRespondido && esRespuestaOriginal && <span className="opcion-hint" title="Esta fue tu respuesta anterior">⚠️</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                {!errorYaRespondido && <p className="opciones-instruccion">💡 Selecciona Verdadero o Falso</p>}
+                              </div>
+                            );
+                          }
+                          
+                          // CASO 3: Respuesta textual → se renderiza abajo en el otro bloque
+                          return null;
+                        })()}
+
+                        {/* LEGACY: Opciones MCQ - REEMPLAZADO POR BLOQUE ARRIBA */}
+                        {false && erroresActuales[indiceErrorActual]?.opciones?.length > 0 && (
                           <div className="error-opciones">
                             <h4 className="opciones-label">
                               {errorYaRespondido ? 'Tu respuesta:' : '🎯 Intenta responder correctamente:'}
@@ -12120,8 +14028,19 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </div>
                         )}
 
-                        {/* 🔥 NUEVO: Input para respuestas cortas/casos (cuando no hay opciones) */}
-                        {(!erroresActuales[indiceErrorActual]?.opciones || erroresActuales[indiceErrorActual]?.opciones.length === 0) && (
+                        {/* 🔥 Input para respuestas cortas/casos (cuando NO es MCQ ni V/F) */}
+                        {(() => {
+                          const errorActual = erroresActuales[indiceErrorActual];
+                          const esVerdaderoFalso = errorActual?.tipo === 'verdadero_falso' || 
+                            errorActual?.tipo === 'true_false' ||
+                            errorActual?.tipo === 'verdadero-falso' ||
+                            ['Verdadero', 'Falso', 'verdadero', 'falso', 'V', 'F', 'True', 'False'].includes(errorActual?.respuesta_correcta?.trim());
+                          const tieneOpciones = errorActual?.opciones?.length > 0;
+                          
+                          // Si tiene opciones MCQ o es V/F, no mostrar textarea
+                          if (tieneOpciones || esVerdaderoFalso) return null;
+                          
+                          return (
                           <div className="error-respuesta-textual">
                             <h4 className="respuesta-textual-label">
                               {errorYaRespondido ? 'Tu respuesta final:' : '✍️ Escribe tu respuesta:'}
@@ -12222,19 +14141,41 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               </div>
                             )}
                           </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Comparación de respuestas - SOLO SI YA RESPONDIÓ */}
-                        {errorYaRespondido && (
+                        {errorYaRespondido && (() => {
+                          const errorActual = erroresActuales[indiceErrorActual];
+                          const respCorrecta = errorActual?.respuesta_correcta?.trim().toLowerCase();
+                          const esVerdaderoFalso = errorActual?.tipo === 'verdadero_falso' || 
+                            errorActual?.tipo === 'true_false' ||
+                            errorActual?.tipo === 'verdadero-falso' ||
+                            ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+                          
+                          let esRespuestaCorrecta = false;
+                          if (respuestaErrorSeleccionada) {
+                            if (esVerdaderoFalso) {
+                              const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+                              const opcionEsVerdadero = respuestaErrorSeleccionada.toLowerCase() === 'verdadero';
+                              esRespuestaCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+                            } else {
+                              esRespuestaCorrecta = respuestaErrorSeleccionada.startsWith(errorActual?.respuesta_correcta || '');
+                            }
+                          } else if (feedbackIA?.esSuficiente) {
+                            esRespuestaCorrecta = true;
+                          }
+                          
+                          return (
                           <div className="error-comparison">
                             <div className="comparison-grid">
                               <div className="comparison-card user-answer">
                                 <div className="card-icon">
-                                  {respuestaErrorSeleccionada && respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? '✅' : '❌'}
+                                  {esRespuestaCorrecta ? '✅' : '❌'}
                                 </div>
                                 <h4>Tu respuesta:</h4>
                                 <p className="answer-text">
-                                  {respuestaErrorSeleccionada || 'Sin respuesta'}
+                                  {respuestaErrorSeleccionada || respuestaTextual || 'Sin respuesta'}
                                 </p>
                               </div>
                               
@@ -12244,29 +14185,28 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 <div className="card-icon">✅</div>
                                 <h4>Respuesta correcta:</h4>
                                 <p className="answer-text">
-                                  {erroresActuales[indiceErrorActual]?.respuesta_correcta}
+                                  {errorActual?.respuesta_correcta}
                                 </p>
                               </div>
                             </div>
                             
                             {/* Mostrar mensaje de feedback */}
-                            {respuestaErrorSeleccionada && (
-                              <div className={`feedback-message ${respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? 'correcto' : 'incorrecto'}`}>
-                                {respuestaErrorSeleccionada.startsWith(erroresActuales[indiceErrorActual].respuesta_correcta) ? (
-                                  <>
-                                    <span className="feedback-icon">🎉</span>
-                                    <p><strong>¡Excelente!</strong> Has corregido tu error. Esta respuesta se actualizará en tu examen/práctica original.</p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="feedback-icon">💪</span>
-                                    <p><strong>Sigue intentando.</strong> La respuesta correcta se mostrará arriba. Este error se programará para revisión mañana.</p>
-                                  </>
-                                )}
-                              </div>
-                            )}
+                            <div className={`feedback-message ${esRespuestaCorrecta ? 'correcto' : 'incorrecto'}`}>
+                              {esRespuestaCorrecta ? (
+                                <>
+                                  <span className="feedback-icon">🎉</span>
+                                  <p><strong>¡Excelente!</strong> Has corregido tu error. Se programará revisión en 3-6 días.</p>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="feedback-icon">💪</span>
+                                  <p><strong>Sigue intentando.</strong> La respuesta correcta se muestra arriba. Este error se programará para revisión mañana.</p>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Explicación */}
                         {erroresActuales[indiceErrorActual]?.feedback && (
@@ -12376,6 +14316,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             ? '¡Último error! 🎉' 
                             : `Quedan ${erroresActuales.length - indiceErrorActual - 1} errores por revisar`}
                         </p>
+                        
+                        {/* Botón de continuar a siguiente fase */}
+                        <button 
+                          className="btn-continuar-fase"
+                          onClick={() => avanzarFase()}
+                          style={{ marginTop: '1rem' }}
+                        >
+                          ⏭️ Continuar a la siguiente fase →
+                        </button>
                       </div>
                     </>
                   ) : (
@@ -12383,6 +14332,304 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       <div className="no-errores-icon">🎉</div>
                       <h2>¡No hay errores pendientes!</h2>
                       <p>Has dominado todo el material reciente</p>
+                      <button className="btn-continuar" onClick={avanzarFase}>
+                        Continuar a la siguiente fase →
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* FASE: REPASO DE ACIERTOS */}
+              {faseActual === 'repaso' && (
+                <div className="fase-repaso fase-errores">
+                  {aciertosRepaso.length > 0 ? (
+                    <>
+                      {/* Header de la fase */}
+                      <div className="errores-header repaso-header">
+                        <div className="errores-title">
+                          <h2>🔄 Repaso de Aciertos</h2>
+                          <p>Verifica que aún dominas lo que aprendiste</p>
+                        </div>
+                        <div className="errores-progreso-numerico">
+                          <span className="progreso-actual">{indiceAciertoActual + 1}</span>
+                          <span className="progreso-separador">/</span>
+                          <span className="progreso-total">{aciertosRepaso.length}</span>
+                        </div>
+                      </div>
+
+                      {/* Barra de progreso visual */}
+                      <div className="errores-progress-bar repaso-progress-bar">
+                        <div 
+                          className="progress-fill"
+                          style={{width: `${((indiceAciertoActual + 1) / aciertosRepaso.length) * 100}%`}}
+                        >
+                          <span className="progress-text">
+                            {Math.round(((indiceAciertoActual + 1) / aciertosRepaso.length) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tarjeta de pregunta */}
+                      <div className="error-wizard-card repaso-wizard-card">
+                        {/* Tags */}
+                        <div className="error-tags">
+                          <span className="tag tag-curso">
+                            📚 {aciertosRepaso[indiceAciertoActual]?.carpeta || 'General'}
+                          </span>
+                          <span className="tag tag-rendimiento tag-acierto">
+                            ✅ {aciertosRepaso[indiceAciertoActual]?.porcentaje_obtenido?.toFixed(0) || 100}%
+                          </span>
+                          <span className="tag tag-intervalo">
+                            📅 Intervalo: {aciertosRepaso[indiceAciertoActual]?.intervalo || 1} días
+                          </span>
+                        </div>
+
+                        {/* Pregunta */}
+                        <div className="error-question">
+                          <div className="question-header">
+                            <span className="question-badge question-badge-repaso">Repaso {indiceAciertoActual + 1}</span>
+                          </div>
+                          <h3 className="question-text">
+                            {aciertosRepaso[indiceAciertoActual]?.pregunta}
+                          </h3>
+                        </div>
+
+                        {/* Opciones MCQ, V/F o Textual */}
+                        {(() => {
+                          const aciertoActual = aciertosRepaso[indiceAciertoActual];
+                          const esVerdaderoFalso = aciertoActual?.tipo === 'verdadero_falso' || 
+                            aciertoActual?.tipo === 'true_false' ||
+                            aciertoActual?.tipo === 'verdadero-falso' ||
+                            ['Verdadero', 'Falso', 'verdadero', 'falso', 'V', 'F', 'True', 'False'].includes(aciertoActual?.respuesta_correcta?.trim());
+                          const tieneOpciones = aciertoActual?.opciones?.length > 0;
+                          
+                          // CASO 1: MCQ
+                          if (tieneOpciones && !esVerdaderoFalso) {
+                            return (
+                              <div className="error-opciones">
+                                <h4 className="opciones-label">
+                                  {aciertoYaRespondido ? 'Tu respuesta:' : '🎯 ¿Aún lo recuerdas?'}
+                                </h4>
+                                <div className="opciones-grid">
+                                  {aciertoActual.opciones.map((opcion, idx) => {
+                                    const esRespuestaCorrecta = opcion.startsWith(aciertoActual.respuesta_correcta || '');
+                                    const esSeleccionada = respuestaAciertoSeleccionada === opcion;
+                                    
+                                    let claseOpcion = 'opcion-item';
+                                    if (aciertoYaRespondido) {
+                                      if (esRespuestaCorrecta) claseOpcion += ' correcta';
+                                      else if (esSeleccionada && !esRespuestaCorrecta) claseOpcion += ' incorrecta';
+                                    } else {
+                                      claseOpcion += ' clickeable';
+                                    }
+                                    
+                                    return (
+                                      <div 
+                                        key={idx}
+                                        className={claseOpcion}
+                                        onClick={() => !aciertoYaRespondido && seleccionarRespuestaAcierto(opcion)}
+                                        style={{ cursor: aciertoYaRespondido ? 'default' : 'pointer' }}
+                                      >
+                                        <span className="opcion-letra">{String.fromCharCode(65 + idx)}</span>
+                                        <span className="opcion-texto">{opcion}</span>
+                                        {aciertoYaRespondido && esRespuestaCorrecta && <span className="opcion-icon">✓</span>}
+                                        {aciertoYaRespondido && esSeleccionada && !esRespuestaCorrecta && <span className="opcion-icon">✗</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // CASO 2: V/F
+                          if (esVerdaderoFalso) {
+                            const opcionesVF = ['Verdadero', 'Falso'];
+                            return (
+                              <div className="error-opciones error-vf">
+                                <h4 className="opciones-label">
+                                  {aciertoYaRespondido ? 'Tu respuesta:' : '🎯 ¿Verdadero o Falso?'}
+                                </h4>
+                                <div className="opciones-grid vf-grid">
+                                  {opcionesVF.map((opcion, idx) => {
+                                    const respCorrecta = aciertoActual.respuesta_correcta?.trim().toLowerCase();
+                                    const esRespuestaCorrecta = opcion.toLowerCase() === respCorrecta || 
+                                      (respCorrecta === 'v' && opcion === 'Verdadero') ||
+                                      (respCorrecta === 'f' && opcion === 'Falso') ||
+                                      (respCorrecta === 'true' && opcion === 'Verdadero') ||
+                                      (respCorrecta === 'false' && opcion === 'Falso');
+                                    const esSeleccionada = respuestaAciertoSeleccionada === opcion;
+                                    
+                                    let claseOpcion = 'opcion-item vf-item';
+                                    if (aciertoYaRespondido) {
+                                      if (esRespuestaCorrecta) claseOpcion += ' correcta';
+                                      else if (esSeleccionada && !esRespuestaCorrecta) claseOpcion += ' incorrecta';
+                                    } else {
+                                      claseOpcion += ' clickeable';
+                                    }
+                                    
+                                    return (
+                                      <div 
+                                        key={idx}
+                                        className={claseOpcion}
+                                        onClick={() => !aciertoYaRespondido && seleccionarRespuestaAcierto(opcion)}
+                                        style={{ cursor: aciertoYaRespondido ? 'default' : 'pointer' }}
+                                      >
+                                        <span className="opcion-letra vf-letra">{opcion === 'Verdadero' ? '✓' : '✗'}</span>
+                                        <span className="opcion-texto">{opcion}</span>
+                                        {aciertoYaRespondido && esRespuestaCorrecta && <span className="opcion-icon">✓</span>}
+                                        {aciertoYaRespondido && esSeleccionada && !esRespuestaCorrecta && <span className="opcion-icon">✗</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          // CASO 3: Respuesta textual
+                          return (
+                            <div className="error-respuesta-textual">
+                              <h4 className="respuesta-textual-label">
+                                {aciertoYaRespondido ? 'Tu respuesta:' : '✍️ Escribe tu respuesta:'}
+                              </h4>
+                              
+                              {historialIntentosAcierto.length > 0 && (
+                                <div className="historial-intentos">
+                                  <h5>📊 Intentos anteriores:</h5>
+                                  {historialIntentosAcierto.map((intento, idx) => (
+                                    <div key={idx} className="intento-card">
+                                      <div className="intento-header">
+                                        <span className="intento-numero">Intento {idx + 1}</span>
+                                        <span className={`intento-puntaje ${intento.puntaje >= 70 ? 'aprobado' : 'pendiente'}`}>
+                                          {intento.puntaje}/100
+                                        </span>
+                                      </div>
+                                      <p className="intento-respuesta">"{intento.respuesta}"</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {!aciertoYaRespondido && (
+                                <div className="respuesta-textual-input-container">
+                                  <textarea
+                                    className="respuesta-textual-input"
+                                    placeholder="Escribe tu respuesta..."
+                                    rows="4"
+                                    value={respuestaTextualAcierto}
+                                    onChange={(e) => setRespuestaTextualAcierto(e.target.value)}
+                                    disabled={evaluandoRespuestaAcierto}
+                                  />
+                                  <button 
+                                    className="btn-evaluar-respuesta"
+                                    onClick={evaluarRespuestaTextualAcierto}
+                                    disabled={evaluandoRespuestaAcierto || !respuestaTextualAcierto.trim()}
+                                  >
+                                    {evaluandoRespuestaAcierto ? '⏳ Evaluando...' : '🤖 Evaluar'}
+                                  </button>
+                                </div>
+                              )}
+
+                              {feedbackIAAcierto && (
+                                <div className={`feedback-ia ${feedbackIAAcierto.esSuficiente ? 'aprobado' : 'mejorable'}`}>
+                                  <div className="feedback-ia-header">
+                                    <span className="feedback-ia-icon">{feedbackIAAcierto.esSuficiente ? '🎉' : '💪'}</span>
+                                    <span className="feedback-ia-puntaje">Puntaje: {feedbackIAAcierto.puntaje}/100</span>
+                                  </div>
+                                  <div className="feedback-ia-contenido">
+                                    {feedbackIAAcierto.texto.split('\n').map((linea, idx) => (
+                                      <p key={idx}>{linea}</p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Comparación de respuestas si ya respondió */}
+                        {aciertoYaRespondido && (() => {
+                          const aciertoActual = aciertosRepaso[indiceAciertoActual];
+                          const respCorrecta = aciertoActual?.respuesta_correcta?.trim().toLowerCase();
+                          const esVerdaderoFalso = ['verdadero', 'falso', 'v', 'f', 'true', 'false'].includes(respCorrecta);
+                          
+                          let esRespuestaCorrecta = false;
+                          if (respuestaAciertoSeleccionada) {
+                            if (esVerdaderoFalso) {
+                              const correctaEsVerdadero = ['verdadero', 'v', 'true'].includes(respCorrecta);
+                              const opcionEsVerdadero = respuestaAciertoSeleccionada.toLowerCase() === 'verdadero';
+                              esRespuestaCorrecta = (correctaEsVerdadero && opcionEsVerdadero) || (!correctaEsVerdadero && !opcionEsVerdadero);
+                            } else {
+                              esRespuestaCorrecta = respuestaAciertoSeleccionada.startsWith(aciertoActual?.respuesta_correcta || '');
+                            }
+                          } else if (feedbackIAAcierto?.esSuficiente) {
+                            esRespuestaCorrecta = true;
+                          }
+                          
+                          return (
+                            <div className="error-comparison">
+                              <div className={`feedback-message ${esRespuestaCorrecta ? 'correcto' : 'incorrecto'}`}>
+                                {esRespuestaCorrecta ? (
+                                  <>
+                                    <span className="feedback-icon">🎉</span>
+                                    <p><strong>¡Excelente!</strong> Sigues dominando este concepto. El intervalo de revisión aumentará.</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="feedback-icon">⚠️</span>
+                                    <p><strong>¡Ojo!</strong> Este concepto necesita refuerzo. Se añadirá a tus errores para mañana.</p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Acciones */}
+                      <div className="error-actions">
+                        <button 
+                          className="btn-action btn-skip"
+                          onClick={() => {
+                            setRespuestaAciertoSeleccionada(null);
+                            setAciertoYaRespondido(false);
+                            setRespuestaTextualAcierto('');
+                            setHistorialIntentosAcierto([]);
+                            setFeedbackIAAcierto(null);
+                            siguienteAcierto();
+                          }}
+                        >
+                          <span className="btn-icon">⏭️</span>
+                          <span>Saltar</span>
+                        </button>
+
+                        <button 
+                          className="btn-action btn-understood"
+                          onClick={marcarAciertoRepasado}
+                          disabled={!aciertoYaRespondido}
+                        >
+                          <span className="btn-icon">✅</span>
+                          <span>Continuar</span>
+                        </button>
+                      </div>
+
+                      {/* Botón de continuar a siguiente fase */}
+                      <div className="fase-continuar-container" style={{ marginTop: '1.5rem' }}>
+                        <button 
+                          className="btn-continuar-fase"
+                          onClick={() => avanzarFase()}
+                        >
+                          ⏭️ Continuar a la siguiente fase →
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="fase-vacia">
+                      <div className="vacio-icono">🎉</div>
+                      <h3>¡No hay aciertos pendientes de repaso!</h3>
+                      <p>Tus conceptos dominados aún no necesitan revisión</p>
                       <button className="btn-continuar" onClick={avanzarFase}>
                         Continuar a la siguiente fase →
                       </button>
@@ -12615,6 +14862,16 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           <span className="shortcut"><kbd>3</kbd> Fácil</span>
                         </div>
                       </div>
+
+                      {/* Botón de continuar a siguiente fase */}
+                      <div className="fase-continuar-container">
+                        <button 
+                          className="btn-continuar-fase"
+                          onClick={() => avanzarFase()}
+                        >
+                          ⏭️ Continuar a la siguiente fase →
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div className="no-flashcards">
@@ -12784,11 +15041,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 <h4>📄 Notas</h4>
                                 <button 
                                   className="btn-nueva-nota-mini"
-                                  onClick={() => {
-                                    setEditorNotaTitulo('');
-                                    setEditorNotaContenido('');
-                                    setEditorNotaTags('');
-                                  }}
+                                  onClick={crearNuevaNotaSesion}
                                   style={{
                                     background: '#4CAF50',
                                     color: 'white',
@@ -12808,10 +15061,74 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 </button>
                               </div>
                               <div className="lista-notas-sidebar" style={{maxHeight: '300px', overflowY: 'auto'}}>
+                                {/* Notas de sesión actual (no guardadas) */}
+                                {notasSesionActual.map(nota => (
+                                  <div 
+                                    key={nota.id} 
+                                    className={`nota-item-sidebar ${notaSeleccionadaId === nota.id ? 'activa' : ''}`} 
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      padding: '0.5rem',
+                                      marginBottom: '0.3rem',
+                                      background: notaSeleccionadaId === nota.id ? 'rgba(59, 130, 246, 0.3)' : 'rgba(74, 222, 128, 0.15)',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      border: notaSeleccionadaId === nota.id 
+                                        ? '1px solid rgba(59, 130, 246, 0.5)' 
+                                        : '1px solid rgba(74, 222, 128, 0.3)',
+                                      transition: 'all 0.2s'
+                                    }}
+                                    onClick={() => seleccionarNotaSesion(nota)}
+                                  >
+                                    <span style={{
+                                      flex: 1, 
+                                      fontSize: '0.85rem', 
+                                      color: '#e2e8f0',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.3rem'
+                                    }}>
+                                      <span style={{fontSize: '0.7rem'}}>🆕</span>
+                                      {nota.titulo || 'Sin título'}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        eliminarNotaSesion(nota.id);
+                                      }}
+                                      style={{
+                                        background: 'rgba(239, 68, 68, 0.9)',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '0.2rem 0.5rem',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem'
+                                      }}
+                                    >
+                                      🗑️
+                                    </button>
+                                  </div>
+                                ))}
+                                
+                                {/* Separador si hay notas de sesión y guardadas */}
+                                {notasSesionActual.length > 0 && (notasGuardadas || []).filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual).length > 0 && (
+                                  <div style={{
+                                    borderTop: '1px dashed rgba(148, 163, 184, 0.3)',
+                                    margin: '0.5rem 0',
+                                    paddingTop: '0.5rem'
+                                  }}>
+                                    <span style={{fontSize: '0.7rem', color: '#94a3b8'}}>📂 Guardadas</span>
+                                  </div>
+                                )}
+                                
+                                {/* Notas guardadas */}
                                 {(notasGuardadas || [])
                                   .filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual)
-                                  .map(nota => (
-                                    <div key={nota.id} className="nota-item-sidebar" style={{
+                                  .map((nota, index) => (
+                                    <div key={`guardada-${nota.id}-${index}`} className="nota-item-sidebar" style={{
                                       display: 'flex',
                                       justifyContent: 'space-between',
                                       alignItems: 'center',
@@ -12833,6 +15150,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                     }}>
                                       <span 
                                         onClick={() => {
+                                          setNotaSeleccionadaId(null);
                                           setEditorNotaTitulo(nota.titulo);
                                           setEditorNotaContenido(nota.contenido);
                                           setEditorNotaTags(nota.tags?.join(', ') || '');
@@ -12862,9 +15180,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                       </button>
                                     </div>
                                   ))}
-                                {((notasGuardadas || []).filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual).length === 0) && (
+                                {(notasSesionActual.length === 0 && (notasGuardadas || []).filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual).length === 0) && (
                                   <p style={{fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center'}}>
-                                    No hay notas en esta carpeta
+                                    Haz clic en + para crear una nota
                                   </p>
                                 )}
                               </div>
@@ -12880,6 +15198,32 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 }}
                               >
                                 🗑️ Limpiar
+                              </button>
+                              
+                              {/* 🔥 BOTÓN PRINCIPAL DE GUARDAR NOTA EN LA CARPETA ACTUAL */}
+                              <button 
+                                className="btn-sidebar-action save-main"
+                                onClick={guardarNotaActualEnCarpeta}
+                                disabled={!editorNotaContenido.trim() && !editorNotaTitulo.trim()}
+                                style={{
+                                  background: (editorNotaContenido.trim() || editorNotaTitulo.trim()) 
+                                    ? 'linear-gradient(135deg, #10b981, #059669)' 
+                                    : 'rgba(100, 116, 139, 0.5)',
+                                  color: 'white',
+                                  fontWeight: 'bold',
+                                  border: 'none',
+                                  padding: '0.75rem 1rem',
+                                  borderRadius: '8px',
+                                  cursor: (editorNotaContenido.trim() || editorNotaTitulo.trim()) ? 'pointer' : 'not-allowed',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '0.5rem',
+                                  width: '100%',
+                                  marginBottom: '0.5rem'
+                                }}
+                              >
+                                💾 Guardar en {rutaNotasActual || rutaCalentamientoActual || 'raíz'}
                               </button>
                               
                               <button 
@@ -12913,7 +15257,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   setModalGuardarContenido(true);
                                 }}
                               >
-                                📝 Guardar Nota
+                                📝 Guardar Nota (elegir carpeta)
                               </button>
                               
                               <button 
@@ -12974,14 +15318,24 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 className="nota-titulo-compact"
                                 placeholder="✏️ Título de la nota..."
                                 value={editorNotaTitulo}
-                                onChange={(e) => setEditorNotaTitulo(e.target.value)}
+                                onChange={(e) => {
+                                  setEditorNotaTitulo(e.target.value);
+                                  if (notaSeleccionadaId) {
+                                    actualizarNotaSesion(notaSeleccionadaId, 'titulo', e.target.value);
+                                  }
+                                }}
                               />
                               <input 
                                 type="text"
                                 className="nota-tags-compact"
                                 placeholder="🏷️ Tags (separados por coma)"
                                 value={editorNotaTags}
-                                onChange={(e) => setEditorNotaTags(e.target.value)}
+                                onChange={(e) => {
+                                  setEditorNotaTags(e.target.value);
+                                  if (notaSeleccionadaId) {
+                                    actualizarNotaSesion(notaSeleccionadaId, 'tags', e.target.value);
+                                  }
+                                }}
                               />
                             </div>
 
@@ -13054,6 +15408,9 @@ Shortcuts:
                                     value={editorNotaContenido}
                                     onChange={(e) => {
                                       setEditorNotaContenido(e.target.value);
+                                      if (notaSeleccionadaId) {
+                                        actualizarNotaSesion(notaSeleccionadaId, 'contenido', e.target.value);
+                                      }
                                       
                                       const value = e.target.value;
                                       const cursorPos = e.target.selectionStart;
@@ -13802,6 +16159,368 @@ Shortcuts:
               )}
 
               {/* ============================================ */}
+              {/* FASE - REPASO DE NOTAS */}
+              {/* ============================================ */}
+              {faseActual === 'notas' && (
+                <div className="fase-notas">
+                  {notasRepasoSesion.length > 0 ? (
+                    <>
+                      {/* Header de la fase */}
+                      <div className="notas-header">
+                        <div className="notas-title">
+                          <h2>📝 Repaso de Notas</h2>
+                          <p>Refresca tu memoria con tus apuntes</p>
+                        </div>
+                        <div className="notas-progreso-numerico">
+                          <span className="progreso-actual">{indiceNotaRepasoActual + 1}</span>
+                          <span className="progreso-separador">/</span>
+                          <span className="progreso-total">{notasRepasoSesion.length}</span>
+                        </div>
+                      </div>
+
+                      {/* Barra de progreso */}
+                      <div className="notas-progress-bar">
+                        <div 
+                          className="progress-fill-notas"
+                          style={{width: `${((indiceNotaRepasoActual + 1) / notasRepasoSesion.length) * 100}%`}}
+                        >
+                          <span className="progress-text">
+                            {Math.round(((indiceNotaRepasoActual + 1) / notasRepasoSesion.length) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card de la nota */}
+                      <div className="nota-repaso-card">
+                        <div className="nota-repaso-header">
+                          <h3 className="nota-repaso-titulo">
+                            {notasRepasoSesion[indiceNotaRepasoActual]?.titulo || 'Sin título'}
+                          </h3>
+                          {notasRepasoSesion[indiceNotaRepasoActual]?.carpeta && (
+                            <span className="nota-repaso-carpeta">
+                              📁 {notasRepasoSesion[indiceNotaRepasoActual].carpeta}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div 
+                          className={`nota-repaso-contenido ${notaRepasoExpandida ? 'expandida' : ''}`}
+                          dangerouslySetInnerHTML={{
+                            __html: notasRepasoSesion[indiceNotaRepasoActual]?.contenido || ''
+                          }}
+                        />
+                        
+                        <button 
+                          className="btn-expandir-nota"
+                          onClick={() => setNotaRepasoExpandida(!notaRepasoExpandida)}
+                        >
+                          {notaRepasoExpandida ? '🔼 Colapsar' : '🔽 Expandir nota completa'}
+                        </button>
+                      </div>
+
+                      {/* Botones de calificación (similar a flashcards) */}
+                      <div className="notas-calificacion">
+                        <p className="calificacion-label">¿Qué tan bien recordaste esta nota?</p>
+                        <div className="calificacion-botones">
+                          <button 
+                            className="btn-calificacion btn-again"
+                            onClick={async () => {
+                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                              // Actualizar nota con nuevo intervalo (repetir mañana)
+                              const notaActualizada = {
+                                ...nota,
+                                proximaRevision: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                                intervalo: 1,
+                                estadoRevision: 'en_progreso'
+                              };
+                              await guardarNotaEnCarpeta(notaActualizada);
+                              
+                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                                setIndiceNotaRepasoActual(prev => prev + 1);
+                              }
+                              setNotaRepasoExpandida(false);
+                            }}
+                          >
+                            😣 No recuerdo
+                          </button>
+                          <button 
+                            className="btn-calificacion btn-hard"
+                            onClick={async () => {
+                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                              const nuevoIntervalo = Math.max(1, (nota.intervalo || 1) * 1.5);
+                              const notaActualizada = {
+                                ...nota,
+                                proximaRevision: new Date(Date.now() + nuevoIntervalo * 24 * 60 * 60 * 1000).toISOString(),
+                                intervalo: nuevoIntervalo,
+                                estadoRevision: 'en_progreso'
+                              };
+                              await guardarNotaEnCarpeta(notaActualizada);
+                              
+                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                                setIndiceNotaRepasoActual(prev => prev + 1);
+                              }
+                              setNotaRepasoExpandida(false);
+                            }}
+                          >
+                            🤔 Difícil
+                          </button>
+                          <button 
+                            className="btn-calificacion btn-good"
+                            onClick={async () => {
+                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                              const nuevoIntervalo = (nota.intervalo || 1) * 2.5;
+                              const notaActualizada = {
+                                ...nota,
+                                proximaRevision: new Date(Date.now() + nuevoIntervalo * 24 * 60 * 60 * 1000).toISOString(),
+                                intervalo: nuevoIntervalo,
+                                estadoRevision: 'aprendida'
+                              };
+                              await guardarNotaEnCarpeta(notaActualizada);
+                              
+                              setEstadisticasSesion(prev => ({
+                                ...prev,
+                                notasTomadas: (prev.notasTomadas || 0) + 1
+                              }));
+                              
+                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                                setIndiceNotaRepasoActual(prev => prev + 1);
+                              }
+                              setNotaRepasoExpandida(false);
+                            }}
+                          >
+                            👍 Bien
+                          </button>
+                          <button 
+                            className="btn-calificacion btn-easy"
+                            onClick={async () => {
+                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                              const nuevoIntervalo = (nota.intervalo || 1) * 4;
+                              const notaActualizada = {
+                                ...nota,
+                                proximaRevision: new Date(Date.now() + nuevoIntervalo * 24 * 60 * 60 * 1000).toISOString(),
+                                intervalo: nuevoIntervalo,
+                                estadoRevision: 'dominada'
+                              };
+                              await guardarNotaEnCarpeta(notaActualizada);
+                              
+                              setEstadisticasSesion(prev => ({
+                                ...prev,
+                                notasTomadas: (prev.notasTomadas || 0) + 1
+                              }));
+                              
+                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                                setIndiceNotaRepasoActual(prev => prev + 1);
+                              }
+                              setNotaRepasoExpandida(false);
+                            }}
+                          >
+                            🚀 Fácil
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Navegación */}
+                      <div className="notas-navegacion">
+                        <button 
+                          className="btn-nav-nota"
+                          disabled={indiceNotaRepasoActual === 0}
+                          onClick={() => {
+                            setIndiceNotaRepasoActual(prev => prev - 1);
+                            setNotaRepasoExpandida(false);
+                          }}
+                        >
+                          ⬅️ Anterior
+                        </button>
+                        <button 
+                          className="btn-nav-nota btn-editar"
+                          onClick={() => {
+                            const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                            setNotaActual(nota);
+                            setTituloNota(nota.titulo);
+                            setContenidoNota(nota.contenido);
+                            setCarpetaNota(nota.carpeta || '');
+                            setModoSoloLectura(true);
+                            setEditorNotaAbierto(true);
+                          }}
+                        >
+                          👁️ Ver completa
+                        </button>
+                        <button 
+                          className="btn-nav-nota"
+                          disabled={indiceNotaRepasoActual >= notasRepasoSesion.length - 1}
+                          onClick={() => {
+                            setIndiceNotaRepasoActual(prev => prev + 1);
+                            setNotaRepasoExpandida(false);
+                          }}
+                        >
+                          Siguiente ➡️
+                        </button>
+                      </div>
+
+                      {/* Botón de continuar a siguiente fase */}
+                      <div className="notas-footer">
+                        <p className="notas-mensaje">
+                          {indiceNotaRepasoActual === notasRepasoSesion.length - 1 
+                            ? '¡Última nota! 🎉 Ya puedes continuar' 
+                            : `Quedan ${notasRepasoSesion.length - indiceNotaRepasoActual - 1} notas por revisar`}
+                        </p>
+                        <button 
+                          className="btn-continuar-fase"
+                          onClick={() => avanzarFase()}
+                        >
+                          ⏭️ Continuar a la siguiente fase →
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="fase-vacia">
+                      <div className="vacia-emoji">📝</div>
+                      <h3>No hay notas para repasar</h3>
+                      <p>Crea algunas notas y programa sus repasos</p>
+                      <button 
+                        className="btn-avanzar-fase"
+                        onClick={() => avanzarFase()}
+                      >
+                        ⏭️ Continuar a la siguiente fase
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ============================================ */}
+              {/* FASE: GENERAR PRÁCTICAS */}
+              {/* ============================================ */}
+              {faseActual === 'generar_practicas' && (
+                <div className="fase-generar-practicas">
+                  {/* Header */}
+                  <div className="fase-header-practicas">
+                    <div className="fase-icon-grande">🧑‍💻</div>
+                    <h2>Generar Práctica Personalizada</h2>
+                    <p>Selecciona una carpeta y genera ejercicios basados en tu material</p>
+                  </div>
+
+                  {/* Selector de Carpeta */}
+                  <div className="practicas-selector-carpeta">
+                    <h3>📁 Seleccionar Carpeta</h3>
+                    <div className="carpeta-breadcrumb">
+                      <button 
+                        className="breadcrumb-btn"
+                        onClick={() => {
+                          setRutaActual('');
+                          cargarCarpeta('');
+                        }}
+                      >
+                        🏠 Inicio
+                      </button>
+                      {rutaActual && rutaActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                        const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                        return (
+                          <React.Fragment key={idx}>
+                            <span className="breadcrumb-separator">→</span>
+                            <button 
+                              className="breadcrumb-btn"
+                              onClick={() => {
+                                setRutaActual(rutaParcial);
+                                cargarCarpeta(rutaParcial);
+                              }}
+                            >
+                              {parte}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+
+                    {/* Grid de Carpetas */}
+                    <div className="carpetas-grid-practicas">
+                      {carpetas.map((carpeta, idx) => (
+                        <button
+                          key={idx}
+                          className={`carpeta-card-practica ${carpetaPractica === (rutaActual ? `${rutaActual}\\${carpeta.nombre}` : carpeta.nombre) ? 'seleccionada' : ''}`}
+                          onClick={() => {
+                            const nuevaRuta = rutaActual 
+                              ? `${rutaActual}\\${carpeta.nombre}` 
+                              : carpeta.nombre;
+                            setRutaActual(nuevaRuta);
+                            cargarCarpeta(nuevaRuta);
+                          }}
+                          onDoubleClick={() => {
+                            const nuevaRuta = rutaActual 
+                              ? `${rutaActual}\\${carpeta.nombre}` 
+                              : carpeta.nombre;
+                            setCarpetaPractica(nuevaRuta);
+                            abrirModalPractica(nuevaRuta, 'carpeta');
+                          }}
+                        >
+                          <span className="carpeta-icon">📁</span>
+                          <span className="carpeta-nombre">{carpeta.nombre}</span>
+                          <span className="carpeta-info">
+                            {carpeta.docs || 0} docs · {carpeta.subcarpetas || 0} carpetas
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Archivos disponibles */}
+                    {documentos.length > 0 && (
+                      <div className="archivos-disponibles">
+                        <h4>📄 Archivos en esta carpeta ({documentos.length})</h4>
+                        <div className="archivos-lista">
+                          {documentos.slice(0, 5).map((doc, idx) => (
+                            <div key={idx} className="archivo-item">
+                              <span className="archivo-icon">📄</span>
+                              <span className="archivo-nombre">{doc.nombre}</span>
+                            </div>
+                          ))}
+                          {documentos.length > 5 && (
+                            <div className="archivo-item mas">
+                              +{documentos.length - 5} archivos más...
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Botón de Generar */}
+                  <div className="practicas-acciones">
+                    <button
+                      className="btn-generar-practica-grande"
+                      onClick={() => {
+                        if (rutaActual) {
+                          abrirModalPractica(rutaActual, 'carpeta');
+                        } else {
+                          setMensaje({
+                            tipo: 'warning',
+                            texto: '⚠️ Navega a una carpeta con contenido para generar prácticas'
+                          });
+                        }
+                      }}
+                      disabled={!rutaActual && carpetas.length === 0}
+                    >
+                      <span className="btn-icon">🧑‍💻</span>
+                      <span className="btn-text">
+                        {rutaActual 
+                          ? `Generar Práctica desde "${rutaActual.split('\\').pop()}"` 
+                          : 'Selecciona una carpeta'}
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Footer con continuar */}
+                  <div className="fase-footer-practicas">
+                    <button 
+                      className="btn-continuar-fase"
+                      onClick={() => avanzarFase()}
+                    >
+                      ⏭️ Continuar a la siguiente fase →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ============================================ */}
               {/* FASE 5 - CIERRE/RESUMEN */}
               {/* ============================================ */}
               {faseActual === 'cierre' && (
@@ -14152,6 +16871,65 @@ Shortcuts:
               })}
             </div>
 
+            {/* Toggle de Rendimiento Jerárquico */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              marginBottom: '1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(30, 41, 59, 0.5)',
+              borderRadius: '12px',
+              border: '1px solid rgba(99, 102, 241, 0.2)'
+            }}>
+              <button
+                onClick={() => {
+                  setSumarHijosEnRendimiento(!sumarHijosEnRendimiento);
+                  setTimeout(() => calcularRendimientoJerarquias(), 100);
+                }}
+                style={{
+                  background: sumarHijosEnRendimiento 
+                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                    : 'rgba(100, 116, 139, 0.3)',
+                  color: sumarHijosEnRendimiento ? '#fff' : '#94a3b8',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {sumarHijosEnRendimiento ? '📊' : '📁'}
+                {sumarHijosEnRendimiento ? 'Progreso Acumulado' : 'Progreso Individual'}
+              </button>
+              <span style={{fontSize: '0.8rem', color: '#64748b'}}>
+                {sumarHijosEnRendimiento 
+                  ? 'Las subcarpetas suman al progreso total' 
+                  : 'Solo contenido directo de cada carpeta'}
+              </span>
+              <button
+                onClick={calcularRendimientoJerarquias}
+                style={{
+                  background: 'rgba(99, 102, 241, 0.2)',
+                  color: '#818cf8',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  borderRadius: '8px',
+                  padding: '0.4rem 0.6rem',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  marginLeft: 'auto'
+                }}
+                title="Actualizar datos de rendimiento"
+              >
+                🔄
+              </button>
+            </div>
+
             {/* Botones de navegación cruzada */}
             {rutaActual && (
               <div className="accesos-rapidos-fase" style={{marginBottom: '1rem'}}>
@@ -14221,12 +16999,23 @@ Shortcuts:
                   <div className="items-section">
                     <h3>📂 Carpetas (Generar Examen disponible)</h3>
                     <div className="items-grid">
-                      {carpetas.map(carpeta => (
+                      {carpetas.map(carpeta => {
+                        // Buscar rendimiento de esta carpeta
+                        const rutaNormalizada = (carpeta.ruta || '').replace(/\//g, '\\').replace(/\\\\/g, '\\')
+                        const rendCarpeta = rendimientoJerarquias[rutaNormalizada]
+                        const tieneRendimiento = rendCarpeta && rendCarpeta.totalItems > 0
+                        const porcentaje = rendCarpeta?.porcentajeGeneral || 0
+                        const colorPorcentaje = porcentaje >= 80 ? '#10b981' : porcentaje >= 50 ? '#eab308' : '#ef4444'
+                        
+                        return (
                         <div 
                           key={carpeta.ruta} 
                           className="item-card carpeta-item"
                           onClick={() => cargarCarpeta(carpeta.ruta)}
-                          style={{cursor: 'pointer'}}
+                          style={{
+                            cursor: 'pointer',
+                            borderLeft: tieneRendimiento ? `4px solid ${colorPorcentaje}` : undefined
+                          }}
                         >
                           <div className="item-icon">📁</div>
                           <div className="item-info">
@@ -14234,6 +17023,93 @@ Shortcuts:
                             <p>
                               {carpeta.num_documentos} docs · {carpeta.num_subcarpetas} carpetas
                             </p>
+                            {/* Barra de rendimiento */}
+                            {tieneRendimiento && (
+                              <div style={{
+                                marginTop: '0.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                              }}>
+                                <div style={{
+                                  flex: 1,
+                                  height: '6px',
+                                  background: 'rgba(51, 65, 85, 0.5)',
+                                  borderRadius: '3px',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    width: `${porcentaje}%`,
+                                    height: '100%',
+                                    background: colorPorcentaje,
+                                    borderRadius: '3px',
+                                    transition: 'width 0.3s ease'
+                                  }} />
+                                </div>
+                                <span style={{
+                                  fontSize: '0.75rem',
+                                  fontWeight: '700',
+                                  color: colorPorcentaje,
+                                  minWidth: '36px'
+                                }}>
+                                  {porcentaje}%
+                                </span>
+                              </div>
+                            )}
+                            {/* Mini stats si tiene rendimiento */}
+                            {tieneRendimiento && (
+                              <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '0.3rem',
+                                marginTop: '0.4rem'
+                              }}>
+                                {rendCarpeta.errores?.total > 0 && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    color: '#f87171',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    ❌ {rendCarpeta.errores.corregidos}/{rendCarpeta.errores.total}
+                                  </span>
+                                )}
+                                {rendCarpeta.flashcards?.total > 0 && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(139, 92, 246, 0.15)',
+                                    color: '#a78bfa',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    🃏 {rendCarpeta.flashcards.dominadas}/{rendCarpeta.flashcards.total}
+                                  </span>
+                                )}
+                                {rendCarpeta.examenes?.total > 0 && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(59, 130, 246, 0.15)',
+                                    color: '#60a5fa',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    📝 {rendCarpeta.examenes.aprobados}/{rendCarpeta.examenes.total}
+                                  </span>
+                                )}
+                                {rendCarpeta.practicas?.total > 0 && (
+                                  <span style={{
+                                    fontSize: '0.65rem',
+                                    background: 'rgba(236, 72, 153, 0.15)',
+                                    color: '#f472b6',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px'
+                                  }}>
+                                    🧑‍💻 {rendCarpeta.practicas.completadas}/{rendCarpeta.practicas.total}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="item-actions">
                             <button 
@@ -14322,7 +17198,7 @@ Shortcuts:
                             )}
                           </div>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   </div>
                 )}
@@ -14863,7 +17739,19 @@ Shortcuts:
                 const totalNotas = notas.length;
                 const totalPracticas = practicas.length;
                 const totalExamenes = examenes.length;
-                const totalItems = totalFlashcards + totalNotas + totalPracticas + totalExamenes;
+                
+                // 🔥 Contar preguntas individuales con proximaRevision
+                let totalPreguntas = 0;
+                practicas.forEach(p => {
+                  const resultados = p.resultados || p.resultado?.resultados || [];
+                  totalPreguntas += resultados.filter(r => r.proximaRevision).length;
+                });
+                examenes.forEach(e => {
+                  const resultados = e.resultados || [];
+                  totalPreguntas += resultados.filter(r => r.proximaRevision).length;
+                });
+                
+                const totalItems = totalFlashcards + totalNotas + totalPracticas + totalExamenes + totalPreguntas;
                 
                 // Separar items CON próxima revisión de los NUEVOS (sin revisión programada)
                 const flashcardsConRevision = flashcards.filter(f => f.proximaRevision);
@@ -14903,10 +17791,98 @@ Shortcuts:
                     tipoInterno: 'examen',
                     titulo: e.titulo || e.nombre || 'Examen sin título',
                     preguntas: e.preguntas || [],
-                    resultados: e.resultados || [], // ← CRÍTICO: incluir resultados con datos de spaced repetition
+                    resultados: e.resultados || [],
                     respuestas: e.respuestas || {}
                   }))
                 ];
+                
+                // 🔥 NUEVO: Extraer preguntas correctas de prácticas y exámenes para mostrar en calendario
+                const preguntasIndividuales = [];
+                
+                // Extraer de prácticas
+                practicas.forEach(p => {
+                  const resultados = p.resultados || p.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    if (r.proximaRevision) {
+                      preguntasIndividuales.push({
+                        ...r,
+                        tipo: '✅ Pregunta',
+                        tipoInterno: 'pregunta',
+                        titulo: r.pregunta?.substring(0, 50) + (r.pregunta?.length > 50 ? '...' : '') || `Pregunta ${idx + 1}`,
+                        practicaOrigen: p.titulo || p.nombre || 'Práctica',
+                        carpeta: p.carpeta,
+                        esPreguntaIndividual: true
+                      });
+                    }
+                  });
+                });
+                
+                // Extraer de exámenes
+                examenes.forEach(e => {
+                  const resultados = e.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    if (r.proximaRevision) {
+                      preguntasIndividuales.push({
+                        ...r,
+                        tipo: '✅ Pregunta',
+                        tipoInterno: 'pregunta',
+                        titulo: r.pregunta?.substring(0, 50) + (r.pregunta?.length > 50 ? '...' : '') || `Pregunta ${idx + 1}`,
+                        examenOrigen: e.titulo || e.nombre || 'Examen',
+                        carpeta: e.carpeta,
+                        esPreguntaIndividual: true
+                      });
+                    }
+                  });
+                });
+                
+                // 🔥 NUEVO: Extraer preguntas FALLIDAS (errores) de prácticas y exámenes
+                const preguntasFallidas = [];
+                
+                // Extraer errores de prácticas
+                practicas.forEach(p => {
+                  const resultados = p.resultados || p.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    // Verificar si es un error (porcentaje < 60 o tiene estado de error)
+                    const esError = r.porcentaje !== undefined ? r.porcentaje < 60 : 
+                                   (r.estado && ['nuevo', 'fallo', 'critical'].includes(r.estado));
+                    if (esError && r.proximaRevision) {
+                      preguntasFallidas.push({
+                        ...r,
+                        tipo: '❌ Error',
+                        tipoInterno: 'error',
+                        titulo: r.pregunta?.substring(0, 50) + (r.pregunta?.length > 50 ? '...' : '') || `Error ${idx + 1}`,
+                        practicaOrigen: p.titulo || p.nombre || 'Práctica',
+                        carpeta: p.carpeta,
+                        esError: true,
+                        estado: r.estado || 'nuevo'
+                      });
+                    }
+                  });
+                });
+                
+                // Extraer errores de exámenes
+                examenes.forEach(e => {
+                  const resultados = e.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    const esError = r.porcentaje !== undefined ? r.porcentaje < 60 : 
+                                   (r.estado && ['nuevo', 'fallo', 'critical'].includes(r.estado));
+                    if (esError && r.proximaRevision) {
+                      preguntasFallidas.push({
+                        ...r,
+                        tipo: '❌ Error',
+                        tipoInterno: 'error',
+                        titulo: r.pregunta?.substring(0, 50) + (r.pregunta?.length > 50 ? '...' : '') || `Error ${idx + 1}`,
+                        examenOrigen: e.titulo || e.nombre || 'Examen',
+                        carpeta: e.carpeta,
+                        esError: true,
+                        estado: r.estado || 'nuevo'
+                      });
+                    }
+                  });
+                });
+                
+                // Agregar preguntas individuales y fallidas al listado
+                todosLosItems = [...todosLosItems, ...preguntasIndividuales, ...preguntasFallidas];
                 
                 // Aplicar filtro por tipo
                 if (filtroTipoHistorial !== 'todos') {
@@ -15230,6 +18206,18 @@ Shortcuts:
                             onClick={() => setFiltroTipoHistorial('examen')}
                           >
                             📋 Exámenes ({totalExamenes})
+                          </button>
+                          <button 
+                            className={`btn-filtro ${filtroTipoHistorial === 'pregunta' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('pregunta')}
+                          >
+                            ✅ Preguntas ({totalPreguntas})
+                          </button>
+                          <button 
+                            className={`btn-filtro error ${filtroTipoHistorial === 'error' ? 'activo' : ''}`}
+                            onClick={() => setFiltroTipoHistorial('error')}
+                          >
+                            ❌ Errores ({todosLosItems.filter(i => i.tipoInterno === 'error').length})
                           </button>
                         </div>
                       </div>
@@ -15674,14 +18662,7 @@ Shortcuts:
           </div>
         )}
 
-        {selectedMenu === 'notas' && (() => {
-          console.log('🎯 RENDERIZANDO SECCIÓN DE NOTAS');
-          console.log('📊 Estado actual:', {
-            notasGuardadas: notasGuardadas?.length || 0,
-            carpetasNotas: carpetasNotas?.length || 0,
-            rutaNotasActual: rutaNotasActual
-          });
-          return (
+        {selectedMenu === 'notas' && (
           <div className="content-section">
             <div className="section-header">
               <h1>📓 Mis Notas</h1>
@@ -15769,8 +18750,8 @@ Shortcuts:
 
               return (
                 <div className="notas-grid">
-                  {notasFiltradas.map((nota) => (
-                  <div key={nota.id} className="nota-card">
+                  {notasFiltradas.map((nota, index) => (
+                  <div key={`nota-${nota.id}-${index}`} className="nota-card">
                     <div className="nota-header">
                       <div style={{flex: 1}}>
                         <h3>{nota.titulo}</h3>
@@ -15816,6 +18797,15 @@ Shortcuts:
                             }}
                           >
                             📁 Guardar TXT en carpeta
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirModalMoverNota(nota);
+                            }}
+                            style={{color: '#ff9800'}}
+                          >
+                            📂 Mover a carpeta
                           </button>
                           <button
                             onClick={(e) => {
@@ -15884,8 +18874,7 @@ Shortcuts:
               );
             })()}
           </div>
-          );
-        })()}
+        )}
 
         {selectedMenu === 'practicas' && (
           <div className="content-section">
@@ -15957,11 +18946,31 @@ Shortcuts:
 
             {(() => {
               // Usar el estado 'practicas' que ya se carga con getDatos
-              // 🔥 Filtrar por cualquiera de los campos de carpeta
+              // 🔥 Filtrar por cualquiera de los campos de carpeta (normalizar separadores)
+              const normalizarRuta = (ruta) => (ruta || '').replace(/\//g, '\\').replace(/\\\\/g, '\\');
+              const rutaNormalizada = normalizarRuta(rutaPracticasActual);
+              
+              console.log('🧑‍💻 Prácticas totales:', practicas.length);
+              console.log('🧑‍💻 Ruta actual:', rutaNormalizada);
+              
               const practicasFiltradas = practicas.filter(p => {
-                const carpetaPractica = p.carpeta || p.carpeta_ruta || p.ruta || '';
-                return carpetaPractica === rutaPracticasActual;
+                const carpetaPractica = normalizarRuta(p.carpeta || p.carpeta_ruta || '');
+                // Extraer solo el directorio de la ruta del archivo si existe
+                const rutaArchivo = normalizarRuta(p.ruta || '');
+                const dirArchivo = rutaArchivo.includes('\\') 
+                  ? rutaArchivo.substring(0, rutaArchivo.lastIndexOf('\\'))
+                  : '';
+                const carpetaFinal = carpetaPractica || dirArchivo;
+                
+                // Si estamos en raíz, mostrar TODAS las prácticas
+                if (!rutaNormalizada) {
+                  return true; // Mostrar todas en la raíz
+                }
+                // Si estamos en una carpeta específica, mostrar las de esa carpeta o subcarpetas
+                return carpetaFinal.startsWith(rutaNormalizada);
               });
+              
+              console.log('🧑‍💻 Prácticas filtradas:', practicasFiltradas.length);
               
               // Separar por completadas y sin completar
               const sinCompletar = practicasFiltradas.filter(p => !p.completada);
@@ -17554,6 +20563,7 @@ Shortcuts:
                     <div className="archivos-list">
                       {archivosRecientes.map((archivo, idx) => {
                         const yaAdjuntado = archivosContextoChat.some(a => a.ruta_completa === archivo.ruta_completa)
+                        const esExamenOPractica = archivo.tipo === 'Examen' || archivo.tipo === 'Práctica'
                         return (
                           <div key={idx} className={`archivo-item ${yaAdjuntado ? 'adjuntado' : ''}`}>
                             <div className="archivo-info">
@@ -17575,13 +20585,30 @@ Shortcuts:
                                 </span>
                               </div>
                             </div>
-                            <button
-                              className={`btn-adjuntar ${yaAdjuntado ? 'adjuntado' : ''}`}
-                              onClick={() => yaAdjuntado ? quitarArchivoContexto(archivo.ruta_completa) : adjuntarArchivoContexto(archivo)}
-                              title={yaAdjuntado ? 'Quitar del contexto' : 'Adjuntar al contexto'}
-                            >
-                              {yaAdjuntado ? '✓ Adjuntado' : '+ Adjuntar'}
-                            </button>
+                            <div className="archivo-acciones">
+                              {esExamenOPractica && (
+                                <button
+                                  className="btn-ver-preguntas"
+                                  onClick={() => cargarPreguntasVisor(archivo)}
+                                  title="Ver preguntas"
+                                  style={{
+                                    backgroundColor: 'rgba(255, 152, 0, 0.2)',
+                                    borderColor: 'rgba(255, 152, 0, 0.5)',
+                                    color: '#ff9800',
+                                    marginRight: '0.5rem'
+                                  }}
+                                >
+                                  🔍 Preguntas
+                                </button>
+                              )}
+                              <button
+                                className={`btn-adjuntar ${yaAdjuntado ? 'adjuntado' : ''}`}
+                                onClick={() => yaAdjuntado ? quitarArchivoContexto(archivo.ruta_completa) : adjuntarArchivoContexto(archivo)}
+                                title={yaAdjuntado ? 'Quitar del contexto' : 'Adjuntar al contexto'}
+                              >
+                                {yaAdjuntado ? '✓ Adjuntado' : '+ Adjuntar'}
+                              </button>
+                            </div>
                           </div>
                         )
                       })}
@@ -17622,6 +20649,114 @@ Shortcuts:
                       </button>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Visor de preguntas de examen/práctica */}
+            {examenVisorPreguntas && preguntasVisor.length > 0 && (
+              <div className="visor-preguntas-chat">
+                <div className="visor-header">
+                  <div className="visor-titulo">
+                    <span className="visor-icon">{examenVisorPreguntas.es_practica ? '✅' : '📋'}</span>
+                    <div className="visor-info">
+                      <h3>{examenVisorPreguntas.nombre}</h3>
+                      <span className="visor-meta">
+                        {examenVisorPreguntas.total_preguntas} preguntas • {examenVisorPreguntas.fecha}
+                        {examenVisorPreguntas.carpeta && ` • ${examenVisorPreguntas.carpeta}`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="visor-acciones-header">
+                    <button
+                      className="btn-enviar-fallidas"
+                      onClick={enviarFallidasAlChat}
+                      title="Enviar todas las preguntas fallidas al chat"
+                    >
+                      ❌ Enviar fallidas
+                    </button>
+                    <button
+                      className="btn-cerrar-visor"
+                      onClick={cerrarVisorPreguntas}
+                      title="Cerrar visor"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="visor-preguntas-lista">
+                  {preguntasVisor.map((pregunta, idx) => {
+                    const esCorrecta = pregunta.respuesta_usuario === pregunta.respuesta_correcta ||
+                                       (pregunta.respuesta_usuario && pregunta.respuesta_correcta && 
+                                        pregunta.respuesta_usuario.toLowerCase().trim() === pregunta.respuesta_correcta.toLowerCase().trim())
+                    const tieneRespuesta = !!pregunta.respuesta_usuario
+                    
+                    return (
+                      <div 
+                        key={idx} 
+                        className={`visor-pregunta-item ${tieneRespuesta ? (esCorrecta ? 'correcta' : 'incorrecta') : 'sin-respuesta'}`}
+                      >
+                        <div className="pregunta-numero">
+                          <span className="numero">{idx + 1}</span>
+                          {tieneRespuesta && (
+                            <span className={`estado-respuesta ${esCorrecta ? 'correcta' : 'incorrecta'}`}>
+                              {esCorrecta ? '✓' : '✗'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="pregunta-contenido">
+                          <p className="pregunta-texto">{pregunta.pregunta}</p>
+                          {pregunta.opciones && pregunta.opciones.length > 0 && (
+                            <div className="pregunta-opciones">
+                              {pregunta.opciones.map((op, i) => {
+                                const letra = String.fromCharCode(65 + i)
+                                const esRespuestaUsuario = pregunta.respuesta_usuario === op || pregunta.respuesta_usuario === letra
+                                const esRespuestaCorrecta = pregunta.respuesta_correcta === op || pregunta.respuesta_correcta === letra
+                                return (
+                                  <div 
+                                    key={i} 
+                                    className={`opcion ${esRespuestaUsuario ? 'usuario' : ''} ${esRespuestaCorrecta ? 'correcta' : ''}`}
+                                  >
+                                    <span className="opcion-letra">{letra})</span>
+                                    <span className="opcion-texto">{op}</span>
+                                    {esRespuestaUsuario && <span className="opcion-marca">👤</span>}
+                                    {esRespuestaCorrecta && <span className="opcion-marca">✓</span>}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {pregunta.tipo === 'verdadero_falso' && (
+                            <div className="pregunta-vf">
+                              <span className={pregunta.respuesta_usuario === 'Verdadero' ? 'usuario' : ''}>
+                                {pregunta.respuesta_correcta === 'Verdadero' && '✓'} Verdadero
+                              </span>
+                              <span className={pregunta.respuesta_usuario === 'Falso' ? 'usuario' : ''}>
+                                {pregunta.respuesta_correcta === 'Falso' && '✓'} Falso
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="pregunta-acciones">
+                          <button
+                            className="btn-enviar-pregunta"
+                            onClick={() => enviarPreguntaAlChat(pregunta, false)}
+                            title="Enviar pregunta al chat (sin respuesta)"
+                          >
+                            📤 Solo pregunta
+                          </button>
+                          <button
+                            className="btn-enviar-pregunta con-respuesta"
+                            onClick={() => enviarPreguntaAlChat(pregunta, true)}
+                            title="Enviar pregunta con respuesta correcta"
+                          >
+                            📤 Con respuesta
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -18077,6 +21212,500 @@ Shortcuts:
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ========== SECCIÓN DE RENDIMIENTO ========== */}
+        {selectedMenu === 'rendimiento' && (
+          <div className="content-section rendimiento-section">
+            <div className="section-header">
+              <h1>📊 Rendimiento por Carpetas</h1>
+              <p className="section-subtitle">
+                Analiza tu progreso de estudio: errores corregidos, flashcards dominadas, exámenes aprobados y más.
+              </p>
+              <div style={{display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap'}}>
+                <button 
+                  onClick={calcularRendimientoJerarquias}
+                  className="btn-secondary"
+                >
+                  🔄 Actualizar Datos
+                </button>
+                
+                {/* Toggle para sumar hijos */}
+                <button
+                  onClick={() => {
+                    setSumarHijosEnRendimiento(!sumarHijosEnRendimiento);
+                    // Recalcular automáticamente
+                    setTimeout(() => calcularRendimientoJerarquias(), 100);
+                  }}
+                  style={{
+                    background: sumarHijosEnRendimiento 
+                      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                      : 'rgba(100, 116, 139, 0.3)',
+                    color: sumarHijosEnRendimiento ? '#fff' : '#94a3b8',
+                    border: sumarHijosEnRendimiento 
+                      ? '1px solid rgba(16, 185, 129, 0.5)' 
+                      : '1px solid rgba(100, 116, 139, 0.3)',
+                    borderRadius: '12px',
+                    padding: '0.6rem 1rem',
+                    fontSize: '0.9rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    transition: 'all 0.2s ease',
+                    fontWeight: '600'
+                  }}
+                  title={sumarHijosEnRendimiento 
+                    ? 'Las subcarpetas se suman al progreso de la carpeta padre' 
+                    : 'Cada carpeta muestra solo su contenido directo'}
+                >
+                  {sumarHijosEnRendimiento ? '📊' : '📁'} 
+                  {sumarHijosEnRendimiento ? 'Suma Jerárquica: ON' : 'Suma Jerárquica: OFF'}
+                </button>
+                
+                <span style={{
+                  fontSize: '0.8rem',
+                  color: '#64748b',
+                  fontStyle: 'italic'
+                }}>
+                  {sumarHijosEnRendimiento 
+                    ? '✓ El progreso de subcarpetas se suma a las carpetas padre' 
+                    : '○ Cada carpeta muestra solo su contenido directo'}
+                </span>
+              </div>
+            </div>
+
+            {/* Resumen General */}
+            <div className="rendimiento-resumen-general" style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '1rem',
+              marginBottom: '2rem',
+              padding: '1.5rem',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
+              borderRadius: '16px',
+              border: '1px solid rgba(99, 102, 241, 0.2)'
+            }}>
+              {(() => {
+                // Calcular totales globales
+                let totalErrores = 0, erroresCorregidos = 0;
+                let totalFlashcards = 0, flashcardsDominadas = 0;
+                let totalExamenes = 0, examenesAprobados = 0, sumaNotas = 0;
+                let totalPracticas = 0, practicasCompletadas = 0;
+                let totalNotas = 0, notasRevisadas = 0;
+                
+                // Si suma jerárquica está activa, solo sumar carpetas raíz (evitar duplicados)
+                // Si está desactivada, sumar todas las carpetas
+                const carpetasParaSumar = sumarHijosEnRendimiento
+                  ? Object.entries(rendimientoJerarquias).filter(([_, d]) => d.nivel === 1)
+                  : Object.entries(rendimientoJerarquias);
+                
+                carpetasParaSumar.forEach(([_, datos]) => {
+                  if (datos.errores) {
+                    totalErrores += datos.errores.total || 0;
+                    erroresCorregidos += datos.errores.corregidos || 0;
+                  }
+                  if (datos.flashcards) {
+                    totalFlashcards += datos.flashcards.total || 0;
+                    flashcardsDominadas += datos.flashcards.dominadas || 0;
+                  }
+                  if (datos.examenes) {
+                    totalExamenes += datos.examenes.total || 0;
+                    examenesAprobados += datos.examenes.aprobados || 0;
+                    sumaNotas += datos.examenes.puntosTotal || 0;
+                  }
+                  if (datos.practicas) {
+                    totalPracticas += datos.practicas.total || 0;
+                    practicasCompletadas += datos.practicas.completadas || 0;
+                  }
+                  if (datos.notas) {
+                    totalNotas += datos.notas.total || 0;
+                    notasRevisadas += datos.notas.revisadas || 0;
+                  }
+                });
+                
+                const notaPromedio = totalExamenes > 0 ? Math.round(sumaNotas / totalExamenes) : 0;
+                
+                return (
+                  <>
+                    <div className="resumen-stat" style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      padding: '1.25rem',
+                      borderRadius: '12px',
+                      textAlign: 'center',
+                      border: '1px solid rgba(239, 68, 68, 0.2)'
+                    }}>
+                      <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>❌</div>
+                      <div style={{fontSize: '1.5rem', fontWeight: '700', color: '#ef4444'}}>{erroresCorregidos}/{totalErrores}</div>
+                      <div style={{fontSize: '0.85rem', color: '#94a3b8'}}>Errores Corregidos</div>
+                      <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>
+                        {totalErrores > 0 ? Math.round((erroresCorregidos/totalErrores)*100) : 0}% completado
+                      </div>
+                    </div>
+                    
+                    <div className="resumen-stat" style={{
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      padding: '1.25rem',
+                      borderRadius: '12px',
+                      textAlign: 'center',
+                      border: '1px solid rgba(139, 92, 246, 0.2)'
+                    }}>
+                      <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>🃏</div>
+                      <div style={{fontSize: '1.5rem', fontWeight: '700', color: '#a78bfa'}}>{flashcardsDominadas}/{totalFlashcards}</div>
+                      <div style={{fontSize: '0.85rem', color: '#94a3b8'}}>Flashcards Dominadas</div>
+                      <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>
+                        {totalFlashcards > 0 ? Math.round((flashcardsDominadas/totalFlashcards)*100) : 0}% dominado
+                      </div>
+                    </div>
+                    
+                    <div className="resumen-stat" style={{
+                      background: 'rgba(59, 130, 246, 0.1)',
+                      padding: '1.25rem',
+                      borderRadius: '12px',
+                      textAlign: 'center',
+                      border: '1px solid rgba(59, 130, 246, 0.2)'
+                    }}>
+                      <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>📝</div>
+                      <div style={{fontSize: '1.5rem', fontWeight: '700', color: '#60a5fa'}}>{examenesAprobados}/{totalExamenes}</div>
+                      <div style={{fontSize: '0.85rem', color: '#94a3b8'}}>Exámenes Aprobados</div>
+                      <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>
+                        Promedio: {notaPromedio}%
+                      </div>
+                    </div>
+                    
+                    <div className="resumen-stat" style={{
+                      background: 'rgba(236, 72, 153, 0.1)',
+                      padding: '1.25rem',
+                      borderRadius: '12px',
+                      textAlign: 'center',
+                      border: '1px solid rgba(236, 72, 153, 0.2)'
+                    }}>
+                      <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>🧑‍💻</div>
+                      <div style={{fontSize: '1.5rem', fontWeight: '700', color: '#f472b6'}}>{practicasCompletadas}/{totalPracticas}</div>
+                      <div style={{fontSize: '0.85rem', color: '#94a3b8'}}>Prácticas Completadas</div>
+                      <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>
+                        {totalPracticas > 0 ? Math.round((practicasCompletadas/totalPracticas)*100) : 0}% completado
+                      </div>
+                    </div>
+                    
+                    <div className="resumen-stat" style={{
+                      background: 'rgba(34, 197, 94, 0.1)',
+                      padding: '1.25rem',
+                      borderRadius: '12px',
+                      textAlign: 'center',
+                      border: '1px solid rgba(34, 197, 94, 0.2)'
+                    }}>
+                      <div style={{fontSize: '2rem', marginBottom: '0.5rem'}}>📒</div>
+                      <div style={{fontSize: '1.5rem', fontWeight: '700', color: '#4ade80'}}>{notasRevisadas}/{totalNotas}</div>
+                      <div style={{fontSize: '0.85rem', color: '#94a3b8'}}>Notas Revisadas</div>
+                      <div style={{fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem'}}>
+                        {totalNotas > 0 ? Math.round((notasRevisadas/totalNotas)*100) : 0}% repasado
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Lista Jerárquica de Carpetas */}
+            <div className="rendimiento-por-carpetas">
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1rem'
+              }}>
+                <h2 style={{
+                  fontSize: '1.25rem',
+                  color: '#e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  margin: 0
+                }}>
+                  📁 Desglose por Carpetas
+                </h2>
+                <div style={{display: 'flex', gap: '0.5rem'}}>
+                  <button
+                    onClick={() => expandirTodasCarpetas(true)}
+                    style={{
+                      background: 'rgba(99, 102, 241, 0.2)',
+                      color: '#818cf8',
+                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                      borderRadius: '8px',
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem'
+                    }}
+                  >
+                    ⬇️ Expandir Todo
+                  </button>
+                  <button
+                    onClick={() => expandirTodasCarpetas(false)}
+                    style={{
+                      background: 'rgba(100, 116, 139, 0.2)',
+                      color: '#94a3b8',
+                      border: '1px solid rgba(100, 116, 139, 0.3)',
+                      borderRadius: '8px',
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem'
+                    }}
+                  >
+                    ⬆️ Colapsar Todo
+                  </button>
+                </div>
+              </div>
+              
+              <div className="rendimiento-lista rendimiento-jerarquico" style={{
+                maxHeight: 'calc(100vh - 500px)',
+                overflowY: 'auto',
+                padding: '0.5rem'
+              }}>
+                {Object.keys(rendimientoJerarquias).length > 0 ? (
+                  (() => {
+                    // Obtener solo carpetas raíz (nivel 1)
+                    const carpetasRaiz = Object.entries(rendimientoJerarquias)
+                      .filter(([_, datos]) => datos.nivel === 1)
+                      .sort((a, b) => b[1].totalItems - a[1].totalItems);
+                    
+                    // Función recursiva para renderizar árbol con dropdowns
+                    const renderizarNodo = (carpeta, datos, nivel = 0) => {
+                      const colorPorcentaje = datos.porcentajeGeneral >= 80 ? '#10b981' :
+                                             datos.porcentajeGeneral >= 50 ? '#eab308' : '#ef4444';
+                      const bgPorcentaje = datos.porcentajeGeneral >= 80 ? 'rgba(16, 185, 129, 0.15)' :
+                                          datos.porcentajeGeneral >= 50 ? 'rgba(234, 179, 8, 0.15)' :
+                                          'rgba(239, 68, 68, 0.15)';
+                      
+                      const tieneHijos = datos.hijos && datos.hijos.length > 0;
+                      const estaExpandido = carpetasExpandidas[carpeta] ?? (nivel === 0); // Nivel 0 expandido por defecto
+                      
+                      return (
+                        <div key={carpeta} className="rendimiento-nodo" style={{marginLeft: `${nivel * 24}px`}}>
+                          <div 
+                            className="rendimiento-item rendimiento-dropdown"
+                            style={{
+                              borderLeft: `4px solid ${colorPorcentaje}`,
+                              background: 'rgba(30, 41, 59, 0.5)',
+                              borderRadius: '12px',
+                              marginBottom: '0.5rem',
+                              overflow: 'hidden',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {/* Header del dropdown - siempre visible */}
+                            <div 
+                              onClick={() => tieneHijos && toggleCarpetaExpandida(carpeta)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '1rem 1.25rem',
+                                cursor: tieneHijos ? 'pointer' : 'default',
+                                borderBottom: estaExpandido ? '1px solid rgba(148, 163, 184, 0.1)' : 'none',
+                                transition: 'background 0.2s ease'
+                              }}
+                              onMouseEnter={(e) => tieneHijos && (e.currentTarget.style.background = 'rgba(51, 65, 85, 0.3)')}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1}}>
+                                {/* Flecha de dropdown */}
+                                {tieneHijos && (
+                                  <span style={{
+                                    fontSize: '0.9rem',
+                                    color: '#64748b',
+                                    transition: 'transform 0.2s ease',
+                                    transform: estaExpandido ? 'rotate(90deg)' : 'rotate(0deg)',
+                                    width: '20px',
+                                    textAlign: 'center'
+                                  }}>
+                                    ▶
+                                  </span>
+                                )}
+                                {!tieneHijos && <span style={{width: '20px'}}></span>}
+                                
+                                <span style={{fontSize: '1.5rem'}}>{nivel === 0 ? '🌐' : nivel === 1 ? '🏫' : nivel === 2 ? '📚' : '📁'}</span>
+                                <div style={{flex: 1}}>
+                                  <span style={{fontWeight: nivel === 0 ? '700' : '600', color: '#e2e8f0', fontSize: '1rem'}}>
+                                    {datos.nombre || carpeta}
+                                  </span>
+                                  <span style={{color: '#64748b', fontSize: '0.8rem', marginLeft: '0.75rem'}}>
+                                    {datos.totalItems} items
+                                    {tieneHijos && ` · ${datos.hijos.length} subcarpetas`}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {/* Barra mini de progreso y porcentaje */}
+                              <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                                <div style={{
+                                  width: '100px',
+                                  height: '6px',
+                                  background: 'rgba(51, 65, 85, 0.5)',
+                                  borderRadius: '3px',
+                                  overflow: 'hidden'
+                                }}>
+                                  <div style={{
+                                    width: `${datos.porcentajeGeneral}%`,
+                                    backgroundColor: colorPorcentaje,
+                                    height: '100%',
+                                    borderRadius: '3px',
+                                    transition: 'width 0.5s ease'
+                                  }} />
+                                </div>
+                                <div style={{
+                                  backgroundColor: bgPorcentaje,
+                                  color: colorPorcentaje,
+                                  fontWeight: '700',
+                                  padding: '0.4rem 0.8rem',
+                                  borderRadius: '16px',
+                                  fontSize: '0.9rem',
+                                  minWidth: '50px',
+                                  textAlign: 'center'
+                                }}>
+                                  {datos.porcentajeGeneral}%
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Contenido expandible */}
+                            <div style={{
+                              maxHeight: estaExpandido ? '1000px' : '0',
+                              overflow: 'hidden',
+                              transition: 'max-height 0.3s ease',
+                              padding: estaExpandido ? '1rem 1.25rem' : '0 1.25rem',
+                              background: 'rgba(15, 23, 42, 0.3)'
+                            }}>
+                              {/* Badges de estadísticas */}
+                              <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: tieneHijos ? '1rem' : 0}}>
+                                {datos.errores?.total > 0 && (
+                                  <span style={{
+                                    background: datos.errores.corregidos === datos.errores.total ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                    color: datos.errores.corregidos === datos.errores.total ? '#10b981' : '#ef4444',
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '16px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    ❌ Errores: {datos.errores.corregidos}/{datos.errores.total}
+                                  </span>
+                                )}
+                                
+                                {datos.flashcards?.total > 0 && (
+                                  <span style={{
+                                    background: 'rgba(139, 92, 246, 0.2)',
+                                    color: '#a78bfa',
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '16px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    🃏 Flashcards: {datos.flashcards.dominadas}/{datos.flashcards.total}
+                                    {datos.flashcards.enProgreso > 0 && ` (${datos.flashcards.enProgreso} 🔄)`}
+                                  </span>
+                                )}
+                                
+                                {datos.examenes?.total > 0 && (
+                                  <span style={{
+                                    background: 'rgba(59, 130, 246, 0.2)',
+                                    color: '#60a5fa',
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '16px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    📝 Exámenes: {datos.examenes.aprobados}/{datos.examenes.total} (Prom: {datos.examenes.notaPromedio}%)
+                                  </span>
+                                )}
+                                
+                                {datos.practicas?.total > 0 && (
+                                  <span style={{
+                                    background: 'rgba(236, 72, 153, 0.2)',
+                                    color: '#f472b6',
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '16px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    🧑‍💻 Prácticas: {datos.practicas.completadas}/{datos.practicas.total}
+                                  </span>
+                                )}
+                                
+                                {datos.notas?.total > 0 && (
+                                  <span style={{
+                                    background: 'rgba(34, 197, 94, 0.2)',
+                                    color: '#4ade80',
+                                    padding: '0.35rem 0.75rem',
+                                    borderRadius: '16px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    📒 Notas: {datos.notas.revisadas}/{datos.notas.total}
+                                  </span>
+                                )}
+                                
+                                {datos.totalItems === 0 && (
+                                  <span style={{color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic'}}>
+                                    Sin datos de estudio aún
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Renderizar hijos recursivamente - solo si está expandido */}
+                          {tieneHijos && estaExpandido && (
+                            <div className="rendimiento-hijos" style={{
+                              borderLeft: '2px dashed rgba(148, 163, 184, 0.2)',
+                              marginLeft: '1rem',
+                              paddingLeft: '0.5rem',
+                              animation: 'fadeIn 0.3s ease'
+                            }}>
+                              {datos.hijos
+                                .filter(hijo => rendimientoJerarquias[hijo])
+                                .sort((a, b) => (rendimientoJerarquias[b]?.totalItems || 0) - (rendimientoJerarquias[a]?.totalItems || 0))
+                                .map(hijo => renderizarNodo(hijo, rendimientoJerarquias[hijo], nivel + 1))
+                              }
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+                    
+                    return carpetasRaiz.length > 0 
+                      ? carpetasRaiz.map(([carpeta, datos]) => renderizarNodo(carpeta, datos, 0))
+                      : (
+                        <div style={{textAlign: 'center', padding: '3rem', color: '#64748b'}}>
+                          <div style={{fontSize: '3rem', marginBottom: '1rem', opacity: 0.5}}>📊</div>
+                          <p>No hay datos de rendimiento aún</p>
+                          <p style={{fontSize: '0.85rem', marginTop: '0.5rem'}}>
+                            Completa exámenes, prácticas o flashcards para ver tu progreso
+                          </p>
+                        </div>
+                      );
+                  })()
+                ) : (
+                  <div style={{textAlign: 'center', padding: '3rem', color: '#64748b'}}>
+                    <div style={{fontSize: '3rem', marginBottom: '1rem', opacity: 0.5}}>📊</div>
+                    <p>Cargando datos de rendimiento...</p>
+                    <button 
+                      onClick={calcularRendimientoJerarquias}
+                      className="btn-primary"
+                      style={{marginTop: '1rem'}}
+                    >
+                      🔄 Cargar Rendimiento
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -22410,7 +26039,7 @@ Shortcuts:
                     placeholder="Título de la nota..."
                     className="input-nota-titulo"
                     readOnly={modoSoloLectura}
-                    style={modoSoloLectura ? {backgroundColor: '#f5f5f5', cursor: 'not-allowed'} : {}}
+                    style={modoSoloLectura ? {backgroundColor: '#1a1a2e', color: '#e0e0e0', cursor: 'not-allowed'} : {}}
                   />
                 </div>
 
@@ -22426,7 +26055,7 @@ Shortcuts:
                       readOnly
                       placeholder="Carpeta de destino"
                       className="input-nota-carpeta"
-                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed', flex: 1 }}
+                      style={{ backgroundColor: '#1a1a2e', color: '#e0e0e0', cursor: 'not-allowed', flex: 1 }}
                     />
                     <button
                       type="button"
@@ -22486,30 +26115,180 @@ Shortcuts:
                     
                     <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
                     
-                    <button type="button" className="btn-toolbar" onClick={() => {
-                      editorRef.current?.focus();
-                      document.execCommand('formatBlock', false, 'p');
-                    }} title="Párrafo normal">
-                      P
-                    </button>
-                    <button type="button" className="btn-toolbar" onClick={() => {
-                      editorRef.current?.focus();
-                      document.execCommand('formatBlock', false, 'h1');
-                    }} title="Título 1">
-                      H1
-                    </button>
-                    <button type="button" className="btn-toolbar" onClick={() => {
-                      editorRef.current?.focus();
-                      document.execCommand('formatBlock', false, 'h2');
-                    }} title="Título 2">
-                      H2
-                    </button>
-                    <button type="button" className="btn-toolbar" onClick={() => {
-                      editorRef.current?.focus();
-                      document.execCommand('formatBlock', false, 'h3');
-                    }} title="Título 3">
-                      H3
-                    </button>
+                    {/* Toggle Heading estilo Notion */}
+                    <div className="toggle-heading-container">
+                      <button 
+                        type="button" 
+                        className="btn-toolbar btn-toggle-heading"
+                        onClick={() => {
+                          const headingMenu = document.querySelector('.heading-dropdown-menu');
+                          if (headingMenu) {
+                            headingMenu.classList.toggle('visible');
+                          }
+                        }}
+                        title="Cambiar tipo de bloque"
+                      >
+                        📝 Tipo ▾
+                      </button>
+                      <div className="heading-dropdown-menu">
+                        <div className="heading-section-title">Bloques de texto</div>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'p');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">¶</span>
+                          <span className="heading-text">Párrafo</span>
+                          <span className="heading-shortcut">Ctrl+Alt+0</span>
+                        </button>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'h1');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">H1</span>
+                          <span className="heading-text">Título 1</span>
+                          <span className="heading-shortcut">Ctrl+Alt+1</span>
+                        </button>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'h2');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">H2</span>
+                          <span className="heading-text">Título 2</span>
+                          <span className="heading-shortcut">Ctrl+Alt+2</span>
+                        </button>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'h3');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">H3</span>
+                          <span className="heading-text">Título 3</span>
+                          <span className="heading-shortcut">Ctrl+Alt+3</span>
+                        </button>
+                        
+                        <div className="heading-section-title" style={{marginTop: '0.5rem'}}>Toggle Headings (plegables)</div>
+                        <button type="button" className="heading-option toggle-option" onClick={() => {
+                          editorRef.current?.focus();
+                          const toggleId = 'toggle_' + Date.now();
+                          const toggleHtml = `
+                            <details class="toggle-heading toggle-h1" data-toggle-id="${toggleId}">
+                              <summary class="toggle-summary toggle-h1-summary">
+                                <span class="toggle-arrow">▶</span>
+                                <span class="toggle-title" contenteditable="true">Toggle Heading 1</span>
+                              </summary>
+                              <div class="toggle-content" contenteditable="true">
+                                <p>Escribe tu contenido aquí...</p>
+                              </div>
+                            </details>
+                          `;
+                          document.execCommand('insertHTML', false, toggleHtml);
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                          
+                          // Enfocar el título para edición
+                          setTimeout(() => {
+                            const toggleTitle = document.querySelector(`[data-toggle-id="${toggleId}"] .toggle-title`);
+                            if (toggleTitle) {
+                              toggleTitle.focus();
+                              const range = document.createRange();
+                              range.selectNodeContents(toggleTitle);
+                              const sel = window.getSelection();
+                              sel.removeAllRanges();
+                              sel.addRange(range);
+                            }
+                          }, 50);
+                        }}>
+                          <span className="heading-icon">▶ H1</span>
+                          <span className="heading-text">Toggle Heading 1</span>
+                        </button>
+                        <button type="button" className="heading-option toggle-option" onClick={() => {
+                          editorRef.current?.focus();
+                          const toggleId = 'toggle_' + Date.now();
+                          const toggleHtml = `
+                            <details class="toggle-heading toggle-h2" data-toggle-id="${toggleId}">
+                              <summary class="toggle-summary toggle-h2-summary">
+                                <span class="toggle-arrow">▶</span>
+                                <span class="toggle-title" contenteditable="true">Toggle Heading 2</span>
+                              </summary>
+                              <div class="toggle-content" contenteditable="true">
+                                <p>Escribe tu contenido aquí...</p>
+                              </div>
+                            </details>
+                          `;
+                          document.execCommand('insertHTML', false, toggleHtml);
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                          
+                          setTimeout(() => {
+                            const toggleTitle = document.querySelector(`[data-toggle-id="${toggleId}"] .toggle-title`);
+                            if (toggleTitle) {
+                              toggleTitle.focus();
+                              const range = document.createRange();
+                              range.selectNodeContents(toggleTitle);
+                              const sel = window.getSelection();
+                              sel.removeAllRanges();
+                              sel.addRange(range);
+                            }
+                          }, 50);
+                        }}>
+                          <span className="heading-icon">▶ H2</span>
+                          <span className="heading-text">Toggle Heading 2</span>
+                        </button>
+                        <button type="button" className="heading-option toggle-option" onClick={() => {
+                          editorRef.current?.focus();
+                          const toggleId = 'toggle_' + Date.now();
+                          const toggleHtml = `
+                            <details class="toggle-heading toggle-h3" data-toggle-id="${toggleId}">
+                              <summary class="toggle-summary toggle-h3-summary">
+                                <span class="toggle-arrow">▶</span>
+                                <span class="toggle-title" contenteditable="true">Toggle Heading 3</span>
+                              </summary>
+                              <div class="toggle-content" contenteditable="true">
+                                <p>Escribe tu contenido aquí...</p>
+                              </div>
+                            </details>
+                          `;
+                          document.execCommand('insertHTML', false, toggleHtml);
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                          
+                          setTimeout(() => {
+                            const toggleTitle = document.querySelector(`[data-toggle-id="${toggleId}"] .toggle-title`);
+                            if (toggleTitle) {
+                              toggleTitle.focus();
+                              const range = document.createRange();
+                              range.selectNodeContents(toggleTitle);
+                              const sel = window.getSelection();
+                              sel.removeAllRanges();
+                              sel.addRange(range);
+                            }
+                          }, 50);
+                        }}>
+                          <span className="heading-icon">▶ H3</span>
+                          <span className="heading-text">Toggle Heading 3</span>
+                        </button>
+                        
+                        <div className="heading-section-title" style={{marginTop: '0.5rem'}}>Otros bloques</div>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'blockquote');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">❝</span>
+                          <span className="heading-text">Cita</span>
+                          <span className="heading-shortcut">Ctrl+Alt+Q</span>
+                        </button>
+                        <button type="button" className="heading-option" onClick={() => {
+                          editorRef.current?.focus();
+                          document.execCommand('formatBlock', false, 'pre');
+                          document.querySelector('.heading-dropdown-menu')?.classList.remove('visible');
+                        }}>
+                          <span className="heading-icon">{"</>"}</span>
+                          <span className="heading-text">Código</span>
+                          <span className="heading-shortcut">Ctrl+Alt+C</span>
+                        </button>
+                      </div>
+                    </div>
                     
                     <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
                     
@@ -22569,6 +26348,36 @@ Shortcuts:
                     }} title="Lista numerada">
                       1. Numerada
                     </button>
+                    <button type="button" className="btn-toolbar btn-checklist" onClick={() => {
+                      editorRef.current?.focus();
+                      
+                      // Crear checklist con checkbox interactivo
+                      const checklistId = 'check_' + Date.now();
+                      const checklistHtml = `
+                        <div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0; margin: 0.25rem 0;">
+                          <input type="checkbox" class="checklist-checkbox" id="${checklistId}" style="width: 18px; height: 18px; cursor: pointer; margin-top: 2px; accent-color: #22c55e;" onclick="this.parentElement.classList.toggle('checked'); if(this.checked) { this.nextElementSibling.style.textDecoration = 'line-through'; this.nextElementSibling.style.color = '#808080'; } else { this.nextElementSibling.style.textDecoration = 'none'; this.nextElementSibling.style.color = 'inherit'; }">
+                          <span class="checklist-text" contenteditable="true" style="flex: 1; outline: none; min-height: 1.2em;">Nueva tarea...</span>
+                        </div>
+                      `;
+                      
+                      document.execCommand('insertHTML', false, checklistHtml);
+                      
+                      // Enfocar el texto para edición
+                      setTimeout(() => {
+                        const nuevoCheck = document.querySelector(`[data-checklist-id="${checklistId}"] .checklist-text`);
+                        if (nuevoCheck) {
+                          nuevoCheck.focus();
+                          // Seleccionar todo el texto
+                          const range = document.createRange();
+                          range.selectNodeContents(nuevoCheck);
+                          const sel = window.getSelection();
+                          sel.removeAllRanges();
+                          sel.addRange(range);
+                        }
+                      }, 50);
+                    }} title="Lista de tareas (checklist)">
+                      ☑️ Checklist
+                    </button>
                     <button type="button" className="btn-toolbar" onClick={() => {
                       editorRef.current?.focus();
                       document.execCommand('indent', false, null);
@@ -22593,6 +26402,7 @@ Shortcuts:
                         setTipoHipervinculo('url');
                         setUrlHipervinculo('');
                         setNotaReferenciaId(null);
+                        setRutaModalNotaRef(''); // Reset de la ruta de navegación
                       } else {
                         alert('⚠️ Selecciona texto primero para convertirlo en enlace');
                       }
@@ -22609,66 +26419,71 @@ Shortcuts:
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           e.stopPropagation();
                           const file = e.target.files[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              if (editorRef.current) {
-                                // Asegurar foco en el editor
-                                editorRef.current.focus();
-                                
-                                const imgId = 'img_' + Date.now();
-                                const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: block; max-width: 100%;" draggable="true">
-                                  <img 
-                                    id="${imgId}"
-                                    src="${event.target.result}" 
-                                    class="imagen-editable" 
-                                    style="max-width: 100%; width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: block; cursor: move;" 
-                                    alt="Imagen insertada" 
-                                    draggable="false"
-                                  />
-                                </div><p><br></p>`;
-                                
-                                // Insertar en posición del cursor
-                                document.execCommand('insertHTML', false, imgHtml);
-                                setContenidoNota(editorRef.current.innerHTML);
-                                
-                                // Agregar eventos después de insertar
-                                setTimeout(() => {
-                                  const img = document.getElementById(imgId);
-                                  if (img) {
-                                    // Click para seleccionar
-                                    img.addEventListener('click', function(e) {
-                                      e.stopPropagation();
-                                      window.mostrarControlesImagen(this);
-                                    });
-                                    
-                                    // Sistema de arrastre simple y efectivo
-                                    const contenedor = img.parentElement;
-                                    contenedor.draggable = true;
-                                    
-                                    contenedor.addEventListener('dragstart', function(e) {
-                                      e.dataTransfer.effectAllowed = 'move';
-                                      e.dataTransfer.setData('text/html', this.outerHTML);
-                                      this.classList.add('arrastrando');
-                                      
-                                      // Guardar referencia para eliminar después
-                                      window.elementoArrastrado = this;
-                                    });
-                                    
-                                    contenedor.addEventListener('dragend', function(e) {
-                                      this.classList.remove('arrastrando');
-                                      window.elementoArrastrado = null;
-                                    });
-                                  }
-                                }, 100);
+                          if (file && editorRef.current) {
+                            try {
+                              // Subir imagen al servidor
+                              const formData = new FormData();
+                              formData.append('file', file);
+                              formData.append('carpeta', carpetaNota || '');
+                              
+                              const response = await fetch(`${API_URL}/api/subir-imagen-nota`, {
+                                method: 'POST',
+                                body: formData
+                              });
+                              
+                              let imgSrc;
+                              if (response.ok) {
+                                const data = await response.json();
+                                imgSrc = `${API_URL}${data.url}`;
+                                console.log('✅ Imagen subida:', imgSrc);
+                              } else {
+                                // Fallback a base64 si falla
+                                console.warn('⚠️ Fallback a base64');
+                                imgSrc = await new Promise((resolve) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => resolve(ev.target.result);
+                                  reader.readAsDataURL(file);
+                                });
                               }
-                            };
-                            reader.readAsDataURL(file);
+                              
+                              editorRef.current.focus();
+                              
+                              const imgId = 'img_' + Date.now();
+                              const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: block; max-width: 100%;" draggable="true">
+                                <img 
+                                  id="${imgId}"
+                                  src="${imgSrc}" 
+                                  class="imagen-editable" 
+                                  style="max-width: 100%; width: 400px; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: block; cursor: pointer;" 
+                                  alt="Imagen insertada" 
+                                  draggable="false"
+                                />
+                              </div><p><br></p>`;
+                              
+                              document.execCommand('insertHTML', false, imgHtml);
+                              setContenidoNota(editorRef.current.innerHTML);
+                              
+                              // Agregar eventos después de insertar
+                              setTimeout(() => {
+                                const img = document.getElementById(imgId);
+                                if (img) {
+                                  img.addEventListener('click', function(ev) {
+                                    ev.stopPropagation();
+                                    ev.preventDefault();
+                                    window.mostrarControlesImagen(this);
+                                  });
+                                }
+                              }, 100);
+                              
+                            } catch (error) {
+                              console.error('Error insertando imagen:', error);
+                              setMensaje({ tipo: 'error', texto: '❌ Error al insertar imagen' });
+                            }
                           }
-                          e.target.value = ''; // Reset input
+                          e.target.value = '';
                         }}
                         onClick={(e) => e.stopPropagation()}
                         style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
@@ -22715,6 +26530,62 @@ Shortcuts:
                     contentEditable={!modoSoloLectura}
                     dir="ltr"
                     className="editor-html-simple"
+                    onClick={(e) => {
+                      // Manejar clicks en referencias a notas dentro del editor
+                      const linkElement = e.target.closest('a[data-nota-id]');
+                      if (linkElement) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const notaId = parseInt(linkElement.getAttribute('data-nota-id'));
+                        console.log('📝 Click en referencia (editor):', notaId);
+                        
+                        // Si la nota actual es la misma, no hacer nada
+                        if (notaActual && notaActual.id === notaId) {
+                          console.log('⚠️ Ya tienes esta nota abierta');
+                          setMensaje({ tipo: 'info', texto: '📝 Ya tienes esta nota abierta' });
+                          return;
+                        }
+                        
+                        getDatos('notas').then(notasActuales => {
+                          const nota = notasActuales.find(n => n.id === notaId);
+                          if (nota) {
+                            console.log('✅ Abriendo nota:', nota.titulo);
+                            
+                            // Cerrar editor actual primero
+                            setEditorNotaAbierto(false);
+                            
+                            // Actualizar estados
+                            setNotasGuardadas(notasActuales);
+                            setSelectedMenu('notas');
+                            
+                            if (nota.carpeta) {
+                              setRutaNotasActual(nota.carpeta);
+                              cargarCarpetasNotas(nota.carpeta);
+                            } else {
+                              setRutaNotasActual('');
+                              cargarCarpetasNotas('');
+                            }
+                            
+                            // Abrir la nueva nota después de un breve delay
+                            setTimeout(() => {
+                              setNotaActual(nota);
+                              setTituloNota(nota.titulo);
+                              setContenidoNota(nota.contenido);
+                              setCarpetaNota(nota.carpeta || '');
+                              setModoSoloLectura(true);
+                              setEditorNotaAbierto(true);
+                            }, 300);
+                          } else {
+                            console.warn('⚠️ Nota no encontrada:', notaId);
+                            setMensaje({ tipo: 'warning', texto: '⚠️ La nota referenciada no existe' });
+                          }
+                        }).catch(error => {
+                          console.error('❌ Error cargando nota:', error);
+                          setMensaje({ tipo: 'error', texto: '❌ Error al cargar la nota' });
+                        });
+                        return;
+                      }
+                    }}
                     onInput={(e) => {
                       if (!modoSoloLectura) {
                         setContenidoNota(e.currentTarget.innerHTML);
@@ -22792,8 +26663,8 @@ Shortcuts:
                     style={{
                       direction: 'ltr',
                       textAlign: 'left',
-                      backgroundColor: '#ffffff',
-                      color: '#000000',
+                      backgroundColor: '#1a1a2e',
+                      color: '#e0e0e0',
                       writingMode: 'horizontal-tb',
                       unicodeBidi: 'bidi-override'
                     }}
@@ -23746,9 +27617,9 @@ Shortcuts:
                     <div style={{display: 'grid', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto'}}>
                       {(notasGuardadas || [])
                         .filter(n => (n.carpeta || '') === rutaModalNotaRef)
-                        .map(nota => (
+                        .map((nota, index) => (
                           <button
-                            key={nota.id}
+                            key={`nota-ref-${nota.id}-${index}`}
                             onClick={() => seleccionarNotaReferencia(nota.id)}
                             style={{
                               background: 'rgba(34, 197, 94, 0.1)',
@@ -23965,6 +27836,454 @@ Shortcuts:
           </div>
         )}
 
+        {/* ========== MODAL DE JERARQUÍA DE CARPETAS ========== */}
+        {modalJerarquiaAbierto && (
+          <div className="modal-overlay" onClick={() => setModalJerarquiaAbierto(false)}>
+            <div className="modal-content modal-jerarquia" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>🗂️ Gestión de Carpetas y Rendimiento</h2>
+                <button onClick={() => setModalJerarquiaAbierto(false)} className="btn-close">✕</button>
+              </div>
+
+              {/* Pestañas */}
+              <div className="jerarquia-tabs">
+                <button 
+                  className={`tab-btn ${tabJerarquia === 'crear' ? 'activo' : ''}`}
+                  onClick={() => setTabJerarquia('crear')}
+                >
+                  ➕ Crear Estructura
+                </button>
+                <button 
+                  className={`tab-btn ${tabJerarquia === 'rendimiento' ? 'activo' : ''}`}
+                  onClick={() => {
+                    setTabJerarquia('rendimiento')
+                    calcularRendimientoJerarquias()
+                  }}
+                >
+                  📊 Rendimiento
+                </button>
+              </div>
+              
+              {tabJerarquia === 'crear' ? (
+              <div className="modal-body jerarquia-modal-body">
+                {/* Panel izquierdo: Formulario */}
+                <div className="jerarquia-panel-form">
+                  {/* Recorrido visual de la ubicación */}
+                  <div className="jerarquia-recorrido">
+                    <div className="recorrido-titulo">📍 Ubicación actual</div>
+                    <div className="recorrido-path">
+                      <span className="recorrido-item recorrido-raiz" onClick={() => cargarCarpeta('')}>
+                        🏠 Mis Cursos
+                      </span>
+                      {rutaActual && rutaActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                        const rutaParcial = arr.slice(0, idx + 1).join('\\')
+                        return (
+                          <React.Fragment key={idx}>
+                            <span className="recorrido-separador">→</span>
+                            <span 
+                              className="recorrido-item"
+                              onClick={() => cargarCarpeta(rutaParcial)}
+                            >
+                              📁 {parte}
+                            </span>
+                          </React.Fragment>
+                        )
+                      })}
+                    </div>
+                    <div className="recorrido-hint">
+                      Las carpetas se crearán aquí. Haz clic en cualquier parte del recorrido para navegar.
+                    </div>
+                  </div>
+
+                  {/* Carpeta Rápida */}
+                  <div className="carpeta-rapida-section">
+                    <h4>⚡ Carpeta Rápida</h4>
+                    <div className="input-con-boton">
+                      <input
+                        type="text"
+                        id="input-carpeta-rapida"
+                        placeholder="Nombre de carpeta simple..."
+                        className="input-text"
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            crearCarpetaSimple(e.target.value)
+                          }
+                        }}
+                      />
+                      <button 
+                        onClick={() => {
+                          const input = document.getElementById('input-carpeta-rapida')
+                          crearCarpetaSimple(input?.value)
+                        }}
+                        className="btn-agregar-nodo"
+                      >
+                        📁 Crear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="jerarquia-separador">
+                    <span>o construye una estructura jerárquica</span>
+                  </div>
+
+                  <div className="jerarquia-form">
+                    <div className="form-group">
+                      <label className="form-label">
+                        <span className="label-icon">🏷️</span>
+                        <span>Tipo de elemento</span>
+                      </label>
+                      <div className="jerarquia-tipos-grid">
+                        {TIPOS_JERARQUIA.map(tipo => (
+                          <button
+                            key={tipo.id}
+                            className={`tipo-btn ${tipoNodoSeleccionado === tipo.id ? 'activo' : ''}`}
+                            onClick={() => setTipoNodoSeleccionado(tipo.id)}
+                            style={{ 
+                              '--tipo-color': tipo.color,
+                              borderColor: tipoNodoSeleccionado === tipo.id ? tipo.color : 'transparent'
+                            }}
+                            title={tipo.descripcion}
+                          >
+                            <span className="tipo-emoji">{tipo.emoji}</span>
+                            <span className="tipo-nombre">{tipo.nombre}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">
+                        <span className="label-icon">✏️</span>
+                        <span>Nombre del elemento</span>
+                      </label>
+                      <div className="input-con-boton">
+                        <input
+                          type="text"
+                          value={nombreNuevoNodo}
+                          onChange={(e) => setNombreNuevoNodo(e.target.value)}
+                          placeholder={TIPOS_JERARQUIA.find(t => t.id === tipoNodoSeleccionado)?.descripcion || 'Nombre...'}
+                          className="input-text"
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              agregarNodoJerarquia()
+                            }
+                          }}
+                        />
+                        <button 
+                          onClick={agregarNodoJerarquia}
+                          className="btn-agregar-nodo"
+                          disabled={!nombreNuevoNodo.trim()}
+                        >
+                          ➕ Agregar
+                        </button>
+                      </div>
+                      {nodoEditando && (
+                        <div className="form-hint hint-padre">
+                          📂 Se agregará dentro de: <strong>{nodoEditando.emoji} {nodoEditando.nombre}</strong>
+                          <button 
+                            className="btn-quitar-padre"
+                            onClick={() => setNodoEditando(null)}
+                          >
+                            ✕ Quitar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="jerarquia-acciones-rapidas">
+                      <h4>⚡ Acciones rápidas</h4>
+                      <div className="acciones-rapidas-btns">
+                        <button 
+                          onClick={() => {
+                            // Crear estructura Platzi básica
+                            const estructuraPlatzi = [
+                              {
+                                id: Date.now().toString(),
+                                tipo: 'plataforma',
+                                nombre: 'Platzi',
+                                emoji: '🌐',
+                                color: '#6366f1',
+                                hijos: [],
+                                padre: null,
+                                estadisticas: { examenes: { total: 0, aprobados: 0 }, practicas: { total: 0, completadas: 0 }, errores: { total: 0, corregidos: 0 }, flashcards: { total: 0, dominadas: 0 } }
+                              }
+                            ]
+                            setJerarquiaActual(estructuraPlatzi)
+                          }}
+                          className="btn-plantilla"
+                        >
+                          🌐 Platzi
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const estructuraUdemy = [
+                              {
+                                id: Date.now().toString(),
+                                tipo: 'plataforma',
+                                nombre: 'Udemy',
+                                emoji: '🌐',
+                                color: '#6366f1',
+                                hijos: [],
+                                padre: null,
+                                estadisticas: { examenes: { total: 0, aprobados: 0 }, practicas: { total: 0, completadas: 0 }, errores: { total: 0, corregidos: 0 }, flashcards: { total: 0, dominadas: 0 } }
+                              }
+                            ]
+                            setJerarquiaActual(estructuraUdemy)
+                          }}
+                          className="btn-plantilla"
+                        >
+                          🎓 Udemy
+                        </button>
+                        <button 
+                          onClick={() => {
+                            const estructuraCoursera = [
+                              {
+                                id: Date.now().toString(),
+                                tipo: 'plataforma',
+                                nombre: 'Coursera',
+                                emoji: '🌐',
+                                color: '#6366f1',
+                                hijos: [],
+                                padre: null,
+                                estadisticas: { examenes: { total: 0, aprobados: 0 }, practicas: { total: 0, completadas: 0 }, errores: { total: 0, corregidos: 0 }, flashcards: { total: 0, dominadas: 0 } }
+                              }
+                            ]
+                            setJerarquiaActual(estructuraCoursera)
+                          }}
+                          className="btn-plantilla"
+                        >
+                          📚 Coursera
+                        </button>
+                        <button 
+                          onClick={() => setJerarquiaActual([])}
+                          className="btn-plantilla btn-limpiar"
+                        >
+                          🗑️ Limpiar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Panel derecho: Vista previa del árbol */}
+                <div className="jerarquia-panel-preview">
+                  <h3>👁️ Vista Previa de la Estructura</h3>
+                  <p className="preview-hint">Haz clic en un elemento para agregar hijos dentro de él</p>
+                  
+                  <div className="jerarquia-arbol">
+                    {jerarquiaActual.length > 0 ? (
+                      renderizarArbolJerarquia(jerarquiaActual)
+                    ) : (
+                      <div className="jerarquia-vacia">
+                        <div className="vacio-icon">🌳</div>
+                        <p>Tu estructura aparecerá aquí</p>
+                        <p className="vacio-hint">Comienza agregando una plataforma o curso</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {jerarquiaActual.length > 0 && (
+                    <div className="jerarquia-resumen">
+                      <div className="resumen-item">
+                        <span className="resumen-numero">
+                          {(function contarNodos(nodos) {
+                            return nodos.reduce((acc, nodo) => acc + 1 + contarNodos(nodo.hijos), 0)
+                          })(jerarquiaActual)}
+                        </span>
+                        <span className="resumen-label">carpetas a crear</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Footer de creación */}
+                  <div className="jerarquia-crear-footer">
+                    <button 
+                      onClick={() => setModalJerarquiaAbierto(false)} 
+                      className="btn-cancelar"
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      onClick={crearCarpetasDesdeJerarquia}
+                      className="btn-primary"
+                      disabled={jerarquiaActual.length === 0 || loading}
+                    >
+                      {loading ? '⏳ Creando...' : `✅ Crear ${(function contarNodos(nodos) {
+                        return nodos.reduce((acc, nodo) => acc + 1 + contarNodos(nodo.hijos), 0)
+                      })(jerarquiaActual)} Carpetas`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              ) : (
+              /* ===== PESTAÑA DE RENDIMIENTO JERÁRQUICO ===== */
+              <div className="modal-body rendimiento-modal-body">
+                <div className="rendimiento-header">
+                  <h3>📊 Rendimiento por Carpetas</h3>
+                  <p className="rendimiento-descripcion">
+                    Vista jerárquica de tu progreso: errores, flashcards, exámenes, prácticas y notas.
+                  </p>
+                  <button 
+                    onClick={calcularRendimientoJerarquias}
+                    className="btn-secondary"
+                  >
+                    🔄 Actualizar Datos
+                  </button>
+                </div>
+
+                <div className="rendimiento-lista rendimiento-jerarquico">
+                  {Object.keys(rendimientoJerarquias).length > 0 ? (
+                    (() => {
+                      // Obtener solo carpetas raíz (nivel 1)
+                      const carpetasRaiz = Object.entries(rendimientoJerarquias)
+                        .filter(([_, datos]) => datos.nivel === 1)
+                        .sort((a, b) => b[1].totalItems - a[1].totalItems);
+                      
+                      // Función recursiva para renderizar árbol
+                      const renderizarNodo = (carpeta, datos, nivel = 0) => {
+                        const colorPorcentaje = datos.porcentajeGeneral >= 80 ? '#10b981' :
+                                               datos.porcentajeGeneral >= 50 ? '#eab308' : '#ef4444';
+                        const bgPorcentaje = datos.porcentajeGeneral >= 80 ? 'rgba(16, 185, 129, 0.15)' :
+                                            datos.porcentajeGeneral >= 50 ? 'rgba(234, 179, 8, 0.15)' :
+                                            'rgba(239, 68, 68, 0.15)';
+                        
+                        return (
+                          <div key={carpeta} className="rendimiento-nodo" style={{marginLeft: `${nivel * 20}px`}}>
+                            <div className="rendimiento-item" style={{borderLeft: nivel > 0 ? `3px solid ${colorPorcentaje}` : 'none'}}>
+                              <div className="rendimiento-item-header">
+                                <div className="rendimiento-carpeta">
+                                  <span className="carpeta-icono">{nivel === 0 ? '🌐' : nivel === 1 ? '🏫' : '📁'}</span>
+                                  <span className="carpeta-nombre" style={{fontWeight: nivel === 0 ? '700' : '500'}}>
+                                    {datos.nombre || carpeta}
+                                  </span>
+                                  <span className="carpeta-items" style={{color: '#64748b', fontSize: '0.8rem', marginLeft: '0.5rem'}}>
+                                    ({datos.totalItems} items)
+                                  </span>
+                                </div>
+                                <div className="rendimiento-porcentaje" style={{
+                                  backgroundColor: bgPorcentaje,
+                                  color: colorPorcentaje,
+                                  fontWeight: '700',
+                                  padding: '0.4rem 0.8rem',
+                                  borderRadius: '20px',
+                                  fontSize: '0.9rem'
+                                }}>
+                                  {datos.porcentajeGeneral}%
+                                </div>
+                              </div>
+                              
+                              <div className="rendimiento-barra-container" style={{height: '6px', borderRadius: '3px'}}>
+                                <div 
+                                  className="rendimiento-barra"
+                                  style={{
+                                    width: `${datos.porcentajeGeneral}%`,
+                                    backgroundColor: colorPorcentaje,
+                                    height: '100%',
+                                    borderRadius: '3px',
+                                    transition: 'width 0.5s ease'
+                                  }}
+                                />
+                              </div>
+
+                              <div className="rendimiento-detalles" style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                {datos.errores?.total > 0 && (
+                                  <div className="rendimiento-badge" style={{
+                                    background: datos.errores.corregidos === datos.errores.total ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                    color: datos.errores.corregidos === datos.errores.total ? '#10b981' : '#ef4444',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    ❌ {datos.errores.corregidos}/{datos.errores.total}
+                                  </div>
+                                )}
+                                
+                                {datos.flashcards?.total > 0 && (
+                                  <div className="rendimiento-badge" style={{
+                                    background: 'rgba(139, 92, 246, 0.2)',
+                                    color: '#a78bfa',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    🃏 {datos.flashcards.dominadas}/{datos.flashcards.total}
+                                    {datos.flashcards.enProgreso > 0 && ` (${datos.flashcards.enProgreso} 🔄)`}
+                                  </div>
+                                )}
+                                
+                                {datos.examenes?.total > 0 && (
+                                  <div className="rendimiento-badge" style={{
+                                    background: 'rgba(59, 130, 246, 0.2)',
+                                    color: '#60a5fa',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    📝 {datos.examenes.aprobados}/{datos.examenes.total} ({datos.examenes.notaPromedio}% prom)
+                                  </div>
+                                )}
+                                
+                                {datos.practicas?.total > 0 && (
+                                  <div className="rendimiento-badge" style={{
+                                    background: 'rgba(236, 72, 153, 0.2)',
+                                    color: '#f472b6',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    🧑‍💻 {datos.practicas.completadas}/{datos.practicas.total}
+                                  </div>
+                                )}
+                                
+                                {datos.notas?.total > 0 && (
+                                  <div className="rendimiento-badge" style={{
+                                    background: 'rgba(34, 197, 94, 0.2)',
+                                    color: '#4ade80',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '12px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '600'
+                                  }}>
+                                    📝 {datos.notas.revisadas}/{datos.notas.total} notas
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Renderizar hijos recursivamente */}
+                            {datos.hijos && datos.hijos.length > 0 && (
+                              <div className="rendimiento-hijos">
+                                {datos.hijos
+                                  .filter(hijo => rendimientoJerarquias[hijo])
+                                  .sort((a, b) => (rendimientoJerarquias[b]?.totalItems || 0) - (rendimientoJerarquias[a]?.totalItems || 0))
+                                  .map(hijo => renderizarNodo(hijo, rendimientoJerarquias[hijo], nivel + 1))
+                                }
+                              </div>
+                            )}
+                          </div>
+                        );
+                      };
+                      
+                      return carpetasRaiz.map(([carpeta, datos]) => renderizarNodo(carpeta, datos, 0));
+                    })()
+                  ) : (
+                    <div className="rendimiento-vacio">
+                      <div className="vacio-icono">📊</div>
+                      <p>No hay datos de rendimiento aún</p>
+                      <p className="vacio-hint">Completa exámenes, prácticas o flashcards para ver tu progreso</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Modal de Nueva Carpeta - Calentamiento */}
         {modalNuevaCarpetaCalentamiento && (
           <div className="modal-overlay" onClick={() => setModalNuevaCarpetaCalentamiento(false)}>
@@ -24161,15 +28480,131 @@ Shortcuts:
                     <label className="config-label">
                       <span>Selecciona una nota</span>
                     </label>
-                    <div style={{maxHeight: '300px', overflowY: 'auto', marginTop: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem'}}>
-                      {notasGuardadas.length === 0 && (
-                        <p style={{textAlign: 'center', color: '#808090', padding: '2rem'}}>
-                          No hay notas guardadas
-                        </p>
-                      )}
-                      {(notasGuardadas || []).map(nota => (
+                    
+                    {/* Navegación de carpetas */}
+                    <div className="selector-notas-navegacion" style={{marginTop: '0.75rem'}}>
+                      {rutaModalNotaRef && (
                         <button
-                          key={nota.id}
+                          type="button"
+                          className="btn-volver-carpeta"
+                          onClick={() => {
+                            const rutaPadre = rutaModalNotaRef.split('/').slice(0, -1).join('/');
+                            setRutaModalNotaRef(rutaPadre);
+                          }}
+                          style={{
+                            background: 'rgba(100, 108, 255, 0.1)',
+                            border: '1px solid rgba(100, 108, 255, 0.3)',
+                            color: '#646cff',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            marginBottom: '0.5rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                          }}
+                        >
+                          ⬅️ Volver
+                        </button>
+                      )}
+                      <div style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '6px',
+                        marginBottom: '0.75rem',
+                        fontSize: '0.85rem',
+                        color: '#a0a0b0'
+                      }}>
+                        📁 {rutaModalNotaRef || 'Raíz'}
+                      </div>
+                    </div>
+
+                    <div style={{maxHeight: '300px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem'}}>
+                      {/* Carpetas en la ruta actual */}
+                      {(() => {
+                        // Obtener carpetas únicas de las notas en la ruta actual
+                        const carpetasHijas = [...new Set(
+                          (notasGuardadas || [])
+                            .filter(n => {
+                              const carpeta = n.carpeta || '';
+                              if (!rutaModalNotaRef) {
+                                // En raíz: obtener primer nivel
+                                return carpeta && !carpeta.includes('/');
+                              }
+                              // En subcarpeta: obtener hijas directas
+                              return carpeta.startsWith(rutaModalNotaRef + '/') && 
+                                     !carpeta.substring(rutaModalNotaRef.length + 1).includes('/');
+                            })
+                            .map(n => n.carpeta)
+                        )];
+                        
+                        // También extraer subcarpetas de notas más profundas
+                        const subcarpetas = [...new Set(
+                          (notasGuardadas || [])
+                            .filter(n => {
+                              const carpeta = n.carpeta || '';
+                              if (!rutaModalNotaRef) {
+                                return carpeta && carpeta.includes('/');
+                              }
+                              return carpeta.startsWith(rutaModalNotaRef + '/');
+                            })
+                            .map(n => {
+                              const carpeta = n.carpeta || '';
+                              if (!rutaModalNotaRef) {
+                                return carpeta.split('/')[0];
+                              }
+                              const resto = carpeta.substring(rutaModalNotaRef.length + 1);
+                              return rutaModalNotaRef + '/' + resto.split('/')[0];
+                            })
+                        )];
+                        
+                        const todasCarpetas = [...new Set([...carpetasHijas, ...subcarpetas])].filter(Boolean);
+                        
+                        return todasCarpetas.map((carpeta, idx) => {
+                          const nombreCarpeta = rutaModalNotaRef 
+                            ? carpeta.substring(rutaModalNotaRef.length + 1).split('/')[0]
+                            : carpeta.split('/')[0];
+                          const rutaCompleta = rutaModalNotaRef 
+                            ? `${rutaModalNotaRef}/${nombreCarpeta}`
+                            : nombreCarpeta;
+                          
+                          return (
+                            <button
+                              key={`carpeta-${idx}`}
+                              type="button"
+                              onClick={() => setRutaModalNotaRef(rutaCompleta)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                marginBottom: '0.5rem',
+                                padding: '0.75rem',
+                                background: 'rgba(255, 152, 0, 0.1)',
+                                border: '1px solid rgba(255, 152, 0, 0.3)',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                color: '#ff9800',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
+                              }}
+                            >
+                              <span>📁</span>
+                              <span style={{fontWeight: 600}}>{nombreCarpeta}</span>
+                            </button>
+                          );
+                        });
+                      })()}
+                      
+                      {/* Notas en la carpeta actual */}
+                      {(notasGuardadas || [])
+                        .filter(n => {
+                          const carpeta = n.carpeta || '';
+                          if (!rutaModalNotaRef) return !carpeta;
+                          return carpeta === rutaModalNotaRef;
+                        })
+                        .map((nota, index) => (
+                        <button
+                          key={`nota-sel-${nota.id}-${index}`}
                           type="button"
                           className={notaReferenciaId === nota.id ? 'btn-primary' : 'carpeta-item'}
                           onClick={() => setNotaReferenciaId(nota.id)}
@@ -24180,19 +28615,58 @@ Shortcuts:
                             padding: '0.75rem',
                             background: notaReferenciaId === nota.id 
                               ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
-                              : 'rgba(255,255,255,0.05)'
+                              : 'rgba(255,255,255,0.05)',
+                            border: notaReferenciaId === nota.id 
+                              ? '1px solid #22c55e'
+                              : '1px solid rgba(255,255,255,0.1)',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            color: '#fff'
                           }}
                         >
                           <div style={{fontWeight: 'bold', marginBottom: '0.25rem'}}>
                             📝 {nota.titulo}
                           </div>
-                          <div style={{fontSize: '0.85rem', color: '#a0a0b0'}}>
-                            📁 {nota.carpeta || 'Raíz'}
-                          </div>
+                          {nota.contenido && (
+                            <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                              {nota.contenido.replace(/<[^>]*>/g, '').substring(0, 60)}...
+                            </div>
+                          )}
                         </button>
                       ))}
+                      
+                      {/* Mensaje si no hay contenido */}
+                      {(() => {
+                        const notasEnCarpeta = (notasGuardadas || []).filter(n => {
+                          const carpeta = n.carpeta || '';
+                          if (!rutaModalNotaRef) return !carpeta;
+                          return carpeta === rutaModalNotaRef;
+                        });
+                        const carpetasHijas = [...new Set(
+                          (notasGuardadas || [])
+                            .filter(n => {
+                              const carpeta = n.carpeta || '';
+                              if (!rutaModalNotaRef) return carpeta;
+                              return carpeta.startsWith(rutaModalNotaRef + '/');
+                            })
+                            .map(n => {
+                              const carpeta = n.carpeta || '';
+                              if (!rutaModalNotaRef) return carpeta.split('/')[0];
+                              return carpeta.substring(rutaModalNotaRef.length + 1).split('/')[0];
+                            })
+                        )].filter(Boolean);
+                        
+                        if (notasEnCarpeta.length === 0 && carpetasHijas.length === 0) {
+                          return (
+                            <p style={{textAlign: 'center', color: '#808090', padding: '2rem'}}>
+                              📭 No hay notas en esta carpeta
+                            </p>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
-                    <p className="config-hint">Al hacer clic en el enlace, se abrirá la nota seleccionada</p>
+                    <p className="config-hint">Navega por las carpetas o selecciona una nota directamente</p>
                   </div>
                 )}
               </div>
@@ -24285,6 +28759,91 @@ Shortcuts:
               <div className="modal-footer">
                 <button onClick={() => setModalMoverPractica(false)} className="btn-cancelar">
                   Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para Mover Notas */}
+        {modalMoverNota && notaAMover && (
+          <div className="modal-overlay" onClick={() => setModalMoverNota(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>📂 Mover Nota</h2>
+                <button onClick={() => setModalMoverNota(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <p style={{marginBottom: '1rem', color: '#a0a0b0'}}>
+                  Moviendo: <strong>📝 {notaAMover.titulo}</strong>
+                </p>
+                <p style={{marginBottom: '1.5rem', fontSize: '0.9rem', color: '#808090'}}>
+                  Ubicación actual: <span style={{color: '#646cff'}}>{notaAMover.carpeta || 'Raíz'}</span>
+                </p>
+
+                <div className="config-section">
+                  <label className="config-label">
+                    <span>Selecciona carpeta destino</span>
+                  </label>
+                  
+                  <div style={{marginTop: '0.75rem'}}>
+                    <input
+                      type="text"
+                      value={carpetaDestinoNota}
+                      onChange={(e) => setCarpetaDestinoNota(e.target.value)}
+                      placeholder="Escribe una nueva carpeta o selecciona abajo..."
+                      className="input-nota-titulo"
+                      style={{marginBottom: '0.75rem'}}
+                    />
+                  </div>
+                  
+                  <div style={{maxHeight: '250px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem'}}>
+                    {carpetasDisponiblesNota.map((carpeta, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCarpetaDestinoNota(carpeta.ruta)}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          marginBottom: '0.5rem',
+                          padding: '0.75rem',
+                          background: carpetaDestinoNota === carpeta.ruta 
+                            ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
+                            : 'rgba(255,255,255,0.05)',
+                          border: carpetaDestinoNota === carpeta.ruta 
+                            ? '1px solid #22c55e'
+                            : '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <span>📁</span>
+                        <span style={{fontWeight: 600}}>{carpeta.nombre}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="config-hint" style={{marginTop: '0.75rem'}}>
+                    💡 Puedes escribir una nueva carpeta o seleccionar una existente
+                  </p>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button onClick={() => setModalMoverNota(false)} className="btn-cancelar">
+                  Cancelar
+                </button>
+                <button 
+                  onClick={moverNota}
+                  className="btn-primary"
+                  disabled={carpetaDestinoNota === (notaAMover.carpeta || '')}
+                >
+                  📂 Mover Nota
                 </button>
               </div>
             </div>
@@ -26656,22 +31215,64 @@ Shortcuts:
                           accept={formDataFlashcard.tipo === 'visual' ? 'image/*' : '*'}
                           onChange={async (e) => {
                             const files = Array.from(e.target.files);
+                            const carpetaFlashcard = carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '';
                             
-                            // 🔥 Convertir archivos a base64 para persistencia
-                            const filePromises = files.map(file => {
-                              return new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onload = (event) => {
-                                  resolve({
+                            // 🔥 Subir imágenes al servidor en la carpeta de la flashcard
+                            const filePromises = files.map(async (file) => {
+                              try {
+                                const formData = new FormData();
+                                formData.append('file', file);
+                                formData.append('carpeta', carpetaFlashcard);
+                                
+                                const response = await fetch(`${API_URL}/api/subir-imagen-nota`, {
+                                  method: 'POST',
+                                  body: formData
+                                });
+                                
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  console.log('✅ Imagen subida para flashcard:', data.url);
+                                  return {
                                     nombre: file.name,
                                     tipo: file.type,
                                     tamano: file.size,
-                                    url: event.target.result, // Base64
-                                    base64: event.target.result
+                                    url: `${API_URL}${data.url}`,
+                                    ruta: data.ruta
+                                  };
+                                } else {
+                                  // Fallback a base64 si falla
+                                  console.warn('⚠️ Fallback a base64 para flashcard');
+                                  return new Promise((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onload = (event) => {
+                                      resolve({
+                                        nombre: file.name,
+                                        tipo: file.type,
+                                        tamano: file.size,
+                                        url: event.target.result,
+                                        base64: event.target.result
+                                      });
+                                    };
+                                    reader.readAsDataURL(file);
                                   });
-                                };
-                                reader.readAsDataURL(file);
-                              });
+                                }
+                              } catch (error) {
+                                console.error('Error subiendo imagen:', error);
+                                // Fallback a base64
+                                return new Promise((resolve) => {
+                                  const reader = new FileReader();
+                                  reader.onload = (event) => {
+                                    resolve({
+                                      nombre: file.name,
+                                      tipo: file.type,
+                                      tamano: file.size,
+                                      url: event.target.result,
+                                      base64: event.target.result
+                                    });
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+                              }
                             });
                             
                             const fileData = await Promise.all(filePromises);
@@ -29349,8 +33950,22 @@ Shortcuts:
                   <label className="config-label">🎯 ¿Qué quieres priorizar hoy?</label>
                   <div className="prioridad-opciones">
                     <button
+                      className={`prioridad-opcion prioridad-todo ${prioridadSesion === 'todo' ? 'active' : ''}`}
+                      onClick={() => {
+                        setPrioridadSesion('todo');
+                        setFasesExcluidas([]); // Resetear exclusiones al cambiar a TODO
+                      }}
+                    >
+                      <div className="prioridad-icon">🌟</div>
+                      <h4>Sesión Completa</h4>
+                      <p>Todas las fases, personalizable</p>
+                    </button>
+                    <button
                       className={`prioridad-opcion ${prioridadSesion === 'errores' ? 'active' : ''}`}
-                      onClick={() => setPrioridadSesion('errores')}
+                      onClick={() => {
+                        setPrioridadSesion('errores');
+                        setFasesExcluidas([]);
+                      }}
                     >
                       <div className="prioridad-icon">🎯</div>
                       <h4>Reforzar Errores</h4>
@@ -29358,7 +33973,10 @@ Shortcuts:
                     </button>
                     <button
                       className={`prioridad-opcion ${prioridadSesion === 'flashcards' ? 'active' : ''}`}
-                      onClick={() => setPrioridadSesion('flashcards')}
+                      onClick={() => {
+                        setPrioridadSesion('flashcards');
+                        setFasesExcluidas([]);
+                      }}
                     >
                       <div className="prioridad-icon">🃏</div>
                       <h4>Mantener Memoria</h4>
@@ -29366,38 +33984,112 @@ Shortcuts:
                     </button>
                     <button
                       className={`prioridad-opcion ${prioridadSesion === 'contenido' ? 'active' : ''}`}
-                      onClick={() => setPrioridadSesion('contenido')}
+                      onClick={() => {
+                        setPrioridadSesion('contenido');
+                        setFasesExcluidas([]);
+                      }}
                     >
                       <div className="prioridad-icon">📚</div>
                       <h4>Avanzar Contenido</h4>
                       <p>Estudia material nuevo</p>
+                    </button>
+                    <button
+                      className={`prioridad-opcion ${prioridadSesion === 'notas' ? 'active' : ''}`}
+                      onClick={() => {
+                        setPrioridadSesion('notas');
+                        setFasesExcluidas([]);
+                      }}
+                    >
+                      <div className="prioridad-icon">📝</div>
+                      <h4>Repasar Notas</h4>
+                      <p>Revisa tus notas pendientes</p>
+                    </button>
+                    <button
+                      className={`prioridad-opcion ${prioridadSesion === 'practicas' ? 'active' : ''}`}
+                      onClick={() => {
+                        setPrioridadSesion('practicas');
+                        setFasesExcluidas([]);
+                      }}
+                    >
+                      <div className="prioridad-icon">✍️</div>
+                      <h4>Generar Prácticas</h4>
+                      <p>Crea ejercicios para practicar</p>
                     </button>
                   </div>
                 </div>
 
                 {!modoLibreActivo && (
                   <div className="fases-preview">
-                    <h3>📋 Plan de tu Sesión ({tiempoSesion} min)</h3>
+                    <div className="fases-preview-header">
+                      <h3>📋 Plan de tu Sesión ({tiempoSesion} min)</h3>
+                      {prioridadSesion === 'todo' && fasesExcluidas.length > 0 && (
+                        <button 
+                          className="btn-reset-fases"
+                          onClick={() => setFasesExcluidas([])}
+                          title="Restaurar todas las fases"
+                        >
+                          🔄 Restaurar
+                        </button>
+                      )}
+                    </div>
                     <div className="fases-lista">
-                      {calcularFasesSesion(tiempoSesion, prioridadSesion).map((fase, index) => (
+                      {calcularFasesSesion(tiempoSesion, prioridadSesion, fasesExcluidas).map((fase, index, arr) => (
                         <React.Fragment key={fase.tipo}>
-                          <div className="fase-preview-item">
+                          <div className={`fase-preview-item ${prioridadSesion === 'todo' ? 'editable' : ''}`}>
                             <div className="fase-preview-emoji">{fase.emoji}</div>
                             <div className="fase-preview-info">
                               <h4>Fase {index + 1}: {fase.nombre}</h4>
-                              <p>{Math.floor(fase.duracion / 60)} min - {fase.tipo === 'calentamiento' ? 'Contexto y preparación' : 
-                                  fase.tipo === 'errores' ? 'Repaso de preguntas falladas' :
-                                  fase.tipo === 'flashcards' ? 'Repaso espaciado' :
-                                  fase.tipo === 'contenido' ? 'Nuevo material y prácticas' :
-                                  'Resumen y reflexión'}</p>
+                              <p>{Math.floor(fase.duracion / 60)} min - {
+                                fase.tipo === 'calentamiento' ? 'Contexto y preparación' : 
+                                fase.tipo === 'errores' ? 'Repaso de preguntas falladas' :
+                                fase.tipo === 'flashcards' ? 'Repaso espaciado' :
+                                fase.tipo === 'notas' ? 'Repaso de notas pendientes' :
+                                fase.tipo === 'contenido' ? 'Nuevo material y prácticas' :
+                                fase.tipo === 'repaso' ? 'Consolidar lo aprendido' :
+                                fase.tipo === 'generar_practicas' ? 'Crear ejercicios prácticos' :
+                                'Resumen y reflexión'}</p>
                             </div>
+                            {/* Botón eliminar solo en modo TODO y no para calentamiento/cierre */}
+                            {prioridadSesion === 'todo' && fase.tipo !== 'calentamiento' && fase.tipo !== 'cierre' && (
+                              <button 
+                                className="btn-eliminar-fase"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFaseExcluida(fase.tipo);
+                                }}
+                                title={`Quitar ${fase.nombre}`}
+                              >
+                                ✕
+                              </button>
+                            )}
                           </div>
-                          {index < calcularFasesSesion(tiempoSesion, prioridadSesion).length - 1 && (
+                          {index < arr.length - 1 && (
                             <div className="fase-preview-arrow">↓</div>
                           )}
                         </React.Fragment>
                       ))}
                     </div>
+                    {prioridadSesion === 'todo' && fasesExcluidas.length > 0 && (
+                      <div className="fases-excluidas-info">
+                        <span>Fases omitidas: </span>
+                        {fasesExcluidas.map((tipo, i) => (
+                          <button 
+                            key={tipo}
+                            className="btn-fase-excluida"
+                            onClick={() => toggleFaseExcluida(tipo)}
+                            title="Click para restaurar"
+                          >
+                            {tipo === 'errores' ? '🎯' : 
+                             tipo === 'flashcards' ? '🃏' : 
+                             tipo === 'notas' ? '📝' : 
+                             tipo === 'contenido' ? '📚' :
+                             tipo === 'repaso' ? '🔄' :
+                             tipo === 'generar_practicas' ? '🧑‍💻' : '❓'} 
+                            {tipo}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -29437,6 +34129,7 @@ Shortcuts:
                      faseActual === 'errores' ? '❌' :
                      faseActual === 'flashcards' ? '🎴' :
                      faseActual === 'contenido' ? '📚' :
+                     faseActual === 'generar_practicas' ? '🧑‍💻' :
                      faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
                      '📊'}
                   </span>
