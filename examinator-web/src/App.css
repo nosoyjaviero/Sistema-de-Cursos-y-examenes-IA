@@ -67,9 +67,10 @@
 }
 
 .nav-item.active {
-  background: rgba(100, 108, 255, 0.15);
-  color: #646cff;
+  background: rgba(100, 108, 255, 0.25);  /* Aumentado de 0.15 a 0.25 para más visibilidad */
+  color: #7c84ff;  /* Azul más claro y brillante */
   font-weight: 600;
+  border-left: 3px solid #646cff;  /* Borde izquierdo como indicador adicional */
 }
 
 .nav-item .icon {

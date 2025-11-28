@@ -942,13 +942,17 @@ CONTENIDO A EVALUAR:
 5. Basa todas las preguntas en el contenido proporcionado
 6. Cada pregunta debe ser AUTOCONTENIDA (incluye contexto necesario)
 7. NO inventes información que no esté en el texto
+8. 🔥 OBLIGATORIO: Cada pregunta DEBE incluir el campo "tipo": "{tipo}"
 
 FORMATO JSON (genera un array con {cantidad} preguntas):
-{{
-  "preguntas": [
-    {info['ejemplo']}
-  ]
-}}
+[
+  {info['ejemplo']},
+  ... ({cantidad} preguntas en total, TODAS con "tipo": "{tipo}")
+]
+
+⚠️ IMPORTANTE: Responde con un ARRAY DIRECTO de preguntas, no con un objeto envolvente.
+Ejemplo correcto: [{{...}}, {{...}}]
+Ejemplo INCORRECTO: {{"preguntas": [...]}}
 
 Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionales."""
 
@@ -1530,7 +1534,9 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
             lista_preguntas = []
             if isinstance(datos, list):
                 lista_preguntas = datos
+                print(f"  📊 Datos es un array con {len(datos)} elementos")
             elif isinstance(datos, dict):
+                print(f"  📊 Datos es un diccionario con keys: {list(datos.keys())}")
                 if 'preguntas' in datos:
                     lista_preguntas = datos['preguntas']
                 elif 'questions' in datos:
@@ -1538,18 +1544,29 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
                 elif 'tipo' in datos or 'type' in datos:
                     # Es una pregunta única
                     lista_preguntas = [datos]
+            else:
+                print(f"  ⚠️ Tipo de datos inesperado: {type(datos)}")
+            
+            print(f"  📋 Total de preguntas en lista_preguntas: {len(lista_preguntas)}")
             
             # Convertir a objetos PreguntaExamen
             preguntas = []
-            for p in lista_preguntas:
+            for idx, p in enumerate(lista_preguntas, 1):
                 try:
+                    print(f"  📝 Procesando pregunta {idx}/{len(lista_preguntas)}")
+                    print(f"     Tipo: {p.get('tipo', 'N/A')}")
+                    print(f"     Pregunta: {p.get('pregunta', '')[:60]}...")
                     pregunta = PreguntaExamen.from_dict(p)
                     preguntas.append(pregunta)
+                    print(f"     ✅ Pregunta {idx} procesada correctamente")
                 except Exception as e:
-                    print(f"  ⚠️ Error parseando pregunta: {e}")
+                    print(f"  ⚠️ Error parseando pregunta {idx}: {e}")
+                    print(f"     Datos de la pregunta: {p}")
+                    import traceback
+                    traceback.print_exc()
                     continue
             
-            print(f"  ✅ Extraídas {len(preguntas)} preguntas")
+            print(f"  ✅ Extraídas {len(preguntas)} preguntas de {len(lista_preguntas)} encontradas")
             return preguntas
             
         except Exception as e:

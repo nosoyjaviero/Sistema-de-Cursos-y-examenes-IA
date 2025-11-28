@@ -948,9 +948,13 @@ function App() {
   // Cargar carpetas de prácticas al cambiar a esa pestaña
   useEffect(() => {
     if (selectedMenu === 'practicas') {
-      cargarCarpetasPracticas(rutaPracticasActual)
+      console.log('🧑‍💻 Cargando pestaña Prácticas...')
+      console.log('   Ruta actual:', rutaPracticasActual)
+      cargarCarpetasPracticas(rutaPracticasActual).catch(error => {
+        console.error('❌ Error al cargar carpetas de prácticas:', error)
+      })
     }
-  }, [selectedMenu])
+  }, [selectedMenu, rutaPracticasActual])
 
   // Cargar tipografías personalizadas desde localStorage
   useEffect(() => {
@@ -3108,7 +3112,11 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       
       if (esArchivoIndividual) {
         // Usar endpoint para actualizar archivo individual
-        console.log('📝 Actualizando archivo individual de práctica:', practica.archivo);
+        console.log('📝 Actualizando archivo individual de práctica:');
+        console.log('   archivo:', practica.archivo);
+        console.log('   carpeta_ruta:', practica.carpeta_ruta);
+        console.log('   id:', practica.id);
+        
         const response = await fetch(`${API_URL}/datos/practicas/actualizar_archivo`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3117,9 +3125,17 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           })
         });
 
-        if (!response.ok) throw new Error('Error al actualizar archivo de práctica');
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ Error del backend:', errorText);
+          console.error('❌ Status:', response.status);
+          console.error('❌ StatusText:', response.statusText);
+          throw new Error('Error al actualizar archivo de práctica');
+        }
         
-        return await response.json();
+        const resultado = await response.json();
+        console.log('✅ Respuesta del backend:', resultado);
+        return resultado;
       } else {
         // Usar endpoint legacy para practicas.json
         const response = await fetch(`${API_URL}/datos/practicas/carpeta`, {
@@ -5204,16 +5220,27 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         
         // 🔥 ACTUALIZAR ESTADO LOCAL INMEDIATAMENTE
         // Eliminar del calendario sin esperar recarga
+        // Usar múltiples criterios para asegurar eliminación completa
         setDatosCalendarioRepasos(prev => ({
           ...prev,
-          examenes: prev.examenes.filter(e => 
-            (e.id || e.archivo) !== examenId
-          )
+          examenes: prev.examenes.filter(e => {
+            // Eliminar por ID
+            if (e.id && e.id === examen.id) return false
+            // Eliminar por archivo
+            if (e.archivo && e.archivo === nombreArchivo) return false
+            // Eliminar por carpeta + fecha (para duplicados)
+            if (e.carpeta_ruta === ruta && e.fecha_completado === examen.fecha_completado) return false
+            return true
+          })
         }))
+        
+        const mensaje = data.archivos_eliminados > 1 
+          ? `✅ Examen eliminado (${data.archivos_eliminados} copias encontradas)`
+          : '✅ Examen eliminado'
         
         setMensaje({
           tipo: 'success',
-          texto: '✅ Examen eliminado'
+          texto: mensaje
         })
         
         // Recargar la lista de carpetas y exámenes
@@ -5222,7 +5249,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         // Recargar calendario después de un breve delay para asegurar que el archivo fue eliminado
         setTimeout(() => {
           recargarCalendarioRepasos()
-        }, 500)
+        }, 800)
       }
     } catch (error) {
       console.error('Error eliminando examen:', error)
@@ -7672,12 +7699,8 @@ JSON:`
     setGenerandoExamen(true)
     
     try {
-      // Determinar la ruta según si es práctica o examen
+      // Usar la ruta directamente sin modificaciones
       let carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
-      if (esPractica && carpetaExamen?.tipo === 'practica') {
-        // Para prácticas, usar una carpeta de prácticas
-        carpetaRuta = `Practicas/${carpetaRuta}`
-      }
       
       const response = await fetch(`${API_URL}/api/evaluar-examen`, {
         method: 'POST',
@@ -7686,7 +7709,7 @@ JSON:`
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
           carpeta_path: carpetaRuta,
-          es_practica: esPractica
+          es_practica: esPractica  // ✅ Enviamos el valor real de esPractica
         })
       })
       
@@ -7747,7 +7770,14 @@ JSON:`
           };
           
           // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
-          await guardarPracticaEnCarpeta(practicas[practicaIndex]);
+          console.log('💾 Intentando guardar práctica actualizada...');
+          try {
+            await guardarPracticaEnCarpeta(practicas[practicaIndex]);
+            console.log('✅ Práctica guardada exitosamente');
+          } catch (errorGuardar) {
+            console.error('❌ Error en guardarPracticaEnCarpeta:', errorGuardar);
+            // No relanzar el error - la práctica ya se actualizó en memoria
+          }
           setPracticas([...practicas]);
           console.log('✅ Práctica actualizada con repetición espaciada programada en carpeta:', practicas[practicaIndex].carpeta);
           
@@ -7905,21 +7935,22 @@ JSON:`
     if (preguntasExamen.length === 0) {
       setMensaje({
         tipo: 'error',
-        texto: '❌ No hay examen activo para pausar'
+        texto: esPractica ? '❌ No hay práctica activa para pausar' : '❌ No hay examen activo para pausar'
       })
       return
     }
     
     try {
-      // Usar carpeta asignada o carpeta por defecto
+      // Usar la ruta directamente sin modificaciones
       let carpetaRuta = carpetaExamen?.ruta || 'Examenes_Generales'
       let carpetaNombre = carpetaExamen?.nombre || 'Exámenes Generales'
       
-      // Para prácticas, usar carpeta de prácticas
-      if (esPractica && carpetaExamen?.tipo === 'practica') {
-        carpetaRuta = `Practicas/${carpetaRuta}`
-        carpetaNombre = `Prácticas - ${carpetaNombre}`
-      }
+      console.log('⏸️ PAUSANDO:', esPractica ? 'PRÁCTICA' : 'EXAMEN');
+      console.log('   carpetaExamen:', carpetaExamen);
+      console.log('   carpetaRuta:', carpetaRuta);
+      console.log('   carpetaNombre:', carpetaNombre);
+      console.log('   esPractica:', esPractica);
+      console.log('   examenActivo:', examenActivo);
       
       const response = await fetch(`${API_URL}/api/examenes/pausar`, {
         method: 'POST',
@@ -7930,29 +7961,50 @@ JSON:`
           preguntas: preguntasExamen,
           respuestas: respuestasUsuario,
           fecha_inicio: new Date().toISOString(),
-          es_practica: esPractica
+          es_practica: esPractica,
+          archivo_original: examenActivo?.archivo || null  // 🔥 ENVIAR ARCHIVO ORIGINAL
         })
       })
       
       const data = await response.json()
       if (data.success) {
         limpiarExamenLocal() // Limpiar guardado local
-        setMensaje({
-          tipo: 'success',
-          texto: '⏸️ Examen pausado correctamente. Ve a la pestaña "Generar Exámenes" para continuarlo'
-        })
+        
+        // Mensaje y destino según tipo
+        if (esPractica) {
+          setMensaje({
+            tipo: 'success',
+            texto: '⏸️ Práctica pausada correctamente. Ve a la pestaña "Prácticas" para continuarla'
+          })
+          // Cambiar a la pestaña de prácticas
+          setTimeout(() => {
+            setSelectedMenu('practicas')
+          }, 2000)
+        } else {
+          setMensaje({
+            tipo: 'success',
+            texto: '⏸️ Examen pausado correctamente. Ve a la pestaña "Generar Exámenes" para continuarlo'
+          })
+          // Cambiar a la pestaña de generar exámenes
+          setTimeout(() => {
+            setSelectedMenu('generar')
+          }, 2000)
+        }
+        
         cerrarExamen()
         cargarExamenesGuardados()
-        // Cambiar automáticamente a la pestaña de generar exámenes
-        setTimeout(() => {
-          setSelectedMenu('generar')
-        }, 2000)
+        
+        // Si es práctica, también recargar prácticas
+        if (esPractica) {
+          const practicasActualizadas = await getDatos('practicas')
+          setPracticas(practicasActualizadas)
+        }
       }
     } catch (error) {
       console.error('Error pausando examen:', error)
       setMensaje({
         tipo: 'error',
-        texto: '❌ Error al pausar el examen'
+        texto: esPractica ? '❌ Error al pausar la práctica' : '❌ Error al pausar el examen'
       })
     }
   }
@@ -8040,22 +8092,41 @@ JSON:`
   
   // Cerrar examen
   const cerrarExamen = async () => {
-    // Guardar progreso de práctica si no está completada
-    if (!examenCompletado && preguntasExamen.length > 0) {
-      const practicas = await getDatos('practicas');
-      const practicaIndex = practicas.findIndex(p => 
-        p.preguntas.length === preguntasExamen.length &&
-        JSON.stringify(p.preguntas) === JSON.stringify(preguntasExamen)
-      );
-      
-      if (practicaIndex !== -1) {
-        // Actualizar respuestas parciales
-        practicas[practicaIndex].respuestas = respuestasUsuario;
+    console.log('\n' + '='.repeat(60));
+    console.log('🔴 CERRANDO EXAMEN/PRÁCTICA');
+    console.log('='.repeat(60));
+    console.log('🔍 DEBUG cerrarExamen:');
+    console.log('   esPractica:', esPractica);
+    console.log('   examenCompletado:', examenCompletado);
+    console.log('   examenActivo:', examenActivo);
+    console.log('   examenActivo?.archivo:', examenActivo?.archivo);
+    console.log('   carpetaExamen:', carpetaExamen);
+    console.log('   carpetaExamen?.ruta:', carpetaExamen?.ruta);
+    console.log('='.repeat(60));
+    
+    // 🔥 ELIMINAR práctica si es nueva y no está completada
+    if (esPractica && !examenCompletado && examenActivo?.archivo && carpetaExamen?.ruta) {
+      try {
+        console.log('🗑️ Eliminando práctica cancelada:', examenActivo.archivo);
+        const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            archivo: examenActivo.archivo,
+            carpeta_ruta: carpetaExamen.ruta
+          })
+        });
         
-        // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
-        await guardarPracticaEnCarpeta(practicas[practicaIndex]);
-        console.log('✅ Progreso guardado automáticamente');
+        if (response.ok) {
+          console.log('✅ Práctica eliminada correctamente');
+        } else {
+          console.error('❌ Error eliminando práctica:', await response.text());
+        }
+      } catch (error) {
+        console.error('❌ Error al eliminar práctica:', error);
       }
+    } else {
+      console.log('⏭️ No se elimina práctica (condición no cumplida)');
     }
     
     detenerReconocimientoVoz() // Detener reconocimiento de voz
@@ -8065,7 +8136,46 @@ JSON:`
     setRespuestasUsuario({})
     setResultadoExamen(null)
     setCarpetaExamen(null)
+    setEsPractica(false)
   }
+
+  // 🔥 Función auxiliar para eliminar práctica cancelada
+  const eliminarPracticaCancelada = async (practicaArchivo, practicaCarpeta) => {
+    if (!practicaArchivo || !practicaCarpeta) return;
+    
+    try {
+      console.log('🗑️ Eliminando práctica cancelada:', practicaArchivo);
+      const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          archivo: practicaArchivo,
+          carpeta_ruta: practicaCarpeta
+        })
+      });
+      
+      if (response.ok) {
+        console.log('✅ Práctica eliminada correctamente');
+      } else {
+        console.error('❌ Error eliminando práctica:', await response.text());
+      }
+    } catch (error) {
+      console.error('❌ Error al eliminar práctica:', error);
+    }
+  };
+
+  // 🔥 useEffect: Detectar cierre del modal para eliminar práctica si no está completada
+  const prevModalAbierto = useRef(modalExamenAbierto);
+  useEffect(() => {
+    // Si el modal se cerró (estaba abierto y ahora está cerrado)
+    if (prevModalAbierto.current && !modalExamenAbierto) {
+      console.log('🔍 Modal cerrado, verificando si debe eliminar práctica...');
+      if (esPractica && !examenCompletado && examenActivo?.archivo && carpetaExamen?.ruta) {
+        eliminarPracticaCancelada(examenActivo.archivo, carpetaExamen.ruta);
+      }
+    }
+    prevModalAbierto.current = modalExamenAbierto;
+  }, [modalExamenAbierto]);
   
   // Reiniciar examen
   const reiniciarExamen = () => {
@@ -8824,12 +8934,14 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           carpetaPracticaGuardar = carpetaPractica;
         } else {
           // Es un documento, extraer la carpeta padre
-          const partes = carpetaPractica.split('\\');
+          const partes = carpetaPractica.split(/[\\\/]/);
           partes.pop(); // Quitar el nombre del archivo
-          carpetaPracticaGuardar = partes.join('\\');
+          carpetaPracticaGuardar = partes.join('/');
         }
         
-        // Normalizar carpeta: remover parte absoluta y "extracciones\"
+        console.log('🔍 DEBUG - carpetaPracticaGuardar ANTES de normalizar:', carpetaPracticaGuardar);
+        
+        // Normalizar carpeta: remover parte absoluta y "extracciones/"
         if (carpetaPracticaGuardar.includes('extracciones\\')) {
           const partes = carpetaPracticaGuardar.split('extracciones\\');
           carpetaPracticaGuardar = partes[partes.length - 1] || '';
@@ -8838,18 +8950,28 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           carpetaPracticaGuardar = partes[partes.length - 1] || '';
         }
         
+        // 🔥 Si la carpeta quedó vacía, usar la ruta original (ya es relativa)
+        if (!carpetaPracticaGuardar) {
+          carpetaPracticaGuardar = carpetaPractica;
+          console.warn('⚠️ carpetaPracticaGuardar estaba vacía, usando carpetaPractica original:', carpetaPracticaGuardar);
+        }
+        
+        console.log('🔍 DEBUG - carpetaPracticaGuardar DESPUÉS de normalizar:', carpetaPracticaGuardar);
+        
         console.log('📁 Carpeta práctica normalizada:', carpetaPracticaGuardar);
         
         const nuevaPractica = {
           id: practicaId,
           ruta: carpetaPractica,
           carpeta: carpetaPracticaGuardar,
+          carpeta_ruta: carpetaPracticaGuardar,
           tipo: tipoFuentePractica,
           prompt: promptPractica,
           preguntas: data.preguntas || [],
           respuestas: {},
           fecha: new Date().toISOString(),
           completada: false,
+          es_practica: true,
           stats: {
             flashcards: numFlashcards,
             mcq: numMCQ,
@@ -8877,8 +8999,27 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           }
         };
         
-        // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
-        await guardarPracticaEnCarpeta(nuevaPractica);
+        // 🔥 GUARDAR COMO ARCHIVO INDIVIDUAL practica_*.json EN CARPETA DE ORIGEN
+        console.log('💾 Guardando práctica como archivo individual...');
+        console.log('   carpeta_ruta:', carpetaPracticaGuardar);
+        const guardarResponse = await fetch(`${API_URL}/datos/practicas/guardar_individual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            practica: nuevaPractica,
+            carpeta_ruta: carpetaPracticaGuardar
+          })
+        });
+        
+        if (guardarResponse.ok) {
+          const guardarData = await guardarResponse.json();
+          console.log('✅ Práctica guardada:', guardarData);
+          // Actualizar nuevaPractica con el nombre de archivo generado
+          nuevaPractica.archivo = guardarData.archivo;
+        } else {
+          console.error('❌ Error guardando práctica:', await guardarResponse.text());
+        }
+        
         const practicas = await getDatos('practicas');
         setPracticas([...practicas, nuevaPractica]); // Actualizar estado para forzar re-render
         
@@ -8891,7 +9032,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         
         // 🔥 MARCAR COMO PRÁCTICA (NO examen)
         setEsPractica(true);
-        setExamenActivo(true);
+        setExamenActivo(nuevaPractica); // 🔥 Guardar objeto completo con campo "archivo"
         
         setPreguntasExamen(data.preguntas || []);
         setRespuestasUsuario({});
@@ -15816,7 +15957,11 @@ Shortcuts:
 
             {(() => {
               // Usar el estado 'practicas' que ya se carga con getDatos
-              const practicasFiltradas = practicas.filter(p => (p.carpeta || '') === rutaPracticasActual);
+              // 🔥 Filtrar por cualquiera de los campos de carpeta
+              const practicasFiltradas = practicas.filter(p => {
+                const carpetaPractica = p.carpeta || p.carpeta_ruta || p.ruta || '';
+                return carpetaPractica === rutaPracticasActual;
+              });
               
               // Separar por completadas y sin completar
               const sinCompletar = practicasFiltradas.filter(p => !p.completada);
@@ -15895,15 +16040,15 @@ Shortcuts:
                                 {practica.tipo === 'documento' ? '📄' : '📁'}
                               </div>
                               <div className="practica-info">
-                                <h3>{practica.ruta.split('/').pop()}</h3>
+                                <h3>{practica.ruta ? practica.ruta.split('/').pop() : (practica.carpeta_nombre || practica.titulo || 'Práctica')}</h3>
                                 <p className="practica-fecha">
-                                  {new Date(practica.fecha).toLocaleDateString('es-ES', {
+                                  {practica.fecha ? new Date(practica.fecha).toLocaleDateString('es-ES', {
                                     day: 'numeric',
                                     month: 'long',
                                     year: 'numeric',
                                     hour: '2-digit',
                                     minute: '2-digit'
-                                  })}
+                                  }) : 'Fecha desconocida'}
                                 </p>
                               </div>
                             </div>
@@ -15914,15 +16059,15 @@ Shortcuts:
                               </div>
                             )}
 
-                            {practica.carpeta && (
+                            {(practica.carpeta || practica.carpeta_ruta) && (
                               <div className="practica-carpeta">
-                                📁 {practica.carpeta}
+                                📁 {practica.carpeta || practica.carpeta_ruta}
                               </div>
                             )}
                             
                             <div className="practica-stats">
                               <span className="stat-badge">
-                                📝 {practica.preguntas.length} preguntas
+                                📝 {practica.preguntas?.length || 0} preguntas
                               </span>
                               <span className="stat-badge pendiente">
                                 {practica.completada || practica.estado === 'completada' ? '✅ Completada' : '⏳ Pendiente'}
@@ -15939,6 +16084,12 @@ Shortcuts:
                                   setResultadoExamen(practica.resultado || null);
                                   setExamenActivo(practica); // Guardar la práctica activa
                                   setEsPractica(true);
+                                  
+                                  // 🔥 ESTABLECER CARPETA DE LA PRÁCTICA
+                                  setCarpetaExamen({
+                                    ruta: practica.carpeta_ruta || practica.carpeta || practica.ruta,
+                                    nombre: practica.carpeta_nombre || practica.carpeta || 'Práctica'
+                                  });
                                   
                                   // Cargar preguntas comprendidas de esta práctica
                                   if (practica.preguntasComprendidas) {
@@ -16058,6 +16209,14 @@ Shortcuts:
                                   setResultadoExamen(null);
                                   setFlashcardsVolteadas({});
                                   setExamenActivo(practicaActual); // Guardar la práctica activa
+                                  setEsPractica(true);
+                                  
+                                  // 🔥 ESTABLECER CARPETA DE LA PRÁCTICA
+                                  setCarpetaExamen({
+                                    ruta: practicaActual.carpeta_ruta || practicaActual.carpeta || practicaActual.ruta,
+                                    nombre: practicaActual.carpeta_nombre || practicaActual.carpeta || 'Práctica'
+                                  });
+                                  
                                   setModalExamenAbierto(true);
                                   
                                   setMensaje({
@@ -16108,7 +16267,7 @@ Shortcuts:
                             
                             <div className="practica-stats">
                               <span className="stat-badge">
-                                📝 {practica.preguntas.length} preguntas
+                                📝 {practica.preguntas?.length || 0} preguntas
                               </span>
                               <span className="stat-badge completada">
                                 ✅ Completada
@@ -20052,11 +20211,27 @@ Shortcuts:
           <div className="modal-overlay" onClick={cerrarExamen}>
             <div className="modal-examen" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
-                  <button onClick={() => setModalExamenAbierto(false)} className="btn-volver" style={{padding: '0.5rem 1rem'}}>
-                    ← Volver
-                  </button>
-                  <h2>📝 Examen - {carpetaExamen?.nombre}</h2>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                    <button onClick={cerrarExamen} className="btn-volver" style={{padding: '0.5rem 1rem'}}>
+                      ← Volver
+                    </button>
+                    <h2 style={{margin: 0}}>📝 Examen - {carpetaExamen?.nombre}</h2>
+                  </div>
+                  {carpetaExamen?.ruta && (
+                    <div style={{
+                      fontSize: '0.85rem', 
+                      color: '#94a3b8',
+                      paddingLeft: '5.5rem',
+                      fontFamily: 'monospace',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}>
+                      <span>📂</span>
+                      <span>{carpetaExamen.ruta}</span>
+                    </div>
+                  )}
                 </div>
                 <button onClick={cerrarExamen} className="btn-close">✕</button>
               </div>
