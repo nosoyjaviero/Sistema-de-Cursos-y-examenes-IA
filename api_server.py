@@ -1049,6 +1049,26 @@ async def obtener_imagen(ruta: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.delete("/api/imagen/{ruta:path}")
+async def eliminar_imagen(ruta: str):
+    """Elimina una imagen del servidor"""
+    try:
+        ruta_imagen = cursos_db.base_path / ruta
+        
+        if not ruta_imagen.exists():
+            # Si no existe, igual retornamos éxito (ya fue eliminada)
+            return {"success": True, "mensaje": "Imagen ya eliminada o no encontrada"}
+        
+        # Eliminar el archivo
+        ruta_imagen.unlink()
+        print(f"🗑️ Imagen eliminada: {ruta_imagen}")
+        
+        return {"success": True, "mensaje": "Imagen eliminada correctamente"}
+    except Exception as e:
+        print(f"❌ Error eliminando imagen: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/guardar_contexto_ejercicio")
 async def guardar_contexto_ejercicio(datos: dict):
     """Guarda el contenido de una nota como contexto TXT para generar ejercicios"""

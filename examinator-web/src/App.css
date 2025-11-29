@@ -8406,10 +8406,30 @@
 /* Estilos para controles de imagen en editor */
 .imagen-contenedor {
   position: relative;
-  display: block;
+  display: inline-block;
   margin: 1rem 0;
   cursor: grab;
   transition: all 0.2s ease;
+  max-width: 100%;
+}
+
+/* Texto envolvente - imagen a la izquierda */
+.imagen-contenedor[style*="float: left"],
+.imagen-contenedor[style*="float:left"] {
+  clear: left;
+}
+
+/* Texto envolvente - imagen a la derecha */
+.imagen-contenedor[style*="float: right"],
+.imagen-contenedor[style*="float:right"] {
+  clear: right;
+}
+
+/* Limpiar floats después de contenedores flotantes */
+.editor-html-simple::after {
+  content: "";
+  display: table;
+  clear: both;
 }
 
 .imagen-contenedor:active {
@@ -8573,6 +8593,47 @@
   opacity: 0.5;
   border: 2px dashed #646cff;
   background: rgba(100, 108, 255, 0.1);
+}
+
+/* Indicador visual de donde soltar la imagen */
+.indicador-drop-imagen {
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #646cff, transparent);
+  margin: 8px 0;
+  border-radius: 2px;
+  animation: pulsar-indicador 1s ease-in-out infinite;
+  position: relative;
+}
+
+.indicador-drop-imagen::before {
+  content: '📍';
+  position: absolute;
+  left: 50%;
+  top: -12px;
+  transform: translateX(-50%);
+  font-size: 16px;
+  animation: rebote-indicador 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulsar-indicador {
+  0%, 100% { opacity: 0.5; height: 4px; }
+  50% { opacity: 1; height: 6px; }
+}
+
+@keyframes rebote-indicador {
+  0% { top: -12px; }
+  100% { top: -8px; }
+}
+
+/* Texto informativo en controles de imagen */
+.control-info {
+  font-size: 0.7rem;
+  color: #888;
+  font-style: italic;
+  padding: 4px 8px;
+  background: rgba(100, 108, 255, 0.1);
+  border-radius: 4px;
+  text-align: center;
 }
 
 /* Editor acepta drop */

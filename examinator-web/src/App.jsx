@@ -1218,14 +1218,14 @@ function App() {
         e.stopPropagation();
         e.stopImmediatePropagation();
         
-        const notaIdStr = link.getAttribute('data-nota-id');
-        const notaId = parseInt(notaIdStr);
+        const notaId = link.getAttribute('data-nota-id');
         
         console.log('📝 Click en referencia a nota:', notaId);
         
         try {
           const notasActuales = await getDatos('notas');
-          const nota = notasActuales.find(n => n.id === notaId);
+          // Comparar como strings para soportar IDs tipo 'nota_123456'
+          const nota = notasActuales.find(n => String(n.id) === String(notaId));
           
           if (nota) {
             console.log('✅ Nota encontrada:', nota.titulo);
@@ -1280,10 +1280,14 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Actualizar contenido del editor cuando se abre una nota
+  // Actualizar contenido del editor cuando se abre una nota o cuando cambia el contenido
   useEffect(() => {
     if (editorRef.current && editorNotaAbierto) {
-      editorRef.current.innerHTML = contenidoNota;
+      // Solo actualizar si el contenido es diferente para evitar loops
+      if (editorRef.current.innerHTML !== contenidoNota) {
+        console.log('📝 Actualizando contenido del editor:', contenidoNota?.substring(0, 50) + '...');
+        editorRef.current.innerHTML = contenidoNota;
+      }
       // Asegurar dirección LTR
       editorRef.current.setAttribute('dir', 'ltr');
       editorRef.current.style.direction = 'ltr';
@@ -1400,27 +1404,11 @@ function App() {
           </div>
           <div class="control-separador"></div>
           <div class="control-seccion">
-            <div class="control-titulo">Alineación</div>
+            <div class="control-titulo">Alinear</div>
             <div class="control-grupo">
               <button class="control-btn" onclick="window.alinearImagen('izquierda')" title="Izquierda">◀</button>
               <button class="control-btn" onclick="window.alinearImagen('centro')" title="Centro">◆</button>
               <button class="control-btn" onclick="window.alinearImagen('derecha')" title="Derecha">▶</button>
-            </div>
-          </div>
-          <div class="control-separador"></div>
-          <div class="control-seccion">
-            <div class="control-titulo">Mover en texto</div>
-            <div class="control-grupo">
-              <button class="control-btn" onclick="window.moverImagenEnTexto('arriba')" title="Mover arriba">⬆️</button>
-              <button class="control-btn" onclick="window.moverImagenEnTexto('abajo')" title="Mover abajo">⬇️</button>
-            </div>
-          </div>
-          <div class="control-separador"></div>
-          <div class="control-seccion">
-            <div class="control-titulo">Capa</div>
-            <div class="control-grupo">
-              <button class="control-btn" onclick="window.cambiarZIndex('delante')">↑ Frente</button>
-              <button class="control-btn" onclick="window.cambiarZIndex('detras')">↓ Atrás</button>
             </div>
           </div>
           <div class="control-separador"></div>
@@ -1538,24 +1526,71 @@ function App() {
         if (!window.imagenSeleccionada) return;
         const contenedor = window.imagenSeleccionada.parentElement;
         
-        // Reset estilos
-        contenedor.style.float = 'none';
-        contenedor.style.marginLeft = '';
-        contenedor.style.marginRight = '';
-        contenedor.style.textAlign = '';
+        // Crear wrapper si no existe para controlar alineación
+        let wrapper = contenedor.parentElement;
+        if (!wrapper.classList.contains('imagen-wrapper')) {
+          wrapper = document.createElement('div');
+          wrapper.className = 'imagen-wrapper';
+          wrapper.style.display = 'block';
+          wrapper.style.width = '100%';
+          wrapper.style.margin = '0.5rem 0';
+          contenedor.parentNode.insertBefore(wrapper, contenedor);
+          wrapper.appendChild(contenedor);
+        }
+        
+        // Reset
+        wrapper.style.textAlign = '';
+        contenedor.style.display = 'inline-block';
         
         switch(alineacion) {
           case 'izquierda':
-            contenedor.style.marginRight = 'auto';
-            contenedor.style.marginLeft = '0';
+            wrapper.style.textAlign = 'left';
             break;
           case 'centro':
-            contenedor.style.marginLeft = 'auto';
-            contenedor.style.marginRight = 'auto';
+            wrapper.style.textAlign = 'center';
             break;
           case 'derecha':
-            contenedor.style.marginLeft = 'auto';
-            contenedor.style.marginRight = '0';
+            wrapper.style.textAlign = 'right';
+            break;
+        }
+      };
+      
+      // Función para texto envolvente (como en Word)
+      window.textoEnvolvente = function(tipo) {
+        if (!window.imagenSeleccionada) return;
+        const contenedor = window.imagenSeleccionada.parentElement;
+        
+        // Reset estilos de flujo
+        contenedor.style.float = 'none';
+        contenedor.style.display = 'block';
+        contenedor.style.clear = 'none';
+        contenedor.style.marginTop = '';
+        contenedor.style.marginBottom = '';
+        
+        switch(tipo) {
+          case 'izquierda':
+            // Imagen a la izquierda, texto fluye a la derecha
+            contenedor.style.float = 'left';
+            contenedor.style.marginRight = '15px';
+            contenedor.style.marginBottom = '10px';
+            break;
+          case 'derecha':
+            // Imagen a la derecha, texto fluye a la izquierda
+            contenedor.style.float = 'right';
+            contenedor.style.marginLeft = '15px';
+            contenedor.style.marginBottom = '10px';
+            break;
+          case 'ninguno':
+            // Imagen en línea con el texto (bloque)
+            contenedor.style.display = 'block';
+            contenedor.style.clear = 'both';
+            contenedor.style.marginTop = '10px';
+            contenedor.style.marginBottom = '10px';
+            break;
+          case 'inline':
+            // Imagen en línea con el texto (como carácter)
+            contenedor.style.display = 'inline-block';
+            contenedor.style.verticalAlign = 'middle';
             break;
         }
       };
@@ -1647,11 +1682,174 @@ function App() {
       };
       
       
-      window.eliminarImagen = function() {
+      window.eliminarImagen = async function() {
         if (!window.imagenSeleccionada || !confirm('¿Eliminar esta imagen?')) return;
-        window.imagenSeleccionada.parentElement.remove();
+        
+        const img = window.imagenSeleccionada;
+        const src = img.src;
+        
+        // Intentar eliminar del servidor si es una imagen subida
+        if (src.includes('/api/imagen/')) {
+          try {
+            // Extraer la ruta de la imagen
+            const rutaMatch = src.match(/\/api\/imagen\/(.+)$/);
+            if (rutaMatch) {
+              const rutaImagen = rutaMatch[1];
+              const apiUrl = src.substring(0, src.indexOf('/api/imagen'));
+              
+              const response = await fetch(`${apiUrl}/api/imagen/${rutaImagen}`, {
+                method: 'DELETE'
+              });
+              
+              if (response.ok) {
+                console.log('🗑️ Imagen eliminada del servidor');
+              } else {
+                console.warn('⚠️ No se pudo eliminar imagen del servidor');
+              }
+            }
+          } catch (error) {
+            console.error('Error eliminando imagen del servidor:', error);
+          }
+        }
+        
+        // Eliminar del DOM (incluyendo wrapper si existe)
+        const contenedor = img.parentElement;
+        const wrapper = contenedor.parentElement;
+        if (wrapper && wrapper.classList.contains('imagen-wrapper')) {
+          wrapper.remove();
+        } else {
+          contenedor.remove();
+        }
+        
         window.imagenSeleccionada = null;
       };
+      
+      // ===== SISTEMA DE DRAG & DROP PARA IMÁGENES =====
+      // Configurar drag & drop en el editor
+      const editor = document.querySelector('.editor-html-simple');
+      if (editor) {
+        // Indicador visual de dónde se soltará la imagen
+        let indicadorDrop = null;
+        let imagenArrastrada = null;
+        
+        const crearIndicadorDrop = () => {
+          if (!indicadorDrop) {
+            indicadorDrop = document.createElement('div');
+            indicadorDrop.className = 'indicador-drop-imagen';
+            indicadorDrop.innerHTML = '📍 Soltar imagen aquí';
+          }
+          return indicadorDrop;
+        };
+        
+        // Encontrar el elemento más cercano donde soltar
+        const encontrarPuntoInsercion = (y) => {
+          const elementos = editor.querySelectorAll('p, div:not(.imagen-contenedor):not(.controles-imagen):not(.resize-handle):not(.indicador-drop-imagen), h1, h2, h3, h4, h5, h6, ul, ol, blockquote, .imagen-contenedor');
+          let mejorElemento = null;
+          let mejorDistancia = Infinity;
+          let insertarAntes = true;
+          
+          elementos.forEach(el => {
+            if (el === indicadorDrop || el === imagenArrastrada?.parentElement) return;
+            
+            const rect = el.getBoundingClientRect();
+            const centroY = rect.top + rect.height / 2;
+            const distancia = Math.abs(y - centroY);
+            
+            if (distancia < mejorDistancia) {
+              mejorDistancia = distancia;
+              mejorElemento = el;
+              insertarAntes = y < centroY;
+            }
+          });
+          
+          return { elemento: mejorElemento, antes: insertarAntes };
+        };
+        
+        // Manejar dragstart en contenedores de imagen
+        editor.addEventListener('dragstart', (e) => {
+          const contenedor = e.target.closest('.imagen-contenedor');
+          if (contenedor) {
+            imagenArrastrada = contenedor.querySelector('img');
+            contenedor.classList.add('arrastrando');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'imagen');
+            
+            // Ocultar controles mientras se arrastra
+            document.querySelectorAll('.controles-imagen').forEach(c => c.style.display = 'none');
+            document.querySelectorAll('.resize-handle').forEach(h => h.style.display = 'none');
+          }
+        });
+        
+        editor.addEventListener('dragover', (e) => {
+          if (!imagenArrastrada) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          
+          const indicador = crearIndicadorDrop();
+          const { elemento, antes } = encontrarPuntoInsercion(e.clientY);
+          
+          if (elemento && elemento !== indicador) {
+            if (antes) {
+              elemento.parentNode.insertBefore(indicador, elemento);
+            } else {
+              if (elemento.nextSibling) {
+                elemento.parentNode.insertBefore(indicador, elemento.nextSibling);
+              } else {
+                elemento.parentNode.appendChild(indicador);
+              }
+            }
+          }
+        });
+        
+        editor.addEventListener('dragleave', (e) => {
+          // Solo remover si salimos del editor completamente
+          if (!editor.contains(e.relatedTarget)) {
+            if (indicadorDrop && indicadorDrop.parentNode) {
+              indicadorDrop.remove();
+            }
+          }
+        });
+        
+        editor.addEventListener('drop', (e) => {
+          e.preventDefault();
+          
+          if (imagenArrastrada) {
+            const contenedor = imagenArrastrada.parentElement;
+            
+            if (indicadorDrop && indicadorDrop.parentNode) {
+              // Insertar el contenedor donde está el indicador
+              indicadorDrop.parentNode.insertBefore(contenedor, indicadorDrop);
+              indicadorDrop.remove();
+            }
+            
+            contenedor.classList.remove('arrastrando');
+            
+            // Mostrar controles de nuevo
+            setTimeout(() => {
+              window.mostrarControlesImagen(imagenArrastrada);
+            }, 100);
+            
+            imagenArrastrada = null;
+          }
+        });
+        
+        editor.addEventListener('dragend', (e) => {
+          const contenedor = e.target.closest('.imagen-contenedor');
+          if (contenedor) {
+            contenedor.classList.remove('arrastrando');
+          }
+          
+          if (indicadorDrop && indicadorDrop.parentNode) {
+            indicadorDrop.remove();
+          }
+          
+          // Restaurar visibilidad de controles
+          document.querySelectorAll('.controles-imagen').forEach(c => c.style.display = '');
+          document.querySelectorAll('.resize-handle').forEach(h => h.style.display = '');
+          
+          imagenArrastrada = null;
+        });
+      }
       
       // Click fuera para deseleccionar
       const clickHandler = (e) => {
@@ -1671,7 +1869,8 @@ function App() {
         document.removeEventListener('mouseup', mouseUpHandler);
       };
     }
-  }, [editorNotaAbierto, modoSoloLectura])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorNotaAbierto, modoSoloLectura, contenidoNota, notaActual?.id])
 
   // Cargar prompt del sistema al inicio (solo una vez)
   useEffect(() => {
@@ -3203,37 +3402,6 @@ function App() {
   };
   
   const avanzarFase = async () => {
-    // 🔥 VERIFICAR si hay notas pendientes de guardar
-    if ((faseActual === 'contenido' || faseActual === 'notas')) {
-      const hayNotaEditorPendiente = editorNotaContenido.trim() || editorNotaTitulo.trim();
-      const hayNotasSesionPendientes = notasSesionActual.some(n => 
-        !n.guardada && (n.contenido?.trim() || n.titulo?.trim())
-      );
-      
-      if (hayNotaEditorPendiente || hayNotasSesionPendientes) {
-        const cantidadPendientes = (hayNotaEditorPendiente ? 1 : 0) + 
-          notasSesionActual.filter(n => !n.guardada && (n.contenido?.trim() || n.titulo?.trim())).length;
-        
-        const confirmacion = window.confirm(
-          `⚠️ Tienes ${cantidadPendientes} nota(s) sin guardar.\n\n` +
-          `¿Deseas guardarlas antes de continuar?\n\n` +
-          `• "Aceptar" = Guardar notas y continuar\n` +
-          `• "Cancelar" = Descartar notas y continuar`
-        );
-        
-        if (confirmacion) {
-          await guardarTodasNotasPendientes();
-        } else {
-          // Limpiar sin guardar
-          setEditorNotaTitulo('');
-          setEditorNotaContenido('');
-          setEditorNotaTags('');
-          setNotasSesionActual([]);
-          setNotaSeleccionadaId(null);
-        }
-      }
-    }
-    
     const siguienteIndice = indiceFaseActual + 1;
     
     if (siguienteIndice < fasesSesion.length) {
@@ -10660,8 +10828,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const target = e.target;
       if (target.tagName === 'A' && target.hasAttribute('data-nota-id')) {
         e.preventDefault();
-        const notaId = parseInt(target.getAttribute('data-nota-id'));
-        const nota = (notasGuardadas || []).find(n => n.id === notaId);
+        const notaId = target.getAttribute('data-nota-id');
+        // Comparar como strings para soportar IDs tipo 'nota_123456'
+        const nota = (notasGuardadas || []).find(n => String(n.id) === String(notaId));
         if (nota) {
           abrirNota(nota);
         } else {
@@ -10894,7 +11063,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       setContenidoNota(editorRef.current.innerHTML);
     } else if (tipoHipervinculo === 'nota' && notaReferenciaId) {
       // Insertar referencia a nota con atributo especial
-      const notaRef = (notasGuardadas || []).find(n => n.id === notaReferenciaId);
+      const notaRef = (notasGuardadas || []).find(n => String(n.id) === String(notaReferenciaId));
       if (notaRef) {
         const link = `<a href="#nota-${notaReferenciaId}" data-nota-id="${notaReferenciaId}" style="color: #22c55e; text-decoration: underline; padding: 0; margin: 0; cursor: pointer;" title="Referencia a: ${notaRef.titulo}">${textoSeleccionado} 📝</a>`;
         document.execCommand('insertHTML', false, link);
@@ -15012,387 +15181,62 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </button>
                         </div>
                         
-                        <div className="notas-editor-notion-layout">
-                          {/* Sidebar izquierdo - Selector de carpeta y opciones */}
-                          <div className="editor-sidebar-izq">
-                            <div className="sidebar-section">
-                              <h4>📁 Destino</h4>
-                              <div 
-                                className="carpeta-selector"
-                                onClick={() => {
-                                  const carpeta = prompt('📁 Carpeta para guardar:\n(Ejemplo: Biologia/Unidad1)', rutaNotasActual || 'notas');
-                                  if (carpeta !== null) {
-                                    setRutaNotasActual(carpeta);
-                                    setMensaje({
-                                      tipo: 'info',
-                                      texto: `📁 Carpeta: ${carpeta || 'notas'}`
-                                    });
-                                  }
-                                }}
-                              >
-                                <span className="carpeta-icon">📂</span>
-                                <span className="carpeta-path">{rutaNotasActual || 'notas'}</span>
-                                <span className="carpeta-edit">✏️</span>
-                              </div>
-                            </div>
-                            
-                            <div className="sidebar-section">
-                              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                                <h4>📄 Notas</h4>
-                                <button 
-                                  className="btn-nueva-nota-mini"
-                                  onClick={crearNuevaNotaSesion}
-                                  style={{
-                                    background: '#4CAF50',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '50%',
-                                    width: '28px',
-                                    height: '28px',
-                                    cursor: 'pointer',
-                                    fontSize: '1.2rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                  }}
-                                  title="Nueva nota"
-                                >
-                                  +
-                                </button>
-                              </div>
-                              <div className="lista-notas-sidebar" style={{maxHeight: '300px', overflowY: 'auto'}}>
-                                {/* Notas de sesión actual (no guardadas) */}
-                                {notasSesionActual.map(nota => (
-                                  <div 
-                                    key={nota.id} 
-                                    className={`nota-item-sidebar ${notaSeleccionadaId === nota.id ? 'activa' : ''}`} 
-                                    style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      padding: '0.5rem',
-                                      marginBottom: '0.3rem',
-                                      background: notaSeleccionadaId === nota.id ? 'rgba(59, 130, 246, 0.3)' : 'rgba(74, 222, 128, 0.15)',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      border: notaSeleccionadaId === nota.id 
-                                        ? '1px solid rgba(59, 130, 246, 0.5)' 
-                                        : '1px solid rgba(74, 222, 128, 0.3)',
-                                      transition: 'all 0.2s'
-                                    }}
-                                    onClick={() => seleccionarNotaSesion(nota)}
-                                  >
-                                    <span style={{
-                                      flex: 1, 
-                                      fontSize: '0.85rem', 
-                                      color: '#e2e8f0',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.3rem'
-                                    }}>
-                                      <span style={{fontSize: '0.7rem'}}>🆕</span>
-                                      {nota.titulo || 'Sin título'}
-                                    </span>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        eliminarNotaSesion(nota.id);
-                                      }}
-                                      style={{
-                                        background: 'rgba(239, 68, 68, 0.9)',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '0.2rem 0.5rem',
-                                        cursor: 'pointer',
-                                        fontSize: '0.75rem'
-                                      }}
-                                    >
-                                      🗑️
-                                    </button>
-                                  </div>
-                                ))}
-                                
-                                {/* Separador si hay notas de sesión y guardadas */}
-                                {notasSesionActual.length > 0 && (notasGuardadas || []).filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual).length > 0 && (
-                                  <div style={{
-                                    borderTop: '1px dashed rgba(148, 163, 184, 0.3)',
-                                    margin: '0.5rem 0',
-                                    paddingTop: '0.5rem'
-                                  }}>
-                                    <span style={{fontSize: '0.7rem', color: '#94a3b8'}}>📂 Guardadas</span>
-                                  </div>
-                                )}
-                                
-                                {/* Notas guardadas */}
-                                {(notasGuardadas || [])
-                                  .filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual)
-                                  .map((nota, index) => (
-                                    <div key={`guardada-${nota.id}-${index}`} className="nota-item-sidebar" style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      padding: '0.5rem',
-                                      marginBottom: '0.3rem',
-                                      background: 'rgba(51, 65, 85, 0.5)',
-                                      borderRadius: '4px',
-                                      cursor: 'pointer',
-                                      border: '1px solid rgba(148, 163, 184, 0.2)',
-                                      transition: 'all 0.2s'
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      e.currentTarget.style.background = 'rgba(71, 85, 105, 0.6)';
-                                      e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.4)';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      e.currentTarget.style.background = 'rgba(51, 65, 85, 0.5)';
-                                      e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                                    }}>
-                                      <span 
-                                        onClick={() => {
-                                          setNotaSeleccionadaId(null);
-                                          setEditorNotaTitulo(nota.titulo);
-                                          setEditorNotaContenido(nota.contenido);
-                                          setEditorNotaTags(nota.tags?.join(', ') || '');
-                                        }}
-                                        style={{flex: 1, fontSize: '0.85rem', color: '#e2e8f0'}}
-                                      >
-                                        {nota.titulo || 'Sin título'}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (window.confirm(`¿Eliminar "${nota.titulo}"?`)) {
-                                            eliminarNota(nota.id);
-                                          }
-                                        }}
-                                        style={{
-                                          background: 'rgba(239, 68, 68, 0.9)',
-                                          color: 'white',
-                                          border: 'none',
-                                          borderRadius: '4px',
-                                          padding: '0.2rem 0.5rem',
-                                          cursor: 'pointer',
-                                          fontSize: '0.75rem'
-                                        }}
-                                      >
-                                        🗑️
-                                      </button>
-                                    </div>
-                                  ))}
-                                {(notasSesionActual.length === 0 && (notasGuardadas || []).filter(nota => !rutaNotasActual || nota.carpeta === rutaNotasActual).length === 0) && (
-                                  <p style={{fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center'}}>
-                                    Haz clic en + para crear una nota
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            
-                            <div className="sidebar-actions sidebar-actions-fixed">
-                              <button 
-                                className="btn-sidebar-action secondary"
-                                onClick={() => {
-                                  setEditorNotaTitulo('');
-                                  setEditorNotaContenido('');
-                                  setEditorNotaTags('');
-                                }}
-                              >
-                                🗑️ Limpiar
-                              </button>
-                              
-                              {/* 🔥 BOTÓN PRINCIPAL DE GUARDAR NOTA EN LA CARPETA ACTUAL */}
-                              <button 
-                                className="btn-sidebar-action save-main"
-                                onClick={guardarNotaActualEnCarpeta}
-                                disabled={!editorNotaContenido.trim() && !editorNotaTitulo.trim()}
-                                style={{
-                                  background: (editorNotaContenido.trim() || editorNotaTitulo.trim()) 
-                                    ? 'linear-gradient(135deg, #10b981, #059669)' 
-                                    : 'rgba(100, 116, 139, 0.5)',
-                                  color: 'white',
-                                  fontWeight: 'bold',
-                                  border: 'none',
-                                  padding: '0.75rem 1rem',
-                                  borderRadius: '8px',
-                                  cursor: (editorNotaContenido.trim() || editorNotaTitulo.trim()) ? 'pointer' : 'not-allowed',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '0.5rem',
-                                  width: '100%',
-                                  marginBottom: '0.5rem'
-                                }}
-                              >
-                                💾 Guardar en {rutaNotasActual || rutaCalentamientoActual || 'raíz'}
-                              </button>
-                              
-                              <button 
-                                className="btn-sidebar-action primary"
-                                onClick={() => {
-                                  // Si no hay título, generar uno automático
-                                  if (!editorNotaTitulo.trim()) {
-                                    const tituloAuto = `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`;
-                                    setEditorNotaTitulo(tituloAuto);
-                                  }
-                                  setTipoGuardado('txt');
-                                  setRutaGuardadoActual(rutaNotasActual || rutaCalentamientoActual || '');
-                                  cargarCarpetasGuardado(rutaNotasActual || rutaCalentamientoActual || '');
-                                  setModalGuardarContenido(true);
-                                }}
-                              >
-                                📄 Guardar TXT
-                              </button>
-                              
-                              <button 
-                                className="btn-sidebar-action primary"
-                                onClick={() => {
-                                  // Si no hay título, generar uno automático
-                                  if (!editorNotaTitulo.trim()) {
-                                    const tituloAuto = `nota_${new Date().toISOString().slice(0,19).replace(/[T:]/g, '_')}`;
-                                    setEditorNotaTitulo(tituloAuto);
-                                  }
-                                  setTipoGuardado('nota');
-                                  setRutaGuardadoActual(rutaNotasActual || rutaCalentamientoActual || '');
-                                  cargarCarpetasGuardado(rutaNotasActual || rutaCalentamientoActual || '');
-                                  setModalGuardarContenido(true);
-                                }}
-                              >
-                                📝 Guardar Nota (elegir carpeta)
-                              </button>
-                              
-                              <button 
-                                className="btn-sidebar-action generar-ejercicio"
-                                onClick={async () => {
-                                  if (!editorNotaContenido.trim()) {
-                                    setMensaje({
-                                      tipo: 'error',
-                                      texto: '⚠️ No hay contenido para generar ejercicios'
-                                    });
-                                    return;
-                                  }
-                                  
-                                  // Establecer la carpeta de trabajo para la práctica
-                                  const carpetaDestino = cursoActual?.carpeta_trabajo || rutaContenidoActual || rutaNotasActual || 'contexto_ejercicios';
-                                  setCarpetaPractica(carpetaDestino);
-                                  setTipoFuentePractica('carpeta');
-                                  
-                                  // Abrir modal inmediatamente
-                                  setModalPracticaAbierto(true);
-                                  
-                                  // Intentar guardar contexto en segundo plano
-                                  try {
-                                    const nombreArchivo = editorNotaTitulo.trim() || `contexto_${new Date().toISOString().slice(0,10)}`;
-                                    
-                                    const response = await fetch(`${API_URL}/api/guardar_contexto_ejercicio`, {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        contenido: editorNotaContenido,
-                                        titulo: nombreArchivo,
-                                        carpeta: carpetaDestino,
-                                        tags: editorNotaTags
-                                      })
-                                    });
-                                    
-                                    if (response.ok) {
-                                      const data = await response.json();
-                                      console.log('✅ Contexto guardado:', data.ruta);
-                                    }
-                                  } catch (error) {
-                                    console.error('⚠️ No se pudo guardar el contexto:', error);
-                                  }
-                                }}
-                                disabled={!editorNotaContenido.trim()}
-                              >
-                                🎯 Generar Ejercicio
-                              </button>
-                            </div>
+                        {/* Editor simplificado - Solo editor y preview */}
+                        <div className="editor-area-principal" style={{width: '100%'}}>
+                          {/* Selector de tipo de contenido */}
+                          <div style={{marginBottom: '1rem', padding: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px'}}>
+                            <label style={{fontSize: '0.9rem', fontWeight: '600', color: '#cbd5e1', marginRight: '1rem'}}>📝 Tipo de contenido:</label>
+                            <select
+                              value={tipoNotaEditor}
+                              onChange={(e) => setTipoNotaEditor(e.target.value)}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                background: 'rgba(51, 65, 85, 0.6)',
+                                border: '1px solid rgba(148, 163, 184, 0.3)',
+                                borderRadius: '6px',
+                                color: '#e2e8f0',
+                                fontSize: '0.9rem',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="normal">📄 Normal (Markdown)</option>
+                              <option value="linguistica">🗣️ Lingüística/Fonética (IPA)</option>
+                            </select>
                           </div>
 
-                          {/* Área principal - Editor + Preview */}
-                          <div className="editor-area-principal">
-                            {/* Header */}
-                            <div className="editor-header-compact">
-                              <input 
-                                type="text"
-                                className="nota-titulo-compact"
-                                placeholder="✏️ Título de la nota..."
-                                value={editorNotaTitulo}
-                                onChange={(e) => {
-                                  setEditorNotaTitulo(e.target.value);
-                                  if (notaSeleccionadaId) {
-                                    actualizarNotaSesion(notaSeleccionadaId, 'titulo', e.target.value);
-                                  }
-                                }}
-                              />
-                              <input 
-                                type="text"
-                                className="nota-tags-compact"
-                                placeholder="🏷️ Tags (separados por coma)"
-                                value={editorNotaTags}
-                                onChange={(e) => {
-                                  setEditorNotaTags(e.target.value);
-                                  if (notaSeleccionadaId) {
-                                    actualizarNotaSesion(notaSeleccionadaId, 'tags', e.target.value);
-                                  }
-                                }}
-                              />
-                            </div>
-
-                            {/* Selector de tipo de contenido */}
-                            <div style={{marginBottom: '1rem', padding: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px'}}>
-                              <label style={{fontSize: '0.9rem', fontWeight: '600', color: '#cbd5e1', marginRight: '1rem'}}>📝 Tipo de contenido:</label>
-                              <select
-                                value={tipoNotaEditor}
-                                onChange={(e) => setTipoNotaEditor(e.target.value)}
-                                style={{
-                                  padding: '0.5rem 1rem',
-                                  background: 'rgba(51, 65, 85, 0.6)',
-                                  border: '1px solid rgba(148, 163, 184, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#e2e8f0',
-                                  fontSize: '0.9rem',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <option value="normal">📄 Normal (Markdown)</option>
-                                <option value="linguistica">🗣️ Lingüística/Fonética (IPA)</option>
-                              </select>
-                            </div>
-
-                            {/* Vista dividida: Editor | Preview */}
-                            <div className="editor-split-view">
-                              {/* Editor de texto */}
-                              <div className="editor-panel" style={{position: 'relative'}}>
-                                <div className="panel-label">✍️ Editor {tipoNotaEditor === 'linguistica' ? '(IPA/Fonética)' : '(Markdown)'}</div>
-                                
-                                {tipoNotaEditor === 'linguistica' ? (
-                                  /* Editor de Lingüística con vista previa integrada */
-                                  <div style={{marginTop: '1rem'}}>
-                                    <div style={{
-                                      background: 'rgba(236, 72, 153, 0.05)',
-                                      borderRadius: '10px',
-                                      padding: '1rem',
-                                      border: '1px solid rgba(236, 72, 153, 0.2)',
-                                      marginBottom: '1rem'
-                                    }}>
-                                      <LinguisticsToolbar
-                                        onInsertSymbol={(symbol) => {
-                                          setEditorNotaContenido(editorNotaContenido + symbol);
-                                        }}
-                                      />
-                                    </div>
-                                    <LinguisticsCanvas
-                                      value={editorNotaContenido}
-                                      onChange={(texto) => setEditorNotaContenido(texto)}
-                                      placeholder="Escribe transcripciones IPA: /ˈwɔːtə/, símbolos de stress: ˈhello ↗, etc..."
+                          {/* Vista dividida: Editor | Preview */}
+                          <div className="editor-split-view">
+                            {/* Editor de texto */}
+                            <div className="editor-panel" style={{position: 'relative'}}>
+                              <div className="panel-label">✍️ Editor {tipoNotaEditor === 'linguistica' ? '(IPA/Fonética)' : '(Markdown)'}</div>
+                              
+                              {tipoNotaEditor === 'linguistica' ? (
+                                /* Editor de Lingüística con vista previa integrada */
+                                <div style={{marginTop: '1rem'}}>
+                                  <div style={{
+                                    background: 'rgba(236, 72, 153, 0.05)',
+                                    borderRadius: '10px',
+                                    padding: '1rem',
+                                    border: '1px solid rgba(236, 72, 153, 0.2)',
+                                    marginBottom: '1rem'
+                                  }}>
+                                    <LinguisticsToolbar
+                                      onInsertSymbol={(symbol) => {
+                                        setEditorNotaContenido(editorNotaContenido + symbol);
+                                      }}
                                     />
                                   </div>
-                                ) : (
-                                  /* Textarea normal para Markdown */
-                                  <textarea
-                                    className="editor-textarea-notion"
-                                    placeholder="Escribe aquí... Presiona / para abrir menú de bloques
+                                  <LinguisticsCanvas
+                                    value={editorNotaContenido}
+                                    onChange={(texto) => setEditorNotaContenido(texto)}
+                                    placeholder="Escribe transcripciones IPA: /ˈwɔːtə/, símbolos de stress: ˈhello ↗, etc..."
+                                  />
+                                </div>
+                              ) : (
+                                /* Textarea normal para Markdown */
+                                <textarea
+                                  className="editor-textarea-notion"
+                                  placeholder="Escribe aquí... Presiona / para abrir menú de bloques
 
 Shortcuts:
 • # Título grande
@@ -15405,115 +15249,114 @@ Shortcuts:
 • • lista
 • > cita
 • --- divisor"
-                                    value={editorNotaContenido}
-                                    onChange={(e) => {
-                                      setEditorNotaContenido(e.target.value);
-                                      if (notaSeleccionadaId) {
-                                        actualizarNotaSesion(notaSeleccionadaId, 'contenido', e.target.value);
+                                  value={editorNotaContenido}
+                                  onChange={(e) => {
+                                    setEditorNotaContenido(e.target.value);
+                                    if (notaSeleccionadaId) {
+                                      actualizarNotaSesion(notaSeleccionadaId, 'contenido', e.target.value);
+                                    }
+                                    
+                                    const value = e.target.value;
+                                    const cursorPos = e.target.selectionStart;
+                                    const lastChar = value[cursorPos - 1];
+                                    
+                                    if (lastChar === '/' && (cursorPos === 1 || value[cursorPos - 2] === '\n' || value[cursorPos - 2] === ' ')) {
+                                      const wrapper = e.target.closest('.editor-panel');
+                                      if (wrapper) {
+                                        const wrapperRect = wrapper.getBoundingClientRect();
+                                        const rect = e.target.getBoundingClientRect();
+                                        setPosicionMenuComandos({
+                                          top: rect.top - wrapperRect.top + 60,
+                                          left: rect.left - wrapperRect.left + 40
+                                        });
+                                        setMenuComandosAbierto(true);
+                                        setComandoSeleccionado(0);
+                                        setCursorPosition(cursorPos);
                                       }
-                                      
-                                      const value = e.target.value;
-                                      const cursorPos = e.target.selectionStart;
-                                      const lastChar = value[cursorPos - 1];
-                                      
-                                      if (lastChar === '/' && (cursorPos === 1 || value[cursorPos - 2] === '\n' || value[cursorPos - 2] === ' ')) {
-                                        const wrapper = e.target.closest('.editor-panel');
-                                        if (wrapper) {
-                                          const wrapperRect = wrapper.getBoundingClientRect();
-                                          const rect = e.target.getBoundingClientRect();
-                                          setPosicionMenuComandos({
-                                            top: rect.top - wrapperRect.top + 60,
-                                            left: rect.left - wrapperRect.left + 40
-                                          });
-                                          setMenuComandosAbierto(true);
-                                          setComandoSeleccionado(0);
-                                          setCursorPosition(cursorPos);
-                                        }
-                                      } else if (menuComandosAbierto && lastChar !== '/') {
+                                    } else if (menuComandosAbierto && lastChar !== '/') {
+                                      setMenuComandosAbierto(false);
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (menuComandosAbierto) {
+                                      if (e.key === 'ArrowDown') {
+                                        e.preventDefault();
+                                        setComandoSeleccionado(prev => prev < comandosDisponibles.length - 1 ? prev + 1 : 0);
+                                      } else if (e.key === 'ArrowUp') {
+                                        e.preventDefault();
+                                        setComandoSeleccionado(prev => prev > 0 ? prev - 1 : comandosDisponibles.length - 1);
+                                      } else if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        insertarBloque(comandosDisponibles[comandoSeleccionado]);
+                                      } else if (e.key === 'Escape') {
+                                        e.preventDefault();
                                         setMenuComandosAbierto(false);
                                       }
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (menuComandosAbierto) {
-                                        if (e.key === 'ArrowDown') {
-                                          e.preventDefault();
-                                          setComandoSeleccionado(prev => prev < comandosDisponibles.length - 1 ? prev + 1 : 0);
-                                        } else if (e.key === 'ArrowUp') {
-                                          e.preventDefault();
-                                          setComandoSeleccionado(prev => prev > 0 ? prev - 1 : comandosDisponibles.length - 1);
-                                        } else if (e.key === 'Enter') {
-                                          e.preventDefault();
-                                          insertarBloque(comandosDisponibles[comandoSeleccionado]);
-                                        } else if (e.key === 'Escape') {
-                                          e.preventDefault();
-                                          setMenuComandosAbierto(false);
-                                        }
-                                        return;
+                                      return;
+                                    }
+                                    
+                                    if (e.ctrlKey || e.metaKey) {
+                                      if (e.key === 's') {
+                                        e.preventDefault();
+                                        if (editorNotaTitulo.trim()) guardarNotaRapida();
                                       }
-                                      
-                                      if (e.ctrlKey || e.metaKey) {
-                                        if (e.key === 's') {
-                                          e.preventDefault();
-                                          if (editorNotaTitulo.trim()) guardarNotaRapida();
-                                        }
-                                      }
-                                    }}
-                                  />
-                                )}
-                                
-                                {/* Menú de comandos */}
-                                {menuComandosAbierto && (
-                                  <div 
-                                    className="menu-comandos-notion"
-                                    style={{
-                                      position: 'absolute',
-                                      top: `${posicionMenuComandos.top}px`,
-                                      left: `${posicionMenuComandos.left}px`,
-                                      zIndex: 10000
-                                    }}
-                                  >
-                                    <div className="menu-comandos-header">
-                                      <span className="menu-titulo">🎯 Bloques</span>
-                                      <button onClick={() => setMenuComandosAbierto(false)} className="btn-cerrar-menu">✕</button>
-                                    </div>
-                                    <div className="menu-comandos-lista">
-                                      {comandosDisponibles.map((comando, index) => (
-                                        <div
-                                          key={comando.id}
-                                          className={`comando-item ${index === comandoSeleccionado ? 'seleccionado' : ''}`}
-                                          onClick={() => insertarBloque(comando)}
-                                          onMouseEnter={() => setComandoSeleccionado(index)}
-                                        >
-                                          <div className="comando-icono">{comando.icono}</div>
-                                          <div className="comando-info">
-                                            <div className="comando-nombre">{comando.nombre}</div>
-                                            <div className="comando-descripcion">{comando.descripcion}</div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Vista previa renderizada */}
-                              <div className="preview-panel">
-                                <div className="panel-label">👁️ Vista Previa (Estilo Notion)</div>
-                                <div 
-                                  className="preview-content-notion"
-                                  dangerouslySetInnerHTML={{ 
-                                    __html: renderizarContenidoNotion(editorNotaContenido) || '<p class="placeholder-preview">La vista previa aparecerá aquí...</p>'
+                                    }
                                   }}
                                 />
+                              )}
+                              
+                              {/* Menú de comandos */}
+                            {menuComandosAbierto && (
+                              <div 
+                                className="menu-comandos-notion"
+                                style={{
+                                  position: 'absolute',
+                                  top: `${posicionMenuComandos.top}px`,
+                                  left: `${posicionMenuComandos.left}px`,
+                                  zIndex: 10000
+                                }}
+                              >
+                                <div className="menu-comandos-header">
+                                  <span className="menu-titulo">🎯 Bloques</span>
+                                  <button onClick={() => setMenuComandosAbierto(false)} className="btn-cerrar-menu">✕</button>
+                                </div>
+                                <div className="menu-comandos-lista">
+                                  {comandosDisponibles.map((comando, index) => (
+                                    <div
+                                      key={comando.id}
+                                      className={`comando-item ${index === comandoSeleccionado ? 'seleccionado' : ''}`}
+                                      onClick={() => insertarBloque(comando)}
+                                      onMouseEnter={() => setComandoSeleccionado(index)}
+                                    >
+                                      <div className="comando-icono">{comando.icono}</div>
+                                      <div className="comando-info">
+                                        <div className="comando-nombre">{comando.nombre}</div>
+                                        <div className="comando-descripcion">{comando.descripcion}</div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
+                            )}
+                          </div>
+
+                          {/* Vista previa renderizada */}
+                          <div className="preview-panel">
+                            <div className="panel-label">👁️ Vista Previa (Estilo Notion)</div>
+                            <div 
+                              className="preview-content-notion"
+                              dangerouslySetInnerHTML={{ 
+                                __html: renderizarContenidoNotion(editorNotaContenido) || '<p class="placeholder-preview">La vista previa aparecerá aquí...</p>'
+                              }}
+                            />
                           </div>
                         </div>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Tab 2: Flashcards */}
-                    {tabContenidoActivo === 1 && (
+                  {/* Tab 2: Flashcards */}
+                  {tabContenidoActivo === 1 && (
                       <div className="tab-flashcards-contenido">
                         {/* Botones de Acceso Rápido */}
                         <div className="accesos-rapidos-fase">
@@ -15580,482 +15423,35 @@ Shortcuts:
                           </button>
                         </div>
                         
-                        <div className="flashcards-layout">
-                          <div className="flashcards-header">
-                            <h2>🎴 Repaso con Flashcards</h2>
-                            <p className="flashcards-subtitle">Practica con flashcards basadas en tus notas y documentos</p>
-                          </div>
-
-                          {/* Botón para agregar flashcard */}
-                          <div className="flashcards-actions">
-                            <button 
-                              className="btn-nueva-flashcard"
-                              onClick={() => {
-                                setFormDataFlashcard({
-                                  tipo: 'clasica',
-                                  titulo: '',
-                                  contenido: '',
-                                  opciones: [],
-                                  respuestaCorrecta: '',
-                                  explicacion: '',
-                                  tema: '',
-                                  carpeta: carpetaFlashcardActual?.ruta || rutaNotasActual || '',
-                                  estadoRevision: 'nueva',
-                                  archivos: [],
-                                  imagenes: [],
-                                  latex: false,
-                                  subtema: '',
-                                  lenguaje: 'javascript',
-                                  dificultad: 'medio',
-                                  patronCodigo: 'comprension',
-                                  subtipoQuimica: 'estructura',
-                                  nivelQuimica: 'basico',
-                                  rama: 'organica',
-                                  subtipoFisica: 'ecuacion',
-                                  nivelFisica: 'basico',
-                                  ramaFisica: 'mecanica',
-                                  subtipoIngenieria: 'circuito',
-                                  nivelIngenieria: 'basico',
-                                  ramaIngenieria: 'electrica'
-                                });
-                                setModalNuevaFlashcard(true);
-                              }}
-                            >
-                              <span className="btn-icon">➕</span>
-                              Nueva Flashcard
-                            </button>
-                          </div>
-
-                          <div className="notas-editor-notion-layout">
-                            {/* Sidebar izquierdo - Lista de flashcards */}
-                            <div className="editor-sidebar-izq">
-                              <div className="sidebar-section">
-                                <h4>📁 Destino</h4>
-                                <div 
-                                  className="carpeta-selector"
-                                  onClick={() => {
-                                    const carpeta = prompt('📁 Carpeta para guardar:\n(Ejemplo: Biologia/Unidad1)', carpetaFlashcardActual?.ruta || 'flashcards');
-                                    if (carpeta !== null) {
-                                      setCarpetaFlashcardActual({ ruta: carpeta });
-                                      setMensaje({
-                                        tipo: 'info',
-                                        texto: `📁 Carpeta: ${carpeta || 'flashcards'}`
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <span className="carpeta-icon">📂</span>
-                                  <span className="carpeta-path">{carpetaFlashcardActual?.ruta || 'flashcards'}</span>
-                                  <span className="carpeta-edit">✏️</span>
-                                </div>
-                              </div>
-                              
-                              <div className="sidebar-section">
-                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem'}}>
-                                  <h4>🎴 Flashcards</h4>
-                                  <button 
-                                    className="btn-nueva-nota-mini"
-                                    onClick={() => {
-                                      setFormDataFlashcard({
-                                        tipo: 'clasica',
-                                        titulo: '',
-                                        contenido: '',
-                                        opciones: [],
-                                        respuestaCorrecta: '',
-                                        explicacion: '',
-                                        tema: '',
-                                        carpeta: carpetaFlashcardActual?.ruta || '',
-                                        estadoRevision: 'nueva',
-                                        archivos: [],
-                                        imagenes: [],
-                                        latex: false,
-                                        subtema: '',
-                                        lenguaje: 'javascript',
-                                        dificultad: 'medio',
-                                        patronCodigo: 'comprension',
-                                        subtipoQuimica: 'estructura',
-                                        nivelQuimica: 'basico',
-                                        rama: 'organica',
-                                        subtipoFisica: 'ecuacion',
-                                        nivelFisica: 'basico',
-                                        ramaFisica: 'mecanica',
-                                        subtipoIngenieria: 'circuito',
-                                        nivelIngenieria: 'basico',
-                                        ramaIngenieria: 'electrica'
-                                      });
-                                    }}
-                                    style={{
-                                      background: '#4CAF50',
-                                      color: 'white',
-                                      border: 'none',
-                                      borderRadius: '50%',
-                                      width: '28px',
-                                      height: '28px',
-                                      cursor: 'pointer',
-                                      fontSize: '1.2rem',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}
-                                    title="Nueva flashcard"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                                <div className="lista-notas-sidebar" style={{maxHeight: '300px', overflowY: 'auto'}}>
-                                  {(flashcardsActuales || [])
-                                    .filter(fc => !carpetaFlashcardActual?.ruta || fc.carpeta === carpetaFlashcardActual.ruta)
-                                    .map(fc => (
-                                      <div key={fc.id} className="nota-item-sidebar" style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        padding: '0.5rem',
-                                        marginBottom: '0.3rem',
-                                        background: 'rgba(51, 65, 85, 0.5)',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        border: '1px solid rgba(148, 163, 184, 0.2)',
-                                        transition: 'all 0.2s'
-                                      }}
-                                      onMouseEnter={(e) => {
-                                        e.currentTarget.style.background = 'rgba(71, 85, 105, 0.6)';
-                                        e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.4)';
-                                      }}
-                                      onMouseLeave={(e) => {
-                                        e.currentTarget.style.background = 'rgba(51, 65, 85, 0.5)';
-                                        e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                                      }}>
-                                        <span 
-                                          onClick={() => {
-                                            // Cargar todos los datos de la flashcard para edición
-                                            setFormDataFlashcard({
-                                              ...fc,
-                                              titulo: fc.titulo || fc.pregunta || '',
-                                              contenido: fc.contenido || '',
-                                              respuestaCorrecta: fc.respuestaCorrecta || fc.respuesta || '',
-                                              explicacion: fc.explicacion || '',
-                                              tipo: fc.tipo || 'clasica',
-                                              latex: fc.latex || false,
-                                              opciones: fc.opciones || [],
-                                              tema: fc.tema || '',
-                                              carpeta: fc.carpeta || carpetaFlashcardActual?.ruta || ''
-                                            });
-                                          }}
-                                          style={{flex: 1, fontSize: '0.85rem', color: '#e2e8f0'}}
-                                        >
-                                          {fc.pregunta || fc.titulo || 'Sin título'}
-                                        </span>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (window.confirm(`¿Eliminar "${fc.pregunta || fc.titulo}"?`)) {
-                                              eliminarFlashcard(fc.id);
-                                            }
-                                          }}
-                                          style={{
-                                            background: 'rgba(239, 68, 68, 0.9)',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '4px',
-                                            padding: '0.2rem 0.5rem',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            transition: 'all 0.2s'
-                                          }}
-                                          onMouseEnter={(e) => {
-                                            e.currentTarget.style.background = '#dc2626';
-                                          }}
-                                          onMouseLeave={(e) => {
-                                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.9)';
-                                          }}
-                                        >
-                                          🗑️
-                                        </button>
-                                      </div>
-                                    ))}
-                                  {((flashcardsActuales || []).filter(fc => !carpetaFlashcardActual?.ruta || fc.carpeta === carpetaFlashcardActual.ruta).length === 0) && (
-                                    <p style={{fontSize: '0.85rem', color: '#94a3b8', textAlign: 'center'}}>
-                                      No hay flashcards en esta carpeta
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Área central - Editor de flashcard COMPLETO */}
-                            <div className="editor-area-central" style={{
-                              padding: '2rem',
-                              overflowY: 'auto',
-                              maxHeight: '70vh'
-                            }}>
-                              {/* Selección de Tipo */}
-                              <div className="config-section">
-                                <label className="config-label">
-                                  <span className="label-icon">🎯</span>
-                                  Tipo de Flashcard
-                                </label>
-                                <select
-                                  className="input-select"
-                                  value={formDataFlashcard.tipo}
-                                  onChange={(e) => setFormDataFlashcard({...formDataFlashcard, tipo: e.target.value})}
-                                >
-                                  <option value="clasica">📇 Clásica (Pregunta → Respuesta)</option>
-                                  <option value="reconocimiento">👁️ Reconocimiento (Identificar concepto)</option>
-                                  <option value="cloze">🔤 Cloze (Completar espacios)</option>
-                                  <option value="escenario">🎬 Escenario (Caso práctico)</option>
-                                  <option value="mcq">☑️ Opción Múltiple</option>
-                                  <option value="visual">🖼️ Visual (Imagen/Diagrama)</option>
-                                  <option value="auditiva">🔊 Auditiva (Audio/Pronunciación)</option>
-                                  <option value="produccion">✍️ Producción (Generar respuesta)</option>
-                                  <option value="invertida">🔄 Invertida (Respuesta → Pregunta)</option>
-                                  <option value="jerarquia">🏗️ Jerarquía (Organizar niveles)</option>
-                                  <option value="error">❌ Error Común (Corregir)</option>
-                                  <option value="comparacion">⚖️ Comparación (A vs B)</option>
-                                  <option value="matematica">🔢 Matemática (Fórmulas/LaTeX)</option>
-                                  <option value="archivo">📎 Archivo (PDF/Documento)</option>
-                                  <option value="programacion">&lt;/&gt; Programación (Código)</option>
-                                  <option value="quimica">🧪 Química (Estructuras/Moléculas)</option>
-                                  <option value="fisica">⚛️ Física (Ecuaciones/Diagramas)</option>
-                                  <option value="ingenieria">🔧 Ingeniería (Circuitos/FBD/Vigas)</option>
-                                  <option value="programacion-avanzada">💻 Programación Avanzada (UML/Flujo/Grafos)</option>
-                                  <option value="logica-discreta">🔮 Lógica/Matemática Discreta (Tablas/Conjuntos/Grafos)</option>
-                                  <option value="linguistica">🗣️ Linguística/Fonética (IPA/Stress/Entonación)</option>
-                                  <option value="musica">🎼 Música/Teoría Musical (Pentagramas/Acordes/Escalas)</option>
-                                  <option value="geometria">📐 Geometría (Construcciones/Ángulos/Trigonometría)</option>
-                                  <option value="quimica-avanzada">🧬 Química Avanzada (Orbitales/VSEPR/MO/Mecanismos)</option>
-                                  <option value="probabilidad">🎲 Probabilidad y Estadística (Árboles/Venn/Distribuciones/Bayes)</option>
-                                  <option value="arte">🎨 Arte y Diseño Visual (Figuras/Paletas/Composiciones/Estilos)</option>
-                                </select>
-                                
-                                {/* Toggle LaTeX */}
-                                <div style={{
-                                  marginTop: '1rem',
-                                  padding: '0.75rem',
-                                  background: 'rgba(59, 130, 246, 0.1)',
-                                  borderRadius: '8px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.75rem'
-                                }}>
-                                  <input
-                                    type="checkbox"
-                                    id="latex-toggle-editor"
-                                    checked={formDataFlashcard.latex}
-                                    onChange={(e) => setFormDataFlashcard({...formDataFlashcard, latex: e.target.checked})}
-                                    style={{
-                                      width: '18px',
-                                      height: '18px',
-                                      cursor: 'pointer',
-                                      accentColor: '#3b82f6'
-                                    }}
-                                  />
-                                  <label htmlFor="latex-toggle-editor" style={{
-                                    color: '#cbd5e1',
-                                    fontSize: '0.9rem',
-                                    cursor: 'pointer',
-                                    userSelect: 'none'
-                                  }}>
-                                    📐 Contiene fórmulas matemáticas (LaTeX)
-                                  </label>
-                                </div>
-                              </div>
-
-                              {/* Título */}
-                              <div className="config-section">
-                                <label className="config-label">
-                                  <span className="label-icon">📝</span>
-                                  Título
-                                </label>
-                                <input
-                                  type="text"
-                                  className="input-text"
-                                  placeholder="Título breve de la flashcard"
-                                  value={formDataFlashcard.titulo}
-                                  onChange={(e) => setFormDataFlashcard({...formDataFlashcard, titulo: e.target.value})}
-                                />
-                              </div>
-
-                              {/* Contenido/Pregunta */}
-                              <div className="config-section">
-                                <label className="config-label">
-                                  <span className="label-icon">💭</span>
-                                  Pregunta/Contenido
-                                </label>
-                                
-                                {/* Editor especializado según el tipo */}
-                                {formDataFlashcard.tipo === 'linguistica' ? (
-                                  /* Editor de Lingüística/Fonética */
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                    {/* Toolbar de Lingüística */}
-                                    <div style={{
-                                      background: 'rgba(236, 72, 153, 0.05)',
-                                      borderRadius: '10px',
-                                      padding: '1rem',
-                                      border: '1px solid rgba(236, 72, 153, 0.2)'
-                                    }}>
-                                      <LinguisticsToolbar
-                                        onInsertSymbol={(symbol) => {
-                                          setFormDataFlashcard({
-                                            ...formDataFlashcard,
-                                            contenido: formDataFlashcard.contenido + symbol
-                                          });
-                                        }}
-                                      />
-                                    </div>
-
-                                    {/* Editor de lingüística con vista previa */}
-                                    <LinguisticsCanvas
-                                      value={formDataFlashcard.contenido}
-                                      onChange={(texto) => setFormDataFlashcard({
-                                        ...formDataFlashcard,
-                                        contenido: texto
-                                      })}
-                                      placeholder="Escribe transcripciones IPA: /ˈwɔːtə/, símbolos de stress: ˈhello ↗, etc..."
-                                    />
-                                  </div>
-                                ) : (
-                                  /* Textarea normal para otros tipos */
-                                  <textarea
-                                    className="textarea-prompt"
-                                    placeholder="Escribe aquí el contenido de la flashcard..."
-                                    value={formDataFlashcard.contenido}
-                                    onChange={(e) => setFormDataFlashcard({...formDataFlashcard, contenido: e.target.value})}
-                                    rows={6}
-                                  />
-                                )}
-                              </div>
-
-                              {/* Respuesta Correcta */}
-                              <div className="config-section">
-                                <label className="config-label">
-                                  <span className="label-icon">✅</span>
-                                  Respuesta Correcta
-                                </label>
-                                <textarea
-                                  className="textarea-prompt"
-                                  placeholder="Escribe la respuesta correcta..."
-                                  value={formDataFlashcard.respuestaCorrecta}
-                                  onChange={(e) => setFormDataFlashcard({...formDataFlashcard, respuestaCorrecta: e.target.value})}
-                                  rows={4}
-                                />
-                              </div>
-
-                              {/* Explicación */}
-                              <div className="config-section">
-                                <label className="config-label">
-                                  <span className="label-icon">💡</span>
-                                  Explicación (opcional)
-                                </label>
-                                <textarea
-                                  className="textarea-prompt"
-                                  placeholder="Agrega contexto adicional o explicación..."
-                                  value={formDataFlashcard.explicacion}
-                                  onChange={(e) => setFormDataFlashcard({...formDataFlashcard, explicacion: e.target.value})}
-                                  rows={3}
-                                />
-                              </div>
-
-                              {/* Botones de acción */}
-                              <div className="editor-acciones-seccion" style={{
-                                display: 'flex',
-                                gap: '1rem',
-                                marginTop: '2rem',
-                                paddingTop: '1.5rem',
-                                borderTop: '1px solid rgba(148, 163, 184, 0.2)'
-                              }}>
-                                <button 
-                                  className="btn-guardar-nota-notion"
-                                  onClick={async () => {
-                                    if (!formDataFlashcard.titulo) {
-                                      setMensaje({
-                                        tipo: 'warning',
-                                        texto: '⚠️ Debes agregar un título'
-                                      });
-                                      return;
-                                    }
-                                    
-                                    try {
-                                      const ahora = new Date().toISOString();
-                                      const esNueva = !formDataFlashcard.id;
-                                      
-                                      const nuevaFlashcard = {
-                                        ...formDataFlashcard,
-                                        id: formDataFlashcard.id || `fc_${Date.now()}`,
-                                        pregunta: formDataFlashcard.titulo,
-                                        respuesta: formDataFlashcard.respuestaCorrecta || formDataFlashcard.contenido,
-                                        fecha_creacion: formDataFlashcard.fecha_creacion || ahora,
-                                        carpeta: carpetaFlashcardActual?.ruta || rutaFlashcardsActual || '',
-                                        // Marcar como revisada solo si es nueva (recién creada)
-                                        ultima_revision: esNueva ? ahora : formDataFlashcard.ultima_revision,
-                                        proxima_revision: esNueva ? new Date(Date.now() + 24*60*60*1000).toISOString() : formDataFlashcard.proxima_revision
-                                      };
-                                      
-                                      // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
-                                      await guardarFlashcardEnCarpeta(nuevaFlashcard);
-                                      
-                                      // Actualizar estado local
-                                      const flashcardsActuales = await cargarTodasFlashcards();
-                                      setFlashcardsActuales(flashcardsActuales);
-                                      
-                                      setMensaje({
-                                        tipo: 'success',
-                                        texto: '✅ Flashcard guardada correctamente'
-                                      });
-                                      
-                                      // Limpiar formulario
-                                      setFormDataFlashcard({
-                                        tipo: 'clasica',
-                                        titulo: '',
-                                        contenido: '',
-                                        opciones: [],
-                                        respuestaCorrecta: '',
-                                        explicacion: '',
-                                        tema: '',
-                                        carpeta: carpetaFlashcardActual?.ruta || '',
-                                        estadoRevision: 'nueva',
-                                        archivos: [],
-                                        imagenes: [],
-                                        latex: false
-                                      });
-                                    } catch (error) {
-                                      console.error('Error guardando flashcard:', error);
-                                      setMensaje({
-                                        tipo: 'error',
-                                        texto: '❌ Error al guardar flashcard'
-                                      });
-                                    }
-                                  }}
-                                  disabled={guardandoNota}
-                                  style={{flex: 1}}
-                                >
-                                  {guardandoNota ? '💾 Guardando...' : '💾 Guardar Flashcard'}
-                                </button>
-                                
-                                <button 
-                                  className="btn-limpiar-nota-notion"
-                                  onClick={() => {
-                                    setFormDataFlashcard({
-                                      tipo: 'clasica',
-                                      titulo: '',
-                                      contenido: '',
-                                      opciones: [],
-                                      respuestaCorrecta: '',
-                                      explicacion: '',
-                                      tema: '',
-                                      carpeta: carpetaFlashcardActual?.ruta || '',
-                                      estadoRevision: 'nueva',
-                                      archivos: [],
-                                      imagenes: [],
-                                      latex: false
-                                    });
-                                  }}
-                                >
-                                  🧹 Limpiar
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                        {/* Vista simplificada de Flashcards */}
+                        <div className="flashcards-simple-view" style={{
+                          padding: '2rem',
+                          textAlign: 'center',
+                          background: 'rgba(59, 130, 246, 0.05)',
+                          borderRadius: '12px',
+                          margin: '1rem 0'
+                        }}>
+                          <div style={{fontSize: '4rem', marginBottom: '1rem'}}>🎴</div>
+                          <h3 style={{color: '#e2e8f0', marginBottom: '0.5rem'}}>Repaso con Flashcards</h3>
+                          <p style={{color: '#94a3b8', marginBottom: '1.5rem'}}>
+                            Practica con flashcards basadas en tus notas y documentos
+                          </p>
+                          <button 
+                            className="btn-acceso-rapido btn-flashcards"
+                            onClick={() => {
+                              const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                              setRutaFlashcardsActual(carpeta);
+                              setCarpetaFlashcardActual({ ruta: carpeta });
+                              setSelectedMenu('flashcards');
+                              cargarCarpetasFlashcards(carpeta);
+                            }}
+                            style={{
+                              padding: '1rem 2rem',
+                              fontSize: '1.1rem'
+                            }}
+                          >
+                            🎴 Ir a Flashcards
+                          </button>
                         </div>
                       </div>
                     )}
@@ -26530,26 +25926,28 @@ Shortcuts:
                     contentEditable={!modoSoloLectura}
                     dir="ltr"
                     className="editor-html-simple"
-                    onClick={(e) => {
-                      // Manejar clicks en referencias a notas dentro del editor
+                    style={modoSoloLectura ? { cursor: 'default' } : {}}
+                    onClickCapture={(e) => {
+                      // Capturar clicks en referencias a notas ANTES de cualquier otro handler
                       const linkElement = e.target.closest('a[data-nota-id]');
                       if (linkElement) {
                         e.preventDefault();
                         e.stopPropagation();
-                        const notaId = parseInt(linkElement.getAttribute('data-nota-id'));
-                        console.log('📝 Click en referencia (editor):', notaId);
+                        const notaId = linkElement.getAttribute('data-nota-id');
+                        console.log('📝 Click CAPTURADO en referencia:', notaId, 'modoLectura:', modoSoloLectura);
                         
                         // Si la nota actual es la misma, no hacer nada
-                        if (notaActual && notaActual.id === notaId) {
+                        if (notaActual && String(notaActual.id) === String(notaId)) {
                           console.log('⚠️ Ya tienes esta nota abierta');
                           setMensaje({ tipo: 'info', texto: '📝 Ya tienes esta nota abierta' });
                           return;
                         }
                         
                         getDatos('notas').then(notasActuales => {
-                          const nota = notasActuales.find(n => n.id === notaId);
+                          // Comparar como strings para soportar IDs tipo 'nota_123456'
+                          const nota = notasActuales.find(n => String(n.id) === String(notaId));
                           if (nota) {
-                            console.log('✅ Abriendo nota:', nota.titulo);
+                            console.log('✅ Abriendo nota referenciada:', nota.titulo);
                             
                             // Cerrar editor actual primero
                             setEditorNotaAbierto(false);
@@ -26574,6 +25972,7 @@ Shortcuts:
                               setCarpetaNota(nota.carpeta || '');
                               setModoSoloLectura(true);
                               setEditorNotaAbierto(true);
+                              console.log('✅ Nota abierta exitosamente');
                             }, 300);
                           } else {
                             console.warn('⚠️ Nota no encontrada:', notaId);
@@ -26584,6 +25983,17 @@ Shortcuts:
                           setMensaje({ tipo: 'error', texto: '❌ Error al cargar la nota' });
                         });
                         return;
+                      }
+                      
+                      // También manejar clicks en enlaces normales <a> con href
+                      const normalLink = e.target.closest('a[href]');
+                      if (normalLink && !normalLink.hasAttribute('data-nota-id')) {
+                        const href = normalLink.getAttribute('href');
+                        if (href && href.startsWith('http')) {
+                          e.preventDefault();
+                          window.open(href, '_blank');
+                          return;
+                        }
                       }
                     }}
                     onInput={(e) => {
