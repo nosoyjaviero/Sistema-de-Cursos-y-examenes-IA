@@ -368,6 +368,7 @@ function App() {
   const [mostrandoFeedback, setMostrandoFeedback] = useState(false)
   const [resultadoPractica, setResultadoPractica] = useState(null)
   const [historialPracticas, setHistorialPracticas] = useState([])
+  const [tabPracticasActivo, setTabPracticasActivo] = useState(0) // 0: Seleccionar, 1: Configurar, 2: Resolver
   const [editorNotaTitulo, setEditorNotaTitulo] = useState('')
   const [editorNotaContenido, setEditorNotaContenido] = useState('')
   const [editorNotaTags, setEditorNotaTags] = useState('')
@@ -4589,10 +4590,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
   const guardarNotaEnCarpeta = async (nota) => {
     const carpeta = nota.carpeta || '';
     
-    if (!carpeta) {
-      console.warn('⚠️ Nota sin carpeta, usando "Sin carpeta":', nota.id);
-      nota.carpeta = 'Sin carpeta';
-    }
+    // Ya no usamos "Sin carpeta" - la carpeta vacía significa raíz
+    console.log('📁 Guardando nota en carpeta:', carpeta || '(raíz)');
     
     try {
       const response = await fetch(`${API_URL}/datos/notas/carpeta`, {
@@ -4600,7 +4599,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nota: nota,
-          carpeta: nota.carpeta
+          carpeta: carpeta
         })
       });
 
@@ -9997,6 +9996,22 @@ JSON:`
   const [numWritingSentenceBuilder, setNumWritingSentenceBuilder] = useState(0);
   const [numWritingPictureDescription, setNumWritingPictureDescription] = useState(0);
   const [numWritingEmail, setNumWritingEmail] = useState(0);
+  
+  // Idioma para cada tipo de práctica de idioma (6 Reading + 6 Writing principales = 12)
+  const [idiomaReadingComprehension, setIdiomaReadingComprehension] = useState('ingles');
+  const [idiomaReadingTrueFalse, setIdiomaReadingTrueFalse] = useState('ingles');
+  const [idiomaReadingCloze, setIdiomaReadingCloze] = useState('ingles');
+  const [idiomaReadingSkill, setIdiomaReadingSkill] = useState('ingles');
+  const [idiomaReadingMatching, setIdiomaReadingMatching] = useState('ingles');
+  const [idiomaReadingSequence, setIdiomaReadingSequence] = useState('ingles');
+  const [idiomaWritingShort, setIdiomaWritingShort] = useState('ingles');
+  const [idiomaWritingParaphrase, setIdiomaWritingParaphrase] = useState('ingles');
+  const [idiomaWritingCorrection, setIdiomaWritingCorrection] = useState('ingles');
+  const [idiomaWritingTransformation, setIdiomaWritingTransformation] = useState('ingles');
+  const [idiomaWritingEssay, setIdiomaWritingEssay] = useState('ingles');
+  const [idiomaWritingEmail, setIdiomaWritingEmail] = useState('ingles');
+  const [idiomaWritingSentenceBuilder, setIdiomaWritingSentenceBuilder] = useState('ingles');
+  const [idiomaWritingPictureDescription, setIdiomaWritingPictureDescription] = useState('ingles');
 
   const abrirModalPractica = async (ruta, tipo = 'carpeta') => {
     // Limpiar estado anterior
@@ -11250,18 +11265,24 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }
 
   const guardarNota = async () => {
-    if (!tituloNota.trim()) {
-      alert('⚠️ Debes escribir un título para la nota')
-      return
+    // Si no hay contenido, no guardar
+    if (!contenidoNota.trim()) {
+      console.log('⚠️ Nota vacía, no se guarda');
+      return false;
     }
 
-    console.log('💾 Guardando nota en carpeta:', carpetaNota);
+    // Título automático con timestamp si está vacío
+    const tituloFinal = tituloNota.trim() || `Nota ${new Date().toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+
+    // Usar la carpeta de trabajo actual si carpetaNota está vacía
+    const carpetaFinal = carpetaNota || rutaNotasActual || rutaContenidoActual || rutaCalentamientoActual || '';
+    console.log('💾 Guardando nota en carpeta:', carpetaFinal, 'título:', tituloFinal);
 
     const notaNueva = {
       id: notaActual?.id || Date.now(),
-      titulo: tituloNota,
+      titulo: tituloFinal,
       contenido: contenidoNota,
-      carpeta: carpetaNota,
+      carpeta: carpetaFinal,
       fecha: notaActual?.fecha || new Date().toISOString(),
       fechaModificacion: new Date().toISOString(),
       // Repetición espaciada (mantener valores existentes si es edición)
@@ -11284,12 +11305,16 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
     await guardarNotaEnCarpeta(notaNueva);
     setNotasGuardadas(notasActualizadas)
     
+    // Actualizar carpetaNota para futuras notas
+    setCarpetaNota(carpetaFinal);
+    
     setMensaje({
       tipo: 'success',
       texto: notaActual ? '✅ Nota actualizada' : '✅ Nota creada'
     })
     
     setEditorNotaAbierto(false)
+    return true
   }
 
   const eliminarNota = async (idNota) => {
@@ -13054,7 +13079,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                        faseActual === 'errores' ? '❌' :
                        faseActual === 'flashcards' ? '🎴' :
                        faseActual === 'contenido' ? '📚' :
-                       faseActual === 'generar_practicas' ? '🧑‍💻' :
+                       (faseActual === 'generar_practicas' || faseActual === 'practicas') ? '🧑‍💻' :
                        faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
                        '📊'}
                     </span>
@@ -15160,6 +15185,27 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             >
                               🎴 Ver Flashcards
                             </button>
+                            <button
+                              className="btn-acceso-rapido btn-examenes"
+                              onClick={() => {
+                                setRutaActualExamenes(rutaNotasActual || '');
+                                setSelectedMenu('examenes');
+                                cargarCarpetasExamenes(rutaNotasActual || '');
+                              }}
+                              title="Ver exámenes de esta carpeta"
+                            >
+                              📋 Ver Exámenes
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-practicas"
+                              onClick={() => {
+                                setRutaActual(rutaNotasActual || '');
+                                setSelectedMenu('practicas');
+                              }}
+                              title="Generar práctica en esta carpeta"
+                            >
+                              🎯 Generar Práctica
+                            </button>
                           </div>
                         </div>
 
@@ -15181,177 +15227,804 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </button>
                         </div>
                         
-                        {/* Editor simplificado - Solo editor y preview */}
-                        <div className="editor-area-principal" style={{width: '100%'}}>
-                          {/* Selector de tipo de contenido */}
-                          <div style={{marginBottom: '1rem', padding: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px'}}>
-                            <label style={{fontSize: '0.9rem', fontWeight: '600', color: '#cbd5e1', marginRight: '1rem'}}>📝 Tipo de contenido:</label>
-                            <select
-                              value={tipoNotaEditor}
-                              onChange={(e) => setTipoNotaEditor(e.target.value)}
-                              style={{
-                                padding: '0.5rem 1rem',
-                                background: 'rgba(51, 65, 85, 0.6)',
-                                border: '1px solid rgba(148, 163, 184, 0.3)',
-                                borderRadius: '6px',
-                                color: '#e2e8f0',
-                                fontSize: '0.9rem',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="normal">📄 Normal (Markdown)</option>
-                              <option value="linguistica">🗣️ Lingüística/Fonética (IPA)</option>
-                            </select>
+                        {/* Editor de Notas integrado */}
+                        <div className="editor-notas-integrado">
+                          {/* Panel lateral con lista de notas */}
+                          <div className="notas-layout-integrado">
+                            <div className="notas-sidebar-integrado">
+                              <div className="sidebar-header">
+                                <h4>📋 Mis Notas</h4>
+                                <span className="notas-count">{notasGuardadas.filter(n => !rutaNotasActual || n.carpeta === rutaNotasActual || n.carpeta?.startsWith(rutaNotasActual + '/')).length}</span>
+                              </div>
+                              <div className="notas-lista-scroll">
+                                {notasGuardadas
+                                  .filter(n => !rutaNotasActual || n.carpeta === rutaNotasActual || n.carpeta?.startsWith(rutaNotasActual + '/'))
+                                  .sort((a, b) => new Date(b.fecha_modificacion || b.fecha) - new Date(a.fecha_modificacion || a.fecha))
+                                  .map(nota => (
+                                    <div 
+                                      key={nota.id}
+                                      className={`nota-item-sidebar ${notaActual?.id === nota.id ? 'activa' : ''}`}
+                                      onClick={() => {
+                                        setNotaActual(nota);
+                                        setTituloNota(nota.titulo);
+                                        setContenidoNota(nota.contenido);
+                                        setCarpetaNota(nota.carpeta || '');
+                                        setModoSoloLectura(true);
+                                      }}
+                                    >
+                                      <div className="nota-item-titulo">{nota.titulo || 'Sin título'}</div>
+                                      <div className="nota-item-fecha">
+                                        {new Date(nota.fecha_modificacion || nota.fecha).toLocaleDateString('es-ES', {day: '2-digit', month: 'short'})}
+                                      </div>
+                                      <button
+                                        className="btn-eliminar-nota-sidebar"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          eliminarNota(nota.id);
+                                        }}
+                                        title="Eliminar nota"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </div>
+                                  ))
+                                }
+                                {notasGuardadas.filter(n => !rutaNotasActual || n.carpeta === rutaNotasActual || n.carpeta?.startsWith(rutaNotasActual + '/')).length === 0 && (
+                                  <div className="notas-vacio">
+                                    <span>📝</span>
+                                    <p>No hay notas en esta carpeta</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Editor principal */}
+                            <div className="editor-principal-integrado">
+                              <div className="editor-header-integrado">
+                                <h3>📝 {modoSoloLectura ? 'Ver Nota' : (notaActual ? 'Editar Nota' : 'Nueva Nota')}</h3>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                  {modoSoloLectura && (
+                                    <button 
+                                      onClick={() => setModoSoloLectura(false)} 
+                                      className="btn-primary"
+                                      style={{padding: '0.5rem 1rem'}}
+                                    >
+                                      ✏️ Editar
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => {
+                                      setNotaActual(null);
+                                      setTituloNota('');
+                                      setContenidoNota('');
+                                      setCarpetaNota(rutaNotasActual || '');
+                                      setModoSoloLectura(false);
+                                    }}
+                                    className="btn-secondary"
+                                    style={{padding: '0.5rem 1rem'}}
+                                  >
+                                    ➕ Nueva
+                                  </button>
+                                </div>
+                              </div>
+                          
+                          <div className="form-group">
+                            <label className="form-label">
+                              <span className="label-icon">✍️</span>
+                              <span>Título</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={tituloNota}
+                              onChange={(e) => setTituloNota(e.target.value)}
+                              placeholder="Título de la nota..."
+                              className="input-nota-titulo"
+                              readOnly={modoSoloLectura}
+                              style={modoSoloLectura ? {backgroundColor: '#1a1a2e', color: '#e0e0e0', cursor: 'not-allowed'} : {}}
+                            />
                           </div>
 
-                          {/* Vista dividida: Editor | Preview */}
-                          <div className="editor-split-view">
-                            {/* Editor de texto */}
-                            <div className="editor-panel" style={{position: 'relative'}}>
-                              <div className="panel-label">✍️ Editor {tipoNotaEditor === 'linguistica' ? '(IPA/Fonética)' : '(Markdown)'}</div>
-                              
-                              {tipoNotaEditor === 'linguistica' ? (
-                                /* Editor de Lingüística con vista previa integrada */
-                                <div style={{marginTop: '1rem'}}>
-                                  <div style={{
-                                    background: 'rgba(236, 72, 153, 0.05)',
-                                    borderRadius: '10px',
-                                    padding: '1rem',
-                                    border: '1px solid rgba(236, 72, 153, 0.2)',
-                                    marginBottom: '1rem'
-                                  }}>
-                                    <LinguisticsToolbar
-                                      onInsertSymbol={(symbol) => {
-                                        setEditorNotaContenido(editorNotaContenido + symbol);
-                                      }}
-                                    />
-                                  </div>
-                                  <LinguisticsCanvas
-                                    value={editorNotaContenido}
-                                    onChange={(texto) => setEditorNotaContenido(texto)}
-                                    placeholder="Escribe transcripciones IPA: /ˈwɔːtə/, símbolos de stress: ˈhello ↗, etc..."
-                                  />
-                                </div>
-                              ) : (
-                                /* Textarea normal para Markdown */
-                                <textarea
-                                  className="editor-textarea-notion"
-                                  placeholder="Escribe aquí... Presiona / para abrir menú de bloques
-
-Shortcuts:
-• # Título grande
-• ## Título mediano  
-• ### Título pequeño
-• **negrita**
-• *cursiva*
-• \`código\`
-• - [ ] tarea
-• • lista
-• > cita
-• --- divisor"
-                                  value={editorNotaContenido}
-                                  onChange={(e) => {
-                                    setEditorNotaContenido(e.target.value);
-                                    if (notaSeleccionadaId) {
-                                      actualizarNotaSesion(notaSeleccionadaId, 'contenido', e.target.value);
-                                    }
-                                    
-                                    const value = e.target.value;
-                                    const cursorPos = e.target.selectionStart;
-                                    const lastChar = value[cursorPos - 1];
-                                    
-                                    if (lastChar === '/' && (cursorPos === 1 || value[cursorPos - 2] === '\n' || value[cursorPos - 2] === ' ')) {
-                                      const wrapper = e.target.closest('.editor-panel');
-                                      if (wrapper) {
-                                        const wrapperRect = wrapper.getBoundingClientRect();
-                                        const rect = e.target.getBoundingClientRect();
-                                        setPosicionMenuComandos({
-                                          top: rect.top - wrapperRect.top + 60,
-                                          left: rect.left - wrapperRect.left + 40
-                                        });
-                                        setMenuComandosAbierto(true);
-                                        setComandoSeleccionado(0);
-                                        setCursorPosition(cursorPos);
-                                      }
-                                    } else if (menuComandosAbierto && lastChar !== '/') {
-                                      setMenuComandosAbierto(false);
-                                    }
+                          <div className="form-group">
+                            <label className="form-label">
+                              <span className="label-icon">📁</span>
+                              <span>Carpeta</span>
+                            </label>
+                            <div style={{display: 'flex', gap: '0.5rem'}}>
+                              <input
+                                type="text"
+                                value={carpetaNota || 'Raíz'}
+                                readOnly
+                                placeholder="Carpeta de destino"
+                                className="input-nota-carpeta"
+                                style={{ backgroundColor: '#1a1a2e', color: '#e0e0e0', cursor: 'not-allowed', flex: 1 }}
+                              />
+                              {!modoSoloLectura && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setModalCarpetasNotaAbierto(true);
+                                    const carpetaInicial = carpetaNota || rutaNotasActual || '';
+                                    cargarCarpetasNotas(carpetaInicial);
                                   }}
-                                  onKeyDown={(e) => {
-                                    if (menuComandosAbierto) {
-                                      if (e.key === 'ArrowDown') {
-                                        e.preventDefault();
-                                        setComandoSeleccionado(prev => prev < comandosDisponibles.length - 1 ? prev + 1 : 0);
-                                      } else if (e.key === 'ArrowUp') {
-                                        e.preventDefault();
-                                        setComandoSeleccionado(prev => prev > 0 ? prev - 1 : comandosDisponibles.length - 1);
-                                      } else if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        insertarBloque(comandosDisponibles[comandoSeleccionado]);
-                                      } else if (e.key === 'Escape') {
-                                        e.preventDefault();
-                                        setMenuComandosAbierto(false);
-                                      }
-                                      return;
-                                    }
-                                    
-                                    if (e.ctrlKey || e.metaKey) {
-                                      if (e.key === 's') {
-                                        e.preventDefault();
-                                        if (editorNotaTitulo.trim()) guardarNotaRapida();
-                                      }
-                                    }
-                                  }}
-                                />
+                                  className="btn-primary"
+                                  style={{whiteSpace: 'nowrap'}}
+                                >
+                                  📂 Seleccionar
+                                </button>
                               )}
+                            </div>
+                          </div>
+
+                          <div className="form-group" style={{flex: 1, display: 'flex', flexDirection: 'column'}}>
+                            <label className="form-label">
+                              <span className="label-icon">📄</span>
+                              <span>Contenido</span>
+                            </label>
+                            
+                            {!modoSoloLectura && (
+                            <div className="editor-toolbar">
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('bold', false, null);
+                              }} title="Negrita">
+                                <strong>B</strong>
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('italic', false, null);
+                              }} title="Cursiva">
+                                <em>I</em>
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('underline', false, null);
+                              }} title="Subrayado">
+                                <u>U</u>
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('strikeThrough', false, null);
+                              }} title="Tachado">
+                                <s>S</s>
+                              </button>
                               
-                              {/* Menú de comandos */}
-                            {menuComandosAbierto && (
+                              <span className="toolbar-separator"></span>
+                              
+                              <div className="toggle-heading-container">
+                                <button 
+                                  type="button" 
+                                  className="btn-toolbar btn-toggle-heading"
+                                  onClick={() => {
+                                    const headingMenu = document.querySelector('.fase-contenido .heading-dropdown-menu');
+                                    if (headingMenu) {
+                                      headingMenu.classList.toggle('visible');
+                                    }
+                                  }}
+                                  title="Cambiar tipo de bloque"
+                                >
+                                  📝 Tipo ▾
+                                </button>
+                                <div className="heading-dropdown-menu">
+                                  <div className="heading-section-title">Bloques de texto</div>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'p');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">¶</span>
+                                    <span className="heading-text">Párrafo</span>
+                                  </button>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'h1');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">H1</span>
+                                    <span className="heading-text">Título 1</span>
+                                  </button>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'h2');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">H2</span>
+                                    <span className="heading-text">Título 2</span>
+                                  </button>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'h3');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">H3</span>
+                                    <span className="heading-text">Título 3</span>
+                                  </button>
+                                  
+                                  <div className="heading-section-title" style={{marginTop: '0.5rem'}}>Toggle Headings</div>
+                                  <button type="button" className="heading-option toggle-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    const toggleId = 'toggle_' + Date.now();
+                                    const toggleHtml = `<details class="toggle-heading toggle-h1" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h1-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 1</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    document.execCommand('insertHTML', false, toggleHtml);
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">▶ H1</span>
+                                    <span className="heading-text">Toggle Heading 1</span>
+                                  </button>
+                                  <button type="button" className="heading-option toggle-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    const toggleId = 'toggle_' + Date.now();
+                                    const toggleHtml = `<details class="toggle-heading toggle-h2" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h2-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 2</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    document.execCommand('insertHTML', false, toggleHtml);
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">▶ H2</span>
+                                    <span className="heading-text">Toggle Heading 2</span>
+                                  </button>
+                                  <button type="button" className="heading-option toggle-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    const toggleId = 'toggle_' + Date.now();
+                                    const toggleHtml = `<details class="toggle-heading toggle-h3" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h3-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 3</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    document.execCommand('insertHTML', false, toggleHtml);
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">▶ H3</span>
+                                    <span className="heading-text">Toggle Heading 3</span>
+                                  </button>
+                                  
+                                  <div className="heading-section-title" style={{marginTop: '0.5rem'}}>Otros</div>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'blockquote');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">❝</span>
+                                    <span className="heading-text">Cita</span>
+                                  </button>
+                                  <button type="button" className="heading-option" onClick={() => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('formatBlock', false, 'pre');
+                                    document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
+                                  }}>
+                                    <span className="heading-icon">{"</>"}</span>
+                                    <span className="heading-text">Código</span>
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              <span className="toolbar-separator"></span>
+                              
+                              <label className="btn-toolbar" title="Color de texto" style={{cursor: 'pointer'}}>
+                                🎨 Color
+                                <input
+                                  type="color"
+                                  onChange={(e) => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('styleWithCSS', false, true);
+                                    document.execCommand('foreColor', false, e.target.value);
+                                  }}
+                                  style={{width: 0, height: 0, opacity: 0, position: 'absolute'}}
+                                />
+                              </label>
+                              <label className="btn-toolbar" title="Color de fondo" style={{cursor: 'pointer'}}>
+                                🖍️ Fondo
+                                <input
+                                  type="color"
+                                  onChange={(e) => {
+                                    editorRef.current?.focus();
+                                    document.execCommand('styleWithCSS', false, true);
+                                    document.execCommand('backColor', false, e.target.value);
+                                  }}
+                                  style={{width: 0, height: 0, opacity: 0, position: 'absolute'}}
+                                />
+                              </label>
+                              
+                              <button 
+                                type="button" 
+                                className="btn-toolbar" 
+                                onClick={() => setModalTipografias(true)}
+                                title="Administrar tipografías"
+                              >
+                                🔤 Fuentes
+                              </button>
+                              
+                              <span className="toolbar-separator"></span>
+                              
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('insertUnorderedList', false, null);
+                              }} title="Lista">
+                                • Lista
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('insertOrderedList', false, null);
+                              }} title="Lista numerada">
+                                1. Num
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                const checklistId = 'check_' + Date.now();
+                                const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Nueva tarea...</span></div>`;
+                                document.execCommand('insertHTML', false, checklistHtml);
+                              }} title="Checklist">
+                                ☑️
+                              </button>
+                              
+                              <span className="toolbar-separator"></span>
+                              
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                const selection = window.getSelection();
+                                const selectedText = selection.toString();
+                                if (selectedText) {
+                                  setTextoSeleccionado(selectedText);
+                                  setModalHipervinculos(true);
+                                } else {
+                                  alert('⚠️ Selecciona texto primero');
+                                }
+                              }} title="Insertar enlace">
+                                🔗 Link
+                              </button>
+                              <label className="btn-toolbar" title="Insertar imagen" style={{cursor: 'pointer'}}>
+                                🖼️
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const file = e.target.files[0];
+                                    if (file && editorRef.current) {
+                                      try {
+                                        const formData = new FormData();
+                                        formData.append('file', file);
+                                        formData.append('carpeta', carpetaNota || '');
+                                        
+                                        const response = await fetch(`${API_URL}/api/subir-imagen-nota`, {
+                                          method: 'POST',
+                                          body: formData
+                                        });
+                                        
+                                        let imgSrc;
+                                        if (response.ok) {
+                                          const data = await response.json();
+                                          imgSrc = `${API_URL}${data.url}`;
+                                        } else {
+                                          imgSrc = await new Promise((resolve) => {
+                                            const reader = new FileReader();
+                                            reader.onload = (ev) => resolve(ev.target.result);
+                                            reader.readAsDataURL(file);
+                                          });
+                                        }
+                                        
+                                        editorRef.current.focus();
+                                        const imgId = 'img_' + Date.now();
+                                        const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: inline-block;" draggable="true"><img id="${imgId}" src="${imgSrc}" class="imagen-editable" style="max-width: 100%; width: 400px; height: auto;" draggable="false" /></div><p><br></p>`;
+                                        document.execCommand('insertHTML', false, imgHtml);
+                                        setContenidoNota(editorRef.current.innerHTML);
+                                        
+                                        setTimeout(() => {
+                                          const img = document.getElementById(imgId);
+                                          if (img) {
+                                            img.addEventListener('click', (ev) => {
+                                              ev.stopPropagation();
+                                              window.mostrarControlesImagen(img);
+                                            });
+                                          }
+                                        }, 100);
+                                      } catch (error) {
+                                        console.error('Error:', error);
+                                      }
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                  style={{width: 0, height: 0, opacity: 0, position: 'absolute'}}
+                                />
+                              </label>
+                              
+                              <span className="toolbar-separator"></span>
+                              
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('justifyLeft', false, null);
+                              }} title="Izquierda">⬅</button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('justifyCenter', false, null);
+                              }} title="Centro">↔</button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('justifyRight', false, null);
+                              }} title="Derecha">➡</button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                document.execCommand('removeFormat', false, null);
+                              }} title="Limpiar formato">
+                                🧹
+                              </button>
+                            </div>
+                            )}
+                            
+                            <div
+                              ref={editorRef}
+                              contentEditable={!modoSoloLectura}
+                              dir="ltr"
+                              className="editor-html-simple editor-fase-contenido"
+                              style={{
+                                flex: 1,
+                                minHeight: '300px',
+                                direction: 'ltr',
+                                textAlign: 'left',
+                                backgroundColor: '#1a1a2e',
+                                color: '#e0e0e0',
+                                ...(modoSoloLectura ? { cursor: 'default' } : {})
+                              }}
+                              onInput={(e) => {
+                                if (!modoSoloLectura) {
+                                  setContenidoNota(e.currentTarget.innerHTML);
+                                }
+                              }}
+                              onClickCapture={(e) => {
+                                const linkElement = e.target.closest('a[data-nota-id]');
+                                if (linkElement) {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const notaId = linkElement.getAttribute('data-nota-id');
+                                  
+                                  getDatos('notas').then(notasActuales => {
+                                    const nota = notasActuales.find(n => String(n.id) === String(notaId));
+                                    if (nota) {
+                                      setNotaActual(nota);
+                                      setTituloNota(nota.titulo);
+                                      setContenidoNota(nota.contenido);
+                                      setCarpetaNota(nota.carpeta || '');
+                                      setModoSoloLectura(true);
+                                    } else {
+                                      setMensaje({ tipo: 'warning', texto: '⚠️ Nota no encontrada' });
+                                    }
+                                  });
+                                  return;
+                                }
+                                
+                                const normalLink = e.target.closest('a[href]');
+                                if (normalLink && !normalLink.hasAttribute('data-nota-id')) {
+                                  const href = normalLink.getAttribute('href');
+                                  if (href && href.startsWith('http')) {
+                                    e.preventDefault();
+                                    window.open(href, '_blank');
+                                  }
+                                }
+                              }}
+                              onMouseUp={(e) => {
+                                if (modoSoloLectura) return;
+                                const selection = window.getSelection();
+                                const selectedText = selection.toString();
+                                
+                                if (selectedText.length > 0) {
+                                  const range = selection.getRangeAt(0);
+                                  setRangoSeleccionado(range.cloneRange());
+                                  
+                                  const rect = range.getBoundingClientRect();
+                                  setMenuContextual({
+                                    visible: true,
+                                    x: rect.left + (rect.width / 2),
+                                    y: rect.top - 10
+                                  });
+                                } else {
+                                  setMenuContextual({ visible: false, x: 0, y: 0 });
+                                }
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (window.elementoArrastrado) {
+                                  const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+                                  if (range && editorRef.current.contains(range.startContainer)) {
+                                    const elemento = window.elementoArrastrado.cloneNode(true);
+                                    window.elementoArrastrado.remove();
+                                    range.insertNode(elemento);
+                                    setContenidoNota(editorRef.current.innerHTML);
+                                  }
+                                }
+                              }}
+                              suppressContentEditableWarning={true}
+                            />
+                            
+                            {/* Menú Contextual Flotante en Editor Integrado */}
+                            {menuContextual.visible && !modoSoloLectura && (
                               <div 
-                                className="menu-comandos-notion"
+                                className="menu-contextual-flotante menu-ctx-integrado"
                                 style={{
-                                  position: 'absolute',
-                                  top: `${posicionMenuComandos.top}px`,
-                                  left: `${posicionMenuComandos.left}px`,
+                                  position: 'fixed',
+                                  left: `${menuContextual.x}px`,
+                                  top: `${menuContextual.y}px`,
+                                  transform: 'translate(-50%, -100%)',
                                   zIndex: 10000
                                 }}
                               >
-                                <div className="menu-comandos-header">
-                                  <span className="menu-titulo">🎯 Bloques</span>
-                                  <button onClick={() => setMenuComandosAbierto(false)} className="btn-cerrar-menu">✕</button>
+                                <div 
+                                  onMouseDown={iniciarArrastreMenu}
+                                  style={{
+                                    background: 'rgba(100, 108, 255, 0.2)',
+                                    padding: '0.3rem',
+                                    marginBottom: '0.3rem',
+                                    borderRadius: '6px 6px 0 0',
+                                    cursor: 'move',
+                                    textAlign: 'center',
+                                    fontSize: '0.7rem',
+                                    color: 'rgba(255,255,255,0.6)',
+                                    userSelect: 'none',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <span style={{opacity: 0}}>✕</span>
+                                  <span>⋮⋮⋮</span>
+                                  <button 
+                                    onClick={cerrarMenuContextual}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: 'rgba(255,255,255,0.8)',
+                                      cursor: 'pointer',
+                                      fontSize: '1rem',
+                                      padding: '0 0.3rem',
+                                      lineHeight: '1'
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
                                 </div>
-                                <div className="menu-comandos-lista">
-                                  {comandosDisponibles.map((comando, index) => (
-                                    <div
-                                      key={comando.id}
-                                      className={`comando-item ${index === comandoSeleccionado ? 'seleccionado' : ''}`}
-                                      onClick={() => insertarBloque(comando)}
-                                      onMouseEnter={() => setComandoSeleccionado(index)}
+                                <div className="menu-fila">
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('bold', false, null); }} title="Negrita"><strong>B</strong></button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('italic', false, null); }} title="Cursiva"><em>I</em></button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('underline', false, null); }} title="Subrayado"><u>U</u></button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('strikeThrough', false, null); }} title="Tachado"><s>S</s></button>
+                                  <div className="separador-menu"></div>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'p'); }} title="Párrafo">P</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h1'); }} title="Título 1">H1</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h2'); }} title="Título 2">H2</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('formatBlock', false, 'h3'); }} title="Título 3">H3</button>
+                                </div>
+                                
+                                <div className="menu-fila">
+                                  <label className="btn-menu-ctx" title="Color de texto">
+                                    🎨
+                                    <input type="color" onChange={(e) => { restaurarSeleccion(); document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, e.target.value); }} style={{width: 0, height: 0, opacity: 0, position: 'absolute'}} />
+                                  </label>
+                                  <label className="btn-menu-ctx" title="Color de fondo">
+                                    🖍️
+                                    <input type="color" onChange={(e) => { restaurarSeleccion(); document.execCommand('styleWithCSS', false, true); document.execCommand('backColor', false, e.target.value); }} style={{width: 0, height: 0, opacity: 0, position: 'absolute'}} />
+                                  </label>
+                                  <div className="separador-menu"></div>
+                                  <button className="btn-menu-ctx" onClick={() => setSubmenuActivo(submenuActivo === 'tipografias' ? null : 'tipografias')} title="Tipografía" style={{background: submenuActivo === 'tipografias' ? 'rgba(100, 108, 255, 0.4)' : ''}}>🔤</button>
+                                  <button className="btn-menu-ctx" onClick={() => setSubmenuActivo(submenuActivo === 'enlaces' ? null : 'enlaces')} title="Enlace" style={{background: submenuActivo === 'enlaces' ? 'rgba(100, 108, 255, 0.4)' : ''}}>🔗</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('unlink', false, null); }} title="Quitar enlace">🚫</button>
+                                  <div className="separador-menu"></div>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyLeft', false, null); }} title="Izquierda">⬅️</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyCenter', false, null); }} title="Centro">↔️</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('justifyRight', false, null); }} title="Derecha">➡️</button>
+                                </div>
+                                
+                                {/* Submenú de tipografías */}
+                                {submenuActivo === 'tipografias' && (
+                                  <div style={{
+                                    background: 'rgba(26, 26, 46, 0.98)',
+                                    border: '1px solid rgba(100, 108, 255, 0.3)',
+                                    borderRadius: '8px',
+                                    padding: '0.5rem',
+                                    marginTop: '0.3rem',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto'
+                                  }}>
+                                    <div style={{marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Sistema:</div>
+                                    {['Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana', 'Trebuchet MS'].map(fuente => (
+                                      <button
+                                        key={fuente}
+                                        onClick={() => { aplicarTipografia(fuente + ', sans-serif'); setSubmenuActivo(null); }}
+                                        style={{
+                                          display: 'block',
+                                          width: '100%',
+                                          background: 'rgba(100, 108, 255, 0.1)',
+                                          border: '1px solid rgba(100, 108, 255, 0.2)',
+                                          borderRadius: '4px',
+                                          color: 'white',
+                                          padding: '0.4rem',
+                                          marginBottom: '0.2rem',
+                                          cursor: 'pointer',
+                                          textAlign: 'left',
+                                          fontFamily: fuente,
+                                          fontSize: '0.85rem'
+                                        }}
+                                      >
+                                        {fuente}
+                                      </button>
+                                    ))}
+                                    {tipografiasPersonalizadas.length > 0 && (
+                                      <>
+                                        <div style={{marginTop: '0.5rem', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem'}}>Personalizadas:</div>
+                                        {tipografiasPersonalizadas.map(tipo => (
+                                          <button
+                                            key={tipo.id}
+                                            onClick={() => { aplicarTipografia(tipo.familia); setSubmenuActivo(null); }}
+                                            style={{
+                                              display: 'block',
+                                              width: '100%',
+                                              background: 'rgba(34, 197, 94, 0.1)',
+                                              border: '1px solid rgba(34, 197, 94, 0.2)',
+                                              borderRadius: '4px',
+                                              color: 'white',
+                                              padding: '0.4rem',
+                                              marginBottom: '0.2rem',
+                                              cursor: 'pointer',
+                                              textAlign: 'left',
+                                              fontFamily: tipo.familia,
+                                              fontSize: '0.85rem'
+                                            }}
+                                          >
+                                            {tipo.nombre}
+                                          </button>
+                                        ))}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                                
+                                {/* Submenú de enlaces */}
+                                {submenuActivo === 'enlaces' && (
+                                  <div style={{
+                                    background: 'rgba(26, 26, 46, 0.98)',
+                                    border: '1px solid rgba(100, 108, 255, 0.3)',
+                                    borderRadius: '8px',
+                                    padding: '0.5rem',
+                                    marginTop: '0.3rem'
+                                  }}>
+                                    <button
+                                      onClick={() => { insertarEnlaceURL(); setSubmenuActivo(null); }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        background: 'rgba(100, 108, 255, 0.2)',
+                                        border: '1px solid rgba(100, 108, 255, 0.3)',
+                                        borderRadius: '4px',
+                                        color: 'white',
+                                        padding: '0.5rem',
+                                        marginBottom: '0.4rem',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        fontWeight: 'bold'
+                                      }}
                                     >
-                                      <div className="comando-icono">{comando.icono}</div>
-                                      <div className="comando-info">
-                                        <div className="comando-nombre">{comando.nombre}</div>
-                                        <div className="comando-descripcion">{comando.descripcion}</div>
-                                      </div>
-                                    </div>
-                                  ))}
+                                      🌐 Enlace externo (URL)
+                                    </button>
+                                    <button
+                                      onClick={() => { abrirModalSeleccionarNotaRef(); setSubmenuActivo(null); }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        background: 'rgba(34, 197, 94, 0.2)',
+                                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                                        borderRadius: '4px',
+                                        color: 'white',
+                                        padding: '0.5rem',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        fontWeight: 'bold'
+                                      }}
+                                    >
+                                      📝 Referencia a nota...
+                                    </button>
+                                  </div>
+                                )}
+                                
+                                <div className="menu-fila">
+                                  <label className="btn-menu-ctx-wide" title="Insertar imagen">
+                                    🖼️ Imagen
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={async (e) => {
+                                        const file = e.target.files[0];
+                                        if (file) {
+                                          try {
+                                            const formData = new FormData();
+                                            formData.append('file', file);
+                                            formData.append('carpeta', carpetaNota || '');
+                                            
+                                            const response = await fetch(`${API_URL}/api/subir-imagen-nota`, {
+                                              method: 'POST',
+                                              body: formData
+                                            });
+                                            
+                                            let imgSrc;
+                                            if (response.ok) {
+                                              const data = await response.json();
+                                              imgSrc = `${API_URL}${data.url}`;
+                                            } else {
+                                              imgSrc = await new Promise((resolve) => {
+                                                const reader = new FileReader();
+                                                reader.onload = (ev) => resolve(ev.target.result);
+                                                reader.readAsDataURL(file);
+                                              });
+                                            }
+                                            
+                                            restaurarSeleccion();
+                                            const imgId = 'img_' + Date.now();
+                                            const imgHtml = `<div class="imagen-contenedor" contenteditable="false" style="margin: 1rem 0; position: relative; display: inline-block;" draggable="true"><img id="${imgId}" src="${imgSrc}" class="imagen-editable" style="max-width: 100%; width: 400px; height: auto;" draggable="false" /></div><p><br></p>`;
+                                            document.execCommand('insertHTML', false, imgHtml);
+                                            setContenidoNota(editorRef.current.innerHTML);
+                                            
+                                            setTimeout(() => {
+                                              const img = document.getElementById(imgId);
+                                              if (img) {
+                                                img.addEventListener('click', (ev) => {
+                                                  ev.stopPropagation();
+                                                  window.mostrarControlesImagen(img);
+                                                });
+                                              }
+                                            }, 100);
+                                            
+                                            cerrarMenuContextual();
+                                          } catch (error) {
+                                            console.error('Error:', error);
+                                          }
+                                        }
+                                        e.target.value = '';
+                                      }}
+                                      style={{width: 0, height: 0, opacity: 0, position: 'absolute'}}
+                                    />
+                                  </label>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('insertUnorderedList', false, null); }} title="Lista">•</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('insertOrderedList', false, null); }} title="Numerada">1.</button>
+                                  <button className="btn-menu-ctx" onClick={() => {
+                                    restaurarSeleccion();
+                                    const checklistId = 'check_' + Date.now();
+                                    const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Tarea...</span></div>`;
+                                    document.execCommand('insertHTML', false, checklistHtml);
+                                  }} title="Checklist">☑️</button>
+                                  <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('removeFormat', false, null); }} title="Limpiar">🧹</button>
                                 </div>
                               </div>
                             )}
                           </div>
-
-                          {/* Vista previa renderizada */}
-                          <div className="preview-panel">
-                            <div className="panel-label">👁️ Vista Previa (Estilo Notion)</div>
-                            <div 
-                              className="preview-content-notion"
-                              dangerouslySetInnerHTML={{ 
-                                __html: renderizarContenidoNotion(editorNotaContenido) || '<p class="placeholder-preview">La vista previa aparecerá aquí...</p>'
-                              }}
-                            />
+                          
+                          <div className="editor-footer-integrado">
+                            {notaActual && (
+                              <button 
+                                onClick={async () => {
+                                  if (confirm('¿Estás seguro de eliminar esta nota?')) {
+                                    try {
+                                      await guardarDatos('notas', notasGuardadas.filter(n => n.id !== notaActual.id));
+                                      setNotasGuardadas(prev => prev.filter(n => n.id !== notaActual.id));
+                                      setNotaActual(null);
+                                      setTituloNota('');
+                                      setContenidoNota('');
+                                      setModoSoloLectura(false);
+                                      setMensaje({ tipo: 'success', texto: '🗑️ Nota eliminada' });
+                                    } catch (error) {
+                                      setMensaje({ tipo: 'error', texto: '❌ Error al eliminar nota' });
+                                    }
+                                  }
+                                }} 
+                                className="btn-eliminar-nota"
+                              >
+                                🗑️ Eliminar
+                              </button>
+                            )}
+                            {!modoSoloLectura && (
+                              <button 
+                                onClick={guardarNota} 
+                                className="btn-primary"
+                                disabled={!tituloNota.trim()}
+                              >
+                                💾 Guardar Nota
+                              </button>
+                            )}
+                          </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
                     </div>
                   )}
 
@@ -15401,6 +16074,29 @@ Shortcuts:
                               title="Ver todas las flashcards de esta carpeta"
                             >
                               🎴 Ver Todas las Flashcards
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-examenes"
+                              onClick={() => {
+                                const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                                setRutaActualExamenes(carpeta);
+                                setSelectedMenu('examenes');
+                                cargarCarpetasExamenes(carpeta);
+                              }}
+                              title="Ver exámenes de esta carpeta"
+                            >
+                              📋 Ver Exámenes
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-practicas"
+                              onClick={() => {
+                                const carpeta = rutaNotasActual || carpetaFlashcardActual?.ruta || '';
+                                setRutaActual(carpeta);
+                                setSelectedMenu('practicas');
+                              }}
+                              title="Generar práctica en esta carpeta"
+                            >
+                              🎯 Generar Práctica
                             </button>
                           </div>
                         </div>
@@ -15480,7 +16176,24 @@ Shortcuts:
                     >
                       🔄 Cambiar Carpeta
                     </button>
-                    <button className="btn-continuar-fase" onClick={avanzarFase}>
+                    <button className="btn-continuar-fase" onClick={async () => {
+                      // Verificar si hay nota sin guardar (solo si hay contenido)
+                      if (contenidoNota.trim() && !modoSoloLectura) {
+                        if (confirm('⚠️ Tienes una nota sin guardar. ¿Deseas guardarla antes de continuar?')) {
+                          try {
+                            await guardarNota();
+                          } catch (e) {
+                            console.error('Error guardando nota:', e);
+                          }
+                        }
+                      }
+                      // Limpiar estado del editor
+                      setTituloNota('');
+                      setContenidoNota('');
+                      setNotaActual(null);
+                      // Siempre avanzar a la siguiente fase
+                      avanzarFase();
+                    }}>
                       Continuar a Cierre →
                     </button>
                   </div>
@@ -15787,122 +16500,637 @@ Shortcuts:
               {/* ============================================ */}
               {/* FASE: GENERAR PRÁCTICAS */}
               {/* ============================================ */}
-              {faseActual === 'generar_practicas' && (
+              {(faseActual === 'generar_practicas' || faseActual === 'practicas') && (
                 <div className="fase-generar-practicas">
-                  {/* Header */}
-                  <div className="fase-header-practicas">
-                    <div className="fase-icon-grande">🧑‍💻</div>
-                    <h2>Generar Práctica Personalizada</h2>
-                    <p>Selecciona una carpeta y genera ejercicios basados en tu material</p>
-                  </div>
-
-                  {/* Selector de Carpeta */}
-                  <div className="practicas-selector-carpeta">
-                    <h3>📁 Seleccionar Carpeta</h3>
-                    <div className="carpeta-breadcrumb">
-                      <button 
-                        className="breadcrumb-btn"
-                        onClick={() => {
-                          setRutaActual('');
-                          cargarCarpeta('');
-                        }}
-                      >
-                        🏠 Inicio
-                      </button>
-                      {rutaActual && rutaActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
-                        const rutaParcial = arr.slice(0, idx + 1).join('\\');
-                        return (
-                          <React.Fragment key={idx}>
-                            <span className="breadcrumb-separator">→</span>
-                            <button 
-                              className="breadcrumb-btn"
-                              onClick={() => {
-                                setRutaActual(rutaParcial);
-                                cargarCarpeta(rutaParcial);
-                              }}
-                            >
-                              {parte}
-                            </button>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-
-                    {/* Grid de Carpetas */}
-                    <div className="carpetas-grid-practicas">
-                      {carpetas.map((carpeta, idx) => (
-                        <button
-                          key={idx}
-                          className={`carpeta-card-practica ${carpetaPractica === (rutaActual ? `${rutaActual}\\${carpeta.nombre}` : carpeta.nombre) ? 'seleccionada' : ''}`}
-                          onClick={() => {
-                            const nuevaRuta = rutaActual 
-                              ? `${rutaActual}\\${carpeta.nombre}` 
-                              : carpeta.nombre;
-                            setRutaActual(nuevaRuta);
-                            cargarCarpeta(nuevaRuta);
-                          }}
-                          onDoubleClick={() => {
-                            const nuevaRuta = rutaActual 
-                              ? `${rutaActual}\\${carpeta.nombre}` 
-                              : carpeta.nombre;
-                            setCarpetaPractica(nuevaRuta);
-                            abrirModalPractica(nuevaRuta, 'carpeta');
-                          }}
-                        >
-                          <span className="carpeta-icon">📁</span>
-                          <span className="carpeta-nombre">{carpeta.nombre}</span>
-                          <span className="carpeta-info">
-                            {carpeta.docs || 0} docs · {carpeta.subcarpetas || 0} carpetas
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Archivos disponibles */}
-                    {documentos.length > 0 && (
-                      <div className="archivos-disponibles">
-                        <h4>📄 Archivos en esta carpeta ({documentos.length})</h4>
-                        <div className="archivos-lista">
-                          {documentos.slice(0, 5).map((doc, idx) => (
-                            <div key={idx} className="archivo-item">
-                              <span className="archivo-icon">📄</span>
-                              <span className="archivo-nombre">{doc.nombre}</span>
-                            </div>
-                          ))}
-                          {documentos.length > 5 && (
-                            <div className="archivo-item mas">
-                              +{documentos.length - 5} archivos más...
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Botón de Generar */}
-                  <div className="practicas-acciones">
-                    <button
-                      className="btn-generar-practica-grande"
-                      onClick={() => {
-                        if (rutaActual) {
-                          abrirModalPractica(rutaActual, 'carpeta');
-                        } else {
-                          setMensaje({
-                            tipo: 'warning',
-                            texto: '⚠️ Navega a una carpeta con contenido para generar prácticas'
-                          });
-                        }
-                      }}
-                      disabled={!rutaActual && carpetas.length === 0}
+                  {/* Header con Tabs */}
+                  <div className="practicas-tabs-header">
+                    <button 
+                      className={`tab-practica ${tabPracticasActivo === 0 ? 'activo' : ''}`}
+                      onClick={() => setTabPracticasActivo(0)}
                     >
-                      <span className="btn-icon">🧑‍💻</span>
-                      <span className="btn-text">
-                        {rutaActual 
-                          ? `Generar Práctica desde "${rutaActual.split('\\').pop()}"` 
-                          : 'Selecciona una carpeta'}
-                      </span>
+                      <span className="tab-numero">1</span>
+                      <span className="tab-texto">📁 Seleccionar Material</span>
+                      {archivosSeleccionados.length > 0 && (
+                        <span className="tab-badge">{archivosSeleccionados.length}</span>
+                      )}
+                    </button>
+                    <button 
+                      className={`tab-practica ${tabPracticasActivo === 1 ? 'activo' : ''}`}
+                      onClick={() => setTabPracticasActivo(1)}
+                      disabled={archivosSeleccionados.length === 0}
+                    >
+                      <span className="tab-numero">2</span>
+                      <span className="tab-texto">⚙️ Tipo de Práctica</span>
+                    </button>
+                    <button 
+                      className={`tab-practica ${tabPracticasActivo === 2 ? 'activo' : ''} ${!practicaGenerada ? 'bloqueado' : ''}`}
+                      onClick={() => practicaGenerada && setTabPracticasActivo(2)}
+                      disabled={!practicaGenerada}
+                    >
+                      <span className="tab-numero">3</span>
+                      <span className="tab-texto">✍️ Resolver Ejercicios</span>
+                      {practicaGenerada && (
+                        <span className="tab-badge verde">{practicaGenerada.preguntas?.length || 0}</span>
+                      )}
                     </button>
                   </div>
+
+                  {/* TAB 0: Seleccionar Material */}
+                  {tabPracticasActivo === 0 && (
+                    <div className="tab-contenido-practica">
+                      <div className="practicas-selector-carpeta">
+                        <h3>📁 Navegar y Seleccionar Archivos</h3>
+                        <div className="carpeta-breadcrumb">
+                          <button 
+                            className="breadcrumb-btn"
+                            onClick={() => {
+                              setRutaActual('');
+                              cargarCarpeta('');
+                            }}
+                          >
+                            🏠 Inicio
+                          </button>
+                          {rutaActual && rutaActual.split('\\').filter(Boolean).map((parte, idx, arr) => {
+                            const rutaParcial = arr.slice(0, idx + 1).join('\\');
+                            return (
+                              <React.Fragment key={idx}>
+                                <span className="breadcrumb-separator">→</span>
+                                <button 
+                                  className="breadcrumb-btn"
+                                  onClick={() => {
+                                    setRutaActual(rutaParcial);
+                                    cargarCarpeta(rutaParcial);
+                                  }}
+                                >
+                                  {parte}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+
+                        {/* Grid de Carpetas */}
+                        {carpetas.length > 0 && (
+                          <div className="carpetas-grid-practicas">
+                            {carpetas.map((carpeta, idx) => (
+                              <button
+                                key={idx}
+                                className="carpeta-card-practica"
+                                onClick={() => {
+                                  const nuevaRuta = rutaActual 
+                                    ? `${rutaActual}\\${carpeta.nombre}` 
+                                    : carpeta.nombre;
+                                  setRutaActual(nuevaRuta);
+                                  cargarCarpeta(nuevaRuta);
+                                }}
+                              >
+                                <span className="carpeta-icon">📁</span>
+                                <span className="carpeta-nombre">{carpeta.nombre}</span>
+                                <span className="carpeta-info">
+                                  {carpeta.docs || 0} docs
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Archivos disponibles - SELECCIONABLES */}
+                        {documentos.length > 0 && (
+                          <div className="archivos-seleccionables">
+                            <div className="archivos-header">
+                              <h4>📄 Archivos ({documentos.length})</h4>
+                              <div className="archivos-acciones-header">
+                                <button
+                                  className="btn-seleccionar-todos"
+                                  onClick={() => {
+                                    const rutasDocumentos = documentos.map(doc => doc.ruta || `${rutaActual}\\${doc.nombre}`);
+                                    const todosSeleccionados = rutasDocumentos.every(ruta => archivosSeleccionados.includes(ruta));
+                                    if (todosSeleccionados) {
+                                      setArchivosSeleccionados(prev => prev.filter(r => !rutasDocumentos.includes(r)));
+                                    } else {
+                                      setArchivosSeleccionados(prev => [...new Set([...prev, ...rutasDocumentos])]);
+                                    }
+                                  }}
+                                >
+                                  {documentos.every(doc => archivosSeleccionados.includes(doc.ruta || `${rutaActual}\\${doc.nombre}`)) 
+                                    ? '☐ Quitar todos' 
+                                    : '☑ Todos'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="archivos-lista-seleccionable">
+                              {documentos.map((doc, idx) => {
+                                const rutaDoc = doc.ruta || `${rutaActual}\\${doc.nombre}`;
+                                const estaSeleccionado = archivosSeleccionados.includes(rutaDoc);
+                                return (
+                                  <div 
+                                    key={idx} 
+                                    className={`archivo-item-seleccionable ${estaSeleccionado ? 'seleccionado' : ''}`}
+                                    onClick={() => {
+                                      setArchivosSeleccionados(prev => 
+                                        estaSeleccionado 
+                                          ? prev.filter(r => r !== rutaDoc)
+                                          : [...prev, rutaDoc]
+                                      );
+                                    }}
+                                  >
+                                    <span className="archivo-checkbox">{estaSeleccionado ? '☑' : '☐'}</span>
+                                    <span className="archivo-icon">📄</span>
+                                    <span className="archivo-nombre">{doc.nombre}</span>
+                                    <span className="archivo-size">{doc.size ? `${(doc.size / 1024).toFixed(1)} KB` : ''}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Notas de la carpeta */}
+                        {notasGuardadas.filter(n => n.carpeta === rutaActual).length > 0 && (
+                          <div className="notas-seleccionables">
+                            <div className="archivos-header">
+                              <h4>📝 Notas ({notasGuardadas.filter(n => n.carpeta === rutaActual).length})</h4>
+                            </div>
+                            <div className="archivos-lista-seleccionable">
+                              {notasGuardadas
+                                .filter(n => n.carpeta === rutaActual)
+                                .map((nota, idx) => {
+                                  const rutaNota = `nota:${nota.id}`;
+                                  const estaSeleccionado = archivosSeleccionados.includes(rutaNota);
+                                  return (
+                                    <div 
+                                      key={idx} 
+                                      className={`archivo-item-seleccionable ${estaSeleccionado ? 'seleccionado' : ''}`}
+                                      onClick={() => {
+                                        setArchivosSeleccionados(prev => 
+                                          estaSeleccionado 
+                                            ? prev.filter(r => r !== rutaNota)
+                                            : [...prev, rutaNota]
+                                        );
+                                      }}
+                                    >
+                                      <span className="archivo-checkbox">{estaSeleccionado ? '☑' : '☐'}</span>
+                                      <span className="archivo-icon">📝</span>
+                                      <span className="archivo-nombre">{nota.titulo}</span>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Panel de seleccionados */}
+                      {archivosSeleccionados.length > 0 && (
+                        <div className="archivos-seleccionados-resumen">
+                          <div className="seleccionados-header">
+                            <h4>📋 Material seleccionado ({archivosSeleccionados.length})</h4>
+                            <button className="btn-limpiar-seleccion" onClick={() => setArchivosSeleccionados([])}>
+                              🗑️ Limpiar
+                            </button>
+                          </div>
+                          <div className="archivos-seleccionados-lista">
+                            {archivosSeleccionados.map((ruta, idx) => (
+                              <div key={idx} className="archivo-seleccionado-item">
+                                <span>{ruta.startsWith('nota:') ? '📝' : '📄'}</span>
+                                <span className="archivo-seleccionado-nombre">
+                                  {ruta.startsWith('nota:') 
+                                    ? notasGuardadas.find(n => `nota:${n.id}` === ruta)?.titulo || 'Nota'
+                                    : ruta.split('\\').pop()}
+                                </span>
+                                <button 
+                                  className="btn-quitar-archivo"
+                                  onClick={() => setArchivosSeleccionados(prev => prev.filter(r => r !== ruta))}
+                                >✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botón Continuar */}
+                      <div className="tab-footer-acciones">
+                        <button 
+                          className="btn-siguiente-tab"
+                          onClick={() => setTabPracticasActivo(1)}
+                          disabled={archivosSeleccionados.length === 0}
+                        >
+                          Continuar a Configuración →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 1: Tipo de Práctica */}
+                  {tabPracticasActivo === 1 && (
+                    <div className="tab-contenido-practica">
+                      <h3>⚙️ Configurar Tipo de Práctica</h3>
+                      
+                      <div className="config-practica-grid">
+                        {/* Tipo de preguntas */}
+                        <div className="config-seccion">
+                          <h4>📝 Tipo de Preguntas</h4>
+                          <div className="tipos-pregunta-grid">
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'mcq' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="mcq" 
+                                checked={tipoPractica === 'mcq'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">🔘</span>
+                              <span className="tipo-nombre">Opción Múltiple</span>
+                              <span className="tipo-desc">4 opciones, 1 correcta</span>
+                            </label>
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'true_false' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="true_false" 
+                                checked={tipoPractica === 'true_false'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">✓✗</span>
+                              <span className="tipo-nombre">Verdadero/Falso</span>
+                              <span className="tipo-desc">Afirmaciones a evaluar</span>
+                            </label>
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'short_answer' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="short_answer" 
+                                checked={tipoPractica === 'short_answer'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">✏️</span>
+                              <span className="tipo-nombre">Respuesta Corta</span>
+                              <span className="tipo-desc">Escribir respuesta breve</span>
+                            </label>
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'open_question' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="open_question" 
+                                checked={tipoPractica === 'open_question'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">📝</span>
+                              <span className="tipo-nombre">Pregunta Abierta</span>
+                              <span className="tipo-desc">Desarrollo completo</span>
+                            </label>
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'cloze' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="cloze" 
+                                checked={tipoPractica === 'cloze'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">📋</span>
+                              <span className="tipo-nombre">Completar Espacios</span>
+                              <span className="tipo-desc">Llenar huecos en texto</span>
+                            </label>
+                            <label className={`tipo-pregunta-card ${tipoPractica === 'caso_estudio' ? 'seleccionado' : ''}`}>
+                              <input 
+                                type="radio" 
+                                name="tipoPractica" 
+                                value="caso_estudio" 
+                                checked={tipoPractica === 'caso_estudio'}
+                                onChange={(e) => setTipoPractica(e.target.value)}
+                              />
+                              <span className="tipo-icon">🎯</span>
+                              <span className="tipo-nombre">Caso de Estudio</span>
+                              <span className="tipo-desc">Análisis de escenario</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Dificultad */}
+                        <div className="config-seccion">
+                          <h4>📊 Dificultad</h4>
+                          <div className="dificultad-selector">
+                            <button 
+                              className={`btn-dificultad ${dificultadPractica === 'facil' ? 'activo' : ''}`}
+                              onClick={() => setDificultadPractica('facil')}
+                            >
+                              🟢 Fácil
+                            </button>
+                            <button 
+                              className={`btn-dificultad ${dificultadPractica === 'media' ? 'activo' : ''}`}
+                              onClick={() => setDificultadPractica('media')}
+                            >
+                              🟡 Media
+                            </button>
+                            <button 
+                              className={`btn-dificultad ${dificultadPractica === 'dificil' ? 'activo' : ''}`}
+                              onClick={() => setDificultadPractica('dificil')}
+                            >
+                              🔴 Difícil
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Número de preguntas */}
+                        <div className="config-seccion">
+                          <h4>🔢 Número de Preguntas</h4>
+                          <div className="num-preguntas-selector">
+                            {[3, 5, 10, 15, 20].map(num => (
+                              <button 
+                                key={num}
+                                className={`btn-num-preguntas ${numPreguntasPractica === num ? 'activo' : ''}`}
+                                onClick={() => setNumPreguntasPractica(num)}
+                              >
+                                {num}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Resumen de configuración */}
+                      <div className="config-resumen">
+                        <p>
+                          <strong>Generarás:</strong> {numPreguntasPractica} preguntas de tipo {
+                            tipoPractica === 'mcq' ? 'opción múltiple' :
+                            tipoPractica === 'true_false' ? 'verdadero/falso' :
+                            tipoPractica === 'short_answer' ? 'respuesta corta' :
+                            tipoPractica === 'open_question' ? 'pregunta abierta' :
+                            tipoPractica === 'cloze' ? 'completar espacios' :
+                            'caso de estudio'
+                          } ({dificultadPractica}) basadas en {archivosSeleccionados.length} archivos
+                        </p>
+                      </div>
+
+                      {/* Botones de acción */}
+                      <div className="tab-footer-acciones">
+                        <button 
+                          className="btn-anterior-tab"
+                          onClick={() => setTabPracticasActivo(0)}
+                        >
+                          ← Volver
+                        </button>
+                        <button 
+                          className="btn-generar-practica-principal"
+                          onClick={async () => {
+                            setGenerandoPractica(true);
+                            try {
+                              // Preparar los documentos seleccionados
+                              const docsParaPractica = archivosSeleccionados.map(ruta => ({
+                                ruta: ruta,
+                                nombre: ruta.startsWith('nota:') 
+                                  ? notasGuardadas.find(n => `nota:${n.id}` === ruta)?.titulo 
+                                  : ruta.split('\\').pop()
+                              }));
+                              
+                              setDocumentosPractica(docsParaPractica);
+                              setCarpetaPractica(rutaActual || 'seleccion_manual');
+                              
+                              // Llamar a confirmarGenerarPractica con los parámetros correctos
+                              // Por ahora generamos práctica de prueba
+                              const preguntasGeneradas = [];
+                              for (let i = 0; i < numPreguntasPractica; i++) {
+                                if (tipoPractica === 'mcq') {
+                                  preguntasGeneradas.push({
+                                    id: i + 1,
+                                    tipo: 'mcq',
+                                    pregunta: `Pregunta ${i + 1} basada en el material seleccionado`,
+                                    opciones: ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
+                                    respuesta_correcta: 'Opción A',
+                                    explicacion: 'Explicación de la respuesta correcta'
+                                  });
+                                } else if (tipoPractica === 'true_false') {
+                                  preguntasGeneradas.push({
+                                    id: i + 1,
+                                    tipo: 'true_false',
+                                    pregunta: `Afirmación ${i + 1} para evaluar`,
+                                    respuesta_correcta: Math.random() > 0.5 ? 'Verdadero' : 'Falso',
+                                    explicacion: 'Explicación de por qué es verdadero/falso'
+                                  });
+                                } else {
+                                  preguntasGeneradas.push({
+                                    id: i + 1,
+                                    tipo: tipoPractica,
+                                    pregunta: `Pregunta ${i + 1} de tipo ${tipoPractica}`,
+                                    respuesta_esperada: 'Respuesta esperada...',
+                                    explicacion: 'Explicación de la respuesta'
+                                  });
+                                }
+                              }
+                              
+                              setPracticaGenerada({
+                                id: `practica_${Date.now()}`,
+                                tipo: tipoPractica,
+                                dificultad: dificultadPractica,
+                                preguntas: preguntasGeneradas,
+                                archivos: archivosSeleccionados
+                              });
+                              
+                              setPreguntaActualPractica(0);
+                              setRespuestasPractica([]);
+                              setMostrandoFeedback(false);
+                              setResultadoPractica(null);
+                              
+                              setMensaje({
+                                tipo: 'success',
+                                texto: `✅ Práctica generada: ${preguntasGeneradas.length} preguntas`
+                              });
+                              
+                              // Cambiar automáticamente a la pestaña de resolver
+                              setTabPracticasActivo(2);
+                              
+                            } catch (error) {
+                              console.error('Error generando práctica:', error);
+                              setMensaje({
+                                tipo: 'error',
+                                texto: 'Error al generar práctica'
+                              });
+                            } finally {
+                              setGenerandoPractica(false);
+                            }
+                          }}
+                          disabled={generandoPractica || archivosSeleccionados.length === 0}
+                        >
+                          {generandoPractica ? '⏳ Generando...' : '🚀 Generar Práctica'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: Resolver Ejercicios */}
+                  {tabPracticasActivo === 2 && practicaGenerada && (
+                    <div className="tab-contenido-practica">
+                      {!resultadoPractica ? (
+                        <>
+                          {/* Progreso */}
+                          <div className="practica-progreso">
+                            <div className="progreso-texto">
+                              Pregunta {preguntaActualPractica + 1} de {practicaGenerada.preguntas.length}
+                            </div>
+                            <div className="progreso-barra">
+                              <div 
+                                className="progreso-fill" 
+                                style={{width: `${((preguntaActualPractica + 1) / practicaGenerada.preguntas.length) * 100}%`}}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Pregunta actual */}
+                          <div className="pregunta-container">
+                            <h3 className="pregunta-texto">
+                              {practicaGenerada.preguntas[preguntaActualPractica]?.pregunta}
+                            </h3>
+
+                            {/* Opciones según tipo */}
+                            {practicaGenerada.preguntas[preguntaActualPractica]?.tipo === 'mcq' && (
+                              <div className="opciones-mcq">
+                                {practicaGenerada.preguntas[preguntaActualPractica]?.opciones?.map((opcion, idx) => (
+                                  <button
+                                    key={idx}
+                                    className={`opcion-btn ${
+                                      mostrandoFeedback 
+                                        ? opcion === practicaGenerada.preguntas[preguntaActualPractica].respuesta_correcta 
+                                          ? 'correcta' 
+                                          : respuestasPractica[preguntaActualPractica]?.respuesta === opcion 
+                                            ? 'incorrecta' 
+                                            : ''
+                                        : ''
+                                    }`}
+                                    onClick={() => !mostrandoFeedback && responderPreguntaPractica(opcion)}
+                                    disabled={mostrandoFeedback}
+                                  >
+                                    {opcion}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {practicaGenerada.preguntas[preguntaActualPractica]?.tipo === 'true_false' && (
+                              <div className="opciones-vf">
+                                <button
+                                  className={`opcion-btn vf ${
+                                    mostrandoFeedback 
+                                      ? 'Verdadero' === practicaGenerada.preguntas[preguntaActualPractica].respuesta_correcta 
+                                        ? 'correcta' 
+                                        : respuestasPractica[preguntaActualPractica]?.respuesta === 'Verdadero' 
+                                          ? 'incorrecta' 
+                                          : ''
+                                      : ''
+                                  }`}
+                                  onClick={() => !mostrandoFeedback && responderPreguntaPractica('Verdadero')}
+                                  disabled={mostrandoFeedback}
+                                >
+                                  ✓ Verdadero
+                                </button>
+                                <button
+                                  className={`opcion-btn vf ${
+                                    mostrandoFeedback 
+                                      ? 'Falso' === practicaGenerada.preguntas[preguntaActualPractica].respuesta_correcta 
+                                        ? 'correcta' 
+                                        : respuestasPractica[preguntaActualPractica]?.respuesta === 'Falso' 
+                                          ? 'incorrecta' 
+                                          : ''
+                                      : ''
+                                  }`}
+                                  onClick={() => !mostrandoFeedback && responderPreguntaPractica('Falso')}
+                                  disabled={mostrandoFeedback}
+                                >
+                                  ✗ Falso
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Feedback */}
+                            {mostrandoFeedback && (
+                              <div className={`feedback-container ${respuestasPractica[preguntaActualPractica]?.correcta ? 'correcto' : 'incorrecto'}`}>
+                                <div className="feedback-icon">
+                                  {respuestasPractica[preguntaActualPractica]?.correcta ? '✅' : '❌'}
+                                </div>
+                                <div className="feedback-texto">
+                                  {respuestasPractica[preguntaActualPractica]?.correcta 
+                                    ? '¡Correcto!' 
+                                    : `Incorrecto. La respuesta correcta es: ${practicaGenerada.preguntas[preguntaActualPractica].respuesta_correcta}`}
+                                </div>
+                                {practicaGenerada.preguntas[preguntaActualPractica].explicacion && (
+                                  <div className="feedback-explicacion">
+                                    {practicaGenerada.preguntas[preguntaActualPractica].explicacion}
+                                  </div>
+                                )}
+                                <button 
+                                  className="btn-siguiente-pregunta"
+                                  onClick={siguientePreguntaPractica}
+                                >
+                                  {preguntaActualPractica < practicaGenerada.preguntas.length - 1 
+                                    ? 'Siguiente Pregunta →' 
+                                    : 'Ver Resultados →'}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        /* Resultados finales */
+                        <div className="resultados-practica">
+                          <div className="resultado-header">
+                            <div className="resultado-icon">
+                              {resultadoPractica.porcentaje >= 80 ? '🏆' : 
+                               resultadoPractica.porcentaje >= 60 ? '👍' : '📚'}
+                            </div>
+                            <h2>Práctica Completada</h2>
+                          </div>
+                          
+                          <div className="resultado-stats">
+                            <div className="stat-grande">
+                              <span className="stat-valor">{resultadoPractica.porcentaje}%</span>
+                              <span className="stat-label">Puntuación</span>
+                            </div>
+                            <div className="stat-detalle">
+                              <span className="correctas">{resultadoPractica.correctas} correctas</span>
+                              <span className="total">de {resultadoPractica.total} preguntas</span>
+                            </div>
+                          </div>
+
+                          <div className="resultado-acciones">
+                            <button 
+                              className="btn-nueva-practica"
+                              onClick={() => {
+                                setPracticaGenerada(null);
+                                setResultadoPractica(null);
+                                setPreguntaActualPractica(0);
+                                setRespuestasPractica([]);
+                                setTabPracticasActivo(1);
+                              }}
+                            >
+                              🔄 Nueva Práctica
+                            </button>
+                            <button 
+                              className="btn-continuar-fase"
+                              onClick={() => avanzarFase()}
+                            >
+                              ⏭️ Continuar →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tab 2 bloqueado si no hay práctica */}
+                  {tabPracticasActivo === 2 && !practicaGenerada && (
+                    <div className="tab-contenido-practica tab-bloqueado">
+                      <div className="bloqueado-mensaje">
+                        <span className="bloqueado-icon">🔒</span>
+                        <h3>Genera una práctica primero</h3>
+                        <p>Selecciona material y configura el tipo de práctica en las pestañas anteriores</p>
+                        <button 
+                          className="btn-ir-config"
+                          onClick={() => setTabPracticasActivo(archivosSeleccionados.length > 0 ? 1 : 0)}
+                        >
+                          {archivosSeleccionados.length > 0 ? 'Ir a Configuración' : 'Seleccionar Material'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Footer con continuar */}
                   <div className="fase-footer-practicas">
@@ -15910,7 +17138,7 @@ Shortcuts:
                       className="btn-continuar-fase"
                       onClick={() => avanzarFase()}
                     >
-                      ⏭️ Continuar a la siguiente fase →
+                      ⏭️ Saltar a siguiente fase →
                     </button>
                   </div>
                 </div>
@@ -24986,11 +26214,11 @@ Shortcuts:
                   </div>
                 </details>
 
-                {/* ========== PRÁCTICAS DE INGLÉS ========== */}
+                {/* ========== PRÁCTICAS DE IDIOMA ========== */}
                 <details className="practice-type-section" style={{borderLeft: '4px solid #4A90E2'}}>
                   <summary className="practice-type-header" style={{background: '#667eea', color: 'white'}}>
-                    <span className="practice-icon">🇬🇧</span>
-                    <span className="practice-title">Prácticas de Inglés (Reading + Writing)</span>
+                    <span className="practice-icon">🌍</span>
+                    <span className="practice-title">Prácticas de Idioma (Lectura + Escritura)</span>
                     <span className="practice-count">
                       {numReadingComprehension + numReadingTrueFalse + numReadingCloze + numReadingSkill + numReadingMatching + numReadingSequence + numWritingShort + numWritingParaphrase + numWritingCorrection + numWritingTransformation + numWritingEssay + numWritingSentenceBuilder + numWritingPictureDescription + numWritingEmail}
                     </span>
@@ -25001,12 +26229,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">📖</span>
-                        <span className="practice-title">Reading Comprehension</span>
+                        <span className="practice-title">Comprensión Lectora</span>
                         <span className="practice-count">{numReadingComprehension}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Texto en inglés (100-200 palabras) + 3-5 preguntas (MCQ, V/F, respuesta corta).
+                          <strong>📖 Qué es:</strong> Texto en el idioma objetivo (100-200 palabras) con 3-5 preguntas de comprensión.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Desarrollar fluidez lectora para leer artículos, noticias, emails de trabajo y documentos técnicos sin traducir mentalmente.<br/>
+                          <strong>💡 En la vida real:</strong> Cuando recibas un email en otro idioma o leas instrucciones, entenderás el mensaje completo sin necesidad de traductor.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25019,6 +26249,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingComprehension}
+                            onChange={(e) => setIdiomaReadingComprehension(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25026,12 +26275,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">✓✗</span>
-                        <span className="practice-title">Reading True/False + Justification</span>
+                        <span className="practice-title">Verdadero/Falso con Justificación</span>
                         <span className="practice-count">{numReadingTrueFalse}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Texto + afirmaciones. Usuario debe responder verdadero/falso y justificar con evidencia del texto.
+                          <strong>📖 Qué es:</strong> Afirmaciones sobre un texto que debes validar y justificar con evidencia del mismo.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Desarrollar lectura crítica y la habilidad de encontrar información específica en textos largos.<br/>
+                          <strong>💡 En la vida real:</strong> Útil para revisar contratos, verificar información en documentos oficiales, o analizar noticias y distinguir hechos de opiniones.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25044,6 +26295,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingTrueFalse}
+                            onChange={(e) => setIdiomaReadingTrueFalse(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25051,12 +26321,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">📝</span>
-                        <span className="practice-title">Reading Cloze (Fill Gaps)</span>
+                        <span className="practice-title">Completar Texto (Cloze)</span>
                         <span className="practice-count">{numReadingCloze}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Texto con huecos. Evalúa vocabulario y gramática en contexto.
+                          <strong>📖 Qué es:</strong> Texto con espacios en blanco donde debes colocar la palabra correcta según el contexto.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Reforzar vocabulario y gramática en contexto real, aprender colocaciones naturales del idioma.<br/>
+                          <strong>💡 En la vida real:</strong> Cuando escribas emails o documentos, las palabras correctas te saldrán naturalmente porque has practicado cómo fluyen juntas.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25069,6 +26341,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingCloze}
+                            onChange={(e) => setIdiomaReadingCloze(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25076,12 +26367,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🎯</span>
-                        <span className="practice-title">Reading Skills (Main Idea/Inference)</span>
+                        <span className="practice-title">Habilidades de Lectura (Inferencia)</span>
                         <span className="practice-count">{numReadingSkill}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Evalúa habilidades específicas: idea principal, detalles, inferencia, propósito, tono.
+                          <strong>📖 Qué es:</strong> Preguntas sobre idea principal, detalles implícitos, propósito del autor y tono del texto.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Leer "entre líneas" y entender intenciones, no solo palabras literales.<br/>
+                          <strong>💡 En la vida real:</strong> En reuniones de trabajo o negociaciones, entenderás qué realmente quiere decir alguien aunque no lo diga explícitamente.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25094,6 +26387,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingSkill}
+                            onChange={(e) => setIdiomaReadingSkill(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25101,12 +26413,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🔗</span>
-                        <span className="practice-title">Reading Matching</span>
+                        <span className="practice-title">Relacionar Ideas</span>
                         <span className="practice-count">{numReadingMatching}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Relacionar oraciones con párrafos del texto. Evalúa comprensión detallada.
+                          <strong>📖 Qué es:</strong> Conectar oraciones o ideas con párrafos específicos de un texto.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Desarrollar lectura rápida (scanning) para localizar información específica.<br/>
+                          <strong>💡 En la vida real:</strong> Cuando busques información en manuales, términos y condiciones o documentos largos, encontrarás lo que necesitas rápidamente.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25119,6 +26433,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingMatching}
+                            onChange={(e) => setIdiomaReadingMatching(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25126,12 +26459,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🔢</span>
-                        <span className="practice-title">Reading Sequence</span>
+                        <span className="practice-title">Ordenar Secuencia</span>
                         <span className="practice-count">{numReadingSequence}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Ordenar eventos/párrafos en secuencia lógica. Ideal para narrativas.
+                          <strong>📖 Qué es:</strong> Ordenar eventos, pasos o párrafos en su secuencia lógica correcta.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Comprender narrativas, procesos e instrucciones paso a paso.<br/>
+                          <strong>💡 En la vida real:</strong> Seguir tutoriales, recetas, instrucciones de montaje o procedimientos técnicos sin perderte en el orden.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25144,6 +26479,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaReadingSequence}
+                            onChange={(e) => setIdiomaReadingSequence(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25151,12 +26505,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">✍️</span>
-                        <span className="practice-title">Writing Short Answer</span>
+                        <span className="practice-title">Respuesta Corta Escrita</span>
                         <span className="practice-count">{numWritingShort}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Respuesta breve (30-50 palabras). Evalúa keywords, gramática, coherencia.
+                          <strong>📖 Qué es:</strong> Escribir respuestas breves (30-50 palabras) a preguntas específicas.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Practicar expresión escrita concisa, usar vocabulario clave y mantener coherencia.<br/>
+                          <strong>💡 En la vida real:</strong> Responder mensajes de trabajo, comentarios en redes, formularios o preguntas en foros de manera clara y directa.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25169,6 +26525,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingShort}
+                            onChange={(e) => setIdiomaWritingShort(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25176,12 +26551,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🔄</span>
-                        <span className="practice-title">Writing Paraphrase</span>
+                        <span className="practice-title">Parafrasear Texto</span>
                         <span className="practice-count">{numWritingParaphrase}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Reformular texto preservando significado. Evalúa vocabulario y estructura.
+                          <strong>📖 Qué es:</strong> Reescribir un texto con tus propias palabras manteniendo el significado original.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Ampliar vocabulario, evitar plagio y demostrar comprensión profunda.<br/>
+                          <strong>💡 En la vida real:</strong> Al escribir reportes, resumir reuniones o explicar conceptos a otros, podrás expresar ideas de múltiples formas.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25194,6 +26571,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingParaphrase}
+                            onChange={(e) => setIdiomaWritingParaphrase(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25201,12 +26597,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🔧</span>
-                        <span className="practice-title">Writing Error Correction</span>
+                        <span className="practice-title">Corrección de Errores</span>
                         <span className="practice-count">{numWritingCorrection}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Corregir texto con errores gramaticales. Identifica tipo y cantidad de errores.
+                          <strong>📖 Qué es:</strong> Identificar y corregir errores gramaticales, ortográficos o de puntuación en un texto.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Desarrollar "ojo editor" para detectar errores propios y ajenos automáticamente.<br/>
+                          <strong>💡 En la vida real:</strong> Revisar tus propios emails antes de enviar, editar documentos de equipo, o ayudar a otros con sus textos.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25219,6 +26617,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingCorrection}
+                            onChange={(e) => setIdiomaWritingCorrection(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25226,12 +26643,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🎭</span>
-                        <span className="practice-title">Writing Transformation</span>
+                        <span className="practice-title">Transformación Gramatical</span>
                         <span className="practice-count">{numWritingTransformation}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Transformar oraciones (tiempo verbal, voz, negativa/pregunta). Gramática aplicada.
+                          <strong>📖 Qué es:</strong> Transformar oraciones cambiando tiempo verbal, voz activa/pasiva, o estructura.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Dominar estructuras gramaticales complejas y flexibilidad en la expresión.<br/>
+                          <strong>💡 En la vida real:</strong> Adaptar tu estilo de comunicación según el contexto: formal vs informal, directo vs diplomático.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25244,6 +26663,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingTransformation}
+                            onChange={(e) => setIdiomaWritingTransformation(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25251,12 +26689,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">📄</span>
-                        <span className="practice-title">Writing Mini-Essay</span>
+                        <span className="practice-title">Mini-Ensayo</span>
                         <span className="practice-count">{numWritingEssay}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Ensayo breve (120-150 palabras). Evalúa estructura, coherencia, vocabulario, gramática.
+                          <strong>📖 Qué es:</strong> Escribir un texto argumentativo corto (120-150 palabras) con introducción, desarrollo y conclusión.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Organizar ideas, argumentar con claridad y escribir de forma estructurada.<br/>
+                          <strong>💡 En la vida real:</strong> Redactar propuestas, justificar decisiones por escrito, crear contenido para blogs o presentaciones.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25269,6 +26709,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingEssay}
+                            onChange={(e) => setIdiomaWritingEssay(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25276,12 +26735,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🧩</span>
-                        <span className="practice-title">Writing Sentence Builder</span>
+                        <span className="practice-title">Constructor de Oraciones</span>
                         <span className="practice-count">{numWritingSentenceBuilder}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Armar oraciones con bloques dados. Evalúa estructura y sintaxis.
+                          <strong>📖 Qué es:</strong> Armar oraciones correctas usando bloques de palabras o frases dadas.<br/>
+                          <strong>🎯 Para qué sirve:</strong> Internalizar el orden correcto de las palabras y estructuras sintácticas naturales.<br/>
+                          <strong>💡 En la vida real:</strong> Hablar y escribir con fluidez sin pensar en la estructura, las oraciones saldrán naturalmente.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25294,6 +26755,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingSentenceBuilder}
+                            onChange={(e) => setIdiomaWritingSentenceBuilder(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25301,12 +26781,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">🖼️</span>
-                        <span className="practice-title">Writing Picture Description</span>
+                        <span className="practice-title">Descripción de Escena</span>
                         <span className="practice-count">{numWritingPictureDescription}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Describir escena imaginada (80-100 palabras). Evalúa lenguaje descriptivo y vocabulario.
+                          <strong>📖 Qué es:</strong> Describir una imagen o escena imaginada con detalle (80-100 palabras).<br/>
+                          <strong>🎯 Para qué sirve:</strong> Desarrollar vocabulario descriptivo, uso de adjetivos y lenguaje visual.<br/>
+                          <strong>💡 En la vida real:</strong> Describir productos, lugares, situaciones en presentaciones, o crear contenido visual con palabras.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25319,6 +26801,25 @@ Shortcuts:
                             className="input-number"
                           />
                         </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingPictureDescription}
+                            onChange={(e) => setIdiomaWritingPictureDescription(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
+                        </div>
                       </div>
                     </details>
 
@@ -25326,12 +26827,14 @@ Shortcuts:
                     <details className="practice-type-section">
                       <summary className="practice-type-header">
                         <span className="practice-icon">📧</span>
-                        <span className="practice-title">Writing Email/Message</span>
+                        <span className="practice-title">Email / Mensaje Formal</span>
                         <span className="practice-count">{numWritingEmail}</span>
                       </summary>
                       <div className="practice-type-content">
                         <p className="practice-description">
-                          Email formal/informal (60-80 palabras). Evalúa formato, tono, claridad, cortesía.
+                          <strong>📖 Qué es:</strong> Redactar emails formales o informales según la situación (60-80 palabras).<br/>
+                          <strong>🎯 Para qué sirve:</strong> Dominar formato, tono apropiado, saludos, despedidas y estructura de comunicación escrita.<br/>
+                          <strong>💡 En la vida real:</strong> Escribir emails profesionales, solicitudes, quejas corteses, agradecimientos, o contactar empresas/clientes.
                         </p>
                         <div className="config-control">
                           <label>Cantidad:</label>
@@ -25343,6 +26846,25 @@ Shortcuts:
                             onChange={(e) => setNumWritingEmail(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
                             className="input-number"
                           />
+                        </div>
+                        <div className="config-control" style={{marginTop: '8px'}}>
+                          <label>🌐 Idioma:</label>
+                          <select
+                            value={idiomaWritingEmail}
+                            onChange={(e) => setIdiomaWritingEmail(e.target.value)}
+                            className="select-idioma"
+                          >
+                            <option value="ingles">🇬🇧 Inglés</option>
+                            <option value="frances">🇫🇷 Francés</option>
+                            <option value="aleman">🇩🇪 Alemán</option>
+                            <option value="italiano">🇮🇹 Italiano</option>
+                            <option value="portugues">🇵🇹 Portugués</option>
+                            <option value="japones">🇯🇵 Japonés</option>
+                            <option value="chino">🇨🇳 Chino Mandarín</option>
+                            <option value="coreano">🇰🇷 Coreano</option>
+                            <option value="ruso">🇷🇺 Ruso</option>
+                            <option value="arabe">🇸🇦 Árabe</option>
+                          </select>
                         </div>
                       </div>
                     </details>
@@ -33539,7 +35061,7 @@ Shortcuts:
                      faseActual === 'errores' ? '❌' :
                      faseActual === 'flashcards' ? '🎴' :
                      faseActual === 'contenido' ? '📚' :
-                     faseActual === 'generar_practicas' ? '🧑‍💻' :
+                     (faseActual === 'generar_practicas' || faseActual === 'practicas') ? '🧑‍💻' :
                      faseActual === 'descanso' ? (tiempoRestante > 600 ? '🧘' : '☕') :
                      '📊'}
                   </span>

@@ -9646,6 +9646,537 @@
 /* FASE: GENERAR PRÁCTICAS */
 /* ============================================ */
 .fase-generar-practicas {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Tabs de Prácticas */
+.practicas-tabs-header {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  padding: 0.5rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.tab-practica {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-practica:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.1);
+  color: #e2e8f0;
+}
+
+.tab-practica.activo {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+  color: white;
+}
+
+.tab-practica:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tab-practica.bloqueado {
+  opacity: 0.4;
+}
+
+.tab-numero {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.tab-practica.activo .tab-numero {
+  background: #6366f1;
+}
+
+.tab-badge {
+  background: #6366f1;
+  color: white;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tab-badge.verde {
+  background: #22c55e;
+}
+
+/* Contenido de Tab */
+.tab-contenido-practica {
+  background: rgba(15, 23, 42, 0.3);
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-height: 400px;
+}
+
+.tab-contenido-practica h3 {
+  margin: 0 0 1rem 0;
+  color: #e2e8f0;
+  font-size: 1.1rem;
+}
+
+/* Config de Práctica */
+.config-practica-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.config-seccion {
+  background: rgba(30, 41, 59, 0.5);
+  padding: 1rem;
+  border-radius: 10px;
+}
+
+.config-seccion h4 {
+  margin: 0 0 0.75rem 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.tipos-pregunta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.tipo-pregunta-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  background: rgba(51, 65, 85, 0.4);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tipo-pregunta-card:hover {
+  background: rgba(71, 85, 105, 0.5);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tipo-pregunta-card.seleccionado {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+}
+
+.tipo-pregunta-card input {
+  display: none;
+}
+
+.tipo-icon {
+  font-size: 1.5rem;
+}
+
+.tipo-nombre {
+  font-size: 0.85rem;
+  color: #e2e8f0;
+  font-weight: 500;
+}
+
+.tipo-desc {
+  font-size: 0.7rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.dificultad-selector,
+.num-preguntas-selector {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn-dificultad,
+.btn-num-preguntas {
+  padding: 0.5rem 1rem;
+  background: rgba(51, 65, 85, 0.5);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-dificultad:hover,
+.btn-num-preguntas:hover {
+  background: rgba(71, 85, 105, 0.6);
+}
+
+.btn-dificultad.activo,
+.btn-num-preguntas.activo {
+  background: rgba(99, 102, 241, 0.3);
+  border-color: #6366f1;
+  color: white;
+}
+
+.config-resumen {
+  padding: 1rem;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #6366f1;
+}
+
+.config-resumen p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.9rem;
+}
+
+/* Footer de Tab */
+.tab-footer-acciones {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+.btn-siguiente-tab,
+.btn-anterior-tab {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-siguiente-tab {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  color: white;
+}
+
+.btn-siguiente-tab:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+}
+
+.btn-siguiente-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-anterior-tab {
+  background: rgba(51, 65, 85, 0.5);
+  border: 1px solid rgba(71, 85, 105, 0.5);
+  color: #cbd5e1;
+}
+
+.btn-anterior-tab:hover {
+  background: rgba(71, 85, 105, 0.6);
+}
+
+.btn-generar-practica-principal {
+  padding: 0.85rem 2rem;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-generar-practica-principal:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+}
+
+.btn-generar-practica-principal:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Práctica - Resolver */
+.practica-progreso {
+  margin-bottom: 1.5rem;
+}
+
+.progreso-texto {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.progreso-barra {
+  height: 8px;
+  background: rgba(51, 65, 85, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progreso-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.3s ease;
+}
+
+.pregunta-container {
+  background: rgba(30, 41, 59, 0.5);
+  padding: 1.5rem;
+  border-radius: 12px;
+}
+
+.pregunta-texto {
+  margin: 0 0 1.5rem 0;
+  color: #e2e8f0;
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+.opciones-mcq,
+.opciones-vf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.opciones-vf {
+  flex-direction: row;
+}
+
+.opcion-btn {
+  padding: 1rem 1.25rem;
+  background: rgba(51, 65, 85, 0.5);
+  border: 2px solid rgba(71, 85, 105, 0.5);
+  border-radius: 10px;
+  color: #e2e8f0;
+  font-size: 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.opcion-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.opcion-btn.correcta {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.opcion-btn.incorrecta {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.opcion-btn.vf {
+  flex: 1;
+  text-align: center;
+}
+
+.feedback-container {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border-radius: 10px;
+}
+
+.feedback-container.correcto {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.feedback-container.incorrecto {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.feedback-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.feedback-texto {
+  color: #e2e8f0;
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.feedback-explicacion {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.btn-siguiente-pregunta {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-siguiente-pregunta:hover {
+  transform: translateY(-2px);
+}
+
+/* Resultados */
+.resultados-practica {
+  text-align: center;
+  padding: 2rem;
+}
+
+.resultado-header {
+  margin-bottom: 2rem;
+}
+
+.resultado-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.resultado-header h2 {
+  color: #e2e8f0;
+  margin: 0;
+}
+
+.resultado-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-grande {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-valor {
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #6366f1;
+}
+
+.stat-label {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.stat-detalle {
+  display: flex;
+  gap: 0.5rem;
+  color: #94a3b8;
+}
+
+.correctas {
+  color: #22c55e;
+}
+
+.resultado-acciones {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.btn-nueva-practica {
+  padding: 0.75rem 1.5rem;
+  background: rgba(99, 102, 241, 0.2);
+  border: 2px solid #6366f1;
+  border-radius: 8px;
+  color: #a5b4fc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-nueva-practica:hover {
+  background: rgba(99, 102, 241, 0.3);
+  color: white;
+}
+
+/* Tab Bloqueado */
+.tab-bloqueado {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bloqueado-mensaje {
+  text-align: center;
+  color: #64748b;
+}
+
+.bloqueado-icon {
+  font-size: 3rem;
+  opacity: 0.5;
+}
+
+.bloqueado-mensaje h3 {
+  color: #94a3b8;
+}
+
+.bloqueado-mensaje p {
+  margin-bottom: 1.5rem;
+}
+
+.btn-ir-config {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+}
+
+/* Seleccionados header */
+.seleccionados-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.seleccionados-header h4 {
+  margin: 0;
+  color: #22c55e;
+}
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -9805,6 +10336,184 @@
 .archivo-item.mas {
   background: rgba(99, 102, 241, 0.2);
   color: #a5b4fc;
+}
+
+/* Archivos Seleccionables en fase prácticas */
+.archivos-seleccionables,
+.notas-seleccionables {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.4);
+  border-radius: 8px;
+}
+
+.archivos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.archivos-header h4 {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.archivos-acciones-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-seleccionar-todos {
+  padding: 0.35rem 0.7rem;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+  color: #a5b4fc;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-seleccionar-todos:hover {
+  background: rgba(99, 102, 241, 0.4);
+  color: white;
+}
+
+.archivos-contador {
+  font-size: 0.8rem;
+  color: #22c55e;
+  font-weight: 500;
+}
+
+.archivos-lista-seleccionable {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 8px;
+}
+
+.archivo-item-seleccionable {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.archivo-item-seleccionable:hover {
+  background: rgba(51, 65, 85, 0.8);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.archivo-item-seleccionable.seleccionado {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.archivo-item-seleccionable .archivo-checkbox {
+  font-size: 1.1rem;
+  color: #64748b;
+}
+
+.archivo-item-seleccionable.seleccionado .archivo-checkbox {
+  color: #22c55e;
+}
+
+.archivo-item-seleccionable .archivo-nombre {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archivo-item-seleccionable .archivo-size {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* Panel de archivos seleccionados */
+.archivos-seleccionados-resumen {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 10px;
+}
+
+.archivos-seleccionados-resumen h4 {
+  margin: 0 0 0.75rem 0;
+  color: #22c55e;
+  font-size: 0.95rem;
+}
+
+.archivos-seleccionados-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.archivo-seleccionado-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  background: rgba(34, 197, 94, 0.2);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #e2e8f0;
+}
+
+.archivo-seleccionado-nombre {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-quitar-archivo {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  font-size: 0.9rem;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.btn-quitar-archivo:hover {
+  opacity: 1;
+}
+
+.btn-limpiar-seleccion {
+  padding: 0.4rem 0.8rem;
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #fca5a5;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-limpiar-seleccion:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: white;
 }
 
 .practicas-acciones {
