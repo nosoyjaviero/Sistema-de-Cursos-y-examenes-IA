@@ -188,7 +188,10 @@ async function setSesionActiva(data) {
 
 function App() {
   const [selectedMenu, setSelectedMenu] = useState('inicio')
-  const [rutaActual, setRutaActual] = useState('')
+  const [rutaActual, setRutaActual] = useState(() => {
+    // Recuperar última carpeta visitada de localStorage
+    return localStorage.getItem('ultimaCarpetaCursos') || ''
+  })
   const [carpetas, setCarpetas] = useState([])
   const [documentos, setDocumentos] = useState([])
   const [loading, setLoading] = useState(false)
@@ -259,6 +262,7 @@ function App() {
   
   const [preguntasExamen, setPreguntasExamen] = useState([])
   const [respuestasUsuario, setRespuestasUsuario] = useState({})
+  const [imagenesLocales, setImagenesLocales] = useState({}) // {preguntaIndex: base64String} para picture_description
   const [preguntasComprendidas, setPreguntasComprendidas] = useState({}) // {practicaId: {preguntaIndex: true}}
   const [resultadoExamen, setResultadoExamen] = useState(null)
   const [examenCompletado, setExamenCompletado] = useState(false)
@@ -558,6 +562,11 @@ function App() {
   const [urlHipervinculo, setUrlHipervinculo] = useState('')
   const [tipoHipervinculo, setTipoHipervinculo] = useState('url') // 'url' o 'nota'
   const [notaReferenciaId, setNotaReferenciaId] = useState(null)
+  
+  // Estados para insertar tablas
+  const [modalTablaAbierto, setModalTablaAbierto] = useState(false)
+  const [filasTabla, setFilasTabla] = useState(3)
+  const [columnasTabla, setColumnasTabla] = useState(3)
 
   // Estados para navegación de carpetas de prácticas
   const [rutaPracticasActual, setRutaPracticasActual] = useState('')
@@ -790,6 +799,7 @@ function App() {
   });
   const calendarioCargandoRef = useRef(false);
   const flashcardsCargandoRef = useRef(false); // 🔥 Evitar cargas simultáneas de flashcards
+  const flashcardsYaVistasSesion = useRef(new Set()); // 🔥 Rastrear flashcards vistas en esta sesión
 
   // Estados para mini calendario visual
   const [mesCalendario, setMesCalendario] = useState(new Date().getMonth());
@@ -878,6 +888,18 @@ function App() {
   useEffect(() => {
     if (selectedMenu === 'generar') {
       cargarCarpetasExamenes()
+    }
+  }, [selectedMenu])
+
+  // 🔥 CARGAR RENDIMIENTO cuando se entra a "cursos" para mostrar badges
+  useEffect(() => {
+    if (selectedMenu === 'cursos') {
+      // Calcular rendimiento para mostrar badges de flashcards, notas, errores
+      setTimeout(() => {
+        if (typeof calcularRendimientoJerarquias === 'function') {
+          calcularRendimientoJerarquias();
+        }
+      }, 100);
     }
   }, [selectedMenu])
 
@@ -1725,6 +1747,136 @@ function App() {
         window.imagenSeleccionada = null;
       };
       
+      // ===== FUNCIÓN PARA SINCRONIZAR CONTENIDO DESPUÉS DE DRAG & DROP =====
+      const sincronizarContenido = () => {
+        const editor = document.querySelector('.editor-html-simple');
+        if (editor && editorRef.current) {
+          // Clonar el contenido para limpiarlo
+          const contenidoLimpio = editor.cloneNode(true);
+          // Remover controles de elementos antes de guardar
+          contenidoLimpio.querySelectorAll('.elemento-controles').forEach(c => c.remove());
+          contenidoLimpio.querySelectorAll('.elemento-con-controles').forEach(el => {
+            el.classList.remove('elemento-con-controles');
+          });
+          // Remover indicadores de drop
+          contenidoLimpio.querySelectorAll('.indicador-drop-toggle, .indicador-drop-elemento, .indicador-drop-imagen').forEach(ind => ind.remove());
+          
+          setContenidoNota(contenidoLimpio.innerHTML);
+          console.log('🔄 Contenido sincronizado después de drag & drop');
+        }
+      };
+      
+      // Hacer la función accesible globalmente para los handlers
+      window.sincronizarContenidoEditor = sincronizarContenido;
+      
+      // ===== SISTEMA UNIFICADO DE CONTROLES DE ELEMENTOS =====
+      // Agregar controles (drag handle + delete) a todos los elementos editables
+      const inicializarControlesElementos = () => {
+        const editor = document.querySelector('.editor-html-simple');
+        if (!editor) {
+          console.log('⚠️ Editor no encontrado para inicializar controles');
+          return;
+        }
+        
+        // Selectores de elementos que pueden tener controles
+        const selectoresElementos = [
+          'p:not(.checklist-item)',
+          'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+          'ul', 'ol',
+          'blockquote',
+          '.tabla-contenedor',
+          '.checklist-container'
+        ];
+        
+        // Buscar solo elementos directos del editor (no anidados)
+        selectoresElementos.forEach(selector => {
+          const elementos = editor.querySelectorAll(`:scope > ${selector}`);
+          elementos.forEach(el => {
+            // No agregar a elementos vacíos o que ya tienen controles
+            if (el.querySelector('.elemento-controles')) return;
+            if (el.textContent.trim() === '' && !el.querySelector('table') && !el.querySelector('.checklist-item')) return;
+            
+            // Crear contenedor de controles
+            const controles = document.createElement('div');
+            controles.className = 'elemento-controles';
+            controles.setAttribute('contenteditable', 'false');
+            
+            // Botón de arrastrar
+            const dragHandle = document.createElement('button');
+            dragHandle.type = 'button';
+            dragHandle.className = 'elemento-drag-handle';
+            dragHandle.setAttribute('draggable', 'true');
+            dragHandle.setAttribute('title', 'Arrastrar para mover');
+            dragHandle.textContent = '⠿';
+            
+            // Botón de eliminar
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'elemento-delete-btn';
+            deleteBtn.setAttribute('title', 'Eliminar elemento');
+            deleteBtn.textContent = '🗑';
+            deleteBtn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (confirm('¿Eliminar este elemento?')) {
+                el.remove();
+              }
+            };
+            
+            controles.appendChild(dragHandle);
+            controles.appendChild(deleteBtn);
+            
+            // Agregar clase y controles al elemento
+            el.classList.add('elemento-con-controles');
+            el.insertBefore(controles, el.firstChild);
+          });
+        });
+        
+        // También inicializar toggles existentes con drag handles y botón eliminar
+        const toggles = editor.querySelectorAll('.toggle-heading');
+        console.log(`📝 Inicializando ${toggles.length} toggle headings existentes`);
+        
+        toggles.forEach(toggle => {
+          const summary = toggle.querySelector('.toggle-summary');
+          if (!summary) return;
+          
+          // Agregar drag handle si no existe
+          if (!summary.querySelector('.toggle-drag-handle')) {
+            const dragHandle = document.createElement('span');
+            dragHandle.className = 'toggle-drag-handle';
+            dragHandle.setAttribute('contenteditable', 'false');
+            dragHandle.setAttribute('draggable', 'true');
+            dragHandle.setAttribute('title', 'Arrastrar para mover');
+            dragHandle.textContent = '☰';
+            summary.insertBefore(dragHandle, summary.firstChild);
+            console.log('✅ Drag handle agregado a toggle:', toggle.dataset.toggleId);
+          }
+          
+          // Agregar botón eliminar si no existe
+          if (!summary.querySelector('.toggle-delete-btn')) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'toggle-delete-btn';
+            deleteBtn.setAttribute('contenteditable', 'false');
+            deleteBtn.setAttribute('title', 'Eliminar toggle');
+            deleteBtn.textContent = '🗑️';
+            deleteBtn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (confirm('¿Eliminar este toggle?')) {
+                toggle.remove();
+              }
+            };
+            summary.appendChild(deleteBtn);
+            console.log('✅ Botón eliminar agregado a toggle:', toggle.dataset.toggleId);
+          }
+        });
+      };
+      
+      // Ejecutar inicialización después de que se cargue el contenido
+      setTimeout(inicializarControlesElementos, 100);
+      setTimeout(inicializarControlesElementos, 500);
+      
       // ===== SISTEMA DE DRAG & DROP PARA IMÁGENES =====
       // Configurar drag & drop en el editor
       const editor = document.querySelector('.editor-html-simple');
@@ -1812,26 +1964,31 @@ function App() {
         });
         
         editor.addEventListener('drop', (e) => {
+          // Solo procesar si hay una imagen arrastrándose
+          if (!imagenArrastrada) return;
+          
           e.preventDefault();
           
-          if (imagenArrastrada) {
-            const contenedor = imagenArrastrada.parentElement;
-            
-            if (indicadorDrop && indicadorDrop.parentNode) {
-              // Insertar el contenedor donde está el indicador
-              indicadorDrop.parentNode.insertBefore(contenedor, indicadorDrop);
-              indicadorDrop.remove();
-            }
-            
-            contenedor.classList.remove('arrastrando');
-            
-            // Mostrar controles de nuevo
-            setTimeout(() => {
-              window.mostrarControlesImagen(imagenArrastrada);
-            }, 100);
-            
-            imagenArrastrada = null;
+          const contenedor = imagenArrastrada.parentElement;
+          
+          if (indicadorDrop && indicadorDrop.parentNode) {
+            // Insertar el contenedor donde está el indicador
+            indicadorDrop.parentNode.insertBefore(contenedor, indicadorDrop);
+            indicadorDrop.remove();
           }
+          
+          contenedor.classList.remove('arrastrando');
+          
+          // Mostrar controles de nuevo
+          setTimeout(() => {
+            window.mostrarControlesImagen(imagenArrastrada);
+            // Sincronizar contenido después del drop
+            if (window.sincronizarContenidoEditor) {
+              window.sincronizarContenidoEditor();
+            }
+          }, 100);
+          
+          imagenArrastrada = null;
         });
         
         editor.addEventListener('dragend', (e) => {
@@ -1849,6 +2006,339 @@ function App() {
           document.querySelectorAll('.resize-handle').forEach(h => h.style.display = '');
           
           imagenArrastrada = null;
+        });
+        
+        // ===== SISTEMA DE DRAG & DROP PARA TOGGLE HEADINGS =====
+        let toggleArrastrado = null;
+        let indicadorDropToggle = null;
+        let ultimaPosicionToggle = null; // Para evitar parpadeo
+        
+        const crearIndicadorDropToggle = () => {
+          if (!indicadorDropToggle) {
+            indicadorDropToggle = document.createElement('div');
+            indicadorDropToggle.className = 'indicador-drop-toggle';
+            indicadorDropToggle.innerHTML = '📍 Soltar toggle aquí';
+          }
+          return indicadorDropToggle;
+        };
+        
+        const limpiarIndicadorToggle = () => {
+          if (indicadorDropToggle && indicadorDropToggle.parentNode) {
+            indicadorDropToggle.remove();
+          }
+          indicadorDropToggle = null;
+          ultimaPosicionToggle = null;
+        };
+        
+        // Encontrar el punto de inserción para toggle
+        const encontrarPuntoInsercionToggle = (y, targetContent = null) => {
+          const selector = targetContent 
+            ? '.toggle-heading, p, div:not(.toggle-heading):not(.indicador-drop-toggle), h1, h2, h3, h4, h5, h6, ul, ol, blockquote'
+            : '.toggle-heading, p, div:not(.indicador-drop-toggle), h1, h2, h3, h4, h5, h6, ul, ol, blockquote';
+          
+          const container = targetContent || editor;
+          const elementos = container.querySelectorAll(selector);
+          let mejorElemento = null;
+          let mejorDistancia = Infinity;
+          let insertarAntes = true;
+          
+          elementos.forEach(el => {
+            if (el === indicadorDropToggle || el === toggleArrastrado || el.contains(toggleArrastrado)) return;
+            
+            const rect = el.getBoundingClientRect();
+            const centroY = rect.top + rect.height / 2;
+            const distancia = Math.abs(y - centroY);
+            
+            if (distancia < mejorDistancia) {
+              mejorDistancia = distancia;
+              mejorElemento = el;
+              insertarAntes = y < centroY;
+            }
+          });
+          
+          return { elemento: mejorElemento, antes: insertarAntes };
+        };
+        
+        // Manejar dragstart en toggle headings
+        editor.addEventListener('dragstart', (e) => {
+          const dragHandle = e.target.closest('.toggle-drag-handle');
+          const contenedor = e.target.closest('.imagen-contenedor');
+          
+          // Si es una imagen, dejar que el handler de imagen lo maneje
+          if (contenedor) return;
+          
+          // Solo permitir arrastrar desde el drag handle
+          if (dragHandle) {
+            const toggle = dragHandle.closest('.toggle-heading');
+            if (toggle) {
+              e.stopPropagation();
+              toggleArrastrado = toggle;
+              toggle.classList.add('toggle-arrastrando');
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', 'toggle');
+              e.dataTransfer.setData('text/toggle-id', toggle.dataset.toggleId || '');
+              console.log('🔄 Iniciando arrastre de toggle:', toggle.dataset.toggleId);
+            }
+          }
+        });
+        
+        // Manejar dragover para toggle
+        editor.addEventListener('dragover', (e) => {
+          if (!toggleArrastrado) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          
+          const indicador = crearIndicadorDropToggle();
+          
+          // Verificar si estamos sobre partes específicas de un toggle
+          const targetToggle = e.target.closest('.toggle-heading');
+          const targetContent = e.target.closest('.toggle-content');
+          const targetSummary = e.target.closest('.toggle-summary');
+          
+          let nuevaPosicion = null;
+          let elementoReferencia = null;
+          let insertarAntes = true;
+          
+          // Si estamos sobre el summary/título de un toggle, colocar antes o después del toggle completo
+          if (targetSummary && targetToggle && targetToggle !== toggleArrastrado && !toggleArrastrado.contains(targetToggle)) {
+            document.querySelectorAll('.toggle-drop-target').forEach(el => el.classList.remove('toggle-drop-target'));
+            
+            const rect = targetToggle.getBoundingClientRect();
+            const mitad = rect.top + rect.height / 2;
+            insertarAntes = e.clientY < mitad;
+            
+            nuevaPosicion = `summary_${targetToggle.dataset.toggleId}_${insertarAntes ? 'antes' : 'despues'}`;
+            elementoReferencia = targetToggle;
+          }
+          // Si estamos sobre el contenido expandido de un toggle, permitir anidación
+          else if (targetContent && targetToggle && targetToggle !== toggleArrastrado && !toggleArrastrado.contains(targetToggle)) {
+            targetContent.classList.add('toggle-drop-target');
+            
+            const { elemento, antes } = encontrarPuntoInsercionToggle(e.clientY, targetContent);
+            
+            if (elemento && elemento !== indicador && !elemento.classList.contains('indicador-drop-toggle')) {
+              nuevaPosicion = `content_${targetToggle.dataset.toggleId}_${elemento.dataset?.toggleId || elemento.tagName}_${antes ? 'antes' : 'despues'}`;
+              elementoReferencia = elemento;
+              insertarAntes = antes;
+            } else if (!elemento) {
+              nuevaPosicion = `content_${targetToggle.dataset.toggleId}_final`;
+              elementoReferencia = targetContent;
+              insertarAntes = false; // appendChild
+            }
+          } else {
+            // Fuera de cualquier toggle - insertar en el editor principal
+            document.querySelectorAll('.toggle-drop-target').forEach(el => el.classList.remove('toggle-drop-target'));
+            
+            const { elemento, antes } = encontrarPuntoInsercionToggle(e.clientY);
+            
+            if (elemento && elemento !== indicador && !toggleArrastrado.contains(elemento) && !elemento.classList.contains('indicador-drop-toggle')) {
+              nuevaPosicion = `editor_${elemento.dataset?.toggleId || elemento.tagName}_${antes ? 'antes' : 'despues'}`;
+              elementoReferencia = elemento;
+              insertarAntes = antes;
+            }
+          }
+          
+          // Solo mover el indicador si la posición cambió
+          if (nuevaPosicion && nuevaPosicion !== ultimaPosicionToggle && elementoReferencia) {
+            ultimaPosicionToggle = nuevaPosicion;
+            
+            if (insertarAntes) {
+              elementoReferencia.parentNode.insertBefore(indicador, elementoReferencia);
+            } else if (elementoReferencia.classList?.contains('toggle-content')) {
+              // appendChild al contenido
+              elementoReferencia.appendChild(indicador);
+            } else {
+              if (elementoReferencia.nextSibling && elementoReferencia.nextSibling !== indicador) {
+                elementoReferencia.parentNode.insertBefore(indicador, elementoReferencia.nextSibling);
+              } else if (!elementoReferencia.nextSibling) {
+                elementoReferencia.parentNode.appendChild(indicador);
+              }
+            }
+          }
+        });
+        
+        // Manejar dragleave para toggle
+        editor.addEventListener('dragleave', (e) => {
+          if (!toggleArrastrado) return;
+          
+          const targetContent = e.target.closest('.toggle-content');
+          if (targetContent && !targetContent.contains(e.relatedTarget)) {
+            targetContent.classList.remove('toggle-drop-target');
+          }
+          
+          if (!editor.contains(e.relatedTarget)) {
+            limpiarIndicadorToggle();
+          }
+        });
+        
+        // Manejar drop para toggle
+        editor.addEventListener('drop', (e) => {
+          console.log('📦 Evento drop - toggleArrastrado:', !!toggleArrastrado);
+          if (!toggleArrastrado) return;
+          e.preventDefault();
+          e.stopPropagation();
+          
+          console.log('📦 Procesando drop de toggle');
+          document.querySelectorAll('.toggle-drop-target').forEach(el => el.classList.remove('toggle-drop-target'));
+          
+          if (indicadorDropToggle && indicadorDropToggle.parentNode) {
+            console.log('✅ Insertando toggle en posición del indicador');
+            indicadorDropToggle.parentNode.insertBefore(toggleArrastrado, indicadorDropToggle);
+          }
+          
+          limpiarIndicadorToggle();
+          toggleArrastrado.classList.remove('toggle-arrastrando');
+          toggleArrastrado = null;
+          
+          // Sincronizar contenido después del drop
+          setTimeout(() => {
+            if (window.sincronizarContenidoEditor) {
+              window.sincronizarContenidoEditor();
+            }
+          }, 100);
+        });
+        
+        // Limpiar al terminar drag de toggle
+        editor.addEventListener('dragend', (e) => {
+          if (toggleArrastrado) {
+            toggleArrastrado.classList.remove('toggle-arrastrando');
+            toggleArrastrado = null;
+          }
+          
+          document.querySelectorAll('.toggle-drop-target').forEach(el => el.classList.remove('toggle-drop-target'));
+          limpiarIndicadorToggle();
+        });
+        
+        // ===== SISTEMA DE DRAG & DROP PARA ELEMENTOS GENERALES =====
+        let elementoArrastrado = null;
+        let indicadorDropElemento = null;
+        
+        const crearIndicadorDropElemento = () => {
+          // Reutilizar el indicador existente si existe
+          if (indicadorDropElemento && indicadorDropElemento.parentNode) {
+            return indicadorDropElemento;
+          }
+          // Limpiar cualquier indicador huérfano
+          document.querySelectorAll('.indicador-drop-elemento').forEach(ind => ind.remove());
+          indicadorDropElemento = document.createElement('div');
+          indicadorDropElemento.className = 'indicador-drop-elemento';
+          indicadorDropElemento.innerHTML = '📍 Soltar aquí';
+          return indicadorDropElemento;
+        };
+        
+        const limpiarIndicadorElemento = () => {
+          document.querySelectorAll('.indicador-drop-elemento').forEach(ind => ind.remove());
+          indicadorDropElemento = null;
+        };
+        
+        // Encontrar punto de inserción para elemento general
+        const encontrarPuntoInsercionElemento = (y) => {
+          const elementos = editor.querySelectorAll(':scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > ul, :scope > ol, :scope > blockquote, :scope > .tabla-contenedor, :scope > .checklist-container, :scope > .toggle-heading, :scope > .imagen-contenedor');
+          let mejorElemento = null;
+          let mejorDistancia = Infinity;
+          let insertarAntes = true;
+          
+          elementos.forEach(el => {
+            if (el.classList.contains('indicador-drop-elemento') || el === elementoArrastrado) return;
+            
+            const rect = el.getBoundingClientRect();
+            const centroY = rect.top + rect.height / 2;
+            const distancia = Math.abs(y - centroY);
+            
+            if (distancia < mejorDistancia) {
+              mejorDistancia = distancia;
+              mejorElemento = el;
+              insertarAntes = y < centroY;
+            }
+          });
+          
+          return { elemento: mejorElemento, antes: insertarAntes };
+        };
+        
+        // Dragstart para elementos con controles
+        editor.addEventListener('dragstart', (e) => {
+          const dragHandle = e.target.closest('.elemento-drag-handle');
+          if (!dragHandle) return;
+          
+          const elementoPadre = dragHandle.closest('.elemento-con-controles');
+          if (elementoPadre) {
+            e.stopPropagation();
+            elementoArrastrado = elementoPadre;
+            elementoPadre.classList.add('elemento-arrastrando');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'elemento');
+            console.log('🔄 Iniciando arrastre de elemento:', elementoPadre.tagName);
+          }
+        });
+        
+        // Dragover para elementos generales
+        editor.addEventListener('dragover', (e) => {
+          if (!elementoArrastrado) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          
+          const indicador = crearIndicadorDropElemento();
+          const { elemento, antes } = encontrarPuntoInsercionElemento(e.clientY);
+          
+          if (elemento && elemento !== elementoArrastrado) {
+            if (antes) {
+              elemento.parentNode.insertBefore(indicador, elemento);
+            } else {
+              if (elemento.nextSibling) {
+                elemento.parentNode.insertBefore(indicador, elemento.nextSibling);
+              } else {
+                elemento.parentNode.appendChild(indicador);
+              }
+            }
+          }
+        });
+        
+        // Dragleave para elementos generales
+        editor.addEventListener('dragleave', (e) => {
+          if (!elementoArrastrado) return;
+          
+          if (!editor.contains(e.relatedTarget)) {
+            limpiarIndicadorElemento();
+          }
+        });
+        
+        // Drop para elementos generales
+        editor.addEventListener('drop', (e) => {
+          if (!elementoArrastrado) return;
+          e.preventDefault();
+          e.stopPropagation();
+          
+          console.log('📦 Soltando elemento:', elementoArrastrado.tagName);
+          
+          if (indicadorDropElemento && indicadorDropElemento.parentNode) {
+            indicadorDropElemento.parentNode.insertBefore(elementoArrastrado, indicadorDropElemento);
+          }
+          
+          limpiarIndicadorElemento();
+          document.querySelectorAll('.indicador-drop-elemento').forEach(ind => ind.remove());
+          
+          elementoArrastrado.classList.remove('elemento-arrastrando');
+          elementoArrastrado = null;
+          
+          // Sincronizar contenido después del drop
+          setTimeout(() => {
+            if (window.sincronizarContenidoEditor) {
+              window.sincronizarContenidoEditor();
+            }
+          }, 100);
+        });
+        
+        // Dragend para elementos generales
+        editor.addEventListener('dragend', (e) => {
+          if (elementoArrastrado) {
+            elementoArrastrado.classList.remove('elemento-arrastrando');
+            elementoArrastrado = null;
+          }
+          
+          limpiarIndicadorElemento();
+          document.querySelectorAll('.indicador-drop-elemento').forEach(ind => ind.remove());
         });
       }
       
@@ -1949,6 +2439,8 @@ function App() {
       setCarpetas(data.carpetas || [])
       setDocumentos(data.documentos || [])
       setRutaActual(ruta)
+      // Guardar última carpeta visitada en localStorage
+      localStorage.setItem('ultimaCarpetaCursos', ruta)
     } catch (error) {
       console.error('Error al cargar carpeta:', error)
       setMensaje({
@@ -2208,11 +2700,26 @@ function App() {
   const calcularRendimientoJerarquias = async () => {
     try {
       // Obtener todos los datos
-      const errores = await getDatos('errores') || []
       const flashcards = await getDatos('flashcards') || []
       const examenes = await getDatos('examenes') || []
       const practicasData = await getDatos('practicas') || []
       const notas = await getDatos('notas') || []
+      
+      // 🔥 EXTRAER ERRORES DE EXÁMENES Y PRÁCTICAS (no de archivo separado)
+      // Pasar false para obtener TODOS los errores, no solo los atrasados
+      const todosLosItems = [
+        ...examenes.map(e => ({ ...e, es_practica: false })),
+        ...practicasData.map(p => ({ ...p, es_practica: true }))
+      ]
+      const errores = extraerErroresDeExamenes(todosLosItems, false) || []
+      
+      console.log('📊 calcularRendimientoJerarquias - Datos:', {
+        errores: errores.length,
+        flashcards: flashcards.length,
+        examenes: examenes.length,
+        practicas: practicasData.length,
+        notas: notas.length
+      })
       
       const rendimiento = {}
       
@@ -2251,14 +2758,16 @@ function App() {
       
       // Procesar errores por carpeta
       errores.forEach(error => {
-        const ruta = normalizarRuta(error.carpeta || error.ruta_documento?.split('\\').slice(0, -1).join('\\') || '')
+        // 🔥 USAR carpeta_ruta primero, luego carpeta, luego ruta_documento
+        const ruta = normalizarRuta(error.carpeta_ruta || error.carpeta || error.ruta_documento?.split('\\').slice(0, -1).join('\\') || '')
         if (!ruta) return
         
         // Inicializar toda la jerarquía de carpetas
         obtenerCarpetasPadre(ruta).forEach(inicializarCarpeta)
         
         rendimiento[ruta].errores.total++
-        if (error.corregido || error.estado === 'corregido') {
+        // 🔥 USAR estado_error del sistema de repetición espaciada
+        if (error.estado_error === 'ok' || error.corregido || error.estado === 'corregido') {
           rendimiento[ruta].errores.corregidos++
         } else {
           rendimiento[ruta].errores.pendientes++
@@ -3109,20 +3618,34 @@ function App() {
           const hoyStr = hoy.toISOString().split('T')[0]; // YYYY-MM-DD
           hoy.setHours(0, 0, 0, 0);
           
+          console.log('📝 Filtrando notas para repaso. Total:', todasNotas.length);
+          
           // Filtrar notas que necesitan repaso (según repetición espaciada)
           // Y que NO hayan sido repasadas HOY
           const notasParaRepasar = todasNotas.filter(nota => {
             // Si ya fue repasada hoy, no mostrar
-            if (nota.ultimoRepaso) {
-              const ultimoRepasoStr = new Date(nota.ultimoRepaso).toISOString().split('T')[0];
+            const ultimoRepaso = nota.ultimoRepaso || nota.ultima_revision || nota.ultimaRevision;
+            if (ultimoRepaso) {
+              const ultimoRepasoStr = new Date(ultimoRepaso).toISOString().split('T')[0];
               if (ultimoRepasoStr === hoyStr) {
+                console.log(`🚫 Nota ya repasada hoy: ${nota.titulo}`);
                 return false; // Ya repasada hoy
               }
             }
             
-            if (!nota.proximaRevision) return true; // Nuevas siempre se muestran
+            // Si es nueva (sin proximaRevision), SIEMPRE mostrar
+            if (!nota.proximaRevision) {
+              console.log(`✅ Nota nueva para repasar: ${nota.titulo}`);
+              return true;
+            }
+            
+            // Si tiene proximaRevision, verificar si ya toca
             const fechaRepaso = new Date(nota.proximaRevision);
-            return fechaRepaso <= hoy;
+            const tocaHoy = fechaRepaso <= hoy;
+            if (tocaHoy) {
+              console.log(`✅ Nota programada para hoy: ${nota.titulo}`);
+            }
+            return tocaHoy;
           });
           
           // Filtrar por carpeta actual si existe
@@ -3154,9 +3677,20 @@ function App() {
           const flashcardsParaRepasar = filtrarItemsParaRepasar(todasFlashcards);
           
           // Filtrar por carpeta actual si existe
-          const flashcardsFiltradas = rutaActual 
+          let flashcardsFiltradas = rutaActual 
             ? flashcardsParaRepasar.filter(f => f.carpeta === rutaActual)
             : flashcardsParaRepasar;
+          
+          // 🔥 ELIMINAR DUPLICADOS por ID
+          const idsVistos = new Set();
+          flashcardsFiltradas = flashcardsFiltradas.filter(f => {
+            if (idsVistos.has(f.id)) {
+              console.log(`⚠️ Flashcard duplicada eliminada: ${f.id}`);
+              return false;
+            }
+            idsVistos.add(f.id);
+            return true;
+          });
           
           console.log('📚 Flashcards para repasar:', {
             total: todasFlashcards.length,
@@ -3207,29 +3741,50 @@ function App() {
         resultados = examen.resultado.resultados;
       }
       
+      // 🔥 Obtener preguntas originales para recuperar opciones
+      const preguntasOriginales = examen.preguntas || [];
+      
       if (resultados) {
-        resultados.forEach(resultado => {
+        resultados.forEach((resultado, idx) => {
           const porcentaje = (resultado.puntos / resultado.puntos_maximos) * 100;
+          
+          // 🔥 Buscar opciones: primero en resultado, luego en preguntas originales
+          let opcionesFinales = resultado.opciones || [];
+          if ((!opcionesFinales || opcionesFinales.length === 0) && preguntasOriginales[idx]) {
+            opcionesFinales = preguntasOriginales[idx].opciones || [];
+          }
+          // También buscar por pregunta si el índice no coincide
+          if ((!opcionesFinales || opcionesFinales.length === 0)) {
+            const preguntaOriginal = preguntasOriginales.find(p => 
+              p.pregunta === resultado.pregunta || 
+              p.id === resultado.pregunta_id
+            );
+            if (preguntaOriginal) {
+              opcionesFinales = preguntaOriginal.opciones || [];
+            }
+          }
           
           // Considerar error si obtuvo menos del 60%
           if (porcentaje < 60) {
-            // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" Y aún no toca repaso, IGNORAR
-            if (resultado.corregido && resultado.estado_error === 'ok') {
+            // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" Y aún no toca repaso
+            // Solo ignorar si soloAtrasados = true (para sesión de estudio)
+            // Para conteo total (soloAtrasados = false), incluirlos marcados como corregidos
+            if (soloAtrasados && resultado.corregido && resultado.estado_error === 'ok') {
               const proximaRev = resultado.proximaRevisionError ? new Date(resultado.proximaRevisionError) : null;
               if (proximaRev && proximaRev > hoy) {
                 console.log('✅ Error OK, aún no toca:', {
                   pregunta: resultado.pregunta.substring(0, 40) + '...',
                   proximaRevision: proximaRev.toISOString().split('T')[0]
                 });
-                return; // Skip this error
+                return; // Skip this error (solo en modo soloAtrasados)
               }
             }
             
             // 🔥 DETERMINAR SI ES ATRASADO
-            // Un error es "atrasado" si:
-            // 1. Nunca se ha revisado (sin proximaRevisionError) Y no es de hoy
-            // 2. proximaRevisionError < hoy
-            // 3. estado_error es 'fallo' o 'critical' y toca revisión
+            // Un error es "atrasado" o "pendiente de revisión" si:
+            // 1. Es NUEVO (sin estado_error) - SIEMPRE se debe revisar
+            // 2. proximaRevisionError <= hoy (toca revisión)
+            // 3. estado_error es 'fallo' o 'critical'
             
             const fechaExamen = examen.fecha_completado ? new Date(examen.fecha_completado) : new Date();
             fechaExamen.setHours(0, 0, 0, 0);
@@ -3239,22 +3794,22 @@ function App() {
             let esAtrasado = false;
             
             if (!resultado.estado_error) {
-              // Error nuevo: atrasado solo si no es de hoy
-              esAtrasado = !esDeHoy;
+              // 🔥 Error NUEVO: SIEMPRE incluir - nunca se ha intentado corregir
+              esAtrasado = true;
             } else if (proximaRev) {
-              // Tiene fecha de revisión: atrasado si ya pasó o es hoy pero tiene estado fallo/critical
+              // Tiene fecha de revisión: atrasado si ya pasó o es hoy
               esAtrasado = proximaRev <= hoy;
             } else {
-              // Tiene estado pero no fecha: considerarlo atrasado si no es de hoy
-              esAtrasado = !esDeHoy;
+              // Tiene estado pero no fecha: considerarlo pendiente
+              esAtrasado = true;
             }
             
             // 🔥 FILTRAR: Si soloAtrasados y no es atrasado, skip
             if (soloAtrasados && !esAtrasado) {
-              console.log('⏳ Error de hoy (ignorado):', {
+              console.log('⏳ Error ya corregido (ignorado):', {
                 pregunta: resultado.pregunta.substring(0, 40) + '...',
-                esDeHoy,
-                estado: resultado.estado_error
+                estado: resultado.estado_error,
+                proximaRevision: proximaRev?.toISOString().split('T')[0]
               });
               return;
             }
@@ -3265,7 +3820,8 @@ function App() {
               porcentaje: porcentaje.toFixed(2) + '%',
               estado: resultado.estado_error || 'nuevo',
               veces_fallada: resultado.veces_fallada || 0,
-              esAtrasado
+              esAtrasado,
+              tieneOpciones: opcionesFinales.length > 0
             });
             
             errores.push({
@@ -3278,6 +3834,11 @@ function App() {
               es_practica: examen.es_practica === true,
               tipo_item: examen.es_practica ? 'practica' : 'examen',
               porcentaje_obtenido: porcentaje,
+              // 🔥 CAMPOS IMPORTANTES PARA RENDERIZADO - usar opciones recuperadas
+              tipo: resultado.tipo || examen.tipo_pregunta,
+              opciones: opcionesFinales,
+              respuesta_correcta: resultado.respuesta_correcta,
+              respuesta_usuario: resultado.respuesta_usuario,
               // 🔥 CAMPOS DE REPETICIÓN ESPACIADA
               estado_error: resultado.estado_error || 'nuevo',
               veces_fallada: resultado.veces_fallada || 0,
@@ -3827,7 +4388,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       if (esExamen) {
         await guardarExamenEnCarpeta(itemEncontrado);
       } else {
-        await guardarPracticaEnCarpeta(itemEncontrado);
+        await guardarPracticaEnCarpeta(itemEncontrado, imagenesLocales);
       }
       
       console.log('✅ Item actualizado y guardado');
@@ -4105,7 +4666,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       if (esExamen) {
         await guardarExamenEnCarpeta(itemEncontrado);
       } else {
-        await guardarPracticaEnCarpeta(itemEncontrado);
+        await guardarPracticaEnCarpeta(itemEncontrado, imagenesLocales);
       }
       
       console.log('✅ Acierto actualizado y guardado');
@@ -4444,8 +5005,161 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     }
   };
 
+  // 🖼️ FUNCIÓN PARA GUARDAR IMAGEN INMEDIATAMENTE AL CARGAR
+  // Esta función se llama cuando el usuario carga una imagen en picture_description
+  const guardarImagenInmediata = async (base64Data, preguntaIndex, pregunta) => {
+    try {
+      // Obtener la carpeta de la práctica actual
+      const carpeta = examenActivo?.carpeta || 
+                      carpetaSeleccionada?.nombre || 
+                      practicas[practicaIndex]?.carpeta ||
+                      'Sin carpeta';
+      
+      console.log(`📸 Guardando imagen inmediatamente...`);
+      console.log(`   Carpeta: ${carpeta}`);
+      console.log(`   Pregunta index: ${preguntaIndex}`);
+      
+      // Obtener nombre del archivo
+      const nombreArchivo = pregunta?.metadata?.imagen?.nombre_archivo_sugerido || 
+                           pregunta?.imagen?.nombre_archivo_sugerido ||
+                           `imagen_pregunta_${preguntaIndex}.png`;
+      
+      console.log(`   Nombre archivo: ${nombreArchivo}`);
+      
+      // Enviar al servidor
+      const response = await fetch(`${API_URL}/api/guardar-imagen-practica`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          carpeta: carpeta,
+          base64: base64Data,
+          nombre_archivo: nombreArchivo
+        })
+      });
+      
+      if (response.ok) {
+        const datos = await response.json();
+        console.log(`✅ Imagen guardada en: ${datos.ruta}`);
+        
+        // Actualizar la pregunta en el estado para persistir la ruta
+        const preguntasActualizadas = [...preguntasExamen];
+        if (preguntasActualizadas[preguntaIndex]) {
+          if (!preguntasActualizadas[preguntaIndex].metadata) {
+            preguntasActualizadas[preguntaIndex].metadata = {};
+          }
+          if (!preguntasActualizadas[preguntaIndex].metadata.imagen) {
+            preguntasActualizadas[preguntaIndex].metadata.imagen = {};
+          }
+          preguntasActualizadas[preguntaIndex].metadata.imagen.url = datos.ruta;
+          setPreguntasExamen(preguntasActualizadas);
+          
+          // También actualizar en la práctica si está disponible
+          if (examenActivo && examenActivo.preguntas) {
+            const practicaActualizada = {
+              ...examenActivo,
+              preguntas: preguntasActualizadas
+            };
+            // Guardar la práctica actualizada
+            await guardarPracticaEnCarpeta(practicaActualizada, {[preguntaIndex]: base64Data});
+            console.log(`✅ Práctica actualizada con la nueva imagen`);
+          }
+        }
+        
+        return datos.ruta;
+      } else {
+        console.error(`❌ Error guardando imagen: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`   Detalle: ${errorText}`);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error al guardar imagen inmediata:', error);
+      return null;
+    }
+  };
+
   // Función auxiliar para guardar prácticas en su carpeta correspondiente
-  const guardarPracticaEnCarpeta = async (practica) => {
+  // 🖼️ NUEVA FUNCIÓN: Procesar imágenes de picture_description
+  const procesarImagenesPractica = async (practica, imagenesGuardadas = {}) => {
+    try {
+      console.log('🖼️ Procesando imágenes de picture_description...');
+      console.log('   Imágenes recibidas:', Object.keys(imagenesGuardadas).length);
+      console.log('   Índices de imágenes:', Object.keys(imagenesGuardadas));
+      console.log('   Total de preguntas:', practica.preguntas?.length);
+      
+      // Log detallado de cada pregunta
+      practica.preguntas?.forEach((p, idx) => {
+        console.log(`   Pregunta ${idx}: tipo=${p.tipo}, imagen=${!!imagenesGuardadas[idx]}`);
+      });
+      
+      if (!practica.preguntas || Object.keys(imagenesGuardadas).length === 0) {
+        console.log('ℹ️ No hay imágenes que procesar');
+        return practica;
+      }
+      
+      const practicaProcessada = JSON.parse(JSON.stringify(practica)); // Deep copy
+      
+      for (let i = 0; i < practicaProcessada.preguntas.length; i++) {
+        const pregunta = practicaProcessada.preguntas[i];
+        
+        // Solo procesar preguntas de tipo picture_description
+        if (pregunta.tipo !== 'picture_description') {
+          continue;
+        }
+        
+        // Si hay una imagen local (base64) para esta pregunta
+        if (imagenesGuardadas[i]) {
+          console.log(`📸 Pregunta ${i}: Encontrada imagen local, procesando...`);
+          
+          // Obtener nombre del archivo sugerido
+          const nombreArchivo = pregunta.metadata?.imagen?.nombre_archivo_sugerido || 
+                               pregunta.imagen?.nombre_archivo_sugerido ||
+                               `imagen_pregunta_${i}.png`;
+          
+          try {
+            // Enviar imagen al servidor para guardarla
+            const responseImagen = await fetch(`${API_URL}/api/guardar-imagen-practica`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                carpeta: practica.carpeta || 'Sin carpeta',
+                base64: imagenesGuardadas[i],
+                nombre_archivo: nombreArchivo
+              })
+            });
+            
+            if (responseImagen.ok) {
+              const datosImagen = await responseImagen.json();
+              const rutaImagen = datosImagen.ruta; // p.ej: "extracciones/🌐 Plataforma - Cosas/imagen.png"
+              
+              console.log(`✅ Imagen guardada en: ${rutaImagen}`);
+              
+              // Actualizar la URL en la pregunta (en metadata.imagen.url e imagen.url)
+              if (pregunta.metadata?.imagen) {
+                pregunta.metadata.imagen.url = rutaImagen;
+              }
+              if (pregunta.imagen) {
+                pregunta.imagen.url = rutaImagen;
+              }
+            } else {
+              console.warn(`⚠️ Error guardando imagen para pregunta ${i}: ${responseImagen.status}`);
+            }
+          } catch (errorImagen) {
+            console.warn(`⚠️ Error al procesar imagen pregunta ${i}:`, errorImagen);
+            // Continuar con las demás imágenes
+          }
+        }
+      }
+      
+      console.log('✅ Procesamiento de imágenes completado');
+      return practicaProcessada;
+    } catch (error) {
+      console.error('❌ Error en procesarImagenesPractica:', error);
+      return practica; // Retornar la práctica original si hay error
+    }
+  };
+
+  const guardarPracticaEnCarpeta = async (practica, imagenesGuardadas = null) => {
     const carpeta = practica.carpeta || '';
     
     if (!carpeta) {
@@ -4454,6 +5168,14 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     }
     
     try {
+      // 🔥 PROCESAR IMÁGENES ANTES DE GUARDAR
+      // Si no se pasan imágenes, usar imagenesLocales (fallback)
+      const imagenesAux = imagenesGuardadas || imagenesLocales || {};
+      console.log('🖼️ Procesando imágenes de la práctica...');
+      console.log('   Imágenes disponibles:', Object.keys(imagenesAux).length);
+      practica = await procesarImagenesPractica(practica, imagenesAux);
+      console.log('✅ Imágenes procesadas');
+      
       // 🔥 VERIFICAR SI ES ARCHIVO INDIVIDUAL (resultados_practicas/examen_*.json)
       const esArchivoIndividual = practica.carpeta_ruta && practica.archivo;
       
@@ -4734,8 +5456,11 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       // ⏳ Esperar un momento para asegurar que el archivo se escribió completamente
       await new Promise(resolve => setTimeout(resolve, 300));
       
+      // 🔥 INVALIDAR CACHE para forzar recarga desde archivo
+      flashcardsCache.current = { data: null, timestamp: 0 };
+      
       // 🔥 RECARGAR TODAS LAS FLASHCARDS para que el filtro funcione correctamente
-      const flashcardsReacargadas = await cargarTodasFlashcards();
+      const flashcardsReacargadas = await cargarTodasFlashcards(true); // Forzar recarga
       console.log('🔄 Flashcards recargadas:', flashcardsReacargadas.length);
       
       // Actualizar estado local
@@ -6560,26 +7285,24 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
     try {
       console.log('🗑️ Eliminando práctica:', practica);
       
-      const archivo = practica.archivo;
+      const archivo = practica.archivo || '';
       const carpeta_ruta = practica.carpeta_ruta || practica.carpeta || '';
+      const practica_id = practica.id;
       
-      if (!archivo) {
-        throw new Error('No se encontró el nombre del archivo de la práctica');
-      }
-      
-      if (!carpeta_ruta) {
-        throw new Error('No se encontró la carpeta de la práctica');
-      }
+      // Ya no requerimos archivo y carpeta_ruta obligatorios
+      // El backend puede buscar por ID en archivos centralizados
       
       console.log('📁 Archivo:', archivo);
       console.log('📁 Carpeta:', carpeta_ruta);
+      console.log('🆔 ID:', practica_id);
       
       const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           archivo: archivo,
-          carpeta_ruta: carpeta_ruta
+          carpeta_ruta: carpeta_ruta,
+          id: practica_id
         })
       });
       
@@ -6594,6 +7317,12 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
           tipo: 'success',
           texto: '✅ Práctica eliminada'
         })
+        
+        // 🔥 RECARGAR PRÁCTICAS desde el servidor para actualizar la lista
+        const practicasActualizadas = await getDatos('practicas');
+        if (practicasActualizadas) {
+          setPracticas(practicasActualizadas);
+        }
         
         // Recargar calendario para reflejar cambios
         await recargarCalendarioRepasos()
@@ -6613,6 +7342,369 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       })
     }
   }
+
+  // 🔥 Eliminar una pregunta específica de una práctica
+  const eliminarPreguntaPractica = async (preguntaIndex, practicaOverride = null) => {
+    const confirmMsg = `¿Eliminar la pregunta ${preguntaIndex + 1}? Esta acción no se puede deshacer.`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      // Usar practicaOverride si se proporciona (para viendoExamen), sino usar examenActivo o viendoExamen
+      const practica = practicaOverride || examenActivo || viendoExamen;
+      console.log('🗑️ Eliminando pregunta:', preguntaIndex, 'de práctica:', practica);
+      
+      const response = await fetch(`${API_URL}/datos/practicas/eliminar-pregunta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          practica_id: practica?.id,
+          pregunta_index: preguntaIndex,
+          archivo: practica?.archivo,
+          carpeta_ruta: carpetaExamen?.ruta || practica?.carpeta_ruta
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      // Si la práctica fue eliminada completamente (no quedaban preguntas)
+      if (data.practica_eliminada) {
+        setMensaje({
+          tipo: 'success',
+          texto: '✅ Práctica eliminada (no quedaban preguntas)'
+        });
+        // Cerrar el modal
+        setModalExamenAbierto(false);
+        setViendoExamen(null);
+        setExamenActivo(null);
+        setPreguntasExamen([]);
+        setRespuestasUsuario({});
+        setExamenCompletado(false);
+        setResultadoExamen(null);
+        // Recargar prácticas
+        const practicasActualizadas = await getDatos('practicas');
+        if (practicasActualizadas) {
+          setPracticas(practicasActualizadas);
+        }
+        return;
+      }
+
+      // Actualizar las preguntas localmente
+      const nuevasPreguntas = [...preguntasExamen];
+      nuevasPreguntas.splice(preguntaIndex, 1);
+      setPreguntasExamen(nuevasPreguntas);
+
+      // Si estamos viendo resultados, actualizar también el resultado
+      if (resultadoExamen) {
+        const nuevosResultados = [...resultadoExamen.resultados];
+        if (preguntaIndex < nuevosResultados.length) {
+          nuevosResultados.splice(preguntaIndex, 1);
+        }
+        setResultadoExamen({
+          ...resultadoExamen,
+          resultados: nuevosResultados,
+          puntos_totales: data.practica_actualizada?.puntos_totales || resultadoExamen.puntos_totales,
+          puntos_obtenidos: data.practica_actualizada?.puntos_obtenidos || resultadoExamen.puntos_obtenidos,
+          porcentaje: data.practica_actualizada?.porcentaje || resultadoExamen.porcentaje
+        });
+      }
+
+      // Actualizar respuestas del usuario (reindexar)
+      const nuevasRespuestas = {};
+      Object.keys(respuestasUsuario).forEach(key => {
+        const idx = parseInt(key);
+        if (idx < preguntaIndex) {
+          nuevasRespuestas[idx] = respuestasUsuario[idx];
+        } else if (idx > preguntaIndex) {
+          nuevasRespuestas[idx - 1] = respuestasUsuario[idx];
+        }
+      });
+      setRespuestasUsuario(nuevasRespuestas);
+
+      // 🔥 Si estamos viendo un examen guardado (viendoExamen), actualizar también
+      if (viendoExamen) {
+        const nuevosResultadosViendo = [...(viendoExamen.resultados || [])];
+        if (preguntaIndex < nuevosResultadosViendo.length) {
+          nuevosResultadosViendo.splice(preguntaIndex, 1);
+        }
+        setViendoExamen({
+          ...viendoExamen,
+          resultados: nuevosResultadosViendo,
+          preguntas: viendoExamen.preguntas?.filter((_, i) => i !== preguntaIndex),
+          puntos_totales: data.practica_actualizada?.puntos_totales || viendoExamen.puntos_totales,
+          puntos_obtenidos: data.practica_actualizada?.puntos_obtenidos || viendoExamen.puntos_obtenidos,
+          porcentaje: data.practica_actualizada?.porcentaje || viendoExamen.porcentaje
+        });
+      }
+
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Pregunta ${preguntaIndex + 1} eliminada. Quedan ${data.preguntas_restantes} preguntas.`
+      });
+
+      // Recargar prácticas para mantener sincronizado
+      const practicasActualizadas = await getDatos('practicas');
+      if (practicasActualizadas) {
+        setPracticas(practicasActualizadas);
+      }
+
+    } catch (error) {
+      console.error('Error eliminando pregunta:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error eliminando pregunta: ${error.message}`
+      });
+    }
+  };
+
+  // 🔄 Abrir modal para regenerar una pregunta
+  const abrirModalRegenerar = (preguntaIndex, pregunta, practicaOverride = null) => {
+    setPreguntaARegenerar({
+      index: preguntaIndex,
+      pregunta: pregunta,
+      practica: practicaOverride || examenActivo || viendoExamen
+    });
+    setInstruccionesRegenerar('');
+    setModalRegenerarAbierto(true);
+  };
+
+  // 🔄 Regenerar una pregunta específica de una práctica
+  const regenerarPreguntaPractica = async () => {
+    if (!preguntaARegenerar) return;
+    
+    setRegenerandoPregunta(true);
+    
+    try {
+      const { index, pregunta, practica } = preguntaARegenerar;
+      console.log('🔄 Regenerando pregunta:', index, 'de práctica:', practica);
+      
+      const response = await fetch(`${API_URL}/datos/practicas/regenerar-pregunta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          practica_id: practica?.id,
+          pregunta_index: index,
+          archivo: practica?.archivo,
+          carpeta_ruta: carpetaExamen?.ruta || practica?.carpeta_ruta,
+          instrucciones: instruccionesRegenerar,
+          pregunta_actual: pregunta
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Actualizar las preguntas localmente
+      if (preguntasExamen.length > 0) {
+        const nuevasPreguntas = [...preguntasExamen];
+        nuevasPreguntas[index] = data.pregunta_nueva;
+        setPreguntasExamen(nuevasPreguntas);
+      }
+
+      // Si estamos viendo resultados, actualizar también
+      if (resultadoExamen) {
+        const nuevosResultados = [...resultadoExamen.resultados];
+        if (index < nuevosResultados.length) {
+          nuevosResultados[index] = {
+            ...nuevosResultados[index],
+            pregunta: data.pregunta_nueva.pregunta,
+            respuesta_correcta: data.pregunta_nueva.respuesta_correcta,
+            opciones: data.pregunta_nueva.opciones || []
+          };
+        }
+        setResultadoExamen({
+          ...resultadoExamen,
+          resultados: nuevosResultados
+        });
+      }
+
+      // Si estamos viendo un examen guardado
+      if (viendoExamen) {
+        const nuevosResultadosViendo = [...(viendoExamen.resultados || [])];
+        if (index < nuevosResultadosViendo.length) {
+          nuevosResultadosViendo[index] = {
+            ...nuevosResultadosViendo[index],
+            pregunta: data.pregunta_nueva.pregunta,
+            respuesta_correcta: data.pregunta_nueva.respuesta_correcta,
+            opciones: data.pregunta_nueva.opciones || []
+          };
+        }
+        const nuevasPreguntas = [...(viendoExamen.preguntas || [])];
+        if (index < nuevasPreguntas.length) {
+          nuevasPreguntas[index] = data.pregunta_nueva;
+        }
+        setViendoExamen({
+          ...viendoExamen,
+          resultados: nuevosResultadosViendo,
+          preguntas: nuevasPreguntas
+        });
+      }
+
+      // Actualizar respuestas del usuario para esta pregunta
+      setRespuestasUsuario(prev => {
+        const nuevas = { ...prev };
+        delete nuevas[index]; // Limpiar respuesta anterior
+        return nuevas;
+      });
+
+      setMensaje({
+        tipo: 'success',
+        texto: `✅ Pregunta ${index + 1} regenerada exitosamente`
+      });
+
+      // Cerrar modal
+      setModalRegenerarAbierto(false);
+      setPreguntaARegenerar(null);
+
+      // Recargar prácticas para mantener sincronizado
+      const practicasActualizadas = await getDatos('practicas');
+      if (practicasActualizadas) {
+        setPracticas(practicasActualizadas);
+      }
+
+    } catch (error) {
+      console.error('Error regenerando pregunta:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error regenerando pregunta: ${error.message}`
+      });
+    } finally {
+      setRegenerandoPregunta(false);
+    }
+  };
+
+  // ⚖️ Abrir modal para apelar una respuesta
+  const abrirModalApelar = (preguntaIndex, resultado, practicaOverride = null) => {
+    setPreguntaAApelar({
+      index: preguntaIndex,
+      resultado: resultado,
+      practica: practicaOverride || examenActivo || viendoExamen
+    });
+    setArgumentoApelacion('');
+    setModalApelarAbierto(true);
+  };
+
+  // ⚖️ Apelar una respuesta para recalificar
+  const apelarRespuesta = async () => {
+    if (!preguntaAApelar) return;
+    
+    setApelandoPregunta(true);
+    
+    try {
+      const { index, resultado, practica } = preguntaAApelar;
+      console.log('⚖️ Apelando respuesta:', index, 'de práctica:', practica);
+      
+      const response = await fetch(`${API_URL}/datos/practicas/apelar-respuesta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          practica_id: practica?.id,
+          pregunta_index: index,
+          archivo: practica?.archivo,
+          carpeta_ruta: carpetaExamen?.ruta || practica?.carpeta_ruta,
+          argumento: argumentoApelacion,
+          respuesta_usuario: resultado.respuesta_usuario,
+          respuesta_correcta: resultado.respuesta_correcta,
+          pregunta: resultado.pregunta
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.apelacion_aceptada) {
+        // Actualizar los resultados localmente
+        if (resultadoExamen) {
+          const nuevosResultados = [...resultadoExamen.resultados];
+          nuevosResultados[index] = {
+            ...nuevosResultados[index],
+            puntos: data.nuevos_puntos,
+            feedback: data.nuevo_feedback,
+            apelacion_aceptada: true,
+            proximaRevision: data.proximaRevision,
+            intervalo: data.intervalo
+          };
+          
+          // Recalcular puntos totales
+          const nuevosPuntosObtenidos = nuevosResultados.reduce((sum, r) => sum + (r.puntos || 0), 0);
+          const nuevosPuntosTotales = nuevosResultados.reduce((sum, r) => sum + (r.puntos_maximos || 10), 0);
+          const nuevoPorcentaje = nuevosPuntosTotales > 0 ? (nuevosPuntosObtenidos / nuevosPuntosTotales) * 100 : 0;
+          
+          setResultadoExamen({
+            ...resultadoExamen,
+            resultados: nuevosResultados,
+            puntos_obtenidos: nuevosPuntosObtenidos,
+            porcentaje: nuevoPorcentaje
+          });
+        }
+
+        // Si estamos viendo un examen guardado
+        if (viendoExamen) {
+          const nuevosResultadosViendo = [...(viendoExamen.resultados || [])];
+          nuevosResultadosViendo[index] = {
+            ...nuevosResultadosViendo[index],
+            puntos: data.nuevos_puntos,
+            feedback: data.nuevo_feedback,
+            apelacion_aceptada: true,
+            proximaRevision: data.proximaRevision,
+            intervalo: data.intervalo
+          };
+          
+          const nuevosPuntosObtenidos = nuevosResultadosViendo.reduce((sum, r) => sum + (r.puntos || 0), 0);
+          const nuevosPuntosTotales = nuevosResultadosViendo.reduce((sum, r) => sum + (r.puntos_maximos || 10), 0);
+          const nuevoPorcentaje = nuevosPuntosTotales > 0 ? (nuevosPuntosObtenidos / nuevosPuntosTotales) * 100 : 0;
+          
+          setViendoExamen({
+            ...viendoExamen,
+            resultados: nuevosResultadosViendo,
+            puntos_obtenidos: nuevosPuntosObtenidos,
+            porcentaje: nuevoPorcentaje
+          });
+        }
+
+        setMensaje({
+          tipo: 'success',
+          texto: `✅ ¡Apelación aceptada! Tu respuesta era correcta. Intervalo de repaso mejorado a ${data.intervalo} días.`
+        });
+      } else {
+        setMensaje({
+          tipo: 'warning',
+          texto: `❌ Apelación rechazada: ${data.razon || 'La respuesta no es equivalente a la correcta.'}`
+        });
+      }
+
+      // Cerrar modal
+      setModalApelarAbierto(false);
+      setPreguntaAApelar(null);
+
+      // Recargar prácticas para mantener sincronizado
+      const practicasActualizadas = await getDatos('practicas');
+      if (practicasActualizadas) {
+        setPracticas(practicasActualizadas);
+      }
+
+    } catch (error) {
+      console.error('Error apelando respuesta:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error al apelar: ${error.message}`
+      });
+    } finally {
+      setApelandoPregunta(false);
+    }
+  };
 
   const eliminarExamen = async (examen, tipo) => {
     const tipoTexto = tipo === 'progreso' ? 'en progreso' : 'completado'
@@ -8798,47 +9890,6 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ''}`;
       console.error('Error cargando exámenes:', error)
     }
   }
-  
-  // Generar examen desde carpeta
-  const generarExamenDesdeCarpeta = async (carpeta) => {
-    console.log('🎓 Preparando generación de examen desde carpeta:', carpeta.nombre)
-    
-    try {
-      // Obtener archivos de la carpeta
-      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(carpeta.ruta)}`)
-      const data = await response.json()
-      
-      console.log('📁 Datos recibidos:', data)
-      
-      if (!data.documentos || data.documentos.length === 0) {
-        setMensaje({
-          tipo: 'error',
-          texto: '❌ La carpeta no contiene documentos para generar el examen'
-        })
-        return
-      }
-      
-      console.log('📄 Archivos encontrados:', data.documentos.length)
-      
-      // Abrir modal de configuración (el prompt ya está cargado desde el useEffect inicial)
-      setCarpetaConfigExamen(carpeta)
-      setArchivosDisponibles(data.documentos)
-      setArchivosSeleccionados(data.documentos.map(doc => doc.ruta))
-      setPromptPersonalizado('')
-      setRutaExploracion(carpeta.ruta)
-      setCarpetasExploracion(data.carpetas || [])
-      setModalConfigExamen(true)
-      
-      console.log('✅ Modal de configuración debería abrirse ahora')
-      
-    } catch (error) {
-      console.error('Error preparando examen:', error)
-      setMensaje({
-        tipo: 'error',
-        texto: '❌ Error al preparar la generación del examen'
-      })
-    }
-  }
 
   const toggleSeleccionArchivo = (ruta) => {
     setArchivosSeleccionados(prev => {
@@ -9205,7 +10256,7 @@ JSON:`
         };
         
         // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
-        await guardarPracticaEnCarpeta(practicas[practicaIndex]);
+        await guardarPracticaEnCarpeta(practicas[practicaIndex], imagenesLocales);
         
         setMensaje({
           tipo: 'success',
@@ -9498,8 +10549,9 @@ JSON:`
           
           // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
           console.log('💾 Intentando guardar práctica actualizada...');
+          console.log('🖼️ Imágenes disponibles para guardar:', Object.keys(imagenesLocales).length);
           try {
-            await guardarPracticaEnCarpeta(practicas[practicaIndex]);
+            await guardarPracticaEnCarpeta(practicas[practicaIndex], imagenesLocales);
             console.log('✅ Práctica guardada exitosamente');
           } catch (errorGuardar) {
             console.error('❌ Error en guardarPracticaEnCarpeta:', errorGuardar);
@@ -9718,7 +10770,7 @@ JSON:`
           }, 2000)
         }
         
-        cerrarExamen()
+        cerrarExamen(true) // 🔥 true = es pausa, NO eliminar la práctica
         cargarExamenesGuardados()
         
         // Si es práctica, también recargar prácticas
@@ -9818,34 +10870,57 @@ JSON:`
   }
   
   // Cerrar examen
-  const cerrarExamen = async () => {
+  const cerrarExamen = async (esPausaParam) => {
+    // 🔥 Detectar si el parámetro es un evento (cuando se llama desde onClick directo)
+    // Si es un evento o undefined, esPausa = false (cancelar = eliminar)
+    // Si es true explícito (desde pausarExamen), esPausa = true (no eliminar)
+    const esPausa = esPausaParam === true;
+    
     console.log('\n' + '='.repeat(60));
     console.log('🔴 CERRANDO EXAMEN/PRÁCTICA');
     console.log('='.repeat(60));
     console.log('🔍 DEBUG cerrarExamen:');
+    console.log('   esPausaParam recibido:', esPausaParam, typeof esPausaParam);
+    console.log('   esPausa (calculado):', esPausa);
     console.log('   esPractica:', esPractica);
     console.log('   examenCompletado:', examenCompletado);
     console.log('   examenActivo:', examenActivo);
     console.log('   examenActivo?.archivo:', examenActivo?.archivo);
+    console.log('   examenActivo?.carpeta_ruta:', examenActivo?.carpeta_ruta);
+    console.log('   examenActivo?.id:', examenActivo?.id);
     console.log('   carpetaExamen:', carpetaExamen);
     console.log('   carpetaExamen?.ruta:', carpetaExamen?.ruta);
     console.log('='.repeat(60));
     
-    // 🔥 ELIMINAR práctica si es nueva y no está completada
-    if (esPractica && !examenCompletado && examenActivo?.archivo && carpetaExamen?.ruta) {
+    // 🔥 ELIMINAR práctica si es nueva, no está completada Y NO ES PAUSA
+    // Usar carpetaExamen?.ruta O examenActivo?.carpeta_ruta O examenActivo?.carpeta
+    const carpetaRutaEliminar = carpetaExamen?.ruta || examenActivo?.carpeta_ruta || examenActivo?.carpeta;
+    const archivoEliminar = examenActivo?.archivo;
+    const idEliminar = examenActivo?.id;
+    
+    console.log('🔍 Datos para eliminar:');
+    console.log('   carpetaRutaEliminar:', carpetaRutaEliminar);
+    console.log('   archivoEliminar:', archivoEliminar);
+    console.log('   idEliminar:', idEliminar);
+    
+    if (esPractica && !examenCompletado && !esPausa && carpetaRutaEliminar && (archivoEliminar || idEliminar)) {
       try {
-        console.log('🗑️ Eliminando práctica cancelada:', examenActivo.archivo);
+        console.log('🗑️ Eliminando práctica cancelada:', archivoEliminar || idEliminar);
         const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            archivo: examenActivo.archivo,
-            carpeta_ruta: carpetaExamen.ruta
+            archivo: archivoEliminar,
+            carpeta_ruta: carpetaRutaEliminar,
+            id: idEliminar
           })
         });
         
         if (response.ok) {
           console.log('✅ Práctica eliminada correctamente');
+          // Recargar lista de prácticas
+          const practicasActualizadas = await getDatos('practicas');
+          setPracticas(practicasActualizadas);
         } else {
           console.error('❌ Error eliminando práctica:', await response.text());
         }
@@ -9853,7 +10928,12 @@ JSON:`
         console.error('❌ Error al eliminar práctica:', error);
       }
     } else {
-      console.log('⏭️ No se elimina práctica (condición no cumplida)');
+      console.log('⏭️ No se elimina práctica (condición no cumplida):');
+      console.log('   esPractica:', esPractica);
+      console.log('   !examenCompletado:', !examenCompletado);
+      console.log('   !esPausa:', !esPausa);
+      console.log('   carpetaRutaEliminar:', carpetaRutaEliminar);
+      console.log('   archivoEliminar || idEliminar:', archivoEliminar || idEliminar);
     }
     
     detenerReconocimientoVoz() // Detener reconocimiento de voz
@@ -9864,20 +10944,22 @@ JSON:`
     setResultadoExamen(null)
     setCarpetaExamen(null)
     setEsPractica(false)
+    setImagenesLocales({}) // 🔥 Limpiar imágenes locales
   }
 
   // 🔥 Función auxiliar para eliminar práctica cancelada
-  const eliminarPracticaCancelada = async (practicaArchivo, practicaCarpeta) => {
-    if (!practicaArchivo || !practicaCarpeta) return;
+  const eliminarPracticaCancelada = async (practicaArchivo, practicaCarpeta, practicaId) => {
+    if (!practicaArchivo && !practicaId) return;
     
     try {
-      console.log('🗑️ Eliminando práctica cancelada:', practicaArchivo);
+      console.log('🗑️ Eliminando práctica cancelada:', practicaArchivo || practicaId);
       const response = await fetch(`${API_URL}/datos/practicas/eliminar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          archivo: practicaArchivo,
-          carpeta_ruta: practicaCarpeta
+          archivo: practicaArchivo || '',
+          carpeta_ruta: practicaCarpeta || '',
+          id: practicaId
         })
       });
       
@@ -9897,8 +10979,8 @@ JSON:`
     // Si el modal se cerró (estaba abierto y ahora está cerrado)
     if (prevModalAbierto.current && !modalExamenAbierto) {
       console.log('🔍 Modal cerrado, verificando si debe eliminar práctica...');
-      if (esPractica && !examenCompletado && examenActivo?.archivo && carpetaExamen?.ruta) {
-        eliminarPracticaCancelada(examenActivo.archivo, carpetaExamen.ruta);
+      if (esPractica && !examenCompletado && (examenActivo?.archivo || examenActivo?.id)) {
+        eliminarPracticaCancelada(examenActivo.archivo, carpetaExamen?.ruta, examenActivo.id);
       }
     }
     prevModalAbierto.current = modalExamenAbierto;
@@ -9953,6 +11035,98 @@ JSON:`
   const [documentosPractica, setDocumentosPractica] = useState([]); // Documentos que se cargarán al modelo
   const [cargandoDocumentosPractica, setCargandoDocumentosPractica] = useState(false);
   
+  // 🎯 Modal para "Haz tus propias preguntas" (importar desde ChatGPT)
+  const [modalPreguntasPropiasAbierto, setModalPreguntasPropiasAbierto] = useState(false);
+  const [preguntasPropiasJSON, setPreguntasPropiasJSON] = useState('');
+  const [preguntasPropiasConfig, setPreguntasPropiasConfig] = useState({
+    mcq: 0,
+    true_false: 0,
+    cloze: 0,
+    short_answer: 0,
+    open_question: 0,
+    case_study: 0,
+    tipo_caso: 'descriptivo',
+    // Idiomas con cantidad
+    reading_comprehension: 0, // Comprensión lectora (texto + MCQ)
+    reading_comprehension_lang: 'ingles',
+    reading_comprehension_preguntas: 3, // Número de MCQ internas (2-n)
+    reading_written: 0, // Comprensión escrita (texto + preguntas escritas)
+    reading_written_lang: 'ingles',
+    reading_written_preguntas: 3, // Número de preguntas internas (2-5)
+    reading_true_false: 0, // V/F con justificación
+    reading_true_false_lang: 'ingles',
+    reading_cloze: 0, // Completar texto (cloze)
+    reading_cloze_lang: 'ingles',
+    reading_skill: 0, // Habilidades de lectura (5 preguntas MCQ)
+    reading_skill_lang: 'ingles',
+    reading_matching: 0, // Relacionar ideas (matching párrafos)
+    reading_matching_lang: 'ingles',
+    reading_sequence: 0, // Ordenar secuencia de eventos
+    reading_sequence_lang: 'ingles',
+    // Expresión escrita con cantidad
+    writing_short: 0, // Respuesta corta escrita
+    writing_short_lang: 'ingles',
+    writing_short_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    writing_short_preguntas: 3, // Número de preguntas por ejercicio
+    // Parafraseo con nivel CEFR
+    writing_paraphrase: 0, // Parafraseo
+    writing_paraphrase_lang: 'ingles',
+    writing_paraphrase_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    writing_paraphrase_frases: 3, // Número de frases por ejercicio
+    // Corrección de errores con nivel CEFR
+    writing_correction: 0, // Corrección de errores
+    writing_correction_lang: 'ingles',
+    writing_correction_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    writing_correction_frases: 3, // Número de frases/errores por ejercicio
+    // Transformación gramatical con nivel CEFR
+    writing_transformation: 0, // Transformación gramatical
+    writing_transformation_lang: 'ingles',
+    writing_transformation_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    writing_transformation_frases: 3, // Número de transformaciones por ejercicio
+    // Mini-Ensayo con nivel CEFR
+    writing_essay: 0, // Mini-Ensayo
+    writing_essay_lang: 'ingles',
+    writing_essay_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    writing_essay_palabras: 100, // Longitud esperada en palabras
+    // Constructor de Oraciones con nivel CEFR
+    sentence_builder: 0, // Constructor de Oraciones
+    sentence_builder_lang: 'ingles',
+    sentence_builder_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    sentence_builder_oraciones: 5, // Número de oraciones por ejercicio
+    // Email/Carta Formal con nivel CEFR
+    formal_email: 0, // Email/Carta Formal
+    formal_email_lang: 'ingles',
+    formal_email_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    formal_email_palabras: 100, // Longitud esperada en palabras
+    // Descripción de Imagen con nivel CEFR (incluye prompt para IA generativa)
+    picture_description: 0, // Descripción de Imagen
+    picture_description_lang: 'ingles',
+    picture_description_nivel: 'B1', // Nivel CEFR: A1, A2, B1, B2, C1, C2
+    picture_description_oraciones: 5, // Número de oraciones esperadas
+    // Otros tipos de idiomas (selector único)
+    idioma_tipo: '', // Tipo de ejercicio de idioma seleccionado
+    idioma_lang: 'ingles' // Idioma objetivo
+  });
+  const [mostrarInstruccionesChatGPT, setMostrarInstruccionesChatGPT] = useState(false);
+  const [seccionIdiomaExpandida, setSeccionIdiomaExpandida] = useState(''); // 'comprension', 'expresion', ''
+  
+  // 🎯 Modal para calificar con ChatGPT
+  const [modalCalificarChatGPTAbierto, setModalCalificarChatGPTAbierto] = useState(false);
+  const [pasoCalificacionChatGPT, setPasoCalificacionChatGPT] = useState(1); // 1: exportar, 2: importar
+  const [jsonCalificacionChatGPT, setJsonCalificacionChatGPT] = useState('');
+  
+  // 🔄 Modal para regenerar pregunta
+  const [modalRegenerarAbierto, setModalRegenerarAbierto] = useState(false);
+  const [preguntaARegenerar, setPreguntaARegenerar] = useState(null);
+  const [instruccionesRegenerar, setInstruccionesRegenerar] = useState('');
+  const [regenerandoPregunta, setRegenerandoPregunta] = useState(false);
+  
+  // ⚖️ Modal para apelar respuesta
+  const [modalApelarAbierto, setModalApelarAbierto] = useState(false);
+  const [preguntaAApelar, setPreguntaAApelar] = useState(null);
+  const [argumentoApelacion, setArgumentoApelacion] = useState('');
+  const [apelandoPregunta, setApelandoPregunta] = useState(false);
+  
   // Configuración de tipos de práctica - Generales
   const [numFlashcards, setNumFlashcards] = useState(0);
   const [tipoFlashcard, setTipoFlashcard] = useState('respuesta_corta'); // 'respuesta_corta' o 'seleccion_confusa'
@@ -9973,6 +11147,7 @@ JSON:`
   
   const [numMCQ, setNumMCQ] = useState(0);
   const [numCloze, setNumCloze] = useState(0);
+  const [clozeTransferenciaConceptual, setClozeTransferenciaConceptual] = useState(false); // Modo de transferencia conceptual para Cloze
   const [numOpenQuestion, setNumOpenQuestion] = useState(0);
   const [numVerdaderoFalso, setNumVerdaderoFalso] = useState(0);
   const [numRespuestaCorta, setNumRespuestaCorta] = useState(0);
@@ -10012,6 +11187,17 @@ JSON:`
   const [idiomaWritingEmail, setIdiomaWritingEmail] = useState('ingles');
   const [idiomaWritingSentenceBuilder, setIdiomaWritingSentenceBuilder] = useState('ingles');
   const [idiomaWritingPictureDescription, setIdiomaWritingPictureDescription] = useState('ingles');
+
+  // ============================================================================
+  // 🎯 ESTADOS PARA READING COMPREHENSION INTERACTIVO
+  // ============================================================================
+  const [modoReadingComprehension, setModoReadingComprehension] = useState(false); // Activa UI de reading
+  const [ejercicioReadingActivo, setEjercicioReadingActivo] = useState(null); // Datos del ejercicio generado
+  const [respuestasReading, setRespuestasReading] = useState({}); // {preguntaId: respuesta}
+  const [evaluandoReading, setEvaluandoReading] = useState(false); // Cargando evaluación
+  const [resultadosReading, setResultadosReading] = useState(null); // Resultados de evaluación
+  const [generandoReading, setGenerandoReading] = useState(false); // Generando ejercicio
+  const [dificultadReading, setDificultadReading] = useState('medium'); // easy, medium, hard
 
   const abrirModalPractica = async (ruta, tipo = 'carpeta') => {
     // Limpiar estado anterior
@@ -10065,6 +11251,3028 @@ JSON:`
     setModalPracticaAbierto(true);
   };
 
+  // 🎯 Generar instrucciones para ChatGPT
+  const generarInstruccionesChatGPT = () => {
+    const { mcq, true_false, cloze, short_answer, open_question, case_study, tipo_caso, reading_comprehension, reading_comprehension_lang, reading_comprehension_preguntas, reading_written, reading_written_lang, reading_written_preguntas, reading_true_false, reading_true_false_lang, reading_cloze, reading_cloze_lang, reading_skill, reading_skill_lang, reading_matching, reading_matching_lang, reading_sequence, reading_sequence_lang, writing_short, writing_short_lang, writing_short_nivel, writing_short_preguntas, writing_paraphrase, writing_paraphrase_lang, writing_paraphrase_nivel, writing_paraphrase_frases, writing_correction, writing_correction_lang, writing_correction_nivel, writing_correction_frases, writing_transformation, writing_transformation_lang, writing_transformation_nivel, writing_transformation_frases, writing_essay, writing_essay_lang, writing_essay_nivel, writing_essay_palabras, sentence_builder, sentence_builder_lang, sentence_builder_nivel, sentence_builder_oraciones, formal_email, formal_email_lang, formal_email_nivel, formal_email_palabras, picture_description, picture_description_lang, picture_description_nivel, picture_description_oraciones, idioma_tipo, idioma_lang } = preguntasPropiasConfig;
+    
+    // Mapeo de tipos de caso a descripciones
+    const tiposCasoDescripcion = {
+      descriptivo: "Describe qué pasó, quién hizo qué y por qué",
+      analitico: "Explica causas, relaciones y consecuencias",
+      resolucion: "Plantea un problema abierto y exige una solución",
+      decision: "Escenario donde debes decidir entre varias rutas y justificar",
+      comparativo: "Compara dos soluciones, caminos o metodologías",
+      predictivo: "Proyectar el futuro basado en datos actuales",
+      simulacion: "Mundo con variables dinámicas donde decides en tiempo real",
+      inverso: "Resultado final conocido, reconstruye el proceso",
+      fallo: "Estudio de algo que salió mal. Lecciones aprendidas",
+      creativo: "No hay respuesta correcta única. Ideación e innovación",
+      etico: "Decisión correcta cuando negocio choca con moral",
+      tecnico: "Sistema o proceso a optimizar"
+    };
+
+    // Mapeo de idiomas
+    const idiomasNombre = {
+      ingles: 'Inglés', frances: 'Francés', aleman: 'Alemán', italiano: 'Italiano',
+      portugues: 'Portugués', japones: 'Japonés', chino: 'Chino', coreano: 'Coreano',
+      ruso: 'Ruso', arabe: 'Árabe'
+    };
+
+    // Mapeo de tipos de ejercicio de idiomas
+    const tiposIdiomaDescripcion = {
+      reading_comprehension: 'Comprensión Lectora - Texto + preguntas de comprensión',
+      reading_true_false: 'Verdadero/Falso con Justificación - Afirmaciones sobre un texto',
+      reading_cloze: 'Completar Texto (Cloze) - Rellenar huecos en un texto',
+      reading_skill: 'Habilidades de Lectura - Identificar idea principal, inferir, etc.',
+      reading_matching: 'Relacionar Ideas - Emparejar elementos',
+      reading_sequence: 'Ordenar Secuencia - Poner eventos/pasos en orden',
+      writing_short: 'Respuesta Corta Escrita - Responder brevemente a una pregunta',
+      writing_paraphrase: 'Parafrasear - Reescribir con otras palabras',
+      writing_correction: 'Corrección de Errores - Identificar y corregir errores',
+      writing_transformation: 'Transformación Gramatical - Cambiar estructura manteniendo significado',
+      writing_essay: 'Mini-Ensayo - Texto argumentativo breve',
+      writing_sentence_builder: 'Constructor de Oraciones - Ordenar palabras para formar oraciones',
+      writing_picture_description: 'Descripción de Imagen - Describir una escena',
+      writing_email: 'Email/Carta Formal - Escribir correspondencia formal'
+    };
+    
+    let instrucciones = `CONVIERTE las preguntas que te daré a formato JSON para un sistema de práctica.
+
+⚠️ IMPORTANTE: 
+- Usa ÚNICAMENTE las preguntas/contenido que te proporcionaré abajo
+- NO inventes preguntas nuevas
+- Responde SOLO con el JSON, sin explicaciones ni markdown
+
+FORMATO REQUERIDO:
+[
+`;
+
+    // MCQ
+    if (mcq > 0) {
+      instrucciones += `  // ${mcq} preguntas de OPCIÓN MÚLTIPLE (tipo: "mcq"):
+  {
+    "tipo": "mcq",
+    "pregunta": "Tu pregunta aquí",
+    "opciones": ["A) Opción 1", "B) Opción 2", "C) Opción 3", "D) Opción 4"],
+    "respuesta_correcta": "A",
+    "explicacion": "Por qué A es la respuesta correcta",
+    "puntos": 3
+  },
+`;
+    }
+
+    // True/False
+    if (true_false > 0) {
+      instrucciones += `  // ${true_false} preguntas de VERDADERO/FALSO (tipo: "true_false"):
+  {
+    "tipo": "true_false",
+    "pregunta": "Afirmación que puede ser verdadera o falsa",
+    "respuesta_correcta": "verdadero",
+    "explicacion": "Por qué es verdadero/falso",
+    "puntos": 2
+  },
+`;
+    }
+
+    // Cloze
+    if (cloze > 0) {
+      instrucciones += `  // ${cloze} preguntas de RELLENO DE HUECOS (tipo: "cloze"):
+  {
+    "tipo": "cloze",
+    "pregunta": "El {} permite {} en el contexto de {}",
+    "metadata": {
+      "text_with_gaps": "El {} permite {} en el contexto de {}",
+      "answers": ["concepto1", "acción1", "contexto1"],
+      "hint": "Pista relacionada con el tema"
+    },
+    "respuesta_correcta": "concepto1, acción1, contexto1",
+    "puntos": 3
+  },
+`;
+    }
+
+    // Short Answer
+    if (short_answer > 0) {
+      instrucciones += `  // ${short_answer} preguntas de RESPUESTA CORTA (tipo: "short_answer"):
+  {
+    "tipo": "short_answer",
+    "pregunta": "Pregunta que requiere una respuesta breve de 1-3 frases",
+    "respuesta_esperada": "La respuesta modelo que se espera",
+    "palabras_clave": ["palabra1", "palabra2", "palabra3"],
+    "explicacion": "Explicación detallada de la respuesta correcta",
+    "puntos": 3
+  },
+`;
+    }
+
+    // Open Question
+    if (open_question > 0) {
+      instrucciones += `  // ${open_question} preguntas de EXPLICACIÓN DETALLADA (tipo: "open_question"):
+  {
+    "tipo": "open_question",
+    "pregunta": "Pregunta de desarrollo que requiere explicación completa y análisis profundo",
+    "metadata": {
+      "key_points": ["Punto clave 1 a desarrollar", "Punto clave 2 a desarrollar", "Punto clave 3 a desarrollar"],
+      "expected_length": "200-400 palabras"
+    },
+    "respuesta_esperada": "Respuesta modelo completa y detallada",
+    "explicacion": "Criterios de evaluación y puntos importantes",
+    "puntos": 5
+  },
+`;
+    }
+
+    // Case Study
+    if (case_study > 0) {
+      instrucciones += `  // ${case_study} CASOS DE ESTUDIO (tipo: "case_study", subtipo: "${tipo_caso}"):
+  // Tipo seleccionado: ${tiposCasoDescripcion[tipo_caso]}
+  {
+    "tipo": "case_study",
+    "pregunta": "¿Cómo abordarías esta situación?",
+    "metadata": {
+      "titulo": "Título del caso de estudio",
+      "subtipo": "${tipo_caso}",
+      "contexto": "Descripción del contexto y situación inicial",
+      "descripcion": "Descripción detallada del caso (mínimo 150 palabras)",
+      "scenario": "Escenario específico que el estudiante debe analizar",
+      "datos_clave": ["Dato relevante 1", "Dato relevante 2", "Dato relevante 3"]
+    },
+    "respuesta_esperada": "Análisis completo y solución propuesta",
+    "explicacion": "Explicación de los criterios de evaluación",
+    "puntos": 5
+  },
+`;
+    }
+
+    // Ejercicios de Idiomas
+    if (idioma_tipo) {
+      const formatosIdioma = {
+        reading_comprehension: `  // 1 EJERCICIO DE COMPRENSIÓN LECTORA en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Lee el siguiente texto y responde las preguntas",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "texto_lectura": "Texto en ${idiomasNombre[idioma_lang]} de 100-200 palabras sobre el tema",
+      "preguntas_comprension": [
+        {"pregunta": "Pregunta sobre el texto", "respuesta": "Respuesta correcta"},
+        {"pregunta": "Segunda pregunta", "respuesta": "Segunda respuesta"}
+      ],
+      "vocabulario_clave": ["palabra1", "palabra2", "palabra3"]
+    },
+    "respuesta_esperada": "Resumen de las respuestas correctas",
+    "puntos": 4
+  },`,
+        reading_true_false: `  // 1 EJERCICIO VERDADERO/FALSO CON JUSTIFICACIÓN en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Lee el texto y determina si las afirmaciones son verdaderas o falsas",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "texto_lectura": "Texto en ${idiomasNombre[idioma_lang]} de 100-150 palabras",
+      "afirmaciones": [
+        {"texto": "Afirmación 1 sobre el texto", "es_verdadero": true, "justificacion": "Por qué es verdadero"},
+        {"texto": "Afirmación 2 sobre el texto", "es_verdadero": false, "justificacion": "Por qué es falso"}
+      ]
+    },
+    "puntos": 3
+  },`,
+        reading_cloze: `  // 1 EJERCICIO CLOZE (COMPLETAR TEXTO) en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Completa los huecos con las palabras correctas",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "texto_con_huecos": "Texto en ${idiomasNombre[idioma_lang]} con {} para marcar los huecos",
+      "respuestas": ["palabra1", "palabra2", "palabra3"],
+      "opciones_disponibles": ["palabra1", "palabra2", "palabra3", "distractor1", "distractor2"]
+    },
+    "puntos": 3
+  },`,
+        reading_skill: `  // 1 EJERCICIO DE HABILIDADES DE LECTURA en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Analiza el texto usando diferentes habilidades de lectura",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "texto_lectura": "Texto en ${idiomasNombre[idioma_lang]} de 150-250 palabras",
+      "tareas": [
+        {"habilidad": "idea_principal", "pregunta": "¿Cuál es la idea principal del texto?", "respuesta": "La idea principal es..."},
+        {"habilidad": "inferencia", "pregunta": "¿Qué puedes inferir sobre...?", "respuesta": "Se puede inferir que..."},
+        {"habilidad": "vocabulario_contextual", "pregunta": "¿Qué significa 'palabra' en este contexto?", "respuesta": "Significa..."}
+      ]
+    },
+    "puntos": 4
+  },`,
+        reading_matching: `  // 1 EJERCICIO DE RELACIONAR en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Relaciona los elementos de la columna A con los de la columna B",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "columna_a": ["Elemento 1", "Elemento 2", "Elemento 3", "Elemento 4"],
+      "columna_b": ["Definición/Pareja 1", "Definición/Pareja 2", "Definición/Pareja 3", "Definición/Pareja 4"],
+      "respuestas_correctas": {"0": 2, "1": 0, "2": 3, "3": 1}
+    },
+    "puntos": 3
+  },`,
+        reading_sequence: `  // 1 EJERCICIO DE ORDENAR SECUENCIA en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Ordena los siguientes eventos/pasos en el orden correcto",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "elementos_desordenados": ["Paso/evento 3", "Paso/evento 1", "Paso/evento 4", "Paso/evento 2"],
+      "orden_correcto": [1, 3, 0, 2],
+      "contexto": "Breve contexto del ejercicio"
+    },
+    "puntos": 3
+  },`,
+        writing_short: `  // 1 EJERCICIO DE RESPUESTA CORTA en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Responde en ${idiomasNombre[idioma_lang]} usando 2-3 oraciones",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "pregunta_especifica": "Pregunta que requiere respuesta en ${idiomasNombre[idioma_lang]}",
+      "palabras_requeridas": ["verbo1", "sustantivo1"],
+      "estructura_esperada": "Estructura gramatical esperada en la respuesta"
+    },
+    "respuesta_esperada": "Ejemplo de respuesta correcta en ${idiomasNombre[idioma_lang]}",
+    "puntos": 3
+  },`,
+        writing_paraphrase: `  // 1 EJERCICIO DE PARAFRASEO en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Reescribe las siguientes oraciones usando otras palabras",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "oraciones_originales": [
+        {"original": "Oración original en ${idiomasNombre[idioma_lang]}", "parafraseo": "Versión parafraseada aceptable"}
+      ],
+      "vocabulario_alternativo": ["sinónimo1", "sinónimo2"]
+    },
+    "puntos": 3
+  },`,
+        writing_correction: `  // 1 EJERCICIO DE CORRECCIÓN DE ERRORES en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Encuentra y corrige los errores en las siguientes oraciones",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "oraciones_con_errores": [
+        {"incorrecta": "Oración con error gramatical", "correcta": "Oración corregida", "tipo_error": "gramática/ortografía/vocabulario"}
+      ]
+    },
+    "puntos": 3
+  },`,
+        writing_transformation: `  // 1 EJERCICIO DE TRANSFORMACIÓN GRAMATICAL en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Transforma las oraciones siguiendo las instrucciones",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "transformaciones": [
+        {"original": "Oración en voz activa", "instruccion": "Cambia a voz pasiva", "respuesta": "Oración transformada"},
+        {"original": "Oración en presente", "instruccion": "Cambia al pasado", "respuesta": "Oración transformada"}
+      ]
+    },
+    "puntos": 4
+  },`,
+        writing_essay: `  // 1 MINI-ENSAYO en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Escribe un párrafo en ${idiomasNombre[idioma_lang]} sobre el tema indicado",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "tema": "Tema del ensayo relacionado con el contenido",
+      "longitud_esperada": "80-120 palabras",
+      "puntos_a_incluir": ["Punto 1 a desarrollar", "Punto 2 a desarrollar"],
+      "estructura": "Introducción - Desarrollo - Conclusión"
+    },
+    "respuesta_esperada": "Ejemplo de ensayo bien escrito",
+    "puntos": 5
+  },`,
+        writing_sentence_builder: `  // 1 EJERCICIO CONSTRUCTOR DE ORACIONES en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Ordena las palabras para formar oraciones correctas",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "oraciones": [
+        {"palabras_desordenadas": ["word1", "word2", "word3", "word4"], "oracion_correcta": "Oración ordenada correctamente"},
+        {"palabras_desordenadas": ["otra", "oración", "desordenada"], "oracion_correcta": "Oración correcta"}
+      ]
+    },
+    "puntos": 3
+  },`,
+        writing_picture_description: `  // 1 EJERCICIO DESCRIPCIÓN DE IMAGEN en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Describe la escena en ${idiomasNombre[idioma_lang]}",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "descripcion_escena": "Descripción de la escena/imagen que el estudiante debe describir",
+      "vocabulario_sugerido": ["palabra1", "palabra2", "palabra3"],
+      "estructuras_gramaticales": ["hay/there is", "está haciendo/is doing"],
+      "longitud_esperada": "50-80 palabras"
+    },
+    "respuesta_esperada": "Ejemplo de descripción correcta",
+    "puntos": 4
+  },`,
+        writing_email: `  // 1 EJERCICIO EMAIL/CARTA FORMAL en ${idiomasNombre[idioma_lang]}:
+  {
+    "tipo": "${idioma_tipo}",
+    "pregunta": "Escribe un email formal en ${idiomasNombre[idioma_lang]}",
+    "metadata": {
+      "idioma": "${idioma_lang}",
+      "situacion": "Descripción de la situación que requiere el email",
+      "destinatario": "A quién va dirigido",
+      "proposito": "Objetivo del email",
+      "elementos_requeridos": ["Saludo formal", "Cuerpo", "Despedida formal"],
+      "longitud_esperada": "100-150 palabras"
+    },
+    "respuesta_esperada": "Ejemplo de email bien redactado",
+    "puntos": 5
+  },`
+      };
+
+      instrucciones += formatosIdioma[idioma_tipo] + '\n';
+    }
+
+    // Comprensión Lectora (texto + MCQ) - cantidad seleccionable
+    if (reading_comprehension > 0) {
+      const langName = idiomasNombre[reading_comprehension_lang] || 'Inglés';
+      const numMCQ = reading_comprehension_preguntas || 3;
+      
+      // Generar array de MCQs de ejemplo según el número configurado
+      const mcqEjemplo = [];
+      const letras = ['A', 'B', 'C', 'D'];
+      for (let i = 1; i <= numMCQ; i++) {
+        const letraCorrecta = letras[(i - 1) % 4];
+        const opciones = letras.map(l => `"${l}. ${l === letraCorrecta ? 'Opción correcta' : 'Opción incorrecta'}"`);
+        mcqEjemplo.push(`        {
+          "pregunta": "Pregunta ${i} sobre el texto",
+          "opciones": [${opciones.join(', ')}],
+          "respuesta_correcta": "${letraCorrecta}"
+        }`);
+      }
+      
+      instrucciones += `  // ${reading_comprehension} EJERCICIO(S) DE COMPRENSIÓN LECTORA en ${langName}:
+  // Texto de lectura + ${numMCQ} preguntas de opción múltiple sobre el contenido
+  {
+    "tipo": "reading_comprehension",
+    "pregunta": "Lee el texto y responde las preguntas.",
+    "metadata": {
+      "idioma": "${reading_comprehension_lang}",
+      "texto_lectura": "Texto en ${langName} de 100-200 palabras sobre un tema interesante.",
+      "preguntas": [
+${mcqEjemplo.join(',\n')}
+      ]
+    },
+    "puntos": ${numMCQ}
+  },
+`;
+    }
+
+    // Comprensión Escrita (texto + preguntas con respuesta escrita) - cantidad seleccionable
+    if (reading_written > 0) {
+      const langName = idiomasNombre[reading_written_lang] || 'Inglés';
+      const numPreguntas = reading_written_preguntas || 3;
+      
+      // Generar array de preguntas de ejemplo según el número configurado
+      const preguntasEjemplo = [];
+      for (let i = 1; i <= numPreguntas; i++) {
+        const ordinal = i === 1 ? 'Primera' : i === 2 ? 'Segunda' : i === 3 ? 'Tercera' : i === 4 ? 'Cuarta' : 'Quinta';
+        preguntasEjemplo.push(`        {"pregunta": "${ordinal} pregunta sobre el texto", "respuesta": "${ordinal} respuesta esperada"}`);
+      }
+      
+      instrucciones += `  // ${reading_written} EJERCICIO(S) DE COMPRENSIÓN ESCRITA en ${langName}:
+  // Texto de lectura + ${numPreguntas} preguntas que requieren respuesta escrita (no MCQ)
+  {
+    "tipo": "reading_written",
+    "pregunta": "Lee el siguiente texto y responde las preguntas",
+    "metadata": {
+      "idioma": "${reading_written_lang}",
+      "texto_lectura": "Texto en ${langName} de 100-200 palabras sobre el tema",
+      "preguntas_comprension": [
+${preguntasEjemplo.join(',\n')}
+      ],
+      "vocabulario_clave": ["palabra1", "palabra2", "palabra3"]
+    },
+    "respuesta_esperada": "Resumen de las respuestas correctas",
+    "puntos": ${numPreguntas + 1}
+  },
+`;
+    }
+
+    // V/F con Justificación (cantidad seleccionable)
+    if (reading_true_false > 0) {
+      const langName = idiomasNombre[reading_true_false_lang] || 'Inglés';
+      instrucciones += `  // ${reading_true_false} EJERCICIO(S) V/F CON JUSTIFICACIÓN en ${langName}:
+  {
+    "tipo": "reading_true_false",
+    "pregunta": "Lee el texto y determina si las afirmaciones son verdaderas o falsas. Justifica tu respuesta.",
+    "metadata": {
+      "idioma": "${reading_true_false_lang}",
+      "texto_lectura": "Texto en ${langName} de 100-150 palabras sobre el tema",
+      "afirmaciones": [
+        {"texto": "Afirmación 1 sobre el texto", "es_verdadero": true, "justificacion": "Justificación de por qué es verdadero"},
+        {"texto": "Afirmación 2 sobre el texto", "es_verdadero": false, "justificacion": "Justificación de por qué es falso"},
+        {"texto": "Afirmación 3 sobre el texto", "es_verdadero": true, "justificacion": "Justificación"}
+      ]
+    },
+    "respuesta_esperada": "Resumen de las respuestas correctas con justificaciones",
+    "puntos": 3
+  },
+`;
+    }
+
+    // Completar Texto (Cloze) para idiomas (cantidad seleccionable)
+    if (reading_cloze > 0) {
+      const langName = idiomasNombre[reading_cloze_lang] || 'Inglés';
+      instrucciones += `  // ${reading_cloze} EJERCICIO(S) COMPLETAR TEXTO (CLOZE) en ${langName}:
+  // IMPORTANTE: Usa {} para marcar CADA hueco. El array "respuestas" debe tener UNA palabra por hueco en orden.
+  {
+    "tipo": "reading_cloze",
+    "pregunta": "Completa el texto con las palabras correctas del banco de palabras.",
+    "metadata": {
+      "idioma": "${reading_cloze_lang}",
+      "texto_con_huecos": "Texto en ${langName} con {} para cada espacio en blanco. Por ejemplo: Tom is a young hunter. Every {}, he hunts in the {}. He does not hunt at {} because it is too dangerous.",
+      "respuestas": ["morning", "forest", "night"],
+      "opciones_disponibles": ["morning", "forest", "night", "afternoon", "city", "day"]
+    },
+    "puntos": 3
+  },
+`;
+    }
+
+    // Habilidades de Lectura (Reading Skills) - 5 MCQ por ejercicio
+    if (reading_skill > 0) {
+      const langName = idiomasNombre[reading_skill_lang] || 'Inglés';
+      instrucciones += `  // ${reading_skill} EJERCICIO(S) DE HABILIDADES DE LECTURA en ${langName}:
+  // Cada ejercicio tiene UN texto de lectura + 5 preguntas MCQ (Main Idea, Detail, Inference, Purpose, Tone)
+  {
+    "tipo": "reading_skill",
+    "pregunta": "Lee el texto y responde las preguntas de comprensión",
+    "metadata": {
+      "idioma": "${reading_skill_lang}",
+      "texto_lectura": "Texto en ${langName} de 150-250 palabras sobre un tema interesante. Debe contener información explícita para Detail, pistas implícitas para Inference, y un tono identificable.",
+      "preguntas_skill": [
+        {
+          "tipo_skill": "main_idea",
+          "pregunta": "What is the main idea of the text?",
+          "opciones": ["A. Opción incorrecta", "B. Opción incorrecta", "C. Idea principal correcta", "D. Opción incorrecta"],
+          "respuesta_correcta": "C"
+        },
+        {
+          "tipo_skill": "detail",
+          "pregunta": "According to the text, [pregunta sobre detalle explícito]?",
+          "opciones": ["A. Opción incorrecta", "B. Detalle correcto del texto", "C. Opción incorrecta", "D. Opción incorrecta"],
+          "respuesta_correcta": "B"
+        },
+        {
+          "tipo_skill": "inference",
+          "pregunta": "What can we infer from the text about [algo no dicho explícitamente]?",
+          "opciones": ["A. Opción incorrecta", "B. Opción incorrecta", "C. Opción incorrecta", "D. Inferencia correcta"],
+          "respuesta_correcta": "D"
+        },
+        {
+          "tipo_skill": "purpose",
+          "pregunta": "What is the author's main purpose in this text?",
+          "opciones": ["A. Propósito correcto", "B. Opción incorrecta", "C. Opción incorrecta", "D. Opción incorrecta"],
+          "respuesta_correcta": "A"
+        },
+        {
+          "tipo_skill": "tone",
+          "pregunta": "What is the tone of the text?",
+          "opciones": ["A. Opción incorrecta", "B. Opción incorrecta", "C. Tono correcto (ej: calm and explanatory)", "D. Opción incorrecta"],
+          "respuesta_correcta": "C"
+        }
+      ]
+    },
+    "puntos": 5
+  },
+`;
+    }
+
+    // Relacionar Ideas (Matching) - emparejar oraciones con párrafos
+    if (reading_matching > 0) {
+      const langName = idiomasNombre[reading_matching_lang] || 'Inglés';
+      instrucciones += `  // ${reading_matching} EJERCICIO(S) DE RELACIONAR IDEAS (MATCHING) en ${langName}:
+  // Texto dividido en párrafos (A, B, C, D) + oraciones que describen la función de cada párrafo
+  {
+    "tipo": "reading_matching",
+    "pregunta": "Match each sentence with the correct paragraph (A-D).",
+    "metadata": {
+      "idioma": "${reading_matching_lang}",
+      "parrafos": [
+        {"letra": "A", "texto": "Párrafo A en ${langName} - Introducción/background del tema (2-3 oraciones)"},
+        {"letra": "B", "texto": "Párrafo B en ${langName} - Describe una rutina o proceso (2-3 oraciones)"},
+        {"letra": "C", "texto": "Párrafo C en ${langName} - Explica una razón o causa (2-3 oraciones)"},
+        {"letra": "D", "texto": "Párrafo D en ${langName} - Conclusión o actitud del personaje (2-3 oraciones)"}
+      ],
+      "oraciones": [
+        {"texto": "This paragraph describes the character's background and purpose.", "parrafo_correcto": "A"},
+        {"texto": "This paragraph explains the character's daily routine.", "parrafo_correcto": "B"},
+        {"texto": "This paragraph explains why the character avoids something.", "parrafo_correcto": "C"},
+        {"texto": "This paragraph shows the character's confidence or conclusion.", "parrafo_correcto": "D"}
+      ]
+    },
+    "puntos": 4
+  },
+`;
+    }
+
+    // Ordenar Secuencia - ordenar eventos cronológicamente
+    if (reading_sequence > 0) {
+      const langName = idiomasNombre[reading_sequence_lang] || 'Inglés';
+      instrucciones += `  // ${reading_sequence} EJERCICIO(S) DE ORDENAR SECUENCIA en ${langName}:
+  // Texto narrativo + eventos desordenados que el usuario debe ordenar cronológicamente
+  {
+    "tipo": "reading_sequence",
+    "pregunta": "Put the following events in the correct order according to the text.",
+    "metadata": {
+      "idioma": "${reading_sequence_lang}",
+      "texto_narrativo": "Texto narrativo en ${langName} describiendo una secuencia de eventos o un proceso. El texto debe tener conectores temporales claros (first, then, later, finally, before, after, etc.) pero también puede requerir inferencia. Mínimo 4-5 oraciones que establezcan una secuencia clara de eventos.",
+      "eventos": [
+        {"letra": "A", "texto": "Evento que ocurre en algún momento de la secuencia (NO en orden).", "posicion_correcta": 3},
+        {"letra": "B", "texto": "Otro evento de la secuencia (desordenado).", "posicion_correcta": 1},
+        {"letra": "C", "texto": "Otro evento de la secuencia (desordenado).", "posicion_correcta": 4},
+        {"letra": "D", "texto": "Otro evento de la secuencia (desordenado).", "posicion_correcta": 2}
+      ]
+    },
+    "puntos": 4
+  },
+`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // EXPRESIÓN ESCRITA
+    // ═══════════════════════════════════════════════════════════════
+
+    // Respuesta Corta Escrita (writing_short) - cantidad, nivel e idioma seleccionable
+    if (writing_short > 0) {
+      const langName = idiomasNombre[writing_short_lang] || 'Inglés';
+      const nivel = writing_short_nivel || 'B1';
+      const numPreguntas = writing_short_preguntas || 3;
+      
+      // Configuración por nivel CEFR
+      const nivelConfig = {
+        'A1': {
+          descripcion: 'Nivel A1 - Respuestas de 1-5 palabras, información explícita, vocabulario cotidiano',
+          longitud: '1-5 palabras o frase muy simple',
+          complejidad: 'Información explícita del texto, presente simple',
+          ejemplo_texto: 'Tom works in a supermarket. He starts at 8 a.m. and finishes at 4 p.m.',
+          ejemplo_pregunta: 'Where does Tom work?',
+          ejemplo_respuesta: 'In a supermarket'
+        },
+        'A2': {
+          descripcion: 'Nivel A2 - Respuestas de 1-5 palabras, información explícita, tiempos básicos',
+          longitud: '1-5 palabras o frase simple',
+          complejidad: 'Información explícita, presente/pasado simple',
+          ejemplo_texto: 'Maria went to the park yesterday. She played with her dog for two hours.',
+          ejemplo_pregunta: 'How long did Maria play with her dog?',
+          ejemplo_respuesta: 'For two hours'
+        },
+        'B1': {
+          descripcion: 'Nivel B1 - Respuestas de 1-2 frases, puede requerir inferencia simple',
+          longitud: '1-2 frases completas',
+          complejidad: 'Conectar ideas, uso de because/so/but, tiempos verbales variados',
+          ejemplo_texto: 'Maria prefers working from home because it allows her to focus better and avoid long commutes.',
+          ejemplo_pregunta: 'Why does Maria prefer working from home?',
+          ejemplo_respuesta: 'Because she can focus better and avoid long commutes.'
+        },
+        'B2': {
+          descripcion: 'Nivel B2 - Respuestas de 1-2 frases elaboradas, inferencia y reformulación',
+          longitud: '1-2 frases bien construidas',
+          complejidad: 'Inferencia, parafraseo, conectores complejos',
+          ejemplo_texto: 'Despite initial resistance, the new system proved to increase productivity by 30%.',
+          ejemplo_pregunta: 'What was the initial reaction to the new system?',
+          ejemplo_respuesta: 'There was resistance at first, but the system eventually proved successful.'
+        },
+        'C1': {
+          descripcion: 'Nivel C1 - Respuestas de 2-3 frases precisas, inferencias complejas, registro formal',
+          longitud: '2-3 frases bien construidas',
+          complejidad: 'Inferencias complejas, vocabulario preciso, reformulación sofisticada',
+          ejemplo_texto: 'Although the policy improved efficiency, it also increased pressure on employees, leading to mixed reactions.',
+          ejemplo_pregunta: 'What is the main drawback of the policy?',
+          ejemplo_respuesta: 'The policy increased pressure on employees, which caused mixed reactions despite improving efficiency.'
+        },
+        'C2': {
+          descripcion: 'Nivel C2 - Respuestas de 2-3 frases sofisticadas, análisis de tono y matices',
+          longitud: '2-3 frases sofisticadas',
+          complejidad: 'Matices, análisis de tono, registro adaptado, reformulación elegante',
+          ejemplo_texto: 'The author subtly critiques the overreliance on technology while acknowledging its undeniable benefits.',
+          ejemplo_pregunta: 'How does the author balance criticism with acknowledgment?',
+          ejemplo_respuesta: "The author adopts a nuanced stance, recognizing technology's benefits while cautioning against excessive dependence."
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      // Generar preguntas de ejemplo según el número configurado
+      const preguntasEjemplo = [];
+      for (let i = 1; i <= numPreguntas; i++) {
+        preguntasEjemplo.push(`        {"pregunta": "Pregunta ${i} sobre el texto (${config.longitud})", "palabras_clave": ["palabra_clave_1", "palabra_clave_2"], "respuesta_modelo": "Respuesta esperada de ${config.longitud}"}`);
+      }
+      
+      instrucciones += `  // ${writing_short} EJERCICIO(S) DE RESPUESTA CORTA ESCRITA (${nivel}) en ${langName}:
+  // ${config.descripcion}
+  // Longitud esperada: ${config.longitud}
+  // Complejidad: ${config.complejidad}
+  // ⚠️ IMPORTANTE: GENERA un texto de lectura REAL de 80-150 palabras, NO uses el texto de ejemplo
+  {
+    "tipo": "writing_short",
+    "pregunta": "Lee el texto y responde las preguntas con respuestas cortas.",
+    "metadata": {
+      "idioma": "${writing_short_lang}",
+      "nivel": "${nivel}",
+      "texto_lectura": "⚠️ GENERA AQUÍ un texto REAL de 80-150 palabras en ${langName} apropiado para nivel ${nivel}. NO copies el ejemplo. Crea un texto único sobre un tema cotidiano.",
+      "preguntas_short": [
+${preguntasEjemplo.join(',\n')}
+      ],
+      "criterios_evaluacion": {
+        "comprension": "¿Entendió correctamente la información del texto?",
+        "precision": "¿Usó las palabras clave correctas?",
+        "gramatica": "¿Es gramaticalmente correcto para nivel ${nivel}?",
+        "longitud": "${config.longitud}"
+      }
+    },
+    "respuesta_esperada": "Resumen de respuestas correctas",
+    "puntos": ${numPreguntas}
+  },
+`;
+    }
+
+    // ====== TEMPLATE WRITING_PARAPHRASE CON NIVELES CEFR ======
+    if (writing_paraphrase > 0) {
+      const nivel = writing_paraphrase_nivel || 'B1';
+      const langName = idiomasNombre[writing_paraphrase_lang] || 'Inglés';
+      const numFrases = writing_paraphrase_frases || 3;
+      
+      // Configuración por nivel CEFR
+      const nivelConfig = {
+        'A1': {
+          descripcion: 'Nivel A1 - Parafraseo guiado con sinónimos básicos',
+          tipo_parafraseo: 'Cambio mínimo de palabra (sinónimo directo)',
+          complejidad: 'Control total, vocabulario básico, estructura sin cambios',
+          ejemplo_original: 'Tom is happy.',
+          ejemplo_instruccion: 'Rewrite the sentence using "glad".',
+          ejemplo_respuesta: 'Tom is glad.'
+        },
+        'A2': {
+          descripcion: 'Nivel A2 - Parafraseo guiado con cambios simples',
+          tipo_parafraseo: 'Cambio de estructura simple manteniendo sentido',
+          complejidad: 'Apoyo explícito, frases cortas, sinónimos dados',
+          ejemplo_original: 'She goes to work every day.',
+          ejemplo_instruccion: 'Paraphrase using "works".',
+          ejemplo_respuesta: 'She works every day.'
+        },
+        'B1': {
+          descripcion: 'Nivel B1 - Parafraseo funcional con reestructuración',
+          tipo_parafraseo: 'Cambio de estructura (because → due to, activo → pasivo)',
+          complejidad: 'Sin ayudas explícitas, sinónimos propios, gramática correcta',
+          ejemplo_original: 'She stayed at home because she was sick.',
+          ejemplo_instruccion: 'Paraphrase the sentence.',
+          ejemplo_respuesta: 'She stayed at home due to her illness.'
+        },
+        'B2': {
+          descripcion: 'Nivel B2 - Parafraseo funcional con expresiones equivalentes',
+          tipo_parafraseo: 'Uso de expresiones equivalentes y cambio de estructura compleja',
+          complejidad: 'Libertad controlada, registro adecuado, significado exacto',
+          ejemplo_original: 'The meeting was canceled because there were not enough participants.',
+          ejemplo_instruccion: 'Paraphrase the sentence.',
+          ejemplo_respuesta: 'The meeting was canceled due to a lack of participants.'
+        },
+        'C1': {
+          descripcion: 'Nivel C1 - Parafraseo estratégico con precisión léxica',
+          tipo_parafraseo: 'Reformulación profunda, precisión léxica, cohesión',
+          complejidad: 'Frases complejas, registro y tono, múltiples soluciones válidas',
+          ejemplo_original: 'Although the policy increased efficiency, it placed additional pressure on employees.',
+          ejemplo_instruccion: 'Paraphrase the sentence.',
+          ejemplo_respuesta: 'Despite improving efficiency, the policy also intensified the workload for employees.'
+        },
+        'C2': {
+          descripcion: 'Nivel C2 - Parafraseo estratégico con elegancia funcional',
+          tipo_parafraseo: 'Reformulación elegante, riqueza lingüística, exactitud conceptual',
+          complejidad: 'Mini-párrafos, matices de tono, naturalidad nativa',
+          ejemplo_original: 'The results suggest that immediate action is necessary to prevent long-term consequences.',
+          ejemplo_instruccion: 'Paraphrase the sentence.',
+          ejemplo_respuesta: 'The findings indicate an urgent need to act in order to avoid future repercussions.'
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      // Generar frases de ejemplo según el número configurado
+      const frasesEjemplo = [];
+      for (let i = 1; i <= numFrases; i++) {
+        if (nivel === 'A1' || nivel === 'A2') {
+          // Niveles básicos: con instrucción explícita
+          frasesEjemplo.push(`        {"original": "Frase original ${i} en ${langName}", "instruccion": "Instrucción con palabra/estructura a usar", "parafraseo_esperado": "Parafraseo correcto"}`);
+        } else {
+          // Niveles intermedios y avanzados: sin ayuda
+          frasesEjemplo.push(`        {"original": "Frase original ${i} en ${langName} (${config.tipo_parafraseo})", "parafraseo_esperado": "Parafraseo correcto mostrando ${config.complejidad}"}`);
+        }
+      }
+      
+      instrucciones += `  // ${writing_paraphrase} EJERCICIO(S) DE PARAFRASEO (${nivel}) en ${langName}:
+  // ${config.descripcion}
+  // Tipo: ${config.tipo_parafraseo}
+  // Complejidad: ${config.complejidad}
+  // REGLA DE ORO: Si el original y la versión pueden intercambiarse sin que nadie note la diferencia, está bien hecho.
+  {
+    "tipo": "writing_paraphrase",
+    "pregunta": "${nivel === 'A1' || nivel === 'A2' ? 'Reescribe las oraciones siguiendo las instrucciones.' : 'Parafrasea las siguientes oraciones usando otras palabras.'}",
+    "metadata": {
+      "idioma": "${writing_paraphrase_lang}",
+      "nivel": "${nivel}",
+      "oraciones_originales": [
+${frasesEjemplo.join(',\n')}
+      ],
+      "criterios_evaluacion": {
+        "significado": "¿Se mantiene el significado original exacto?",
+        "estructura": "${nivel === 'A1' || nivel === 'A2' ? '¿Usó la palabra/estructura indicada?' : '¿Cambió la estructura sin copiar?'}",
+        "registro": "¿Mantiene el mismo tono (formal/neutral/informal)?",
+        "gramatica": "¿Es gramaticalmente correcto para nivel ${nivel}?",
+        "naturalidad": "${nivel === 'C1' || nivel === 'C2' ? '¿Suena natural, no forzado o escolar?' : 'Corrección básica'}"
+      },
+      "errores_tipicos": [
+        "Cambiar palabras sin entender el sentido",
+        "Alterar el tono (neutral → emocional)",
+        "Repetir estructuras con sinónimos pegados"
+      ]
+    },
+    "respuesta_esperada": "Parafraseos correctos que mantienen significado, intención y registro",
+    "puntos": ${numFrases}
+  },
+`;
+    }
+
+    // ====== TEMPLATE WRITING_CORRECTION CON NIVELES CEFR ======
+    if (writing_correction > 0) {
+      const nivel = writing_correction_nivel || 'B1';
+      const langName = idiomasNombre[writing_correction_lang] || 'Inglés';
+      const numFrases = writing_correction_frases || 3;
+      
+      // Configuración por nivel CEFR
+      const nivelConfig = {
+        'A1': {
+          descripcion: 'Nivel A1 - Corrección localizada (1 error obvio por frase)',
+          tipo_errores: 'Gramática básica, forma verbal, concordancia simple, ortografía elemental',
+          formato: 'Frases cortas, 1 error aislado y obvio por frase',
+          requiere_explicacion: false,
+          ejemplo_frase: 'She go to school every day.',
+          ejemplo_correccion: 'She goes to school every day.',
+          tipo_error: 'Conjugación verbal (tercera persona singular)'
+        },
+        'A2': {
+          descripcion: 'Nivel A2 - Corrección localizada (errores visibles)',
+          tipo_errores: 'Verbos básicos, plural/singular, artículos, spelling',
+          formato: 'Frases cortas, 1 error por frase, error claro',
+          requiere_explicacion: false,
+          ejemplo_frase: 'I am agree with you.',
+          ejemplo_correccion: 'I agree with you.',
+          tipo_error: 'Uso incorrecto de verbo auxiliar'
+        },
+        'B1': {
+          descripcion: 'Nivel B1 - Corrección contextual (2-3 errores por texto)',
+          tipo_errores: 'Tiempos verbales, preposiciones, orden de palabras',
+          formato: 'Mini textos (2-4 frases), 2-3 errores mezclados',
+          requiere_explicacion: false,
+          ejemplo_frase: 'Yesterday I have finished my report and I send it to my manager.',
+          ejemplo_correccion: 'Yesterday I finished my report and sent it to my manager.',
+          tipo_error: 'Tiempos verbales (presente perfecto → pasado simple)'
+        },
+        'B2': {
+          descripcion: 'Nivel B2 - Corrección contextual (collocations y preposiciones)',
+          tipo_errores: 'Collocations, preposiciones, voz pasiva, conectores',
+          formato: 'Mini textos, 3-4 errores sutiles, sin pistas',
+          requiere_explicacion: false,
+          ejemplo_frase: 'He is responsible of managing the team and making sure deadlines are met.',
+          ejemplo_correccion: 'He is responsible for managing the team and making sure deadlines are met.',
+          tipo_error: 'Preposición incorrecta (of → for)'
+        },
+        'C1': {
+          descripcion: 'Nivel C1 - Corrección editorial (errores sutiles + estilo)',
+          tipo_errores: 'Collocations incorrectas, redundancia, ambigüedad, registro',
+          formato: 'Párrafos completos, errores gramaticales + estilísticos mezclados',
+          requiere_explicacion: true,
+          ejemplo_frase: 'The company has did significant investments which allows them to expand faster.',
+          ejemplo_correccion: 'The company has made significant investments, which allow it to expand faster.',
+          tipo_error: 'Múltiples: participio incorrecto, concordancia, puntuación'
+        },
+        'C2': {
+          descripcion: 'Nivel C2 - Corrección editorial (precisión y elegancia)',
+          tipo_errores: 'Lenguaje vago, tono inadecuado, redundancia, falta de concisión',
+          formato: 'Párrafos completos, errores estilísticos sutiles, requiere reescritura elegante',
+          requiere_explicacion: true,
+          ejemplo_frase: 'It can be clearly seen that the results are very important and show many improvements.',
+          ejemplo_correccion: 'The results clearly demonstrate significant improvements.',
+          tipo_error: 'Estilo: redundancia, lenguaje vago, falta de concisión'
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      // Generar frases de ejemplo según el número configurado
+      const frasesEjemplo = [];
+      for (let i = 1; i <= numFrases; i++) {
+        if (nivel === 'C1' || nivel === 'C2') {
+          // Niveles avanzados: con explicación requerida
+          frasesEjemplo.push(`        {"frase_con_error": "Frase ${i} con error(es) en ${langName}", "correccion": "Frase corregida correctamente", "tipo_error": "Tipo de error", "pista": "Pista gramatical breve para orientar al estudiante", "explicacion": "Breve explicación del error"}`);
+        } else {
+          // Niveles básicos e intermedios: con pista gramatical
+          frasesEjemplo.push(`        {"frase_con_error": "Frase ${i} con error en ${langName}", "correccion": "Frase corregida", "tipo_error": "${config.tipo_errores.split(',')[0]}", "pista": "Pista gramatical breve (ej: 'Revisa la conjugación del verbo' o 'Fíjate en el artículo')"}`);
+        }
+      }
+      
+      instrucciones += `  // ${writing_correction} EJERCICIO(S) DE CORRECCIÓN DE ERRORES (${nivel}) en ${langName}:
+  // ${config.descripcion}
+  // Tipos de errores: ${config.tipo_errores}
+  // Formato: ${config.formato}
+  // REGLA DE ORO: El error debe ser plausible (que alguien realmente lo cometería).
+  {
+    "tipo": "writing_correction",
+    "pregunta": "${nivel === 'A1' || nivel === 'A2' ? 'Find and correct the mistake in each sentence.' : nivel === 'C1' || nivel === 'C2' ? 'Correct the errors and improve the style of the following text.' : 'Find and correct the errors in the following text.'}",
+    "metadata": {
+      "idioma": "${writing_correction_lang}",
+      "nivel": "${nivel}",
+      "frases_con_errores": [
+${frasesEjemplo.join(',\n')}
+      ],
+      "criterios_evaluacion": {
+        "deteccion": "¿Identificó todos los errores?",
+        "correccion": "¿La corrección es gramaticalmente correcta?",
+        "tipo_identificado": "¿Identificó correctamente el tipo de error?",
+        ${config.requiere_explicacion ? '"explicacion": "¿La explicación es clara y correcta?",' : ''}
+        "no_sobrecorreccion": "¿Evitó corregir lo que estaba bien?"
+      },
+      "tipos_errores_esperados": ${JSON.stringify(config.tipo_errores.split(', '))}
+    },
+    "respuesta_esperada": "Correcciones correctas${config.requiere_explicacion ? ' con explicaciones claras' : ''}",
+    "puntos": ${numFrases}
+  },
+`;
+    }
+
+    // ====== TEMPLATE WRITING_TRANSFORMATION CON NIVELES CEFR ======
+    if (writing_transformation > 0) {
+      const nivel = writing_transformation_nivel || 'B1';
+      const langName = idiomasNombre[writing_transformation_lang] || 'Inglés';
+      const numFrases = writing_transformation_frases || 3;
+      
+      // Configuración por nivel CEFR
+      const nivelConfig = {
+        'A1': {
+          descripcion: 'Nivel A1 - Transformación mecánica (automatización básica)',
+          tipo_transformaciones: 'Afirmativa ↔ negativa, statement ↔ question, presente ↔ pasado',
+          formato: 'Oraciones cortas, una sola transformación, instrucción explícita',
+          ejemplo_base: 'She likes coffee.',
+          ejemplo_instruccion: 'Change to negative.',
+          ejemplo_resultado: 'She does not like coffee.'
+        },
+        'A2': {
+          descripcion: 'Nivel A2 - Transformación mecánica (pronombres y tiempos)',
+          tipo_transformaciones: 'Presente ↔ pasado, can ↔ could, pronombres, orden básico',
+          formato: 'Oraciones cortas, transformación clara, instrucción directa',
+          ejemplo_base: 'I can drive.',
+          ejemplo_instruccion: 'Change to past.',
+          ejemplo_resultado: 'I could drive.'
+        },
+        'B1': {
+          descripcion: 'Nivel B1 - Transformación estructural (voz pasiva y reported speech)',
+          tipo_transformaciones: 'Activa ↔ pasiva, directo ↔ indirecto, simple ↔ compuesta',
+          formato: 'Frases medianas, instrucción menos obvia, cambios reales de estructura',
+          ejemplo_base: 'They built the bridge in 2010.',
+          ejemplo_instruccion: 'Rewrite in passive voice.',
+          ejemplo_resultado: 'The bridge was built in 2010.'
+        },
+        'B2': {
+          descripcion: 'Nivel B2 - Transformación estructural (condicionales y conectores)',
+          tipo_transformaciones: 'Condicionales, comparativos, so...that, conectores complejos',
+          formato: 'Frases complejas, flexibilidad mental requerida',
+          ejemplo_base: 'This problem is too difficult. I cannot solve it.',
+          ejemplo_instruccion: 'Rewrite using so...that.',
+          ejemplo_resultado: 'This problem is so difficult that I cannot solve it.'
+        },
+        'C1': {
+          descripcion: 'Nivel C1 - Transformación semántica (estructuras pasivas avanzadas)',
+          tipo_transformaciones: 'Passive reporting, nominalización, inversión, condensación',
+          formato: 'Frases complejas, instrucciones abstractas, varias soluciones posibles',
+          ejemplo_base: 'People believe that the company will fail.',
+          ejemplo_instruccion: 'Rewrite using a passive reporting structure.',
+          ejemplo_resultado: 'It is believed that the company will fail.'
+        },
+        'C2': {
+          descripcion: 'Nivel C2 - Transformación semántica (estilo profesional)',
+          tipo_transformaciones: 'Verbo ↔ sustantivo, causa ↔ consecuencia, informal ↔ formal',
+          formato: 'Frases complejas, cambio de registro, precisión y elegancia',
+          ejemplo_base: "The project was delayed because the team lacked experience.",
+          ejemplo_instruccion: 'Rewrite using a noun phrase.',
+          ejemplo_resultado: "The delay of the project was due to the team's lack of experience."
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      // Generar transformaciones de ejemplo según el número configurado
+      const transformacionesEjemplo = [];
+      for (let i = 1; i <= numFrases; i++) {
+        transformacionesEjemplo.push(`        {"oracion_base": "Oración base ${i} en ${langName}", "instruccion": "Instrucción de transformación (${config.tipo_transformaciones.split(',')[0]})", "pista": "Pista gramatical breve (ej: 'Usa el auxiliar do/does' o 'Cambia el verbo a pasado')", "resultado_esperado": "Oración transformada correctamente"}`);
+      }
+      
+      instrucciones += `  // ${writing_transformation} EJERCICIO(S) DE TRANSFORMACIÓN GRAMATICAL (${nivel}) en ${langName}:
+  // ${config.descripcion}
+  // Tipos: ${config.tipo_transformaciones}
+  // Formato: ${config.formato}
+  // REGLA DE ORO: El significado no se negocia. Si cambia el sentido, la transformación falló.
+  {
+    "tipo": "writing_transformation",
+    "pregunta": "Transforma las siguientes oraciones siguiendo las instrucciones.",
+    "metadata": {
+      "idioma": "${writing_transformation_lang}",
+      "nivel": "${nivel}",
+      "transformaciones": [
+${transformacionesEjemplo.join(',\n')}
+      ],
+      "criterios_evaluacion": {
+        "significado": "¿Se mantiene exactamente el mismo significado?",
+        "estructura": "¿Se aplicó correctamente la estructura solicitada?",
+        "gramatica": "¿Es gramaticalmente correcta la transformación?",
+        "completitud": "¿Se incluyó toda la información de la oración original?"
+      },
+      "tipos_transformacion": ${JSON.stringify(config.tipo_transformaciones.split(', '))}
+    },
+    "respuesta_esperada": "Transformaciones correctas manteniendo el significado original",
+    "puntos": ${numFrases}
+  },
+`;
+    }
+
+    // ====== TEMPLATE WRITING_ESSAY CON NIVELES CEFR ======
+    if (writing_essay > 0) {
+      const nivel = writing_essay_nivel || 'B1';
+      const langName = idiomasNombre[writing_essay_lang] || 'Inglés';
+      const numPalabras = writing_essay_palabras || 100;
+      
+      // Configuración por nivel CEFR
+      const nivelConfig = {
+        'A1': {
+          descripcion: 'Nivel A1 - Mini-Ensayo descriptivo (supervivencia comunicativa)',
+          tipo_ensayo: 'Descriptivo personal',
+          longitud: '40-80 palabras',
+          estructura: 'Presentación simple + 2-3 ideas básicas + cierre corto',
+          que_evalua: 'Oraciones simples correctas, uso básico de tiempos, vocabulario cotidiano',
+          ejemplo_prompt: 'Write a short text about your daily routine.',
+          preguntas_guia: ['What time do you wake up?', 'What do you do in the morning?', 'What do you do in the evening?'],
+          conectores: ['and', 'then', 'because']
+        },
+        'A2': {
+          descripcion: 'Nivel A2 - Mini-Ensayo descriptivo con causa simple',
+          tipo_ensayo: 'Descriptivo con razones',
+          longitud: '60-80 palabras',
+          estructura: 'Presentación + ideas con razones simples + cierre',
+          que_evalua: 'Oraciones conectadas, causa simple, vocabulario expandido',
+          ejemplo_prompt: 'Write a short paragraph about your favorite place and explain why you like it.',
+          preguntas_guia: ['Where is it?', 'What can you do there?', 'Why do you like it?'],
+          conectores: ['because', 'so', 'but', 'also']
+        },
+        'B1': {
+          descripcion: 'Nivel B1 - Mini-Ensayo opinativo (pensamiento organizado)',
+          tipo_ensayo: 'Opinativo con argumentos',
+          longitud: '90-120 palabras',
+          estructura: 'Introducción con opinión + 2 argumentos + conclusión breve',
+          que_evalua: 'Opinión clara, argumentos simples, conectores lógicos, control de tiempos',
+          ejemplo_prompt: 'Do you think working from home is better than working in an office? Explain your opinion.',
+          preguntas_guia: null,
+          conectores: ['In my opinion', 'One reason is', 'Another advantage', 'In conclusion']
+        },
+        'B2': {
+          descripcion: 'Nivel B2 - Mini-Ensayo opinativo con comparación',
+          tipo_ensayo: 'Opinativo con contraste',
+          longitud: '120-150 palabras',
+          estructura: 'Introducción + argumentos a favor + argumentos en contra + opinión personal + conclusión',
+          que_evalua: 'Comparación, contraste, matiz, cohesión',
+          ejemplo_prompt: 'Some people say technology makes life easier. Others disagree. Discuss both views and give your opinion.',
+          preguntas_guia: null,
+          conectores: ['On the one hand', 'On the other hand', 'However', 'Nevertheless', 'In my view']
+        },
+        'C1': {
+          descripcion: 'Nivel C1 - Mini-Ensayo argumentativo (precisión intelectual)',
+          tipo_ensayo: 'Argumentativo balanceado',
+          longitud: '180-220 palabras',
+          estructura: 'Introducción con tesis clara + desarrollo lógico + contraargumento + conclusión sintética',
+          que_evalua: 'Claridad conceptual, profundidad, registro adecuado, cohesión avanzada',
+          ejemplo_prompt: 'To what extent do you agree that success depends more on luck than on effort?',
+          preguntas_guia: null,
+          conectores: ['It is widely believed that', 'While it is true that', 'Nevertheless', 'Furthermore', 'Taking everything into account']
+        },
+        'C2': {
+          descripcion: 'Nivel C2 - Mini-Ensayo argumentativo académico',
+          tipo_ensayo: 'Argumentativo con evaluación crítica',
+          longitud: '200-250 palabras',
+          estructura: 'Introducción con tesis matizada + análisis profundo + evaluación crítica + conclusión sintética',
+          que_evalua: 'Capacidad de síntesis, precisión léxica, control del tono académico',
+          ejemplo_prompt: 'Critically evaluate the impact of globalization on cultural identity.',
+          preguntas_guia: null,
+          conectores: ['It could be argued that', 'Notwithstanding', 'Be that as it may', 'In the final analysis', 'To conclude']
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      instrucciones += `  // ${writing_essay} EJERCICIO(S) DE MINI-ENSAYO (${nivel}) en ${langName}:
+  // ${config.descripcion}
+  // Tipo: ${config.tipo_ensayo}
+  // Longitud: ${config.longitud} (configurado: ~${numPalabras} palabras)
+  // Estructura: ${config.estructura}
+  // REGLA: Un buen mini-ensayo no mide creatividad, mide CONTROL COMUNICATIVO.
+  {
+    "tipo": "writing_essay",
+    "pregunta": "${config.ejemplo_prompt}",
+    "metadata": {
+      "idioma": "${writing_essay_lang}",
+      "nivel": "${nivel}",
+      "tipo_ensayo": "${config.tipo_ensayo}",
+      "longitud_esperada": "${config.longitud}",
+      "palabras_objetivo": ${numPalabras},
+      "estructura_esperada": "${config.estructura}",
+      ${config.preguntas_guia ? `"preguntas_guia": ${JSON.stringify(config.preguntas_guia)},` : '"preguntas_guia": null,'}
+      "conectores_sugeridos": ${JSON.stringify(config.conectores)},
+      "criterios_evaluacion": {
+        "contenido": "¿Responde al tema con ideas relevantes?",
+        "organizacion": "¿Sigue la estructura esperada para el nivel?",
+        "cohesion": "¿Usa conectores apropiados para el nivel?",
+        "gramatica": "¿Control gramatical adecuado al nivel ${nivel}?",
+        "vocabulario": "¿Rango léxico apropiado al nivel?",
+        "longitud": "¿Cumple con ${config.longitud}?"
+      }
+    },
+    "respuesta_esperada": "Ensayo que demuestre ${config.que_evalua}",
+    "puntos": 5
+  },
+`;
+    }
+
+    // Template para sentence_builder (Constructor de Oraciones)
+    if (sentence_builder > 0) {
+      const nivel = sentence_builder_nivel || 'B1';
+      const langName = idiomasNombre[sentence_builder_lang] || 'Inglés';
+      const numOraciones = sentence_builder_oraciones || 5;
+      
+      // Configuración específica por nivel CEFR
+      const nivelConfig = {
+        A1: {
+          descripcion: 'Nivel A1 - Constructor básico (orden de palabras)',
+          tipo_ejercicio: 'Ordenar palabras',
+          que_evalua: 'Orden básico de palabras, concordancia sujeto-verbo',
+          formato: 'Palabras desordenadas para formar oración simple',
+          instruccion: 'Order the words to make a correct sentence.',
+          estructura: 'Sujeto + verbo + complemento (oraciones simples)',
+          ejemplo_elementos: ['every', 'coffee', 'morning', 'I', 'drink'],
+          ejemplo_respuesta: 'I drink coffee every morning.',
+          restricciones: ['Solo presente simple', 'Vocabulario básico (familia, rutinas)', 'Sin subordinadas']
+        },
+        A2: {
+          descripcion: 'Nivel A2 - Constructor básico con transformación',
+          tipo_ejercicio: 'Ordenar con ajuste verbal',
+          que_evalua: 'Orden de palabras, concordancia, ajuste de tiempo verbal',
+          formato: 'Palabras desordenadas que pueden requerir cambio de forma verbal',
+          instruccion: 'Use the words to write a complete sentence. Change the verb form if necessary.',
+          estructura: 'Oraciones simples con pasado o presente',
+          ejemplo_elementos: ['yesterday', 'go', 'she', 'cinema'],
+          ejemplo_respuesta: 'She went to the cinema yesterday.',
+          restricciones: ['Presente y pasado simple', 'Puede requerir artículos/preposiciones', 'Sin condicionales']
+        },
+        B1: {
+          descripcion: 'Nivel B1 - Constructor funcional (combinación)',
+          tipo_ejercicio: 'Combinar ideas',
+          que_evalua: 'Elección de tiempos, uso de conectores, oraciones compuestas',
+          formato: 'Dos ideas + conector para formar una oración',
+          instruccion: 'Combine the ideas into one sentence using the connector given.',
+          estructura: 'Oración compuesta con conector causal/temporal',
+          ejemplo_elementos: {idea1: 'I was tired.', idea2: 'I finished my work.', conector: 'because'},
+          ejemplo_respuesta: 'I finished my work because I was tired.',
+          restricciones: ['Conectores: because, although, when, before, after', 'Oraciones coordinadas y subordinadas', 'Sin estructuras condicionales complejas']
+        },
+        B2: {
+          descripcion: 'Nivel B2 - Constructor funcional con condiciones',
+          tipo_ejercicio: 'Construir desde información',
+          que_evalua: 'Lógica lingüística, condicionales, estructuras complejas',
+          formato: 'Información dada (condición/resultado) para construir oración',
+          instruccion: 'Build a sentence using the information given.',
+          estructura: 'Condicionales, oraciones de resultado/consecuencia',
+          ejemplo_elementos: {condition: 'studying more', result: 'better exam results'},
+          ejemplo_respuesta: 'If students study more, they get better exam results.',
+          restricciones: ['Condicionales 0, 1, 2', 'Estructuras de resultado (so...that, such...that)', 'Pasivas simples']
+        },
+        C1: {
+          descripcion: 'Nivel C1 - Constructor avanzado (precisión)',
+          tipo_ejercicio: 'Reformulación con restricción',
+          que_evalua: 'Control fino de estructuras, variación sintáctica',
+          formato: 'Oraciones base a reformular con estructura específica',
+          instruccion: 'Rewrite the sentence using the structure indicated.',
+          estructura: 'Cláusulas relativas, participios, inversiones',
+          ejemplo_base: 'People work remotely. They report higher satisfaction.',
+          ejemplo_restriccion: 'Use a relative clause',
+          ejemplo_respuesta: 'People who work remotely often report higher satisfaction.',
+          restricciones: ['Cláusulas relativas (defining/non-defining)', 'Estructuras participiales', 'Énfasis y foco']
+        },
+        C2: {
+          descripcion: 'Nivel C2 - Constructor avanzado (estilo)',
+          tipo_ejercicio: 'Construcción con matiz',
+          que_evalua: 'Control total del sistema, registro, matiz comunicativo',
+          formato: 'Elementos conceptuales + requisito estilístico',
+          instruccion: 'Build a sentence that expresses the relationship using the structure indicated.',
+          estructura: 'Contraste avanzado, concesión, estructuras enfáticas',
+          ejemplo_elementos: ['technological progress', 'productivity', 'work-life balance'],
+          ejemplo_restriccion: 'Express contrast using advanced connectors',
+          ejemplo_respuesta: 'While technological progress has increased productivity, it has not necessarily improved work-life balance.',
+          restricciones: ['Conectores avanzados (whereas, albeit, notwithstanding)', 'Inversiones enfáticas', 'Registro académico/formal']
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      instrucciones += `  // ${sentence_builder} EJERCICIO(S) DE CONSTRUCTOR DE ORACIONES (${nivel}) en ${langName}:
+  // Tipo: ${config.tipo_ejercicio}
+  // Formato: ${config.formato}
+  // Evalúa: ${config.que_evalua}
+  // Restricciones: ${config.restricciones.join(', ')}
+  // REGLA: Un buen constructor obliga a pensar ANTES de escribir. No mide creatividad, mide CONTROL ESTRUCTURAL.
+  {
+    "tipo": "sentence_builder",
+    "idioma": "${langName}",
+    "nivel_cefr": "${nivel}",
+    "config_nivel": {
+      "descripcion": "${config.descripcion}",
+      "tipo_ejercicio": "${config.tipo_ejercicio}",
+      "instruccion": "${config.instruccion}",
+      "num_oraciones": ${numOraciones}
+    },
+    "oraciones": [
+      // Genera ${numOraciones} ejercicios de construcción de oraciones
+      // Cada uno debe incluir:
+      // - "elementos": ${nivel === 'A1' || nivel === 'A2' ? 'array de palabras desordenadas' : nivel === 'B1' || nivel === 'B2' ? 'objeto con ideas/condiciones a combinar' : 'oración base + restricción gramatical'}
+      // - "instruccion_especifica": instrucción clara para este ítem
+      // - "respuesta_correcta": la oración correctamente construida
+      // - "explicacion": por qué esta es la forma correcta
+    ],
+    "criterios_evaluacion": {
+      "orden": "¿El orden de palabras es correcto?",
+      "concordancia": "¿Hay concordancia sujeto-verbo correcta?",
+      "tiempo_verbal": "¿El tiempo verbal es apropiado?",
+      "estructura": "¿La estructura gramatical es correcta para el nivel ${nivel}?",
+      "coherencia": "¿La oración tiene sentido completo?"
+    },
+    "puntos": ${numOraciones}
+  },
+`;
+    }
+
+    // Template para formal_email (Email/Carta Formal)
+    if (formal_email > 0) {
+      const nivel = formal_email_nivel || 'B1';
+      const langName = idiomasNombre[formal_email_lang] || 'Inglés';
+      const numPalabras = formal_email_palabras || 100;
+      
+      // Configuración específica por nivel CEFR
+      const nivelConfig = {
+        A1: {
+          descripcion: 'Nivel A1 - Email formal de supervivencia',
+          tipo_email: 'Solicitud simple de información',
+          longitud: '40-60 palabras',
+          que_evalua: 'Saludo formal básico, frases simples, please/thank you, información esencial',
+          estructura: ['Greeting (Dear Sir/Madam)', '2-3 frases simples', 'Closing (Kind regards)'],
+          ejemplo_situacion: 'Pedir información sobre un curso',
+          ejemplo_contenido: ['Dear Sir or Madam,', 'I am interested in your English course.', 'Please send me more information.', 'Kind regards,'],
+          formulas_utiles: ['Dear Sir/Madam,', 'I am interested in...', 'Please send me...', 'Thank you.', 'Kind regards,'],
+          restricciones: ['Solo frases simples', 'Vocabulario básico', 'Sin argumentación']
+        },
+        A2: {
+          descripcion: 'Nivel A2 - Email formal básico con intención',
+          tipo_email: 'Solicitud con propósito claro',
+          longitud: '50-80 palabras',
+          que_evalua: 'Estructura básica, verbo modal (would like), intención clara',
+          estructura: ['Greeting formal', 'Propósito claro', 'Información relevante', 'Cierre cortés'],
+          ejemplo_situacion: 'Solicitar un día libre en el trabajo',
+          ejemplo_contenido: ['Dear Mr. Smith,', 'I would like to request one day off on Monday.', 'Thank you for your time.', 'Best regards,'],
+          formulas_utiles: ['Dear Mr./Ms. [Name],', 'I would like to...', 'Could you please...', 'Thank you for your time.', 'Best regards,'],
+          restricciones: ['Máximo 2-3 oraciones de cuerpo', 'Un solo propósito', 'Sin explicaciones complejas']
+        },
+        B1: {
+          descripcion: 'Nivel B1 - Email formal funcional',
+          tipo_email: 'Queja o solicitud con explicación',
+          longitud: '80-120 palabras',
+          que_evalua: 'Estructura en párrafos, modales formales, conectores lógicos, tono educado',
+          estructura: ['Greeting formal', 'Opening purpose (razón del email)', 'Explanation/details', 'Polite closing'],
+          ejemplo_situacion: 'Queja por un pedido retrasado',
+          ejemplo_contenido: ['I am writing to inform you about a delay in my order.', 'The package was supposed to arrive last Friday.', 'I would appreciate an update on the situation.'],
+          formulas_utiles: ['I am writing to...', 'I would like to inform you...', 'I would appreciate...', 'Could you please...', 'I look forward to hearing from you.'],
+          restricciones: ['2-3 párrafos cortos', 'Un problema + una petición', 'Tono neutro-formal']
+        },
+        B2: {
+          descripcion: 'Nivel B2 - Email formal con justificación',
+          tipo_email: 'Solicitud o reclamación razonada',
+          longitud: '100-150 palabras',
+          que_evalua: 'Lenguaje mitigado, justificación lógica, cortesía estratégica, tono consistente',
+          estructura: ['Opening contextualizado', 'Explicación del problema', 'Justificación', 'Petición clara y cortés', 'Cierre profesional'],
+          ejemplo_situacion: 'Solicitar un reembolso explicando razones',
+          ejemplo_contenido: ['Due to the issues mentioned above, I kindly request a full refund.', 'I believe this is a reasonable request given the circumstances.'],
+          formulas_utiles: ['I am writing with regard to...', 'Due to...', 'I kindly request...', 'I would be grateful if...', 'Please do not hesitate to contact me.'],
+          restricciones: ['Control del tono (no agresivo)', 'Argumentación lógica', 'Sin emocionalidad']
+        },
+        C1: {
+          descripcion: 'Nivel C1 - Email formal profesional',
+          tipo_email: 'Propuesta o negociación',
+          longitud: '150-200 palabras',
+          que_evalua: 'Precisión léxica, variedad sintáctica, registro adecuado, cortesía estratégica',
+          estructura: ['Opening contextualizado', 'Propuesta clara', 'Justificación razonada', 'Cierre abierto a negociación'],
+          ejemplo_situacion: 'Proponer un cambio a un acuerdo existente',
+          ejemplo_contenido: ['I am writing to discuss a possible adjustment to our current agreement.', 'Given the recent changes, I believe this proposal could benefit both parties.'],
+          formulas_utiles: ['I am writing to discuss...', 'I would like to propose...', 'Given the circumstances...', 'I believe this could...', 'I would welcome the opportunity to discuss this further.'],
+          restricciones: ['Lenguaje diplomático', 'Sin ser directo en exceso', 'Dejar espacio para respuesta']
+        },
+        C2: {
+          descripcion: 'Nivel C2 - Carta formal de alto impacto',
+          tipo_email: 'Gestión de situación sensible',
+          longitud: '180-250 palabras',
+          que_evalua: 'Madurez comunicativa, gestión del conflicto, argumentación equilibrada, registro preciso',
+          estructura: ['Contextualización diplomática', 'Planteamiento del asunto', 'Desarrollo equilibrado', 'Propuesta de solución', 'Cierre estratégico'],
+          ejemplo_situacion: 'Abordar un problema profesional sensible y proponer solución',
+          ejemplo_contenido: ['While I understand the constraints involved, I would like to propose an alternative approach that may address our mutual concerns.'],
+          formulas_utiles: ['While I appreciate...', 'I would like to bring to your attention...', 'Taking into consideration...', 'I am confident that...', 'I remain at your disposal for any further discussion.'],
+          restricciones: ['Equilibrio entre firmeza y diplomacia', 'Anticipar objeciones', 'Ofrecer alternativas']
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      instrucciones += `  // ${formal_email} EJERCICIO(S) DE EMAIL/CARTA FORMAL (${nivel}) en ${langName}:
+  // Tipo: ${config.tipo_email}
+  // Longitud: ${config.longitud} (~${numPalabras} palabras)
+  // Evalúa: ${config.que_evalua}
+  // Estructura: ${config.estructura.join(' → ')}
+  // REGLA: Un buen email formal define: QUIÉN escribe, A QUIÉN, PARA QUÉ, EN QUÉ CONTEXTO.
+  {
+    "tipo": "formal_email",
+    "idioma": "${langName}",
+    "nivel_cefr": "${nivel}",
+    "config_nivel": {
+      "descripcion": "${config.descripcion}",
+      "tipo_email": "${config.tipo_email}",
+      "longitud_esperada": "${config.longitud}",
+      "palabras_aprox": ${numPalabras}
+    },
+    "situacion": {
+      "quien_escribe": "[Definir rol del estudiante]",
+      "destinatario": "[Definir a quién va dirigido]",
+      "proposito": "[Objetivo claro del email]",
+      "contexto": "[Situación específica]"
+    },
+    "instruccion": "Write a formal email based on the situation described.",
+    "estructura_esperada": ${JSON.stringify(config.estructura)},
+    "formulas_utiles": ${JSON.stringify(config.formulas_utiles)},
+    "criterios_evaluacion": {
+      "formato": "¿Tiene saludo y cierre formal apropiados?",
+      "proposito": "¿El objetivo del email es claro?",
+      "registro": "¿El tono es formal y cortés?",
+      "estructura": "¿Sigue la estructura esperada para nivel ${nivel}?",
+      "gramatica": "¿Control gramatical adecuado?",
+      "longitud": "¿Cumple con ${config.longitud}?"
+    },
+    "respuesta_esperada": "Email que demuestre ${config.que_evalua}",
+    "puntos": 5
+  },
+`;
+    }
+
+    // Template para picture_description (Descripción de Imagen con prompt para IA generativa)
+    if (picture_description > 0) {
+      const nivel = picture_description_nivel || 'B1';
+      const langName = idiomasNombre[picture_description_lang] || 'Inglés';
+      const numOraciones = picture_description_oraciones || 5;
+      
+      // Configuración específica por nivel CEFR
+      const nivelConfig = {
+        A1: {
+          descripcion: 'Nivel A1 - Descripción literal de supervivencia',
+          tipo_descripcion: 'Nombrar lo que existe',
+          longitud: '3-5 oraciones simples',
+          que_evalua: 'Vocabulario básico (personas, objetos, acciones), presente simple/continuo, preposiciones básicas',
+          instruccion: 'Describe the picture. Write 3-5 simple sentences.',
+          que_describir: ['Who is in the picture', 'What they are doing', 'Where they are'],
+          tipo_imagen: 'Escenas simples: familia, oficina, parque. Pocas personas, acciones claras.',
+          ejemplo_produccion: ['There is a man.', 'He is sitting at a desk.', 'The desk is in an office.'],
+          vocabulario_esperado: ['there is/are', 'he/she is', 'in/on/next to', 'wearing', 'holding'],
+          restricciones: ['Solo descripción literal', 'Sin inferencias', 'Sin opiniones']
+        },
+        A2: {
+          descripcion: 'Nivel A2 - Descripción literal expandida',
+          tipo_descripcion: 'Nombrar con más detalle',
+          longitud: '4-6 oraciones',
+          que_evalua: 'Adjetivos simples, más de una acción, conectores básicos (and, also)',
+          instruccion: 'Describe what you see in the picture. Write 4-6 sentences.',
+          que_describir: ['People and objects', 'Actions happening', 'Simple descriptions'],
+          tipo_imagen: 'Escenas cotidianas con 2-4 personas realizando actividades.',
+          ejemplo_produccion: ['There are two people in the picture.', 'They are working on computers and talking.', 'The office looks modern.'],
+          vocabulario_esperado: ['looks + adjective', 'and/also', 'simple adjectives', 'action verbs'],
+          restricciones: ['Descripción literal', 'Conectores básicos', 'Sin interpretación']
+        },
+        B1: {
+          descripcion: 'Nivel B1 - Descripción funcional con inferencia básica',
+          tipo_descripcion: 'Describir y explicar qué pasa',
+          longitud: '5-8 oraciones en párrafo',
+          que_evalua: 'Tiempos verbales variados, descripción en párrafos, inferencias simples basadas en evidencia',
+          instruccion: 'Describe the picture and explain what is happening.',
+          que_describir: ['General description', 'Main actions', 'Basic context', 'Simple inferences'],
+          tipo_imagen: 'Situaciones reales: reuniones, actividades sociales, escenas con más detalle.',
+          ejemplo_produccion: ['The picture shows a group of people in a meeting.', 'They seem to be discussing a project.', 'Some of them are taking notes.'],
+          vocabulario_esperado: ['seem to', 'appear to', 'probably', 'maybe', 'it looks like'],
+          restricciones: ['Inferencias ancladas a la imagen', 'No opinión libre', 'Organización clara']
+        },
+        B2: {
+          descripcion: 'Nivel B2 - Descripción con hipótesis claras',
+          tipo_descripcion: 'Describir, inferir y razonar',
+          longitud: '8-12 oraciones en párrafos',
+          que_evalua: 'Lenguaje matizado, hipótesis claras, conectores lógicos, inferencia razonada',
+          instruccion: 'Describe the picture in detail and make inferences about the situation.',
+          que_describir: ['Detailed description', 'Reasoned inferences', 'Context analysis'],
+          tipo_imagen: 'Situaciones más complejas: reuniones formales, interacciones sociales, escenas profesionales.',
+          ejemplo_produccion: ['It appears that the meeting is formal, as everyone is wearing business attire.', 'The person standing may be leading the discussion.'],
+          vocabulario_esperado: ['it appears that', 'may/might be', 'suggests that', 'based on', 'this indicates'],
+          restricciones: ['Inferencia anclada a evidencia visual', 'Sin afirmaciones sin base', 'Lenguaje de probabilidad']
+        },
+        C1: {
+          descripcion: 'Nivel C1 - Análisis visual y discurso estratégico',
+          tipo_descripcion: 'Describir, analizar implicaciones',
+          longitud: '10-15 oraciones estructuradas',
+          que_evalua: 'Precisión léxica, complejidad sintáctica, interpretación profunda, relación imagen-contexto',
+          instruccion: 'Describe the image and discuss its possible implications.',
+          que_describir: ['Concise description', 'Reasoned interpretation', 'Logical development', 'Broader implications'],
+          tipo_imagen: 'Situaciones ambiguas, escenarios sociales/profesionales, imágenes con tensión.',
+          ejemplo_produccion: ['The image depicts a tense exchange between two colleagues.', 'Their body language suggests a disagreement, possibly related to a professional decision.', 'This situation may reflect broader challenges in team communication.'],
+          vocabulario_esperado: ['depicts', 'suggests', 'reflects', 'implies', 'may indicate', 'broader context'],
+          restricciones: ['Interpretación razonada', 'Desarrollo lógico', 'Registro formal']
+        },
+        C2: {
+          descripcion: 'Nivel C2 - Análisis crítico y matizado',
+          tipo_descripcion: 'Análisis crítico con conciencia de sesgo',
+          longitud: '12-18 oraciones con estructura argumentativa',
+          que_evalua: 'Madurez comunicativa, gestión de ambigüedad, lenguaje diplomático, interpretación múltiple',
+          instruccion: 'Describe the image and critically analyze the situation it represents.',
+          que_describir: ['Nuanced description', 'Multiple interpretations', 'Critical analysis', 'Awareness of bias'],
+          tipo_imagen: 'Situaciones ambiguas, escenas con simbolismo, contextos sociales/políticos/corporativos.',
+          ejemplo_produccion: ['While the image appears to portray a conflict, it is difficult to determine its exact cause without additional context.', 'Nevertheless, the positioning of the individuals suggests an imbalance of authority.'],
+          vocabulario_esperado: ['while... it is difficult to', 'nevertheless', 'appears to', 'without additional context', 'suggests', 'may or may not'],
+          restricciones: ['No afirmar sin matizar', 'Reconocer limitaciones', 'Múltiples perspectivas']
+        }
+      };
+      
+      const config = nivelConfig[nivel];
+      
+      instrucciones += `  // ${picture_description} EJERCICIO(S) DE DESCRIPCIÓN DE IMAGEN (${nivel}) en ${langName}:
+  // Tipo: ${config.tipo_descripcion}
+  // Longitud: ${config.longitud} (~${numOraciones} oraciones)
+  // Evalúa: ${config.que_evalua}
+  // Tipo de imagen recomendada: ${config.tipo_imagen}
+  // REGLA: A1-A2 = ¿Qué veo? | B1-B2 = ¿Qué pasa y por qué? | C1-C2 = ¿Qué representa esta situación?
+  // 
+  // ⚠️⚠️⚠️ MUY IMPORTANTE - NO USES PLACEHOLDERS ⚠️⚠️⚠️
+  // DEBES generar contenido REAL y CONCRETO para TODOS los campos:
+  // - "descripcion_escena": Describe una escena ESPECÍFICA y DETALLADA relacionada con el tema
+  // - "elementos_clave": Lista 4-6 elementos CONCRETOS que aparecen en la escena
+  // - "contexto": Explica el contexto REAL de la escena
+  // - "prompt_generador_imagen": Genera un prompt COMPLETO y DETALLADO listo para usar en DALL-E 3
+  //
+  // EJEMPLO de prompt_generador_imagen CORRECTO:
+  // "A realistic photograph of a family having breakfast in a modern kitchen. A mother is pouring orange juice, a father is reading a newspaper, and two children are eating cereal. Natural morning light coming through a window. Warm, cozy atmosphere. Clean, minimalist kitchen with white cabinets. Shot from eye level. High resolution, photorealistic style."
+  //
+  // ❌ INCORRECTO: "[PROMPT DETALLADO PARA DALL-E...]" o "[Descripción de la escena]"
+  // ✅ CORRECTO: Texto descriptivo real y específico
+  {
+    "tipo": "picture_description",
+    "idioma": "${langName}",
+    "nivel_cefr": "${nivel}",
+    "config_nivel": {
+      "descripcion": "${config.descripcion}",
+      "tipo_descripcion": "${config.tipo_descripcion}",
+      "longitud_esperada": "${config.longitud}",
+      "num_oraciones": ${numOraciones}
+    },
+    "imagen": {
+      "url": "",
+      "descripcion_escena": "<<GENERA una descripción CONCRETA de la escena: qué personas hay, qué hacen, dónde están, qué objetos hay>>",
+      "elementos_clave": ["<<Elemento concreto 1>>", "<<Elemento concreto 2>>", "<<Elemento concreto 3>>", "<<Elemento concreto 4>>"],
+      "contexto": "<<GENERA el contexto real de la escena relacionado con el tema de estudio>>",
+      "prompt_generador_imagen": "<<GENERA un prompt COMPLETO para DALL-E 3: Describe estilo fotográfico realista, composición, iluminación, personas con sus acciones específicas, ropa, expresiones, ambiente, colores, ángulo de cámara. Mínimo 50 palabras. Ejemplo: 'A realistic photograph of [escena específica]. [Personas y acciones]. [Ambiente y luz]. [Detalles adicionales]. Photorealistic style, high resolution.'>>",
+      "nombre_archivo_sugerido": "<<nombre_descriptivo_sin_espacios.png>>"
+    },
+    "instruccion": "${config.instruccion}",
+    "que_describir": ${JSON.stringify(config.que_describir)},
+    "vocabulario_esperado": ${JSON.stringify(config.vocabulario_esperado)},
+    "ejemplo_produccion": ${JSON.stringify(config.ejemplo_produccion)},
+    "criterios_evaluacion": {
+      "observacion": "¿Identifica los elementos relevantes de la imagen?",
+      "vocabulario": "¿Usa vocabulario apropiado para nivel ${nivel}?",
+      "gramatica": "¿Control gramatical adecuado?",
+      "coherencia": "¿La descripción está bien organizada?",
+      "nivel_inferencia": "${nivel === 'A1' || nivel === 'A2' ? 'Solo descripción literal' : nivel === 'B1' || nivel === 'B2' ? 'Inferencias basadas en evidencia' : 'Análisis crítico y matizado'}",
+      "longitud": "¿Cumple con ${config.longitud}?"
+    },
+    "puntos": 5
+  },
+`;
+    }
+
+    // Construir lista de cantidades
+    let cantidades = [];
+    if (mcq > 0) cantidades.push(`${mcq} tipo "mcq"`);
+    if (true_false > 0) cantidades.push(`${true_false} tipo "true_false"`);
+    if (cloze > 0) cantidades.push(`${cloze} tipo "cloze"`);
+    if (short_answer > 0) cantidades.push(`${short_answer} tipo "short_answer"`);
+    if (open_question > 0) cantidades.push(`${open_question} tipo "open_question"`);
+    if (case_study > 0) cantidades.push(`${case_study} tipo "case_study" (subtipo: ${tipo_caso})`);
+    if (reading_comprehension > 0) cantidades.push(`${reading_comprehension} tipo "reading_comprehension" en ${idiomasNombre[reading_comprehension_lang]} (${reading_comprehension_preguntas || 3} MCQ c/u)`);
+    if (reading_written > 0) cantidades.push(`${reading_written} tipo "reading_written" en ${idiomasNombre[reading_written_lang]} (${reading_written_preguntas || 3} preguntas escritas c/u)`);
+    if (reading_true_false > 0) cantidades.push(`${reading_true_false} tipo "reading_true_false" en ${idiomasNombre[reading_true_false_lang]}`);
+    if (reading_cloze > 0) cantidades.push(`${reading_cloze} tipo "reading_cloze" en ${idiomasNombre[reading_cloze_lang]}`);
+    if (reading_skill > 0) cantidades.push(`${reading_skill} tipo "reading_skill" en ${idiomasNombre[reading_skill_lang]} (5 MCQ c/u)`);
+    if (reading_matching > 0) cantidades.push(`${reading_matching} tipo "reading_matching" en ${idiomasNombre[reading_matching_lang]} (4 oraciones c/u)`);
+    if (reading_sequence > 0) cantidades.push(`${reading_sequence} tipo "reading_sequence" en ${idiomasNombre[reading_sequence_lang]} (4 eventos c/u)`);
+    // Expresión escrita
+    if (writing_short > 0) cantidades.push(`${writing_short} tipo "writing_short" en ${idiomasNombre[writing_short_lang]} (${writing_short_preguntas || 3} preguntas, nivel ${writing_short_nivel || 'B1'})`);
+    if (writing_paraphrase > 0) cantidades.push(`${writing_paraphrase} tipo "writing_paraphrase" en ${idiomasNombre[writing_paraphrase_lang]} (${writing_paraphrase_frases || 3} frases, nivel ${writing_paraphrase_nivel || 'B1'})`);
+    if (writing_correction > 0) cantidades.push(`${writing_correction} tipo "writing_correction" en ${idiomasNombre[writing_correction_lang]} (${writing_correction_frases || 3} frases, nivel ${writing_correction_nivel || 'B1'})`);
+    if (writing_transformation > 0) cantidades.push(`${writing_transformation} tipo "writing_transformation" en ${idiomasNombre[writing_transformation_lang]} (${writing_transformation_frases || 3} transformaciones, nivel ${writing_transformation_nivel || 'B1'})`);
+    if (writing_essay > 0) cantidades.push(`${writing_essay} tipo "writing_essay" en ${idiomasNombre[writing_essay_lang]} (~${writing_essay_palabras || 100} palabras, nivel ${writing_essay_nivel || 'B1'})`);
+    if (sentence_builder > 0) cantidades.push(`${sentence_builder} tipo "sentence_builder" en ${idiomasNombre[sentence_builder_lang]} (${sentence_builder_oraciones || 5} oraciones, nivel ${sentence_builder_nivel || 'B1'})`);
+    if (formal_email > 0) cantidades.push(`${formal_email} tipo "formal_email" en ${idiomasNombre[formal_email_lang]} (~${formal_email_palabras || 100} palabras, nivel ${formal_email_nivel || 'B1'})`);
+    if (picture_description > 0) cantidades.push(`${picture_description} tipo "picture_description" en ${idiomasNombre[picture_description_lang]} (${picture_description_oraciones || 5} oraciones, nivel ${picture_description_nivel || 'B1'}) ⚠️ INCLUYE PROMPT PARA GENERAR IMAGEN`);
+    if (idioma_tipo) cantidades.push(`1 tipo "${idioma_tipo}" en ${idiomasNombre[idioma_lang]}`);
+
+    instrucciones += `]
+
+REGLAS:
+1. Convierte EXACTAMENTE a:
+   - ${cantidades.join('\n   - ')}
+2. El JSON debe ser válido (sin comas al final del último elemento)
+3. ⚠️ IMPORTANTE SOBRE COMILLAS:
+   - Las propiedades del JSON DEBEN usar comillas dobles: "tipo", "pregunta", etc.
+   - DENTRO del contenido de texto, usa comillas simples: "texto": "I said 'hello'"
+   - NUNCA: "texto": "I said "hello""  ← Esto rompe el JSON
+4. Para cloze: usa {} para cada hueco, y "answers" debe tener el mismo número de elementos
+5. Para mcq: respuesta_correcta debe ser "A", "B", "C" o "D"
+6. Para true_false: respuesta_correcta debe ser "verdadero" o "falso"
+7. Para short_answer: incluye palabras_clave para evaluar la respuesta
+8. Para open_question: incluye key_points con los puntos a desarrollar
+9. Para case_study: incluye un escenario detallado con contexto realista
+
+═══════════════════════════════════════════════════════════════
+📋 PEGA TUS PREGUNTAS/CONTENIDO AQUÍ ABAJO (reemplaza este texto):
+═══════════════════════════════════════════════════════════════
+
+[Pega aquí las preguntas que quieres convertir a JSON]
+
+═══════════════════════════════════════════════════════════════
+
+Ahora convierte SOLO el contenido de arriba a JSON:`;
+
+    return instrucciones;
+  };
+
+  // 🎯 Cargar preguntas propias desde JSON
+  const cargarPreguntasPropias = async () => {
+    try {
+      // Limpiar el JSON (quitar posibles bloques de código)
+      let jsonLimpio = preguntasPropiasJSON.trim();
+      if (jsonLimpio.startsWith('```json')) {
+        jsonLimpio = jsonLimpio.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (jsonLimpio.startsWith('```')) {
+        jsonLimpio = jsonLimpio.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      // 🔧 Limpiar texto extra después del JSON
+      // A veces el usuario pega el JSON junto con las instrucciones
+      const ultimoCorchete = jsonLimpio.lastIndexOf(']');
+      if (ultimoCorchete !== -1) {
+        jsonLimpio = jsonLimpio.substring(0, ultimoCorchete + 1);
+      }
+      
+      // Solo reemplazar comillas tipográficas por rectas (sin romper el JSON)
+      jsonLimpio = jsonLimpio
+        .replace(/[""]/g, '"')
+        .replace(/['']/g, "'");
+      
+      const preguntas = JSON.parse(jsonLimpio);
+      
+      if (!Array.isArray(preguntas)) {
+        throw new Error('El JSON debe ser un array de preguntas');
+      }
+      
+      if (preguntas.length === 0) {
+        throw new Error('El array de preguntas está vacío');
+      }
+      
+      // Normalizar y validar cada pregunta
+      const tiposValidos = [
+        'mcq', 'true_false', 'cloze', 'short_answer', 'open_question', 'case_study',
+        // Tipos de idiomas - Comprensión lectora
+        'reading_comprehension', 'reading_written', 'reading_true_false', 'reading_cloze', 'reading_skill', 'reading_matching', 'reading_sequence',
+        // Tipos de idiomas - Expresión escrita (con cantidad y nivel CEFR)
+        'writing_short', 'writing_paraphrase', 'writing_correction', 'writing_transformation', 'writing_essay', 
+        'sentence_builder', 'formal_email', 'picture_description',
+        // Tipos legacy (compatibilidad hacia atrás)
+        'writing_sentence_builder', 'writing_picture_description', 'writing_email'
+      ];
+      const preguntasNormalizadas = preguntas.map((p, index) => {
+        // Validar tipo
+        if (!tiposValidos.includes(p.tipo)) {
+          throw new Error(`Pregunta ${index + 1}: tipo "${p.tipo}" no válido. Usa: ${tiposValidos.join(', ')}`);
+        }
+        
+        // Normalizar estructura
+        const preguntaNorm = {
+          id: `custom_${Date.now()}_${index}`,
+          tipo: p.tipo,
+          pregunta: p.pregunta,
+          respuesta_correcta: p.respuesta_correcta || p.respuesta_esperada || '',
+          explicacion: p.explicacion || '',
+          puntos: p.puntos || 2,
+          metadata: p.metadata || {}
+        };
+        
+        // Validaciones específicas por tipo
+        if (p.tipo === 'mcq') {
+          if (!p.opciones || !Array.isArray(p.opciones) || p.opciones.length < 2) {
+            throw new Error(`Pregunta ${index + 1} (mcq): debe tener "opciones" con al menos 2 elementos`);
+          }
+          preguntaNorm.opciones = p.opciones;
+        }
+        
+        if (p.tipo === 'cloze') {
+          if (!p.metadata?.answers || !Array.isArray(p.metadata.answers)) {
+            throw new Error(`Pregunta ${index + 1} (cloze): debe tener metadata.answers`);
+          }
+          preguntaNorm.metadata = {
+            text_with_gaps: p.metadata.text_with_gaps || p.pregunta,
+            answers: p.metadata.answers,
+            hint: p.metadata.hint || ''
+          };
+        }
+        
+        // Short Answer
+        if (p.tipo === 'short_answer') {
+          preguntaNorm.respuesta_esperada = p.respuesta_esperada || '';
+          preguntaNorm.palabras_clave = p.palabras_clave || [];
+        }
+        
+        // Open Question
+        if (p.tipo === 'open_question') {
+          preguntaNorm.respuesta_esperada = p.respuesta_esperada || '';
+          preguntaNorm.metadata = {
+            key_points: p.metadata?.key_points || [],
+            expected_length: p.metadata?.expected_length || '100-200 palabras'
+          };
+        }
+        
+        // Case Study
+        if (p.tipo === 'case_study') {
+          preguntaNorm.respuesta_esperada = p.respuesta_esperada || '';
+          preguntaNorm.metadata = {
+            titulo: p.metadata?.titulo || 'Caso de Estudio',
+            subtipo: p.metadata?.subtipo || 'descriptivo',
+            contexto: p.metadata?.contexto || '',
+            descripcion: p.metadata?.descripcion || '',
+            scenario: p.metadata?.scenario || p.metadata?.descripcion || '',
+            datos_clave: p.metadata?.datos_clave || []
+          };
+        }
+        
+        // Picture Description - Normalizar campos
+        if (p.tipo === 'picture_description') {
+          let idiomaPicture = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaPicture === 'undefined' || idiomaPicture === undefined) {
+            idiomaPicture = 'inglés';
+          }
+          
+          // Copiar campos del nivel superior directamente a la pregunta normalizada
+          preguntaNorm.nivel_cefr = p.nivel_cefr || p.metadata?.nivel || 'B1';
+          preguntaNorm.config_nivel = p.config_nivel || null;
+          preguntaNorm.imagen = p.imagen || null;
+          preguntaNorm.vocabulario_esperado = p.vocabulario_esperado || [];
+          preguntaNorm.que_describir = p.que_describir || [];
+          preguntaNorm.ejemplo_produccion = p.ejemplo_produccion || {};
+          preguntaNorm.criterios_evaluacion = p.criterios_evaluacion || {};
+          preguntaNorm.instruccion = p.instruccion || '';
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaPicture,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            oraciones_esperadas: p.config_nivel?.num_oraciones || p.metadata?.oraciones_esperadas || 5,
+            // Extraer campos del objeto imagen
+            imagen: p.imagen || null,
+            descripcion_escena: p.imagen?.descripcion_escena || p.metadata?.descripcion_escena || '',
+            elementos_clave: p.imagen?.elementos_clave || p.metadata?.elementos_clave || [],
+            contexto: p.imagen?.contexto || p.metadata?.contexto || '',
+            prompt_generador_imagen: p.imagen?.prompt_generador_imagen || p.metadata?.prompt_generador_imagen || '',
+            // Otros campos
+            vocabulario_esperado: p.vocabulario_esperado || p.metadata?.vocabulario_esperado || [],
+            que_describir: p.que_describir || p.metadata?.que_describir || [],
+            ejemplo_produccion: p.ejemplo_produccion || p.metadata?.ejemplo_produccion || {},
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {}
+          };
+        }
+        
+        // Sentence Builder - Normalizar campos
+        if (p.tipo === 'sentence_builder') {
+          let idiomaSB = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaSB === 'undefined' || idiomaSB === undefined) {
+            idiomaSB = 'inglés';
+          }
+          
+          // El formato puede venir con "oraciones" (array de objetos con elementos)
+          // o con "palabras_desordenadas" (array simple de palabras)
+          const oracionesRaw = p.oraciones || p.metadata?.oraciones || [];
+          
+          // Normalizar cada oración para manejar diferentes formatos de elementos
+          const oracionesArray = oracionesRaw.map(oracion => {
+            // Si elementos es un objeto (formato con idea_1, idea_2, conector), convertirlo
+            if (oracion.elementos && typeof oracion.elementos === 'object' && !Array.isArray(oracion.elementos)) {
+              // Formato: { idea_1: "...", idea_2: "...", conector: "..." }
+              return {
+                ...oracion,
+                // Guardar elementos originales como objeto
+                elementos_obj: oracion.elementos,
+                // Crear array con los valores (para compatibilidad con render antiguo)
+                elementos: Object.values(oracion.elementos).filter(v => v && typeof v === 'string')
+              };
+            }
+            // Si elementos ya es array o no existe, devolverlo tal cual
+            return oracion;
+          });
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaSB,
+            nivel: p.nivel_cefr || p.config_nivel?.descripcion || p.metadata?.nivel || 'B1',
+            config_nivel: p.config_nivel || null,
+            // Si tiene oraciones (array de objetos), usar ese formato
+            oraciones: oracionesArray,
+            // Palabras desordenadas como fallback (formato simple)
+            palabras_desordenadas: p.palabras_desordenadas || p.metadata?.palabras_desordenadas || [],
+            oraciones_esperadas: oracionesArray.length || p.oraciones_esperadas || p.metadata?.oraciones_esperadas || 3,
+            pistas: p.pistas || p.metadata?.pistas || [],
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {}
+          };
+          
+          // Copiar campos adicionales al nivel superior
+          preguntaNorm.oraciones = oracionesArray;
+          preguntaNorm.criterios_evaluacion = p.criterios_evaluacion || {};
+        }
+        
+        // Formal Email - Normalizar campos
+        if (p.tipo === 'formal_email') {
+          let idiomaEmail = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaEmail === 'undefined' || idiomaEmail === undefined) {
+            idiomaEmail = 'inglés';
+          }
+          
+          // Extraer información de situacion si existe
+          const situacion = p.situacion || p.metadata?.situacion || {};
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaEmail,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            // Contexto puede venir directo o desde situacion
+            contexto: p.contexto || p.metadata?.contexto || situacion.contexto || '',
+            puntos_requeridos: p.puntos_requeridos || p.metadata?.puntos_requeridos || [],
+            registro: p.registro || p.metadata?.registro || 'formal',
+            destinatario: p.destinatario || p.metadata?.destinatario || situacion.destinatario || '',
+            palabras_esperadas: p.palabras_esperadas || p.metadata?.palabras_esperadas || p.config_nivel?.palabras_aprox || 120,
+            // Campos de situacion
+            situacion: situacion,
+            quien_escribe: situacion.quien_escribe || p.quien_escribe || '',
+            proposito: situacion.proposito || p.proposito || '',
+            // Estructura y fórmulas útiles
+            estructura_esperada: p.estructura_esperada || p.metadata?.estructura_esperada || [],
+            formulas_utiles: p.formulas_utiles || p.metadata?.formulas_utiles || [],
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {}
+          };
+          
+          // Copiar instruccion al nivel superior
+          preguntaNorm.instruccion = p.instruccion || '';
+        }
+        
+        // Writing Essay - Normalizar campos
+        if (p.tipo === 'writing_essay') {
+          // Determinar idioma: evitar "undefined" literal
+          let idiomaEssay = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaEssay === 'undefined' || idiomaEssay === undefined) {
+            idiomaEssay = 'inglés';
+          }
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaEssay,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            preguntas_guia: p.preguntas_guia || p.metadata?.preguntas_guia || [],
+            conectores_sugeridos: p.conectores_sugeridos || p.metadata?.conectores_sugeridos || [],
+            estructura_esperada: p.estructura_esperada || p.metadata?.estructura_esperada || '',
+            longitud_esperada: p.longitud_esperada || p.metadata?.longitud_esperada || '',
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {},
+            vocabulario_clave: p.vocabulario_clave || p.metadata?.vocabulario_clave || [],
+            tema: p.tema || p.metadata?.tema || ''
+          };
+        }
+        
+        // Writing Transformation - Normalizar campos
+        if (p.tipo === 'writing_transformation') {
+          let idiomaTransform = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaTransform === 'undefined' || idiomaTransform === undefined) {
+            idiomaTransform = 'inglés';
+          }
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaTransform,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            transformaciones: p.transformaciones || p.metadata?.transformaciones || [],
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {},
+            tipos_transformacion: p.tipos_transformacion || p.metadata?.tipos_transformacion || []
+          };
+          
+          // Copiar al nivel superior para acceso directo
+          preguntaNorm.transformaciones = preguntaNorm.metadata.transformaciones;
+        }
+        
+        // Writing Paraphrase - Normalizar campos
+        if (p.tipo === 'writing_paraphrase') {
+          let idiomaParaphrase = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaParaphrase === 'undefined' || idiomaParaphrase === undefined) {
+            idiomaParaphrase = 'inglés';
+          }
+          
+          // Soportar ambos formatos: oraciones_originales y frases
+          const oracionesArray = p.oraciones_originales || p.metadata?.oraciones_originales || 
+                                p.frases || p.metadata?.frases || [];
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaParaphrase,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            oraciones_originales: oracionesArray,
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {},
+            errores_tipicos: p.errores_tipicos || p.metadata?.errores_tipicos || []
+          };
+          // Copiar al nivel superior
+          preguntaNorm.oraciones_originales = oracionesArray;
+        }
+        
+        // Writing Short - Normalizar campos (respuestas cortas con texto de lectura)
+        if (p.tipo === 'writing_short') {
+          let idiomaShort = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaShort === 'undefined' || idiomaShort === undefined) {
+            idiomaShort = 'inglés';
+          }
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaShort,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            texto_lectura: p.texto_lectura || p.metadata?.texto_lectura || '',
+            preguntas_short: p.preguntas_short || p.metadata?.preguntas_short || [],
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {}
+          };
+          // Copiar al nivel superior
+          preguntaNorm.texto_lectura = preguntaNorm.metadata.texto_lectura;
+          preguntaNorm.preguntas_short = preguntaNorm.metadata.preguntas_short;
+        }
+        
+        // Writing Correction - Normalizar campos
+        if (p.tipo === 'writing_correction') {
+          let idiomaCorrection = p.idioma || p.metadata?.idioma || 'inglés';
+          if (idiomaCorrection === 'undefined' || idiomaCorrection === undefined) {
+            idiomaCorrection = 'inglés';
+          }
+          
+          // Soportar ambos formatos: frases_con_errores y oraciones_con_errores
+          const frasesArray = p.frases_con_errores || p.metadata?.frases_con_errores || 
+                             p.oraciones_con_errores || p.metadata?.oraciones_con_errores || [];
+          
+          preguntaNorm.metadata = {
+            idioma: idiomaCorrection,
+            nivel: p.nivel_cefr || p.metadata?.nivel || 'B1',
+            frases_con_errores: frasesArray,
+            criterios_evaluacion: p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {},
+            tipos_errores_esperados: p.tipos_errores_esperados || p.metadata?.tipos_errores_esperados || []
+          };
+          // Copiar al nivel superior
+          preguntaNorm.frases_con_errores = frasesArray;
+        }
+        
+        return preguntaNorm;
+      });
+      
+      // Limpiar estados y cargar preguntas
+      setPreguntasExamen(preguntasNormalizadas);
+      setRespuestasUsuario({});
+      setExamenCompletado(false);
+      setResultadoExamen(null);
+      setFlashcardsVolteadas({});
+      setImagenesLocales({}); // 🔥 Limpiar imágenes de práctica anterior
+      
+      // 🔥 Determinar carpeta de destino (usar carpetaPractica si existe)
+      // carpetaPractica debería tener la rutaActual guardada al abrir el modal
+      console.log('🔍 cargarPreguntasPropias - INICIO');
+      console.log('   carpetaPractica (estado actual):', carpetaPractica);
+      
+      let carpetaDestino = carpetaPractica || '';
+      let carpetaNombre = carpetaDestino;
+      
+      // 🔥 NO normalizar si ya es una ruta relativa (sin "extracciones")
+      // Solo normalizar si contiene "extracciones\" o "extracciones/"
+      if (carpetaDestino.includes('extracciones\\')) {
+        const partes = carpetaDestino.split('extracciones\\');
+        carpetaNombre = partes[partes.length - 1] || carpetaDestino;
+      } else if (carpetaDestino.includes('extracciones/')) {
+        const partes = carpetaDestino.split('extracciones/');
+        carpetaNombre = partes[partes.length - 1] || carpetaDestino;
+      }
+      // Si no contiene "extracciones", usar carpetaDestino tal cual
+      
+      // Si aún está vacío, marcar como Sin carpeta
+      if (!carpetaNombre || carpetaNombre.trim() === '') {
+        carpetaNombre = 'Sin carpeta';
+        carpetaDestino = 'Sin carpeta';
+      }
+      
+      console.log('   carpetaDestino (después de normalizar):', carpetaDestino);
+      console.log('   carpetaNombre (final):', carpetaNombre);
+      
+      // 🔥 Configurar carpeta para el modal
+      setCarpetaExamen({
+        nombre: carpetaNombre || 'Práctica Personalizada (ChatGPT)',
+        ruta: carpetaDestino
+      });
+      
+      // 🔥 Crear práctica completa con información de carpeta
+      const practicaId = `practica_custom_${Date.now()}`;
+      let nuevaPractica = {
+        id: practicaId,
+        nombre: 'Práctica Personalizada',
+        ruta: carpetaDestino,
+        carpeta: carpetaNombre,
+        carpeta_ruta: carpetaNombre,
+        preguntas: preguntasNormalizadas,
+        respuestas: {},
+        fecha: new Date().toISOString(),
+        completada: false,
+        es_practica: true,
+        tipo: 'custom'
+      };
+      
+      // 🔥 PROCESAR IMÁGENES ANTES DE GUARDAR
+      console.log('🖼️ Procesando imágenes de la práctica personalizada...');
+      console.log('   Imágenes disponibles:', Object.keys(imagenesLocales).length);
+      nuevaPractica = await procesarImagenesPractica(nuevaPractica, imagenesLocales);
+      console.log('✅ Imágenes procesadas');
+      
+      // 🔥 Guardar práctica en carpeta si hay carpeta válida
+      if (carpetaNombre && carpetaNombre !== 'Sin carpeta') {
+        try {
+          console.log('💾 Guardando práctica personalizada en carpeta:', carpetaNombre);
+          const guardarResponse = await fetch(`${API_URL}/datos/practicas/guardar_individual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              practica: nuevaPractica,
+              carpeta_ruta: carpetaNombre
+            })
+          });
+          
+          if (guardarResponse.ok) {
+            const guardarData = await guardarResponse.json();
+            console.log('✅ Práctica guardada:', guardarData);
+            nuevaPractica.archivo = guardarData.archivo;
+          } else {
+            console.error('❌ Error guardando práctica:', await guardarResponse.text());
+          }
+          
+          // Agregar a la lista de prácticas
+          const practicas = await getDatos('practicas');
+          setPracticas([...practicas, nuevaPractica]);
+        } catch (error) {
+          console.error('Error guardando práctica personalizada:', error);
+        }
+      }
+      
+      setExamenActivo(nuevaPractica);
+      
+      // 🔥 Marcar como práctica (no examen formal)
+      setEsPractica(true);
+      
+      // Cerrar modales de configuración
+      setModalPreguntasPropiasAbierto(false);
+      setPreguntasPropiasJSON('');
+      setMostrarInstruccionesChatGPT(false);
+      
+      // 🔥 ABRIR EL MODAL DE EXAMEN para mostrar las preguntas
+      setModalExamenAbierto(true);
+      
+      setMensaje({
+        tipo: 'exito',
+        texto: `✅ ${preguntasNormalizadas.length} preguntas cargadas${carpetaPractica ? ` (guardadas en ${carpetaNombre})` : ''}. ¡A practicar!`
+      });
+      
+    } catch (error) {
+      console.error('Error al parsear JSON:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      });
+    }
+  };
+
+  // 🎯 Generar instrucciones para calificar con ChatGPT
+  const generarInstruccionesCalificacionChatGPT = () => {
+    const preguntasConRespuestas = [];
+    let numeroGlobal = 1;
+    
+    preguntasExamen.forEach((pregunta, index) => {
+      const respuestaUsuario = respuestasUsuario[index] || '';
+      
+      // Si es un ejercicio de idiomas con preguntas_comprension, desglosar cada sub-pregunta
+      if ((pregunta.tipo.startsWith('reading_') || pregunta.tipo.startsWith('writing_')) && 
+          pregunta.metadata?.preguntas_comprension && 
+          pregunta.metadata.preguntas_comprension.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || 4;
+        const puntosPorSubpregunta = Math.round((puntosBase / pregunta.metadata.preguntas_comprension.length) * 10) / 10;
+        
+        // Agregar contexto del texto de lectura (SIN número, solo como referencia)
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${pregunta.metadata.preguntas_comprension.length} preguntas (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.preguntas_comprension.length - 1}) se basan en este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_lectura: pregunta.metadata.texto_lectura || pregunta.pregunta
+        });
+        
+        // Desglosar cada sub-pregunta (el contexto NO consume número)
+        pregunta.metadata.preguntas_comprension.forEach((subPregunta, subIndex) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'subpregunta_idioma',
+            pregunta: subPregunta.pregunta,
+            respuesta_usuario: respuestasArray[subIndex] || '(sin respuesta)',
+            respuesta_esperada: subPregunta.respuesta,
+            puntos_maximos: puntosPorSubpregunta,
+            indice_original: index,
+            subindice: subIndex
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_true_false con afirmaciones, desglosar cada afirmación
+      else if (pregunta.tipo === 'reading_true_false' && 
+               pregunta.metadata?.afirmaciones && 
+               pregunta.metadata.afirmaciones.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || 3;
+        const puntosPorAfirmacion = Math.round((puntosBase / pregunta.metadata.afirmaciones.length) * 10) / 10;
+        
+        // Agregar contexto del texto de lectura
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${pregunta.metadata.afirmaciones.length} afirmaciones V/F (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.afirmaciones.length - 1}) se basan en este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_lectura: pregunta.metadata.texto_lectura || pregunta.pregunta
+        });
+        
+        // Desglosar cada afirmación
+        pregunta.metadata.afirmaciones.forEach((afirmacion, afIndex) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'afirmacion_vf',
+            afirmacion: afirmacion.texto,
+            respuesta_usuario: respuestasArray[afIndex] || '(sin respuesta)',
+            respuesta_correcta: afirmacion.es_verdadero ? 'Verdadero' : 'Falso',
+            justificacion_esperada: afirmacion.justificacion,
+            puntos_maximos: puntosPorAfirmacion,
+            indice_original: index,
+            subindice: afIndex
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_comprehension con preguntas MCQ, desglosar cada pregunta
+      else if (pregunta.tipo === 'reading_comprehension' && 
+               pregunta.metadata?.preguntas && 
+               pregunta.metadata.preguntas.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        
+        // Agregar contexto del texto de lectura
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${pregunta.metadata.preguntas.length} preguntas de comprensión (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.preguntas.length - 1}) se basan en este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_lectura: pregunta.metadata.texto_lectura || pregunta.pregunta
+        });
+        
+        // Desglosar cada pregunta MCQ
+        pregunta.metadata.preguntas.forEach((mcq, mcqIndex) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'comprehension_mcq',
+            pregunta: mcq.pregunta,
+            opciones: mcq.opciones,
+            respuesta_usuario: respuestasArray[mcqIndex] || '(sin respuesta)',
+            respuesta_correcta: mcq.respuesta_correcta,
+            puntos_maximos: 1,
+            indice_original: index,
+            subindice: mcqIndex
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_skill con preguntas_skill (5 MCQ), desglosar cada pregunta
+      else if (pregunta.tipo === 'reading_skill' && 
+               pregunta.metadata?.preguntas_skill && 
+               pregunta.metadata.preguntas_skill.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        const skillLabels = {
+          main_idea: 'Idea Principal',
+          detail: 'Detalle',
+          inference: 'Inferencia',
+          purpose: 'Propósito',
+          tone: 'Tono'
+        };
+        
+        // Agregar contexto del texto de lectura
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes 5 preguntas de habilidades de lectura (números ${numeroGlobal} a ${numeroGlobal + 4}) se basan en este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_lectura: pregunta.metadata.texto_lectura || pregunta.pregunta
+        });
+        
+        // Desglosar cada pregunta de skill
+        pregunta.metadata.preguntas_skill.forEach((skill, skillIndex) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'skill_mcq',
+            tipo_skill: skill.tipo_skill,
+            skill_nombre: skillLabels[skill.tipo_skill] || skill.tipo_skill,
+            pregunta: skill.pregunta,
+            opciones: skill.opciones,
+            respuesta_usuario: respuestasArray[skillIndex] || '(sin respuesta)',
+            respuesta_correcta: skill.respuesta_correcta,
+            puntos_maximos: 1,
+            indice_original: index,
+            subindice: skillIndex
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_matching con párrafos y oraciones, desglosar cada emparejamiento
+      else if (pregunta.tipo === 'reading_matching' && 
+               pregunta.metadata?.parrafos && 
+               pregunta.metadata?.oraciones &&
+               pregunta.metadata.oraciones.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        
+        // Agregar contexto de los párrafos
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Los siguientes ${pregunta.metadata.oraciones.length} emparejamientos (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.oraciones.length - 1}) deben emparejar oraciones con estos párrafos. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          parrafos: pregunta.metadata.parrafos.map(p => `${p.letra}: ${p.texto}`).join('\n\n')
+        });
+        
+        // Desglosar cada emparejamiento
+        pregunta.metadata.oraciones.forEach((oracion, oIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'matching_item',
+            oracion: oracion.texto,
+            respuesta_usuario: respuestasArray[oIdx] || '(sin respuesta)',
+            respuesta_correcta: oracion.parrafo_correcto,
+            puntos_maximos: 1,
+            indice_original: index,
+            subindice: oIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_sequence con texto narrativo y eventos, desglosar cada evento
+      else if (pregunta.tipo === 'reading_sequence' && 
+               pregunta.metadata?.texto_narrativo && 
+               pregunta.metadata?.eventos &&
+               pregunta.metadata.eventos.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        
+        // Agregar contexto del texto narrativo
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Los siguientes ${pregunta.metadata.eventos.length} eventos (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.eventos.length - 1}) deben ordenarse cronológicamente según este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_narrativo: pregunta.metadata.texto_narrativo
+        });
+        
+        // Desglosar cada evento
+        pregunta.metadata.eventos.forEach((evento, eIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'sequence_item',
+            letra_evento: evento.letra,
+            texto_evento: evento.texto,
+            respuesta_usuario: respuestasArray[eIdx] || '(sin respuesta)',
+            respuesta_correcta: evento.posicion_correcta,
+            puntos_maximos: 1,
+            indice_original: index,
+            subindice: eIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es reading_written con preguntas de comprensión escrita, desglosar cada pregunta
+      else if (pregunta.tipo === 'reading_written' && 
+               pregunta.metadata?.preguntas_comprension && 
+               pregunta.metadata.preguntas_comprension.length > 0) {
+        
+        const respuestasArray = respuestaUsuario.split('|||');
+        
+        // Agregar contexto del texto de lectura
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${pregunta.metadata.preguntas_comprension.length} preguntas de comprensión escrita (números ${numeroGlobal} a ${numeroGlobal + pregunta.metadata.preguntas_comprension.length - 1}) se basan en este texto. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata.idioma || 'no especificado',
+          texto_lectura: pregunta.metadata.texto_lectura || pregunta.pregunta
+        });
+        
+        // Desglosar cada pregunta de comprensión escrita
+        pregunta.metadata.preguntas_comprension.forEach((compPregunta, compIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'written_comprehension',
+            pregunta: compPregunta.pregunta,
+            respuesta_usuario: respuestasArray[compIdx] || '(sin respuesta)',
+            respuesta_esperada: compPregunta.respuesta || '',
+            puntos_maximos: 1,
+            indice_original: index,
+            subindice: compIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es sentence_builder con oraciones múltiples, desglosar cada oración
+      else if (pregunta.tipo === 'sentence_builder' && 
+               (pregunta.oraciones?.length > 0 || pregunta.metadata?.oraciones?.length > 0)) {
+        
+        const oracionesArray = pregunta.oraciones || pregunta.metadata?.oraciones || [];
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || 5;
+        const puntosPorOracion = Math.round((puntosBase / oracionesArray.length) * 10) / 10;
+        
+        // Agregar contexto del ejercicio
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${oracionesArray.length} oraciones (números ${numeroGlobal} a ${numeroGlobal + oracionesArray.length - 1}) son ejercicios de ordenar palabras. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || pregunta.idioma || 'inglés',
+          nivel: pregunta.metadata?.nivel || pregunta.nivel_cefr || 'A1',
+          instruccion_general: pregunta.config_nivel?.instruccion || 'Order the words to make a correct sentence.'
+        });
+        
+        // Desglosar cada oración
+        oracionesArray.forEach((oracion, oIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'sentence_builder_item',
+            palabras_desordenadas: oracion.elementos || [],
+            instruccion_especifica: oracion.instruccion_especifica || '',
+            respuesta_usuario: respuestasArray[oIdx]?.trim() || '(sin respuesta)',
+            respuesta_correcta: oracion.respuesta_correcta || '',
+            explicacion: oracion.explicacion || '',
+            puntos_maximos: puntosPorOracion,
+            indice_original: index,
+            subindice: oIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es writing_transformation con transformaciones múltiples, desglosar cada transformación
+      else if (pregunta.tipo === 'writing_transformation' && 
+               (pregunta.transformaciones?.length > 0 || pregunta.metadata?.transformaciones?.length > 0)) {
+        
+        const transformacionesArray = pregunta.transformaciones || pregunta.metadata?.transformaciones || [];
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || 3;
+        const puntosPorTransformacion = Math.round((puntosBase / transformacionesArray.length) * 10) / 10;
+        
+        // Agregar contexto del ejercicio
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${transformacionesArray.length} transformaciones (números ${numeroGlobal} a ${numeroGlobal + transformacionesArray.length - 1}) son ejercicios de transformación gramatical. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || 'inglés',
+          nivel: pregunta.metadata?.nivel || 'B1',
+          tipos_transformacion: pregunta.metadata?.tipos_transformacion || []
+        });
+        
+        // Desglosar cada transformación
+        transformacionesArray.forEach((transform, tIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'transformation_item',
+            oracion_base: transform.oracion_base || '',
+            instruccion: transform.instruccion || '',
+            respuesta_usuario: respuestasArray[tIdx]?.trim() || '(sin respuesta)',
+            respuesta_correcta: transform.resultado_esperado || '',
+            puntos_maximos: puntosPorTransformacion,
+            indice_original: index,
+            subindice: tIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es writing_correction con frases con errores, desglosar cada frase
+      else if (pregunta.tipo === 'writing_correction' && 
+               (pregunta.frases_con_errores?.length > 0 || pregunta.metadata?.frases_con_errores?.length > 0)) {
+        
+        const frasesArray = pregunta.frases_con_errores || pregunta.metadata?.frases_con_errores || [];
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || 3;
+        const puntosPorFrase = Math.round((puntosBase / frasesArray.length) * 10) / 10;
+        
+        // Agregar contexto del ejercicio
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${frasesArray.length} correcciones (números ${numeroGlobal} a ${numeroGlobal + frasesArray.length - 1}) son ejercicios de corrección de errores. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || 'inglés',
+          nivel: pregunta.metadata?.nivel || 'A1',
+          tipos_errores: pregunta.metadata?.tipos_errores_esperados || []
+        });
+        
+        // Desglosar cada frase
+        frasesArray.forEach((frase, fIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'correction_item',
+            frase_con_error: frase.frase_con_error || '',
+            tipo_error: frase.tipo_error || '',
+            respuesta_usuario: respuestasArray[fIdx]?.trim() || '(sin respuesta)',
+            respuesta_correcta: frase.correccion || '',
+            puntos_maximos: puntosPorFrase,
+            indice_original: index,
+            subindice: fIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es writing_short con preguntas cortas, desglosar cada pregunta
+      else if (pregunta.tipo === 'writing_short' && 
+               (pregunta.preguntas_short?.length > 0 || pregunta.metadata?.preguntas_short?.length > 0)) {
+        
+        const preguntasArray = pregunta.preguntas_short || pregunta.metadata?.preguntas_short || [];
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || preguntasArray.length;
+        const puntosPorPregunta = Math.round((puntosBase / preguntasArray.length) * 10) / 10;
+        
+        // Agregar contexto del texto de lectura
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${preguntasArray.length} preguntas cortas (números ${numeroGlobal} a ${numeroGlobal + preguntasArray.length - 1}) se basan en el texto de lectura. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || 'inglés',
+          nivel: pregunta.metadata?.nivel || 'A1',
+          texto_lectura: pregunta.metadata?.texto_lectura || pregunta.texto_lectura || ''
+        });
+        
+        // Desglosar cada pregunta corta
+        preguntasArray.forEach((pregShort, pIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'short_answer_item',
+            pregunta: pregShort.pregunta || '',
+            palabras_clave: pregShort.palabras_clave || [],
+            respuesta_usuario: respuestasArray[pIdx]?.trim() || '(sin respuesta)',
+            respuesta_correcta: pregShort.respuesta_modelo || '',
+            puntos_maximos: puntosPorPregunta,
+            indice_original: index,
+            subindice: pIdx
+          });
+          numeroGlobal++;
+        });
+      }
+      // Si es writing_paraphrase con oraciones originales, desglosar cada oración
+      else if (pregunta.tipo === 'writing_paraphrase' && 
+               (pregunta.oraciones_originales?.length > 0 || pregunta.metadata?.oraciones_originales?.length > 0)) {
+        
+        const oracionesArray = pregunta.oraciones_originales || pregunta.metadata?.oraciones_originales || [];
+        const respuestasArray = respuestaUsuario.split('|||');
+        const puntosBase = pregunta.puntos || oracionesArray.length;
+        const puntosPorOracion = Math.round((puntosBase / oracionesArray.length) * 10) / 10;
+        
+        // Agregar contexto del ejercicio
+        preguntasConRespuestas.push({
+          tipo: 'contexto_lectura',
+          nota: `⚠️ CONTEXTO: Las siguientes ${oracionesArray.length} oraciones (números ${numeroGlobal} a ${numeroGlobal + oracionesArray.length - 1}) son ejercicios de parafraseo. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || 'inglés',
+          nivel: pregunta.metadata?.nivel || 'A1'
+        });
+        
+        // Desglosar cada oración
+        oracionesArray.forEach((oracion, oIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: 'paraphrase_item',
+            oracion_original: oracion.original || '',
+            instruccion: oracion.instruccion || '',
+            respuesta_usuario: respuestasArray[oIdx]?.trim() || '(sin respuesta)',
+            respuesta_correcta: oracion.parafraseo_esperado || '',
+            puntos_maximos: puntosPorOracion,
+            indice_original: index,
+            subindice: oIdx
+          });
+          numeroGlobal++;
+        });
+      } else {
+        // Formato normal para otros tipos de preguntas
+        let preguntaFormato = {
+          numero: numeroGlobal,
+          tipo: pregunta.tipo,
+          pregunta: pregunta.pregunta,
+          respuesta_usuario: respuestaUsuario,
+          puntos_maximos: pregunta.puntos || 2,
+          indice_original: index
+        };
+        
+        // Agregar información específica por tipo
+        if (pregunta.tipo === 'mcq') {
+          preguntaFormato.opciones = pregunta.opciones;
+          preguntaFormato.respuesta_correcta = pregunta.respuesta_correcta;
+        } else if (pregunta.tipo === 'true_false') {
+          preguntaFormato.respuesta_correcta = pregunta.respuesta_correcta;
+        } else if (pregunta.tipo === 'cloze') {
+          preguntaFormato.texto_con_huecos = pregunta.metadata?.text_with_gaps || pregunta.pregunta;
+          preguntaFormato.respuestas_correctas = pregunta.metadata?.answers || [];
+        } else if (pregunta.tipo === 'reading_cloze') {
+          // Completar texto para idiomas
+          preguntaFormato.texto_con_huecos = pregunta.metadata?.texto_con_huecos || pregunta.pregunta;
+          preguntaFormato.respuestas_correctas = pregunta.metadata?.respuestas || [];
+          preguntaFormato.idioma = pregunta.metadata?.idioma || 'ingles';
+        } else if (pregunta.tipo === 'short_answer' || pregunta.tipo === 'open_question' || pregunta.tipo === 'case_study') {
+          preguntaFormato.respuesta_esperada = pregunta.respuesta_esperada || pregunta.respuesta_correcta || '';
+          preguntaFormato.palabras_clave = pregunta.palabras_clave || pregunta.metadata?.key_points || [];
+        }
+        
+        preguntasConRespuestas.push(preguntaFormato);
+        numeroGlobal++;
+      }
+    });
+    // Contar cuántas preguntas reales hay (excluyendo contexto_lectura)
+    const totalPreguntasReales = preguntasConRespuestas.filter(p => p.tipo !== 'contexto_lectura').length;
+    
+    const instrucciones = `CALIFICA este examen y responde SOLO con JSON.
+
+═══════════════════════════════════════════════════════════════
+📋 EXAMEN A CALIFICAR (${totalPreguntasReales} preguntas):
+═══════════════════════════════════════════════════════════════
+
+${JSON.stringify(preguntasConRespuestas, null, 2)}
+
+═══════════════════════════════════════════════════════════════
+📊 INSTRUCCIONES DE CALIFICACIÓN:
+═══════════════════════════════════════════════════════════════
+
+⚠️ IMPORTANTE: Debes calificar TODAS las ${totalPreguntasReales} preguntas numeradas (1 a ${totalPreguntasReales}).
+Los elementos tipo "contexto_lectura" son solo referencia, NO los incluyas en resultados.
+
+Para cada pregunta numerada, evalúa la respuesta del usuario:
+
+- MCQ: 100% si es correcta, 0% si es incorrecta
+- True/False: 100% si es correcta, 0% si es incorrecta  
+- Cloze: Porcentaje según huecos correctos
+- reading_cloze: Porcentaje según huecos correctos (respuesta_usuario separada por |||)
+- comprehension_mcq: 100% si la letra coincide con respuesta_correcta, 0% si no (preguntas de comprensión)
+- skill_mcq: 100% si la letra coincide con respuesta_correcta, 0% si no (Main Idea, Detail, Inference, Purpose, Tone)
+- matching_item: 100% si la letra del párrafo coincide con respuesta_correcta, 0% si no
+- sequence_item: 100% si el número de posición coincide con respuesta_correcta, 0% si no (1°, 2°, 3°, 4°...)
+- sentence_builder_item: Compara respuesta_usuario con respuesta_correcta (debe ser idéntica o muy similar, orden correcto de palabras)
+- transformation_item: Compara respuesta_usuario con respuesta_correcta (la transformación gramatical debe aplicar la instrucción correctamente manteniendo el significado, tolerar errores menores de puntuación)
+- correction_item: Compara respuesta_usuario con respuesta_correcta (la corrección debe ser gramaticalmente correcta y arreglar el error indicado)
+- short_answer_item: Evalúa si respuesta_usuario contiene las palabras_clave o transmite el mismo significado que respuesta_correcta (tolerar variaciones gramaticales menores)
+- paraphrase_item: Compara respuesta_usuario con respuesta_correcta (debe mantener el significado exacto y usar la estructura indicada en instruccion)
+- written_comprehension: Evalúa si la respuesta escrita cubre los puntos clave de respuesta_esperada (0-100%)
+- Short Answer: Evalúa por palabras clave y coherencia (0-100%)
+- Open Question: Evalúa profundidad, puntos clave cubiertos (0-100%)
+- Case Study: Evalúa análisis, solución propuesta, coherencia (0-100%)
+- subpregunta_idioma: Compara respuesta_usuario con respuesta_esperada (0-100%)
+
+RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
+
+{
+  "resultados": [
+    {
+      "pregunta_numero": 1,
+      "correcto": true,
+      "puntos": 0.8,
+      "puntos_maximos": 0.8,
+      "feedback": "Explicación breve"
+    },
+    {
+      "pregunta_numero": 2,
+      "correcto": true,
+      "puntos": 0.8,
+      "puntos_maximos": 0.8,
+      "feedback": "Explicación breve"
+    }
+  ],
+  "puntos_obtenidos": 0,
+  "puntos_totales": 0,
+  "porcentaje": 0
+}
+
+REGLAS:
+1. ⚠️ OBLIGATORIO: Incluir resultado para CADA pregunta numerada (1 a ${totalPreguntasReales})
+2. NO incluir elementos tipo "contexto_lectura" en resultados
+3. "correcto": true si puntos >= 50% de puntos_maximos
+4. "feedback": Retroalimentación constructiva breve
+5. Calcula puntos_obtenidos sumando todos los puntos
+6. Calcula puntos_totales sumando todos los puntos_maximos
+7. porcentaje = (puntos_obtenidos / puntos_totales) * 100
+
+Califica ahora las ${totalPreguntasReales} preguntas:`;
+
+    return instrucciones;
+  };
+
+  // 🎯 Procesar calificación de ChatGPT
+  const procesarCalificacionChatGPT = async () => {
+    try {
+      let jsonLimpio = jsonCalificacionChatGPT.trim();
+      
+      // Limpiar markdown si existe
+      if (jsonLimpio.startsWith('```json')) {
+        jsonLimpio = jsonLimpio.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (jsonLimpio.startsWith('```')) {
+        jsonLimpio = jsonLimpio.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      // Quitar texto extra después del JSON
+      const ultimaLlave = jsonLimpio.lastIndexOf('}');
+      if (ultimaLlave !== -1) {
+        jsonLimpio = jsonLimpio.substring(0, ultimaLlave + 1);
+      }
+      
+      // Sanitizar comillas tipográficas
+      jsonLimpio = jsonLimpio.replace(/[""]/g, '"').replace(/['']/g, "'");
+      
+      const calificacion = JSON.parse(jsonLimpio);
+      
+      // Validar estructura
+      if (!calificacion.resultados || !Array.isArray(calificacion.resultados)) {
+        throw new Error('El JSON debe tener un array "resultados"');
+      }
+      
+      const ahora = new Date();
+      
+      // Reconstruir el mapeo de preguntas desglosadas (igual que en generarInstruccionesCalificacionChatGPT)
+      const preguntasDesglosadas = [];
+      preguntasExamen.forEach((pregunta, index) => {
+        const respuestaUsuarioCompleta = respuestasUsuario[index] || '';
+        
+        // Si es un ejercicio de idiomas con preguntas_comprension, desglosar
+        if ((pregunta.tipo.startsWith('reading_') || pregunta.tipo.startsWith('writing_')) && 
+            pregunta.metadata?.preguntas_comprension && 
+            pregunta.metadata.preguntas_comprension.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.preguntas_comprension.forEach((subPregunta, subIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: subPregunta.pregunta,
+              tipo: 'subpregunta_idioma',
+              respuesta_usuario: respuestasArray[subIndex] || '(sin respuesta)',
+              respuesta_correcta: subPregunta.respuesta,
+              puntos: pregunta.puntos || 4,
+              indice_original: index,
+              subindice: subIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_true_false con afirmaciones, desglosar cada afirmación
+        else if (pregunta.tipo === 'reading_true_false' && 
+                 pregunta.metadata?.afirmaciones && 
+                 pregunta.metadata.afirmaciones.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.afirmaciones.forEach((afirmacion, afIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: afirmacion.texto,
+              tipo: 'afirmacion_vf',
+              respuesta_usuario: respuestasArray[afIndex] || '(sin respuesta)',
+              respuesta_correcta: afirmacion.es_verdadero ? 'Verdadero' : 'Falso',
+              justificacion_esperada: afirmacion.justificacion,
+              puntos: pregunta.puntos || 3,
+              indice_original: index,
+              subindice: afIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_cloze con respuestas, formatear respuesta correcta
+        else if (pregunta.tipo === 'reading_cloze' && pregunta.metadata?.respuestas) {
+          const respuestasCorrectasTexto = pregunta.metadata.respuestas.map((r, i) => `${i + 1}. ${r}`).join(', ');
+          preguntasDesglosadas.push({
+            pregunta: pregunta.pregunta,
+            tipo: pregunta.tipo,
+            respuesta_usuario: respuestaUsuarioCompleta,
+            respuesta_correcta: respuestasCorrectasTexto,
+            texto_con_huecos: pregunta.metadata.texto_con_huecos,
+            respuestas_array: pregunta.metadata.respuestas,
+            puntos: pregunta.puntos || 3,
+            indice_original: index,
+            es_subpregunta: false
+          });
+        }
+        // Si es reading_comprehension con preguntas MCQ, desglosar cada pregunta
+        else if (pregunta.tipo === 'reading_comprehension' && 
+                 pregunta.metadata?.preguntas && 
+                 pregunta.metadata.preguntas.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.preguntas.forEach((mcq, mcqIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: mcq.pregunta,
+              tipo: 'comprehension_mcq',
+              opciones: mcq.opciones,
+              respuesta_usuario: respuestasArray[mcqIndex] || '(sin respuesta)',
+              respuesta_correcta: mcq.respuesta_correcta,
+              puntos: 1, // 1 punto por cada pregunta de comprensión
+              indice_original: index,
+              subindice: mcqIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_skill con preguntas_skill, desglosar cada pregunta MCQ
+        else if (pregunta.tipo === 'reading_skill' && 
+                 pregunta.metadata?.preguntas_skill && 
+                 pregunta.metadata.preguntas_skill.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const skillLabels = {
+            main_idea: 'Idea Principal',
+            detail: 'Detalle',
+            inference: 'Inferencia',
+            purpose: 'Propósito',
+            tone: 'Tono'
+          };
+          
+          pregunta.metadata.preguntas_skill.forEach((skill, skillIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: `[${skillLabels[skill.tipo_skill] || skill.tipo_skill}] ${skill.pregunta}`,
+              tipo: 'skill_mcq',
+              opciones: skill.opciones,
+              respuesta_usuario: respuestasArray[skillIndex] || '(sin respuesta)',
+              respuesta_correcta: skill.respuesta_correcta,
+              tipo_skill: skill.tipo_skill,
+              puntos: 1, // 1 punto por cada skill, total 5
+              indice_original: index,
+              subindice: skillIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_matching con oraciones, desglosar cada emparejamiento
+        else if (pregunta.tipo === 'reading_matching' && 
+                 pregunta.metadata?.oraciones && 
+                 pregunta.metadata.oraciones.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.oraciones.forEach((oracion, oracionIndex) => {
+            const respUsuario = respuestasArray[oracionIndex];
+            
+            preguntasDesglosadas.push({
+              pregunta: `Emparejar: "${oracion.texto}"`,
+              tipo: 'matching_item',
+              respuesta_usuario: respUsuario ? `Párrafo ${respUsuario}` : '(sin respuesta)',
+              respuesta_correcta: `Párrafo ${oracion.parrafo_correcto}`,
+              puntos: 1, // 1 punto por cada emparejamiento correcto
+              indice_original: index,
+              subindice: oracionIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_sequence con eventos, desglosar cada evento
+        else if (pregunta.tipo === 'reading_sequence' && 
+                 pregunta.metadata?.eventos && 
+                 pregunta.metadata.eventos.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.eventos.forEach((evento, eventoIndex) => {
+            const respUsuario = respuestasArray[eventoIndex];
+            const posCorrecta = evento.posicion_correcta;
+            
+            preguntasDesglosadas.push({
+              pregunta: `Ordenar: [${evento.letra}] "${evento.texto}"`,
+              tipo: 'sequence_item',
+              respuesta_usuario: respUsuario ? `Posición ${respUsuario}°` : '(sin respuesta)',
+              respuesta_correcta: `Posición ${posCorrecta}°`,
+              puntos: 1, // 1 punto por cada posición correcta
+              indice_original: index,
+              subindice: eventoIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es reading_written con preguntas_comprension, desglosar cada pregunta
+        else if (pregunta.tipo === 'reading_written' && 
+                 pregunta.metadata?.preguntas_comprension && 
+                 pregunta.metadata.preguntas_comprension.length > 0) {
+          
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          
+          pregunta.metadata.preguntas_comprension.forEach((compPregunta, compIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: compPregunta.pregunta,
+              tipo: 'written_comprehension',
+              respuesta_usuario: respuestasArray[compIndex] || '(sin respuesta)',
+              respuesta_correcta: compPregunta.respuesta || '',
+              puntos: 1, // 1 punto por cada pregunta de comprensión escrita
+              indice_original: index,
+              subindice: compIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es sentence_builder con oraciones múltiples, desglosar cada oración
+        else if (pregunta.tipo === 'sentence_builder' && 
+                 (pregunta.oraciones?.length > 0 || pregunta.metadata?.oraciones?.length > 0)) {
+          
+          const oracionesArray = pregunta.oraciones || pregunta.metadata?.oraciones || [];
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const puntosBase = pregunta.puntos || 5;
+          const puntosPorOracion = Math.round((puntosBase / oracionesArray.length) * 10) / 10;
+          
+          oracionesArray.forEach((oracion, oracionIndex) => {
+            preguntasDesglosadas.push({
+              pregunta: `Ordenar: [${(oracion.elementos || []).join(' | ')}]`,
+              tipo: 'sentence_builder_item',
+              palabras_desordenadas: oracion.elementos || [],
+              respuesta_usuario: respuestasArray[oracionIndex]?.trim() || '(sin respuesta)',
+              respuesta_correcta: oracion.respuesta_correcta || '',
+              explicacion: oracion.explicacion || '',
+              puntos: puntosPorOracion,
+              indice_original: index,
+              subindice: oracionIndex,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es writing_transformation con transformaciones múltiples, desglosar cada transformación
+        else if (pregunta.tipo === 'writing_transformation' && 
+                 (pregunta.transformaciones?.length > 0 || pregunta.metadata?.transformaciones?.length > 0)) {
+          
+          const transformacionesArray = pregunta.transformaciones || pregunta.metadata?.transformaciones || [];
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const puntosBase = pregunta.puntos || 3;
+          const puntosPorTransformacion = Math.round((puntosBase / transformacionesArray.length) * 10) / 10;
+          
+          transformacionesArray.forEach((transform, tIdx) => {
+            preguntasDesglosadas.push({
+              pregunta: `Transformar: "${transform.oracion_base}" → ${transform.instruccion}`,
+              tipo: 'transformation_item',
+              oracion_base: transform.oracion_base || '',
+              instruccion: transform.instruccion || '',
+              respuesta_usuario: respuestasArray[tIdx]?.trim() || '(sin respuesta)',
+              respuesta_correcta: transform.resultado_esperado || '',
+              puntos: puntosPorTransformacion,
+              indice_original: index,
+              subindice: tIdx,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es writing_correction con frases con errores, desglosar cada frase
+        else if (pregunta.tipo === 'writing_correction' && 
+                 (pregunta.frases_con_errores?.length > 0 || pregunta.metadata?.frases_con_errores?.length > 0)) {
+          
+          const frasesArray = pregunta.frases_con_errores || pregunta.metadata?.frases_con_errores || [];
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const puntosBase = pregunta.puntos || 3;
+          const puntosPorFrase = Math.round((puntosBase / frasesArray.length) * 10) / 10;
+          
+          frasesArray.forEach((frase, fIdx) => {
+            preguntasDesglosadas.push({
+              pregunta: `Corregir: "${frase.frase_con_error}" (${frase.tipo_error || 'error'})`,
+              tipo: 'correction_item',
+              frase_con_error: frase.frase_con_error || '',
+              tipo_error: frase.tipo_error || '',
+              respuesta_usuario: respuestasArray[fIdx]?.trim() || '(sin respuesta)',
+              respuesta_correcta: frase.correccion || '',
+              puntos: puntosPorFrase,
+              indice_original: index,
+              subindice: fIdx,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es writing_short con preguntas cortas, desglosar cada pregunta
+        else if (pregunta.tipo === 'writing_short' && 
+                 (pregunta.preguntas_short?.length > 0 || pregunta.metadata?.preguntas_short?.length > 0)) {
+          
+          const preguntasArray = pregunta.preguntas_short || pregunta.metadata?.preguntas_short || [];
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const puntosBase = pregunta.puntos || preguntasArray.length;
+          const puntosPorPregunta = Math.round((puntosBase / preguntasArray.length) * 10) / 10;
+          
+          preguntasArray.forEach((pregShort, pIdx) => {
+            preguntasDesglosadas.push({
+              pregunta: pregShort.pregunta || '',
+              tipo: 'short_answer_item',
+              palabras_clave: pregShort.palabras_clave || [],
+              respuesta_usuario: respuestasArray[pIdx]?.trim() || '(sin respuesta)',
+              respuesta_correcta: pregShort.respuesta_modelo || '',
+              puntos: puntosPorPregunta,
+              indice_original: index,
+              subindice: pIdx,
+              es_subpregunta: true
+            });
+          });
+        }
+        // Si es writing_paraphrase con oraciones originales, desglosar cada oración
+        else if (pregunta.tipo === 'writing_paraphrase' && 
+                 (pregunta.oraciones_originales?.length > 0 || pregunta.metadata?.oraciones_originales?.length > 0)) {
+          
+          const oracionesArray = pregunta.oraciones_originales || pregunta.metadata?.oraciones_originales || [];
+          const respuestasArray = respuestaUsuarioCompleta.split('|||');
+          const puntosBase = pregunta.puntos || oracionesArray.length;
+          const puntosPorOracion = Math.round((puntosBase / oracionesArray.length) * 10) / 10;
+          
+          oracionesArray.forEach((oracion, oIdx) => {
+            preguntasDesglosadas.push({
+              pregunta: `Parafrasear: "${oracion.original}" → ${oracion.instruccion}`,
+              tipo: 'paraphrase_item',
+              oracion_original: oracion.original || '',
+              instruccion: oracion.instruccion || '',
+              respuesta_usuario: respuestasArray[oIdx]?.trim() || '(sin respuesta)',
+              respuesta_correcta: oracion.parafraseo_esperado || '',
+              puntos: puntosPorOracion,
+              indice_original: index,
+              subindice: oIdx,
+              es_subpregunta: true
+            });
+          });
+        } else {
+          // Pregunta normal
+          preguntasDesglosadas.push({
+            pregunta: pregunta.pregunta,
+            tipo: pregunta.tipo,
+            opciones: pregunta.opciones,
+            respuesta_usuario: respuestaUsuarioCompleta,
+            respuesta_correcta: pregunta.respuesta_correcta || pregunta.respuesta_esperada || '',
+            puntos: pregunta.puntos || 2,
+            indice_original: index,
+            es_subpregunta: false
+          });
+        }
+      });
+      
+      // Normalizar resultados usando el mapeo desglosado
+      const resultadosNormalizados = calificacion.resultados.map((r, index) => {
+        const preguntaDesglosada = preguntasDesglosadas[index] || {};
+        const puntosObtenidos = r.puntos || 0;
+        const puntosMaximos = r.puntos_maximos || 2;
+        const porcentajePregunta = puntosMaximos > 0 ? (puntosObtenidos / puntosMaximos) * 100 : 0;
+        
+        // Calcular repetición espaciada para esta pregunta individual
+        const diasIntervalo = porcentajePregunta >= 90 ? 7 : porcentajePregunta >= 70 ? 3 : porcentajePregunta >= 50 ? 1 : 0.5;
+        const proximaRevision = new Date(ahora);
+        proximaRevision.setDate(proximaRevision.getDate() + diasIntervalo);
+        
+        return {
+          pregunta: preguntaDesglosada.pregunta || r.pregunta || '',
+          tipo: preguntaDesglosada.tipo || 'mcq',
+          opciones: preguntaDesglosada.opciones || [],
+          correcto: r.correcto ?? (puntosObtenidos >= puntosMaximos * 0.5),
+          puntos: puntosObtenidos,
+          puntos_maximos: puntosMaximos,
+          porcentaje: porcentajePregunta,
+          feedback: r.feedback || r.retroalimentacion || (puntosObtenidos >= puntosMaximos ? '¡Correcto!' : `Incorrecto. La respuesta correcta es: ${preguntaDesglosada.respuesta_correcta || ''}`),
+          respuesta_usuario: preguntaDesglosada.respuesta_usuario || '',
+          respuesta_correcta: preguntaDesglosada.respuesta_correcta || '',
+          // Campos de repetición espaciada
+          proximaRevision: proximaRevision.toISOString(),
+          ultimaRevision: ahora.toISOString(),
+          intervalo: diasIntervalo,
+          repeticiones: 0,
+          facilidad: porcentajePregunta >= 90 ? 2.8 : porcentajePregunta >= 70 ? 2.5 : porcentajePregunta >= 50 ? 2.0 : 1.5,
+          estadoRevision: 'nueva',
+          // Guardar info de sub-pregunta para referencia
+          es_subpregunta: preguntaDesglosada.es_subpregunta || false,
+          indice_original: preguntaDesglosada.indice_original,
+          subindice: preguntaDesglosada.subindice
+        };
+      });
+      
+      // Calcular totales si no vienen
+      const puntos_obtenidos = calificacion.puntos_obtenidos || resultadosNormalizados.reduce((sum, r) => sum + r.puntos, 0);
+      const puntos_totales = calificacion.puntos_totales || resultadosNormalizados.reduce((sum, r) => sum + r.puntos_maximos, 0);
+      const porcentaje = calificacion.porcentaje || (puntos_totales > 0 ? (puntos_obtenidos / puntos_totales) * 100 : 0);
+      
+      const resultadoFinal = {
+        success: true,
+        resultados: resultadosNormalizados,
+        puntos_obtenidos,
+        puntos_totales,
+        porcentaje
+      };
+      
+      // Aplicar la misma lógica que enviarExamen para repetición espaciada
+      limpiarExamenLocal();
+      setResultadoExamen(resultadoFinal);
+      setExamenCompletado(true);
+      
+      // Guardar progreso de práctica si corresponde
+      console.log('🔍 procesarCalificacionChatGPT - Buscando práctica para guardar');
+      console.log('   examenActivo:', examenActivo);
+      console.log('   examenActivo?.id:', examenActivo?.id);
+      console.log('   examenActivo?.carpeta_ruta:', examenActivo?.carpeta_ruta);
+      console.log('   examenActivo?.archivo:', examenActivo?.archivo);
+      
+      const practicas = await getDatos('practicas');
+      let practicaIndex = -1;
+      
+      if (examenActivo && examenActivo.id) {
+        practicaIndex = practicas.findIndex(p => p.id === examenActivo.id);
+        console.log('   practicaIndex encontrado:', practicaIndex);
+      }
+      
+      if (practicaIndex !== -1) {
+        console.log('   ✅ Práctica encontrada, guardando con carpeta:', practicas[practicaIndex].carpeta_ruta);
+        const ahora = new Date();
+        
+        // Calcular próxima revisión basada en el resultado
+        const diasBase = porcentaje >= 90 ? 7 : porcentaje >= 70 ? 3 : porcentaje >= 50 ? 1 : 0.5;
+        const proximaFecha = new Date(ahora);
+        proximaFecha.setDate(proximaFecha.getDate() + diasBase);
+        
+        practicas[practicaIndex].respuestas = respuestasUsuario;
+        practicas[practicaIndex].completada = true;
+        practicas[practicaIndex].estado = 'completada';
+        practicas[practicaIndex].fecha_completada = ahora.toISOString();
+        practicas[practicaIndex].ultimaRevision = ahora.toISOString();
+        practicas[practicaIndex].proximaRevision = proximaFecha.toISOString();
+        practicas[practicaIndex].intervalo = diasBase;
+        practicas[practicaIndex].repeticiones = (practicas[practicaIndex].repeticiones || 0) + 1;
+        practicas[practicaIndex].facilidad = porcentaje >= 70 ? 2.5 : porcentaje >= 50 ? 2.0 : 1.5;
+        practicas[practicaIndex].estadoRevision = porcentaje >= 70 ? 'aprendida' : 'repaso';
+        practicas[practicaIndex].resultado = {
+          puntos_obtenidos,
+          puntos_totales,
+          porcentaje,
+          resultados: resultadosNormalizados
+        };
+        
+        try {
+          await guardarPracticaEnCarpeta(practicas[practicaIndex], imagenesLocales);
+          console.log('   ✅ Práctica guardada en:', practicas[practicaIndex].carpeta_ruta);
+        } catch (errorGuardar) {
+          console.error('Error guardando práctica:', errorGuardar);
+        }
+        
+        setPracticas([...practicas]);
+      } else {
+        // 🔥 No hay práctica existente - crear una nueva usando carpetaExamen
+        console.log('   ⚠️ No se encontró práctica existente, creando nueva...');
+        console.log('   carpetaExamen:', carpetaExamen);
+        
+        // Detectar carpeta desde carpetaExamen (que tiene la carpeta actual)
+        const carpetaRuta = carpetaExamen?.ruta || examenActivo?.carpeta_ruta || carpetaPractica || '';
+        const carpetaNombre = carpetaExamen?.nombre || examenActivo?.carpeta || '';
+        
+        console.log('   carpetaRuta detectada:', carpetaRuta);
+        console.log('   carpetaNombre detectada:', carpetaNombre);
+        
+        if (carpetaRuta) {
+          const ahora = new Date();
+          const diasBase = porcentaje >= 90 ? 7 : porcentaje >= 70 ? 3 : porcentaje >= 50 ? 1 : 0.5;
+          const proximaFecha = new Date(ahora);
+          proximaFecha.setDate(proximaFecha.getDate() + diasBase);
+          
+          // Normalizar carpeta (quitar extracciones/)
+          let carpetaNormalizada = carpetaRuta;
+          if (carpetaNormalizada.includes('extracciones\\')) {
+            carpetaNormalizada = carpetaNormalizada.split('extracciones\\').pop() || '';
+          } else if (carpetaNormalizada.includes('extracciones/')) {
+            carpetaNormalizada = carpetaNormalizada.split('extracciones/').pop() || '';
+          }
+          
+          const nuevaPractica = {
+            id: `practica_chatgpt_${Date.now()}`,
+            nombre: `Práctica ChatGPT - ${carpetaNombre || 'Personalizada'}`,
+            ruta: carpetaRuta,
+            carpeta: carpetaNormalizada,
+            carpeta_ruta: carpetaNormalizada,
+            preguntas: preguntasExamen,
+            respuestas: respuestasUsuario,
+            fecha: ahora.toISOString(),
+            completada: true,
+            estado: 'completada',
+            fecha_completada: ahora.toISOString(),
+            ultimaRevision: ahora.toISOString(),
+            proximaRevision: proximaFecha.toISOString(),
+            intervalo: diasBase,
+            repeticiones: 1,
+            facilidad: porcentaje >= 70 ? 2.5 : porcentaje >= 50 ? 2.0 : 1.5,
+            estadoRevision: porcentaje >= 70 ? 'aprendida' : 'repaso',
+            es_practica: true,
+            tipo: 'custom_chatgpt',
+            resultado: {
+              puntos_obtenidos,
+              puntos_totales,
+              porcentaje,
+              resultados: resultadosNormalizados
+            }
+          };
+          
+          try {
+            // Guardar como archivo individual
+            console.log('💾 Guardando nueva práctica en carpeta:', carpetaNormalizada);
+            console.log('   nuevaPractica.id:', nuevaPractica.id);
+            console.log('   Body enviado:', JSON.stringify({ practica: nuevaPractica, carpeta_ruta: carpetaNormalizada }, null, 2).substring(0, 500));
+            
+            const guardarResponse = await fetch(`${API_URL}/datos/practicas/guardar_individual`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                practica: nuevaPractica,
+                carpeta_ruta: carpetaNormalizada
+              })
+            });
+            
+            const responseText = await guardarResponse.text();
+            console.log('📥 Respuesta del servidor:', guardarResponse.status, responseText);
+            
+            if (guardarResponse.ok) {
+              const guardarData = JSON.parse(responseText);
+              console.log('✅ Práctica guardada exitosamente:', guardarData);
+              nuevaPractica.archivo = guardarData.archivo;
+              setPracticas([...practicas, nuevaPractica]);
+              
+              setMensaje({
+                tipo: 'exito',
+                texto: `✅ Examen calificado y guardado en: ${carpetaNormalizada}`
+              });
+            } else {
+              console.error('❌ Error guardando práctica:', responseText);
+              // Aún así agregar a la lista local (pero sin archivo)
+              setPracticas([...practicas, nuevaPractica]);
+              
+              setMensaje({
+                tipo: 'warning',
+                texto: `⚠️ Examen calificado pero no se pudo guardar: ${responseText}`
+              });
+            }
+          } catch (errorGuardar) {
+            console.error('Error guardando nueva práctica:', errorGuardar);
+            setMensaje({
+              tipo: 'error',
+              texto: `❌ Error al guardar: ${errorGuardar.message}`
+            });
+          }
+        } else {
+          console.log('   ⚠️ No hay carpeta detectada, no se guardará la práctica');
+          setMensaje({
+            tipo: 'exito',
+            texto: `✅ Examen calificado: ${puntos_obtenidos}/${puntos_totales} (${porcentaje.toFixed(1)}%) - Sin carpeta para guardar`
+          });
+        }
+      }
+      
+      // Cerrar modal de calificación
+      setModalCalificarChatGPTAbierto(false);
+      setPasoCalificacionChatGPT(1);
+      setJsonCalificacionChatGPT('');
+      
+    } catch (error) {
+      console.error('Error procesando calificación:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ Error: ${error.message}`
+      });
+    }
+  };
+
   const confirmarGenerarPractica = async () => {
     // Limpiar estados antes de generar nueva práctica
     setPreguntasExamen([]);
@@ -10072,6 +14280,7 @@ JSON:`
     setExamenCompletado(false);
     setResultadoExamen(null);
     setFlashcardsVolteadas({});
+    setImagenesLocales({}); // 🔥 Limpiar imágenes de práctica anterior
     
     console.log('🔍 DEBUG - confirmarGenerarPractica');
     console.log('   documentosPractica:', documentosPractica);
@@ -10243,7 +14452,80 @@ Ejemplo de buena flashcard:
       }
       
       if (numCloze > 0) {
-        promptCompleto += `**${numCloze} Cloze Test (Relleno de huecos)** - Formato JSON:
+        if (clozeTransferenciaConceptual) {
+          // Modo Transferencia Conceptual - ejemplos aplicados con contexto y causalidad
+          promptCompleto += `**${numCloze} Ejercicios de TRANSFERENCIA CONCEPTUAL** - Formato JSON:
+
+⚠️ INSTRUCCIÓN CRÍTICA - LEE ESTO PRIMERO:
+Lee el texto fuente y extrae los conceptos clave, pero NO generes ejercicios de rellenar definiciones ni frases incompletas del texto original.
+
+🎯 OBJETIVO:
+Demostrar comprensión profunda del contenido generando EJEMPLOS ORIGINALES y contextualizados, aplicados a situaciones humanas, sociales, laborales o personales.
+
+🚫 PROHIBIDO - NO GENERES ESTO:
+❌ "La {} responde a..." (definición con hueco)
+❌ "El {} es una explicación directa" (copiar del texto)
+❌ "Un {} se refiere a..." (completar definición)
+❌ "{} se utiliza para..." (uso gramatical)
+❌ Cualquier frase que pida rellenar UNA SOLA palabra
+❌ Cualquier frase que sea una DEFINICIÓN del concepto
+
+✅ OBLIGATORIO - GENERA ESTO:
+- Frases COMPLETAS y NATURALES de 15-30 palabras
+- Situaciones REALES donde una persona aplica el concepto
+- Debe mostrar CAUSA, MOTIVO o RAZONAMIENTO
+- El concepto se usa de forma IMPLÍCITA, no se define
+- Cada hueco debe ser una FRASE LARGA (3-8 palabras), NO una palabra suelta
+
+📋 FORMATO JSON REQUERIDO:
+{
+  "type": "cloze",
+  "difficulty": "medium",
+  "tags": ["aplicación", "razonamiento"],
+  "description": "Completa esta situación real con tu razonamiento",
+  "text_with_gaps": "El porqué de la decisión fue {}, aunque implicaba {} que consideré {}.",
+  "answers": ["reducir costos a corto plazo", "un riesgo operativo", "aceptable dadas las circunstancias"],
+  "hint": "Piensa en una decisión que tomaste sopesando beneficios y riesgos"
+}
+
+📝 EJEMPLOS CORRECTOS DE TRANSFERENCIA:
+
+Ejemplo 1 - Decisión laboral:
+{
+  "type": "cloze",
+  "text_with_gaps": "Decidí cambiar de trabajo porque {} y necesitaba {}, aunque sabía que {}.",
+  "answers": ["el ambiente se había vuelto tóxico", "un espacio donde pudiera crecer", "empezar de cero sería difícil"],
+  "hint": "Reflexiona sobre una decisión importante que tomaste"
+}
+
+Ejemplo 2 - Conflicto personal:
+{
+  "type": "cloze", 
+  "text_with_gaps": "La razón por la que {} fue que {}, lo cual me llevó a {}.",
+  "answers": ["no respondí a su mensaje", "necesitaba tiempo para procesar mis emociones", "reflexionar antes de actuar impulsivamente"],
+  "hint": "Piensa en un momento donde controlaste tu reacción"
+}
+
+Ejemplo 3 - Aprendizaje:
+{
+  "type": "cloze",
+  "text_with_gaps": "Entendí el porqué de mi fracaso cuando {} y me di cuenta de que {}.",
+  "answers": ["analicé mis decisiones pasadas", "había ignorado señales importantes por orgullo"],
+  "hint": "Recuerda un momento de aprendizaje significativo"
+}
+
+🔴 REGLAS TÉCNICAS:
+- Usa {} para marcar cada hueco (NO uses {{}} ni ___)
+- Cada ejercicio debe tener 2-4 huecos
+- Cada hueco = frase de 3-8 palabras, NUNCA una palabra sola
+- El array "answers" debe coincidir en número y orden con los {}
+- NO repitas estructuras entre ejercicios
+- VARÍA los contextos: trabajo, familia, estudios, relaciones, decisiones
+
+\n\n`;
+        } else {
+          // Modo clásico - rellenar palabras clave
+          promptCompleto += `**${numCloze} Cloze Test (Relleno de huecos)** - Formato JSON:
 {
   "type": "cloze",
   "difficulty": "easy|medium|hard",
@@ -10271,6 +14553,7 @@ Ejemplo correcto:
   "answers": ["programación", "desarrollo web", "ciencia de datos", "Guido van Rossum"],
   "hint": "Piensa en las características y el creador de Python"
 }\n\n`;
+        }
       }
       
       if (numRespuestaCorta > 0) {
@@ -10627,6 +14910,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
         num_mcq: numMCQ,
         num_verdadero_falso: numVerdaderoFalso,
         num_cloze: numCloze,
+        cloze_transferencia_conceptual: clozeTransferenciaConceptual, // 🧠 Modo transferencia conceptual
         num_respuesta_corta: numRespuestaCorta,
         num_open_question: numOpenQuestion,
         num_caso_estudio: numCasoEstudio,
@@ -10806,6 +15090,201 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   // Los datos se envían al servidor solo cuando se envía la sesión de estudio
   // (Sincronización en red removida para evitar saturación de logs)
   
+  // ============================================================================
+  // 🎯 FUNCIONES PARA READING COMPREHENSION INTERACTIVO
+  // ============================================================================
+
+  // Generar ejercicio de Reading Comprehension con Ollama
+  const generarEjercicioReading = async () => {
+    if (!carpetaPractica && documentosPractica.length === 0) {
+      setMensaje({
+        tipo: 'error',
+        texto: '❌ Selecciona un material antes de generar el ejercicio'
+      });
+      return;
+    }
+
+    setGenerandoReading(true);
+    setMensaje({
+      tipo: 'info',
+      texto: '⏳ Generando ejercicio de Reading Comprehension...'
+    });
+
+    try {
+      // Cargar contenido del material
+      let contenidoMaterial = '';
+      
+      if (documentosPractica.length > 0) {
+        // Intentar cargar contenido de los documentos
+        for (const doc of documentosPractica.slice(0, 3)) { // Max 3 docs
+          try {
+            const response = await fetch(`${API_URL}/api/archivos/leer-contenido`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ruta: doc.ruta })
+            });
+            if (response.ok) {
+              const data = await response.json();
+              contenidoMaterial += data.contenido + '\n\n';
+            }
+          } catch (e) {
+            console.warn('No se pudo leer documento:', doc.ruta);
+          }
+        }
+      }
+
+      // Si no hay contenido, usar texto de placeholder basado en carpeta
+      if (!contenidoMaterial.trim()) {
+        contenidoMaterial = `Study material from folder: ${carpetaPractica}. 
+Generate an educational reading passage about this topic that would be suitable for language learning.`;
+      }
+
+      // Obtener modelo activo
+      let modeloActivo = 'llama3.2:3b';
+      try {
+        const configResponse = await fetch(`${API_URL}/api/config`);
+        if (configResponse.ok) {
+          const config = await configResponse.json();
+          modeloActivo = config.modelo_ollama_activo || modeloActivo;
+        }
+      } catch (e) {
+        console.warn('No se pudo obtener config, usando modelo por defecto');
+      }
+
+      const response = await fetch(`${API_URL}/api/generar-reading-comprehension`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contenido: contenidoMaterial,
+          idioma: idiomaReadingComprehension,
+          modelo: modeloActivo,
+          dificultad: dificultadReading,
+          tema: carpetaPractica.split(/[\\\/]/).pop() || 'General'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.ejercicio) {
+          setEjercicioReadingActivo(data.ejercicio);
+          setRespuestasReading({});
+          setResultadosReading(null);
+          setModoReadingComprehension(true);
+          setModalPracticaAbierto(false);
+          
+          setMensaje({
+            tipo: 'success',
+            texto: `✅ Ejercicio generado: "${data.ejercicio.title || 'Reading Comprehension'}"`
+          });
+        } else {
+          throw new Error('Respuesta inválida del servidor');
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error generando ejercicio');
+      }
+    } catch (error) {
+      console.error('Error generando Reading Comprehension:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message || 'Error al generar ejercicio'}`
+      });
+    } finally {
+      setGenerandoReading(false);
+    }
+  };
+
+  // Actualizar respuesta de una pregunta del Reading
+  const actualizarRespuestaReading = (preguntaId, valor) => {
+    setRespuestasReading(prev => ({
+      ...prev,
+      [preguntaId]: valor
+    }));
+  };
+
+  // Evaluar ejercicio de Reading Comprehension
+  const evaluarEjercicioReading = async () => {
+    if (!ejercicioReadingActivo) return;
+
+    // Verificar que hay respuestas
+    const preguntasIds = ejercicioReadingActivo.questions?.map(q => String(q.id)) || [];
+    const respuestasContestadas = preguntasIds.filter(id => respuestasReading[id] !== undefined && respuestasReading[id] !== '');
+    
+    if (respuestasContestadas.length === 0) {
+      setMensaje({
+        tipo: 'warning',
+        texto: '⚠️ Responde al menos una pregunta antes de evaluar'
+      });
+      return;
+    }
+
+    setEvaluandoReading(true);
+    setMensaje({
+      tipo: 'info',
+      texto: '⏳ Evaluando tus respuestas con IA...'
+    });
+
+    try {
+      // Obtener modelo activo
+      let modeloActivo = 'llama3.2:3b';
+      try {
+        const configResponse = await fetch(`${API_URL}/api/config`);
+        if (configResponse.ok) {
+          const config = await configResponse.json();
+          modeloActivo = config.modelo_ollama_activo || modeloActivo;
+        }
+      } catch (e) {}
+
+      const response = await fetch(`${API_URL}/api/evaluar-reading-comprehension`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ejercicio: ejercicioReadingActivo,
+          respuestas: respuestasReading,
+          modelo: modeloActivo
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.evaluacion) {
+          setResultadosReading(data.evaluacion);
+          setMensaje({
+            tipo: data.evaluacion.aprobado ? 'success' : 'info',
+            texto: `📊 Evaluación completada: ${data.evaluacion.porcentaje}%`
+          });
+        } else {
+          throw new Error('Respuesta de evaluación inválida');
+        }
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error en evaluación');
+      }
+    } catch (error) {
+      console.error('Error evaluando Reading:', error);
+      setMensaje({
+        tipo: 'error',
+        texto: `❌ ${error.message || 'Error al evaluar'}`
+      });
+    } finally {
+      setEvaluandoReading(false);
+    }
+  };
+
+  // Cerrar modo Reading Comprehension
+  const cerrarModoReading = () => {
+    setModoReadingComprehension(false);
+    setEjercicioReadingActivo(null);
+    setRespuestasReading({});
+    setResultadosReading(null);
+  };
+
+  // Reiniciar ejercicio Reading
+  const reiniciarEjercicioReading = () => {
+    setRespuestasReading({});
+    setResultadosReading(null);
+  };
+
     // ============================================
     // FUNCIONES DEL SISTEMA DE NOTAS
     // ============================================
@@ -11109,7 +15588,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       practicas[index].carpeta = nuevaRuta;
       
       // 🔥 GUARDAR EN NUEVA CARPETA
-      await guardarPracticaEnCarpeta(practicas[index]);
+      await guardarPracticaEnCarpeta(practicas[index], imagenesLocales);
       setPracticas([...practicas]); // Actualizar estado
       setMensaje({
         tipo: 'success',
@@ -11572,7 +16051,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
       const practicaConNuevosDatos = calcularProximaRevision(practicaActualizada, dificultad);
       
       // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
-      await guardarPracticaEnCarpeta(practicaConNuevosDatos);
+      await guardarPracticaEnCarpeta(practicaConNuevosDatos, imagenesLocales);
       
       // Actualizar estado local
       const practicasActualizadas = practicasActuales.map(p => 
@@ -11773,9 +16252,14 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
   }, [selectedMenu])
 
   const cargarCarpetasFlashcards = async (ruta = '') => {
+    console.log('🔍 cargarCarpetasFlashcards llamado con ruta:', ruta, 'API_URL:', API_URL);
     try {
-      const response = await fetch(`${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`)
-      const data = await response.json()
+      const url = `${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`;
+      console.log('🌐 Fetching:', url);
+      const response = await fetch(url);
+      console.log('📡 Response status:', response.status);
+      const data = await response.json();
+      console.log('📦 Data recibida:', data);
       
       // 🔥 Cargar flashcards y actualizar estado global
       const flashcards = await cargarTodasFlashcards();
@@ -12958,7 +17442,9 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             className={`nav-item ${selectedMenu === 'cursos' ? 'active' : ''}`}
             onClick={() => { 
               setSelectedMenu('cursos'); 
-              cargarCarpeta(''); 
+              // Cargar última carpeta visitada o raíz
+              const ultimaCarpeta = localStorage.getItem('ultimaCarpetaCursos') || '';
+              cargarCarpeta(ultimaCarpeta); 
               setMenuMovilAbierto(false); 
             }}
           >
@@ -13498,7 +17984,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 <p>Ve a "Mis Cursos", selecciona una carpeta y márcala como curso, capítulo, clase o lección desde el menú de opciones (⋮) para que aparezca aquí</p>
                 <button 
                   className="btn-primary"
-                  onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(''); }}
+                  onClick={() => { setSelectedMenu('cursos'); cargarCarpeta(localStorage.getItem('ultimaCarpetaCursos') || ''); }}
                   style={{marginTop: '1.5rem'}}
                 >
                   Ir a Mis Cursos
@@ -14056,14 +18542,28 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           </h3>
                         </div>
 
-                        {/* 🔥 Helper: Detectar si es pregunta Verdadero/Falso */}
+                        {/* 🔥 Helper: Detectar tipo de pregunta */}
                         {(() => {
                           const errorActual = erroresActuales[indiceErrorActual];
+                          
+                          // Debug: ver qué datos tiene el error
+                          console.log('📋 Error actual:', {
+                            tipo: errorActual?.tipo,
+                            opciones: errorActual?.opciones,
+                            respuesta_correcta: errorActual?.respuesta_correcta,
+                            respuesta_usuario: errorActual?.respuesta_usuario
+                          });
+                          
+                          // Detectar verdadero/falso
                           const esVerdaderoFalso = errorActual?.tipo === 'verdadero_falso' || 
                             errorActual?.tipo === 'true_false' ||
                             errorActual?.tipo === 'verdadero-falso' ||
+                            errorActual?.tipo === 'verdadero_o_falso' ||
                             ['Verdadero', 'Falso', 'verdadero', 'falso', 'V', 'F', 'True', 'False'].includes(errorActual?.respuesta_correcta?.trim());
-                          const tieneOpciones = errorActual?.opciones?.length > 0;
+                          
+                          // Detectar si tiene opciones (puede ser tipo 'multiple' o tener array de opciones)
+                          const tieneOpciones = (errorActual?.opciones?.length > 0) || 
+                            (errorActual?.tipo === 'multiple' && errorActual?.opciones);
                           
                           // CASO 1: Tiene opciones MCQ → mostrar grid de opciones
                           if (tieneOpciones && !esVerdaderoFalso) {
@@ -14402,8 +18902,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           );
                         })()}
 
-                        {/* Explicación */}
-                        {erroresActuales[indiceErrorActual]?.feedback && (
+                        {/* Explicación - SOLO mostrar DESPUÉS de responder */}
+                        {errorYaRespondido && erroresActuales[indiceErrorActual]?.feedback && (
                           <div className="error-explanation">
                             <div className="explanation-header">
                               <span className="explanation-icon">💡</span>
@@ -15443,7 +19943,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   <button type="button" className="heading-option toggle-option" onClick={() => {
                                     editorRef.current?.focus();
                                     const toggleId = 'toggle_' + Date.now();
-                                    const toggleHtml = `<details class="toggle-heading toggle-h1" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h1-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 1</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    const toggleHtml = `<details class="toggle-heading toggle-h1" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h1-summary"><span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 1</span><button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
                                     document.execCommand('insertHTML', false, toggleHtml);
                                     document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
                                   }}>
@@ -15453,7 +19953,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   <button type="button" className="heading-option toggle-option" onClick={() => {
                                     editorRef.current?.focus();
                                     const toggleId = 'toggle_' + Date.now();
-                                    const toggleHtml = `<details class="toggle-heading toggle-h2" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h2-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 2</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    const toggleHtml = `<details class="toggle-heading toggle-h2" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h2-summary"><span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 2</span><button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
                                     document.execCommand('insertHTML', false, toggleHtml);
                                     document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
                                   }}>
@@ -15463,7 +19963,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   <button type="button" className="heading-option toggle-option" onClick={() => {
                                     editorRef.current?.focus();
                                     const toggleId = 'toggle_' + Date.now();
-                                    const toggleHtml = `<details class="toggle-heading toggle-h3" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h3-summary"><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 3</span></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
+                                    const toggleHtml = `<details class="toggle-heading toggle-h3" data-toggle-id="${toggleId}"><summary class="toggle-summary toggle-h3-summary"><span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span><span class="toggle-arrow">▶</span><span class="toggle-title" contenteditable="true">Toggle Heading 3</span><button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button></summary><div class="toggle-content" contenteditable="true"><p>Contenido...</p></div></details>`;
                                     document.execCommand('insertHTML', false, toggleHtml);
                                     document.querySelector('.fase-contenido .heading-dropdown-menu')?.classList.remove('visible');
                                   }}>
@@ -15544,7 +20044,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               <button type="button" className="btn-toolbar" onClick={() => {
                                 editorRef.current?.focus();
                                 const checklistId = 'check_' + Date.now();
-                                const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Nueva tarea...</span></div>`;
+                                const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Nueva tarea...</span><button type="button" class="checklist-delete-btn" contenteditable="false" title="Eliminar tarea" onclick="event.stopPropagation(); this.closest('.checklist-item').remove();">✕</button></div>`;
                                 document.execCommand('insertHTML', false, checklistHtml);
                               }} title="Checklist">
                                 ☑️
@@ -15618,6 +20118,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   style={{width: 0, height: 0, opacity: 0, position: 'absolute'}}
                                 />
                               </label>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                setModalTablaAbierto(true);
+                                setFilasTabla(3);
+                                setColumnasTabla(3);
+                              }} title="Insertar tabla">
+                                📊
+                              </button>
                               
                               <span className="toolbar-separator"></span>
                               
@@ -15638,6 +20145,64 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 document.execCommand('removeFormat', false, null);
                               }} title="Limpiar formato">
                                 🧹
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                const selection = window.getSelection();
+                                if (selection.rangeCount > 0) {
+                                  const range = selection.getRangeAt(0);
+                                  let currentNode = range.commonAncestorContainer;
+                                  while (currentNode && currentNode !== editorRef.current) {
+                                    if (currentNode.classList && 
+                                        (currentNode.classList.contains('toggle-heading') || 
+                                         currentNode.classList.contains('checklist-item') || 
+                                         currentNode.classList.contains('imagen-contenedor') ||
+                                         currentNode.classList.contains('tabla-contenedor'))) {
+                                      const newP = document.createElement('p');
+                                      newP.innerHTML = '<br>';
+                                      currentNode.parentNode.insertBefore(newP, currentNode.nextSibling);
+                                      const newRange = document.createRange();
+                                      newRange.setStart(newP, 0);
+                                      newRange.collapse(true);
+                                      selection.removeAllRanges();
+                                      selection.addRange(newRange);
+                                      return;
+                                    }
+                                    currentNode = currentNode.parentNode;
+                                  }
+                                }
+                                document.execCommand('insertHTML', false, '<p><br></p>');
+                              }} title="Línea abajo">
+                                ⏎↓
+                              </button>
+                              <button type="button" className="btn-toolbar" onClick={() => {
+                                editorRef.current?.focus();
+                                const selection = window.getSelection();
+                                if (selection.rangeCount > 0) {
+                                  const range = selection.getRangeAt(0);
+                                  let currentNode = range.commonAncestorContainer;
+                                  while (currentNode && currentNode !== editorRef.current) {
+                                    if (currentNode.classList && 
+                                        (currentNode.classList.contains('toggle-heading') || 
+                                         currentNode.classList.contains('checklist-item') || 
+                                         currentNode.classList.contains('imagen-contenedor') ||
+                                         currentNode.classList.contains('tabla-contenedor'))) {
+                                      const newP = document.createElement('p');
+                                      newP.innerHTML = '<br>';
+                                      currentNode.parentNode.insertBefore(newP, currentNode);
+                                      const newRange = document.createRange();
+                                      newRange.setStart(newP, 0);
+                                      newRange.collapse(true);
+                                      selection.removeAllRanges();
+                                      selection.addRange(newRange);
+                                      return;
+                                    }
+                                    currentNode = currentNode.parentNode;
+                                  }
+                                }
+                                document.execCommand('insertHTML', false, '<p><br></p>');
+                              }} title="Línea arriba">
+                                ⬆↑
                               </button>
                             </div>
                             )}
@@ -15980,7 +20545,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                   <button className="btn-menu-ctx" onClick={() => {
                                     restaurarSeleccion();
                                     const checklistId = 'check_' + Date.now();
-                                    const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Tarea...</span></div>`;
+                                    const checklistHtml = `<div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false"><input type="checkbox" class="checklist-checkbox" onclick="this.parentElement.classList.toggle('checked'); this.nextElementSibling.style.textDecoration = this.checked ? 'line-through' : 'none';"><span class="checklist-text" contenteditable="true">Tarea...</span><button type="button" class="checklist-delete-btn" contenteditable="false" title="Eliminar tarea" onclick="event.stopPropagation(); this.closest('.checklist-item').remove();">✕</button></div>`;
                                     document.execCommand('insertHTML', false, checklistHtml);
                                   }} title="Checklist">☑️</button>
                                   <button className="btn-menu-ctx" onClick={() => { restaurarSeleccion(); document.execCommand('removeFormat', false, null); }} title="Limpiar">🧹</button>
@@ -17584,9 +22149,76 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   >
                     🎴 Flashcards
                   </button>
+                  <button
+                    className="btn-acceso-rapido btn-examenes"
+                    onClick={() => {
+                      setRutaActualExamenes(rutaActual);
+                      setSelectedMenu('examenes');
+                      cargarCarpetasExamenes(rutaActual);
+                    }}
+                    title="Ver exámenes de esta carpeta"
+                  >
+                    📋 Exámenes
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-practicas"
+                    onClick={() => {
+                      setSelectedMenu('practicas');
+                    }}
+                    title="Generar práctica en esta carpeta"
+                  >
+                    🎯 Prácticas
+                  </button>
                 </div>
               </div>
             )}
+            
+            {/* 🎯 Botón especial: Haz tus propias preguntas */}
+            <div style={{
+              marginBottom: '1rem',
+              padding: '1rem',
+              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%)',
+              borderRadius: '12px',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem'
+            }}>
+              <div>
+                <h4 style={{color: '#c4b5fd', margin: '0 0 0.25rem 0', fontSize: '0.95rem'}}>
+                  🎯 ¿Quieres crear tus propias preguntas?
+                </h4>
+                <p style={{color: '#94a3b8', margin: 0, fontSize: '0.8rem'}}>
+                  Genera preguntas con ChatGPT y practícalas aquí
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setPreguntasPropiasConfig({ mcq: 0, true_false: 0, cloze: 0, short_answer: 0, open_question: 0, case_study: 0, tipo_caso: 'descriptivo', reading_true_false: 0, reading_true_false_lang: 'ingles', idioma_tipo: '', idioma_lang: 'ingles' });
+                  setPreguntasPropiasJSON('');
+                  setMostrarInstruccionesChatGPT(false);
+                  // 🔥 Guardar la carpeta actual para usarla al cargar las preguntas
+                  if (rutaActual) {
+                    setCarpetaPractica(rutaActual);
+                    console.log('📁 Guardando rutaActual para preguntas propias:', rutaActual);
+                  }
+                  setModalPreguntasPropiasAbierto(true);
+                }}
+                style={{
+                  padding: '0.75rem 1.25rem',
+                  background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: 'white',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                ✨ Crear Práctica
+              </button>
+            </div>
 
             {loading ? (
               <p className="loading">Cargando...</p>
@@ -17747,13 +22379,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             </button>
                             {menuAbierto === carpeta.ruta && (
                               <div className="dropdown-menu">
-                                <button onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuAbierto(null);
-                                  generarExamenDesdeCarpeta(carpeta);
-                                }}>
-                                  📝 Generar Examen
-                                </button>
                                   <button onClick={(e) => {
                                     e.stopPropagation();
                                     setMenuAbierto(null);
@@ -19331,6 +23956,62 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               )}
             </div>
 
+            {/* Accesos rápidos a Mis Cursos y Flashcards */}
+            {rutaNotasActual && (
+              <div className="accesos-rapidos-fase" style={{marginBottom: '1rem'}}>
+                <div className="accesos-rapidos-titulo">
+                  <span>🔗 Ver esta carpeta en:</span>
+                </div>
+                <div className="accesos-rapidos-botones">
+                  <button
+                    className="btn-acceso-rapido btn-cursos"
+                    onClick={() => {
+                      localStorage.setItem('ultimaCarpetaCursos', rutaNotasActual);
+                      setRutaActual(rutaNotasActual);
+                      setSelectedMenu('cursos');
+                      cargarCarpeta(rutaNotasActual);
+                    }}
+                    title="Ver esta carpeta en Mis Cursos"
+                  >
+                    📚 Mis Cursos
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-flashcards"
+                    onClick={() => {
+                      setRutaFlashcardsActual(rutaNotasActual);
+                      setCarpetaFlashcardActual({ ruta: rutaNotasActual });
+                      setSelectedMenu('flashcards');
+                      cargarCarpetasFlashcards(rutaNotasActual);
+                    }}
+                    title="Ver flashcards de esta carpeta"
+                  >
+                    🎴 Flashcards
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-examenes"
+                    onClick={() => {
+                      setRutaActualExamenes(rutaNotasActual);
+                      setSelectedMenu('examenes');
+                      cargarCarpetasExamenes(rutaNotasActual);
+                    }}
+                    title="Ver exámenes de esta carpeta"
+                  >
+                    📋 Exámenes
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-practicas"
+                    onClick={() => {
+                      setRutaActual(rutaNotasActual);
+                      setSelectedMenu('practicas');
+                    }}
+                    title="Generar práctica en esta carpeta"
+                  >
+                    🎯 Prácticas
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Carpetas */}
             {carpetasNotas.length > 0 && (
               <div className="carpetas-grid" style={{marginBottom: '2rem'}}>
@@ -19377,7 +24058,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   {notasFiltradas.map((nota, index) => (
                   <div key={`nota-${nota.id}-${index}`} className="nota-card">
                     <div className="nota-header">
-                      <div style={{flex: 1}}>
+                      <div style={{flex: 1, minWidth: 0, overflow: 'hidden'}}>
                         <h3>{nota.titulo}</h3>
                         {nota.carpeta && (
                           <span className="nota-carpeta">📁 {nota.carpeta.split('\\').pop() || 'Raíz'}</span>
@@ -19577,6 +24258,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               console.log('🧑‍💻 Prácticas totales:', practicas.length);
               console.log('🧑‍💻 Ruta actual:', rutaNormalizada);
               
+              // Filtrar prácticas según la carpeta actual
               const practicasFiltradas = practicas.filter(p => {
                 const carpetaPractica = normalizarRuta(p.carpeta || p.carpeta_ruta || '');
                 // Extraer solo el directorio de la ruta del archivo si existe
@@ -19586,19 +24268,31 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   : '';
                 const carpetaFinal = carpetaPractica || dirArchivo;
                 
-                // Si estamos en raíz, mostrar TODAS las prácticas
+                const estaCompletada = p.completada || p.estado === 'completada';
+                const esDeEstaCarpeta = carpetaFinal === rutaNormalizada;
+                
+                // LÓGICA DE FILTRADO:
+                // - Prácticas PENDIENTES/PAUSADAS: aparecen en RAÍZ y también en su carpeta
+                // - Prácticas COMPLETADAS: solo en su carpeta correspondiente
+                
                 if (!rutaNormalizada) {
-                  return true; // Mostrar todas en la raíz
+                  // Estamos en la RAÍZ
+                  // Mostrar TODAS las prácticas pendientes/pausadas (de cualquier carpeta)
+                  return !estaCompletada;
+                } else {
+                  // Estamos en una CARPETA ESPECÍFICA
+                  // Mostrar prácticas de esta carpeta:
+                  // - Completadas: sí
+                  // - Pendientes/pausadas: también (para que aparezcan en su carpeta)
+                  return esDeEstaCarpeta;
                 }
-                // Si estamos en una carpeta específica, mostrar las de esa carpeta o subcarpetas
-                return carpetaFinal.startsWith(rutaNormalizada);
               });
               
               console.log('🧑‍💻 Prácticas filtradas:', practicasFiltradas.length);
               
               // Separar por completadas y sin completar
-              const sinCompletar = practicasFiltradas.filter(p => !p.completada);
-              const completadas = practicasFiltradas.filter(p => p.completada);
+              const sinCompletar = practicasFiltradas.filter(p => !(p.completada || p.estado === 'completada'));
+              const completadas = practicasFiltradas.filter(p => p.completada || p.estado === 'completada');
               
               if (practicas.length === 0) {
                 return (
@@ -20043,6 +24737,61 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               </div>
             )}
 
+            {/* Accesos rápidos a Mis Cursos y Notas */}
+            {rutaFlashcardsActual && (
+              <div className="accesos-rapidos-fase" style={{marginBottom: '1rem'}}>
+                <div className="accesos-rapidos-titulo">
+                  <span>🔗 Ver esta carpeta en:</span>
+                </div>
+                <div className="accesos-rapidos-botones">
+                  <button
+                    className="btn-acceso-rapido btn-cursos"
+                    onClick={() => {
+                      localStorage.setItem('ultimaCarpetaCursos', rutaFlashcardsActual);
+                      setRutaActual(rutaFlashcardsActual);
+                      setSelectedMenu('cursos');
+                      cargarCarpeta(rutaFlashcardsActual);
+                    }}
+                    title="Ver esta carpeta en Mis Cursos"
+                  >
+                    📚 Mis Cursos
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-notas"
+                    onClick={() => {
+                      setRutaNotasActual(rutaFlashcardsActual);
+                      setSelectedMenu('notas');
+                      cargarCarpetasNotas(rutaFlashcardsActual);
+                    }}
+                    title="Ver notas de esta carpeta"
+                  >
+                    📝 Notas
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-examenes"
+                    onClick={() => {
+                      setRutaActualExamenes(rutaFlashcardsActual);
+                      setSelectedMenu('examenes');
+                      cargarCarpetasExamenes(rutaFlashcardsActual);
+                    }}
+                    title="Ver exámenes de esta carpeta"
+                  >
+                    📋 Exámenes
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-practicas"
+                    onClick={() => {
+                      setRutaActual(rutaFlashcardsActual);
+                      setSelectedMenu('practicas');
+                    }}
+                    title="Generar práctica en esta carpeta"
+                  >
+                    🎯 Prácticas
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Filtro dropdown por tipo (mostrar si hay carpeta abierta O si estás en una ruta con flashcards) */}
             {(carpetaFlashcardActual || (rutaFlashcardsActual && (() => {
               const rutaNormalizada = rutaFlashcardsActual.replace(/\\/g, '/');
@@ -20176,204 +24925,8 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
             {/* Grid de carpetas */}
             {!carpetaFlashcardActual && flashcardsCarpetas.length > 0 && (
               <>
-                {/* Mostrar flashcards de la carpeta actual si existe rutaFlashcardsActual */}
-                {rutaFlashcardsActual && (() => {
-                  const rutaNormalizada = rutaFlashcardsActual.replace(/\\/g, '/');
-                  const flashcardsAqui = flashcardsActuales.filter(f => {
-                    const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
-                    return carpetaFlashcard === rutaNormalizada;
-                  }).filter(f => filtroTipoFlashcard === 'todas' || f.tipo === filtroTipoFlashcard);
-
-                  if (flashcardsAqui.length > 0) {
-                    const tipoConfig = {
-                      clasica: { color: '#667eea', icon: '📇', nombre: 'Clásica' },
-                      reconocimiento: { color: '#f093fb', icon: '👁️', nombre: 'Reconocimiento' },
-                      cloze: { color: '#4facfe', icon: '🔤', nombre: 'Cloze' },
-                      escenario: { color: '#43e97b', icon: '🎬', nombre: 'Escenario' },
-                      mcq: { color: '#fa709a', icon: '☑️', nombre: 'Opción Múltiple' },
-                      visual: { color: '#30cfd0', icon: '🖼️', nombre: 'Visual' },
-                      auditiva: { color: '#a8edea', icon: '🔊', nombre: 'Auditiva' },
-                      produccion: { color: '#ffa751', icon: '✍️', nombre: 'Producción' },
-                      invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
-                      jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
-                      error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
-                      comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' },
-                      matematica: { color: '#3b82f6', icon: '📐', nombre: 'Matemáticas' },
-                      quimica: { color: '#10b981', icon: '🧪', nombre: 'Química' },
-                      fisica: { color: '#f59e0b', icon: '⚡', nombre: 'Física' },
-                      geometria: { color: '#22c55e', icon: '📐', nombre: 'Geometría' },
-                      ingenieria: { color: '#ef4444', icon: '🔧', nombre: 'Ingeniería' },
-                      'logica-discreta': { color: '#7c3aed', icon: '🔮', nombre: 'Lógica' },
-                      linguistica: { color: '#ec4899', icon: '🗣️', nombre: 'Fonética' },
-                      musica: { color: '#a855f7', icon: '🎼', nombre: 'Música' },
-                      programacion: { color: '#14b8a6', icon: '💻', nombre: 'Programación' },
-                      'programacion-avanzada': { color: '#8b5cf6', icon: '💻', nombre: 'Prog. Avanzada' },
-                      'quimica-avanzada': { color: '#c084fc', icon: '🧬', nombre: 'Química Avz.' },
-                      probabilidad: { color: '#8b5cf6', icon: '🎲', nombre: 'Probabilidad' },
-                      datos: { color: '#06b6d4', icon: '📊', nombre: 'Datos' },
-                      arte: { color: '#f472b6', icon: '🎨', nombre: 'Arte' }
-                    };
-
-                    return (
-                      <div style={{marginBottom: '2rem'}}>
-                        <h3 style={{
-                          margin: '0 0 1rem 0',
-                          color: 'white',
-                          fontSize: '1.25rem'
-                        }}>
-                          🃏 Flashcards en esta carpeta ({flashcardsAqui.length})
-                        </h3>
-                        <div className="flashcards-grid">
-                          {flashcardsAqui.map((flashcard) => {
-                            const config = tipoConfig[flashcard.tipo] || tipoConfig.clasica;
-                            const estadoColor = {
-                              nueva: '#ff9800',
-                              en_progreso: '#3b82f6',
-                              dominada: '#4caf50'
-                            }[flashcard.estadoRevision] || '#ff9800';
-
-                            return (
-                              <div key={flashcard.id} className="flashcard-card">
-                                <div className="flashcard-type-badge" style={{
-                                  background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}dd 100%)`
-                                }}>
-                                  <span>{config.icon}</span>
-                                  <span>{config.nombre}</span>
-                                </div>
-                                <div className="flashcard-body" onClick={() => setFlashcardVistaCompleta(flashcard)} style={{cursor: 'pointer'}}>
-                                  <h3 className="flashcard-titulo">{flashcard.titulo}</h3>
-                                  <div className="flashcard-preview">
-                                    {flashcard.contenido.substring(0, 100)}
-                                    {flashcard.contenido.length > 100 && '...'}
-                                  </div>
-                                </div>
-
-                                {/* Footer con metadata */}
-                                <div className="flashcard-footer">
-                                  <div style={{display: 'flex', flexDirection: 'column', gap: '0.25rem'}}>
-                                    {flashcard.tema && (
-                                      <span className="flashcard-tema">
-                                        🏷️ {flashcard.tema}
-                                      </span>
-                                    )}
-                                    {flashcard.proximaRevision && (() => {
-                                      const ahora = new Date();
-                                      const proxima = new Date(flashcard.proximaRevision);
-                                      const diff = Math.ceil((proxima - ahora) / (1000 * 60 * 60 * 24));
-                                      const necesitaRepaso = diff <= 0;
-                                      
-                                      return (
-                                        <span style={{
-                                          color: necesitaRepaso ? '#fbbf24' : '#94a3b8',
-                                          fontSize: '0.7rem',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '0.25rem'
-                                        }}>
-                                          {necesitaRepaso ? '⏰ Repasar ahora' : `📅 Repaso en ${diff} día${diff !== 1 ? 's' : ''}`}
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  <span className="flashcard-estado" style={{
-                                    background: estadoColor,
-                                    color: 'white',
-                                    padding: '0.3rem 0.6rem',
-                                    borderRadius: '12px',
-                                    fontSize: '0.75rem',
-                                    fontWeight: '600'
-                                  }}>
-                                    {flashcard.estadoRevision === 'nueva' && '🆕 Nueva'}
-                                    {flashcard.estadoRevision === 'en_progreso' && '📖 En Progreso'}
-                                    {flashcard.estadoRevision === 'dominada' && '✅ Dominada'}
-                                  </span>
-                                </div>
-
-                                {/* Acciones */}
-                                <div className="flashcard-actions">
-                                  <button 
-                                    className="btn-flashcard-action"
-                                    onClick={() => setFlashcardVistaCompleta(flashcard)}
-                                    title="Ver completa"
-                                    style={{
-                                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                      color: 'white',
-                                      fontWeight: '600'
-                                    }}
-                                  >
-                                    👁️
-                                  </button>
-                                  <button 
-                                    className="btn-flashcard-action"
-                                    onClick={() => {
-                                      setFlashcardEditando(flashcard);
-                                      setFormDataFlashcard(flashcard);
-                                      setModalNuevaFlashcard(true);
-                                    }}
-                                    title="Editar"
-                                  >
-                                    ✏️
-                                  </button>
-                                  <button 
-                                    className="btn-flashcard-action"
-                                    onClick={() => {
-                                      const nueva = {
-                                        ...flashcard,
-                                        id: Date.now(),
-                                        titulo: `${flashcard.titulo} (copia)`,
-                                        estadoRevision: 'nueva',
-                                        fecha: new Date().toISOString()
-                                      };
-                                      guardarFlashcard(nueva);
-                                    }}
-                                    title="Duplicar"
-                                  >
-                                    📋
-                                  </button>
-                                  <button 
-                                    className="btn-menu-dots"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setMenuAbierto(menuAbierto === `flashcard-${flashcard.id}` ? null : `flashcard-${flashcard.id}`);
-                                    }}
-                                    title="Más opciones"
-                                  >
-                                    ⋮
-                                  </button>
-                                  {menuAbierto === `flashcard-${flashcard.id}` && (
-                                    <div className="menu-dropdown">
-                                      <button onClick={(e) => {
-                                        e.stopPropagation();
-                                        setMenuAbierto(null);
-                                        const rutaCompleta = flashcard.carpeta 
-                                          ? `flashcards/${flashcard.carpeta}/flashcards.json`
-                                          : 'flashcards/flashcards.json';
-                                        mostrarRutaArchivo(rutaCompleta, flashcard.titulo, 'flashcard');
-                                      }}>
-                                        📍 Ver Ruta
-                                      </button>
-                                      <button onClick={(e) => {
-                                        e.stopPropagation();
-                                        setMenuAbierto(null);
-                                        eliminarFlashcard(flashcard.id);
-                                      }} className="btn-menu-eliminar">
-                                        🗑️ Eliminar
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {/* Grid de subcarpetas */}
-                <div className="carpetas-grid">
+                {/* Grid de subcarpetas - PRIMERO */}
+                <div className="carpetas-grid" style={{marginBottom: '2rem'}}>
                   {flashcardsCarpetas.map((carpeta, idx) => {
                   const tieneSubcarpetas = carpeta.subcarpetas && carpeta.subcarpetas > 0;
                   const tieneFlashcards = carpeta.totalFlashcards && carpeta.totalFlashcards > 0;
@@ -20382,11 +24935,11 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     <div 
                       key={idx} 
                       className="carpeta-card flashcard-folder"
-                      onClick={() => verFlashcardsDeCarpeta(carpeta)}
                       style={{
                         cursor: 'pointer',
                         position: 'relative'
                       }}
+                      onClick={() => abrirCarpetaFlashcards(carpeta)}
                     >
                       <div className="carpeta-header">
                         <span className="carpeta-icon">{tieneSubcarpetas ? '📁' : '📚'}</span>
@@ -20412,6 +24965,186 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               </div>
               </>
             )}
+
+            {/* Mostrar flashcards de la carpeta actual si existe rutaFlashcardsActual - FUERA del bloque de carpetas */}
+            {!carpetaFlashcardActual && rutaFlashcardsActual && (() => {
+              const rutaNormalizada = rutaFlashcardsActual.replace(/\\/g, '/');
+              const flashcardsAqui = flashcardsActuales.filter(f => {
+                const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                return carpetaFlashcard === rutaNormalizada;
+              }).filter(f => filtroTipoFlashcard === 'todas' || f.tipo === filtroTipoFlashcard);
+
+              if (flashcardsAqui.length > 0) {
+                const tipoConfig = {
+                  clasica: { color: '#667eea', icon: '📇', nombre: 'Clásica' },
+                  reconocimiento: { color: '#f093fb', icon: '👁️', nombre: 'Reconocimiento' },
+                  cloze: { color: '#4facfe', icon: '🔤', nombre: 'Cloze' },
+                  escenario: { color: '#43e97b', icon: '🎬', nombre: 'Escenario' },
+                  mcq: { color: '#fa709a', icon: '☑️', nombre: 'Opción Múltiple' },
+                  visual: { color: '#30cfd0', icon: '🖼️', nombre: 'Visual' },
+                  auditiva: { color: '#a8edea', icon: '🔊', nombre: 'Auditiva' },
+                  produccion: { color: '#ffa751', icon: '✍️', nombre: 'Producción' },
+                  invertida: { color: '#764ba2', icon: '🔄', nombre: 'Invertida' },
+                  jerarquia: { color: '#667eea', icon: '🏗️', nombre: 'Jerarquía' },
+                  error: { color: '#f093fb', icon: '❌', nombre: 'Error' },
+                  comparacion: { color: '#4facfe', icon: '⚖️', nombre: 'Comparación' },
+                  matematica: { color: '#3b82f6', icon: '📐', nombre: 'Matemáticas' },
+                  quimica: { color: '#10b981', icon: '🧪', nombre: 'Química' },
+                  fisica: { color: '#f59e0b', icon: '⚡', nombre: 'Física' },
+                  geometria: { color: '#22c55e', icon: '📐', nombre: 'Geometría' },
+                  ingenieria: { color: '#ef4444', icon: '🔧', nombre: 'Ingeniería' },
+                  'logica-discreta': { color: '#7c3aed', icon: '🔮', nombre: 'Lógica' },
+                  linguistica: { color: '#ec4899', icon: '🗣️', nombre: 'Fonética' },
+                  musica: { color: '#a855f7', icon: '🎼', nombre: 'Música' },
+                  programacion: { color: '#14b8a6', icon: '💻', nombre: 'Programación' },
+                  'programacion-avanzada': { color: '#8b5cf6', icon: '💻', nombre: 'Prog. Avanzada' },
+                  'quimica-avanzada': { color: '#c084fc', icon: '🧬', nombre: 'Química Avz.' },
+                  probabilidad: { color: '#8b5cf6', icon: '🎲', nombre: 'Probabilidad' },
+                  datos: { color: '#06b6d4', icon: '📊', nombre: 'Datos' },
+                  arte: { color: '#f472b6', icon: '🎨', nombre: 'Arte' }
+                };
+
+                return (
+                  <div style={{marginBottom: '2rem'}}>
+                    <h3 style={{
+                      margin: '0 0 1rem 0',
+                      color: 'white',
+                      fontSize: '1.25rem'
+                    }}>
+                      🃏 Flashcards en esta carpeta ({flashcardsAqui.length})
+                    </h3>
+                    <div className="flashcards-grid">
+                      {flashcardsAqui.map((flashcard) => {
+                        const config = tipoConfig[flashcard.tipo] || tipoConfig.clasica;
+                        const estadoColor = {
+                          nueva: '#ff9800',
+                          en_progreso: '#3b82f6',
+                          dominada: '#4caf50'
+                        }[flashcard.estadoRevision] || '#ff9800';
+
+                        return (
+                          <div key={flashcard.id} className="flashcard-card">
+                            <div className="flashcard-type-badge" style={{
+                              background: `linear-gradient(135deg, ${config.color} 0%, ${config.color}dd 100%)`
+                            }}>
+                              <span>{config.icon}</span>
+                              <span>{config.nombre}</span>
+                            </div>
+                            <div className="flashcard-body" onClick={() => setFlashcardVistaCompleta(flashcard)} style={{cursor: 'pointer'}}>
+                              <h3 className="flashcard-titulo">{flashcard.titulo}</h3>
+                              <div className="flashcard-preview">
+                                {flashcard.contenido.substring(0, 100)}
+                                {flashcard.contenido.length > 100 && '...'}
+                              </div>
+                            </div>
+
+                            {/* Footer con metadata */}
+                            <div className="flashcard-footer">
+                              <div style={{display: 'flex', flexDirection: 'column', gap: '0.25rem'}}>
+                                {flashcard.tema && (
+                                  <span className="flashcard-tema">
+                                    🏷️ {flashcard.tema}
+                                  </span>
+                                )}
+                                {flashcard.proximaRevision && (() => {
+                                  const ahora = new Date();
+                                  const proxima = new Date(flashcard.proximaRevision);
+                                  const diff = Math.ceil((proxima - ahora) / (1000 * 60 * 60 * 24));
+                                  const necesitaRepaso = diff <= 0;
+                                  
+                                  return (
+                                    <span style={{
+                                      color: necesitaRepaso ? '#fbbf24' : '#94a3b8',
+                                      fontSize: '0.7rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {necesitaRepaso ? '⏰ Repasar ahora' : `📅 Repaso en ${diff} día${diff !== 1 ? 's' : ''}`}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <span className="flashcard-estado" style={{
+                                background: estadoColor,
+                                color: 'white',
+                                padding: '0.3rem 0.6rem',
+                                borderRadius: '12px',
+                                fontSize: '0.75rem',
+                                fontWeight: '600'
+                              }}>
+                                {flashcard.estadoRevision === 'nueva' && '🆕 Nueva'}
+                                {flashcard.estadoRevision === 'en_progreso' && '📖 En Progreso'}
+                                {flashcard.estadoRevision === 'dominada' && '✅ Dominada'}
+                              </span>
+                            </div>
+
+                            {/* Acciones */}
+                            <div className="flashcard-actions">
+                              <button 
+                                className="btn-flashcard-action"
+                                onClick={() => setFlashcardVistaCompleta(flashcard)}
+                                title="Ver completa"
+                                style={{
+                                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                  color: 'white',
+                                  fontWeight: '600'
+                                }}
+                              >
+                                👁️
+                              </button>
+                              <button 
+                                className="btn-flashcard-action"
+                                onClick={() => {
+                                  setFlashcardEditando(flashcard);
+                                  setFormDataFlashcard(flashcard);
+                                  setModalNuevaFlashcard(true);
+                                }}
+                                title="Editar"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                className="btn-menu-dots"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuAbierto(menuAbierto === `flashcard-${flashcard.id}` ? null : `flashcard-${flashcard.id}`);
+                                }}
+                                title="Más opciones"
+                              >
+                                ⋮
+                              </button>
+                              {menuAbierto === `flashcard-${flashcard.id}` && (
+                                <div className="menu-dropdown">
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    const rutaCompleta = flashcard.carpeta 
+                                      ? `flashcards/${flashcard.carpeta}/flashcards.json`
+                                      : 'flashcards/flashcards.json';
+                                    mostrarRutaArchivo(rutaCompleta, flashcard.titulo, 'flashcard');
+                                  }}>
+                                    📍 Ver Ruta
+                                  </button>
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMenuAbierto(null);
+                                    eliminarFlashcard(flashcard.id);
+                                  }} className="btn-menu-eliminar">
+                                    🗑️ Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Grid de Flashcards */}
             {carpetaFlashcardActual && (() => {
@@ -20877,23 +25610,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             ✏️
                           </button>
                           <button 
-                            className="btn-flashcard-action"
-                            onClick={() => {
-                              // Copiar flashcard
-                              const nueva = {
-                                ...flashcard,
-                                id: Date.now(),
-                                titulo: `${flashcard.titulo} (copia)`,
-                                estadoRevision: 'nueva',
-                                fecha: new Date().toISOString()
-                              };
-                              guardarFlashcard(nueva);
-                            }}
-                            title="Duplicar"
-                          >
-                            📋
-                          </button>
-                          <button 
                             className="btn-flashcard-action danger"
                             onClick={() => eliminarFlashcard(flashcard.id)}
                             title="Eliminar"
@@ -20908,8 +25624,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
               );
             })()}
 
-            {/* Estado vacío - sin carpetas */}
-            {!carpetaFlashcardActual && flashcardsCarpetas.length === 0 && (
+            {/* Estado vacío - sin carpetas Y sin flashcards en ruta actual */}
+            {!carpetaFlashcardActual && flashcardsCarpetas.length === 0 && (() => {
+              // Verificar si hay flashcards en la ruta actual
+              const rutaNormalizada = (rutaFlashcardsActual || '').replace(/\\/g, '/');
+              const flashcardsEnRuta = flashcardsActuales.filter(f => {
+                const carpetaFlashcard = (f.carpeta || '').replace(/\\/g, '/');
+                return carpetaFlashcard === rutaNormalizada;
+              });
+              // Solo mostrar estado vacío si NO hay flashcards en la ruta actual
+              return flashcardsEnRuta.length === 0;
+            })() && (
               <div className="empty-state">
                 <div className="empty-icon">🃏</div>
                 <h3>No tienes flashcards todavía</h3>
@@ -24459,6 +29184,563 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
           </div>
         )}
 
+        {/* ============================================================================
+            🎯 MODAL DE READING COMPREHENSION INTERACTIVO
+            ============================================================================ */}
+        {modoReadingComprehension && ejercicioReadingActivo && (
+          <div className="modal-overlay" onClick={cerrarModoReading}>
+            <div className="modal-examen" onClick={(e) => e.stopPropagation()} style={{maxWidth: '900px'}}>
+              <div className="modal-header" style={{background: 'linear-gradient(135deg, #4A90E2 0%, #667eea 100%)'}}>
+                <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1}}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+                    <button onClick={cerrarModoReading} className="btn-volver" style={{padding: '0.5rem 1rem'}}>
+                      ← Volver
+                    </button>
+                    <h2 style={{margin: 0, color: 'white'}}>📖 Reading Comprehension</h2>
+                    <span style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      padding: '4px 12px',
+                      borderRadius: '16px',
+                      fontSize: '0.85rem',
+                      color: 'white'
+                    }}>
+                      {ejercicioReadingActivo.idioma_completo || 'English'}
+                    </span>
+                  </div>
+                  <div style={{
+                    fontSize: '0.9rem', 
+                    color: 'rgba(255,255,255,0.9)',
+                    paddingLeft: '5.5rem'
+                  }}>
+                    {ejercicioReadingActivo.title || 'Reading Exercise'}
+                  </div>
+                </div>
+                <button onClick={cerrarModoReading} className="btn-close" style={{color: 'white'}}>✕</button>
+              </div>
+              
+              <div className="modal-body" style={{padding: '1.5rem', maxHeight: '75vh', overflowY: 'auto'}}>
+                
+                {/* Si no hay resultados, mostrar el ejercicio para resolver */}
+                {!resultadosReading ? (
+                  <>
+                    {/* Texto de lectura */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, #1e3a5f 0%, #1a1a2e 100%)',
+                      padding: '1.5rem',
+                      borderRadius: '12px',
+                      marginBottom: '1.5rem',
+                      border: '1px solid rgba(74, 144, 226, 0.3)'
+                    }}>
+                      <h3 style={{
+                        marginTop: 0, 
+                        marginBottom: '1rem', 
+                        color: '#4A90E2',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        <span>📜</span>
+                        <span>Reading Passage</span>
+                        <span style={{
+                          fontSize: '0.75rem',
+                          background: 'rgba(74,144,226,0.2)',
+                          padding: '3px 10px',
+                          borderRadius: '12px'
+                        }}>
+                          {ejercicioReadingActivo.difficulty || 'medium'}
+                        </span>
+                      </h3>
+                      <p style={{
+                        lineHeight: '1.8',
+                        fontSize: '1.1rem',
+                        color: '#e2e8f0',
+                        textAlign: 'justify',
+                        margin: 0
+                      }}>
+                        {ejercicioReadingActivo.text}
+                      </p>
+                    </div>
+
+                    {/* Preguntas */}
+                    <div style={{marginBottom: '1.5rem'}}>
+                      <h3 style={{
+                        marginBottom: '1rem',
+                        color: '#667eea',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        <span>❓</span>
+                        <span>Questions ({ejercicioReadingActivo.questions?.length || 0})</span>
+                      </h3>
+                      
+                      {ejercicioReadingActivo.questions?.map((pregunta, index) => (
+                        <div 
+                          key={pregunta.id || index}
+                          style={{
+                            background: '#1a1a2e',
+                            border: '1px solid rgba(102, 126, 234, 0.3)',
+                            borderRadius: '10px',
+                            padding: '1.25rem',
+                            marginBottom: '1rem'
+                          }}
+                        >
+                          {/* Encabezado de pregunta */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem',
+                            marginBottom: '1rem'
+                          }}>
+                            <span style={{
+                              background: '#667eea',
+                              color: 'white',
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.9rem',
+                              fontWeight: 'bold'
+                            }}>
+                              {index + 1}
+                            </span>
+                            <span style={{
+                              background: pregunta.type === 'mcq' ? 'rgba(102, 126, 234, 0.2)' :
+                                         pregunta.type === 'true_false' ? 'rgba(245, 158, 11, 0.2)' :
+                                         'rgba(16, 185, 129, 0.2)',
+                              color: pregunta.type === 'mcq' ? '#a78bfa' :
+                                     pregunta.type === 'true_false' ? '#fbbf24' :
+                                     '#34d399',
+                              padding: '4px 10px',
+                              borderRadius: '12px',
+                              fontSize: '0.75rem',
+                              fontWeight: '500'
+                            }}>
+                              {pregunta.type === 'mcq' ? '✅ Multiple Choice' :
+                               pregunta.type === 'true_false' ? '✓✗ True/False' :
+                               '✍️ Short Answer'}
+                            </span>
+                          </div>
+                          
+                          {/* Texto de la pregunta */}
+                          <p style={{
+                            fontSize: '1rem',
+                            color: '#e2e8f0',
+                            marginBottom: '1rem',
+                            lineHeight: '1.6'
+                          }}>
+                            {pregunta.question || pregunta.statement}
+                          </p>
+                          
+                          {/* Opciones según tipo */}
+                          {pregunta.type === 'mcq' && pregunta.options && (
+                            <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                              {pregunta.options.map((opcion, optIdx) => (
+                                <label 
+                                  key={optIdx}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    padding: '0.75rem 1rem',
+                                    background: respuestasReading[String(pregunta.id)] === String(optIdx) 
+                                      ? 'rgba(102, 126, 234, 0.3)' 
+                                      : 'rgba(255,255,255,0.05)',
+                                    border: respuestasReading[String(pregunta.id)] === String(optIdx)
+                                      ? '1px solid #667eea'
+                                      : '1px solid rgba(255,255,255,0.1)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`q_${pregunta.id}`}
+                                    checked={respuestasReading[String(pregunta.id)] === String(optIdx)}
+                                    onChange={() => actualizarRespuestaReading(String(pregunta.id), String(optIdx))}
+                                    style={{accentColor: '#667eea'}}
+                                  />
+                                  <span style={{color: '#e2e8f0'}}>{opcion}</span>
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {pregunta.type === 'true_false' && (
+                            <div style={{display: 'flex', gap: '1rem'}}>
+                              <label 
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.75rem 1.5rem',
+                                  background: respuestasReading[String(pregunta.id)] === 'true' 
+                                    ? 'rgba(16, 185, 129, 0.3)' 
+                                    : 'rgba(255,255,255,0.05)',
+                                  border: respuestasReading[String(pregunta.id)] === 'true'
+                                    ? '1px solid #10b981'
+                                    : '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`q_${pregunta.id}`}
+                                  checked={respuestasReading[String(pregunta.id)] === 'true'}
+                                  onChange={() => actualizarRespuestaReading(String(pregunta.id), 'true')}
+                                  style={{accentColor: '#10b981'}}
+                                />
+                                <span style={{color: '#10b981'}}>✓ True</span>
+                              </label>
+                              <label 
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  padding: '0.75rem 1.5rem',
+                                  background: respuestasReading[String(pregunta.id)] === 'false' 
+                                    ? 'rgba(239, 68, 68, 0.3)' 
+                                    : 'rgba(255,255,255,0.05)',
+                                  border: respuestasReading[String(pregunta.id)] === 'false'
+                                    ? '1px solid #ef4444'
+                                    : '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: '8px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`q_${pregunta.id}`}
+                                  checked={respuestasReading[String(pregunta.id)] === 'false'}
+                                  onChange={() => actualizarRespuestaReading(String(pregunta.id), 'false')}
+                                  style={{accentColor: '#ef4444'}}
+                                />
+                                <span style={{color: '#ef4444'}}>✗ False</span>
+                              </label>
+                            </div>
+                          )}
+                          
+                          {pregunta.type === 'short_answer' && (
+                            <textarea
+                              value={respuestasReading[String(pregunta.id)] || ''}
+                              onChange={(e) => actualizarRespuestaReading(String(pregunta.id), e.target.value)}
+                              placeholder="Write your answer here..."
+                              rows={3}
+                              style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: '#0d1117',
+                                border: '1px solid rgba(255,255,255,0.15)',
+                                borderRadius: '8px',
+                                color: '#e2e8f0',
+                                fontSize: '1rem',
+                                resize: 'vertical'
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Botón de evaluar */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '1rem',
+                      paddingTop: '1rem',
+                      borderTop: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                      <button
+                        onClick={evaluarEjercicioReading}
+                        disabled={evaluandoReading}
+                        style={{
+                          padding: '1rem 2rem',
+                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          border: 'none',
+                          borderRadius: '10px',
+                          color: 'white',
+                          fontSize: '1.1rem',
+                          fontWeight: '600',
+                          cursor: evaluandoReading ? 'not-allowed' : 'pointer',
+                          opacity: evaluandoReading ? 0.7 : 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        {evaluandoReading ? (
+                          <>⏳ Evaluando con IA...</>
+                        ) : (
+                          <>🎯 Evaluar Respuestas</>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  /* ============ RESULTADOS DE LA EVALUACIÓN ============ */
+                  <div>
+                    {/* Resumen general */}
+                    <div style={{
+                      background: resultadosReading.aprobado 
+                        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.1) 100%)'
+                        : 'linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.1) 100%)',
+                      padding: '1.5rem',
+                      borderRadius: '12px',
+                      marginBottom: '1.5rem',
+                      textAlign: 'center',
+                      border: resultadosReading.aprobado 
+                        ? '1px solid rgba(16, 185, 129, 0.4)'
+                        : '1px solid rgba(239, 68, 68, 0.4)'
+                    }}>
+                      <div style={{fontSize: '3rem', marginBottom: '0.5rem'}}>
+                        {resultadosReading.aprobado ? '🎉' : '📚'}
+                      </div>
+                      <h2 style={{
+                        margin: 0,
+                        color: resultadosReading.aprobado ? '#10b981' : '#f87171',
+                        fontSize: '2rem'
+                      }}>
+                        {resultadosReading.porcentaje}%
+                      </h2>
+                      <p style={{
+                        margin: '0.5rem 0 0 0',
+                        color: '#94a3b8'
+                      }}>
+                        {resultadosReading.puntaje_total} / {resultadosReading.puntaje_maximo} puntos
+                      </p>
+                    </div>
+
+                    {/* Estadísticas por tipo */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: '1rem',
+                      marginBottom: '1.5rem'
+                    }}>
+                      <div style={{
+                        background: '#1a1a2e',
+                        padding: '1rem',
+                        borderRadius: '10px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{fontSize: '1.5rem', marginBottom: '0.25rem'}}>✅</div>
+                        <div style={{color: '#a78bfa', fontWeight: '600'}}>
+                          {resultadosReading.estadisticas?.mcq?.correct || 0}/{resultadosReading.estadisticas?.mcq?.total || 0}
+                        </div>
+                        <div style={{color: '#64748b', fontSize: '0.8rem'}}>MCQ</div>
+                      </div>
+                      <div style={{
+                        background: '#1a1a2e',
+                        padding: '1rem',
+                        borderRadius: '10px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{fontSize: '1.5rem', marginBottom: '0.25rem'}}>✓✗</div>
+                        <div style={{color: '#fbbf24', fontWeight: '600'}}>
+                          {resultadosReading.estadisticas?.true_false?.correct || 0}/{resultadosReading.estadisticas?.true_false?.total || 0}
+                        </div>
+                        <div style={{color: '#64748b', fontSize: '0.8rem'}}>True/False</div>
+                      </div>
+                      <div style={{
+                        background: '#1a1a2e',
+                        padding: '1rem',
+                        borderRadius: '10px',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{fontSize: '1.5rem', marginBottom: '0.25rem'}}>✍️</div>
+                        <div style={{color: '#34d399', fontWeight: '600'}}>
+                          {resultadosReading.estadisticas?.short_answer?.satisfactory || 0}/{resultadosReading.estadisticas?.short_answer?.total || 0}
+                        </div>
+                        <div style={{color: '#64748b', fontSize: '0.8rem'}}>Short Answer</div>
+                      </div>
+                    </div>
+
+                    {/* Análisis inteligente */}
+                    {resultadosReading.analisis_inteligente && (
+                      <div style={{marginBottom: '1.5rem'}}>
+                        <h3 style={{color: '#667eea', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                          <span>🧠</span>
+                          <span>Análisis Inteligente</span>
+                        </h3>
+                        
+                        {/* Mensaje general */}
+                        {resultadosReading.analisis_inteligente.mensaje_general && (
+                          <div style={{
+                            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(74, 144, 226, 0.1) 100%)',
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            marginBottom: '1rem',
+                            borderLeft: '4px solid #667eea'
+                          }}>
+                            <p style={{margin: 0, color: '#e2e8f0', lineHeight: '1.6'}}>
+                              {resultadosReading.analisis_inteligente.mensaje_general}
+                            </p>
+                          </div>
+                        )}
+                        
+                        <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem'}}>
+                          {/* Fortalezas */}
+                          <div style={{
+                            background: 'rgba(16, 185, 129, 0.1)',
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(16, 185, 129, 0.3)'
+                          }}>
+                            <h4 style={{color: '#10b981', marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                              <span>💪</span>
+                              <span>Fortalezas</span>
+                            </h4>
+                            <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#a7f3d0'}}>
+                              {resultadosReading.analisis_inteligente.fortalezas?.map((f, i) => (
+                                <li key={i} style={{marginBottom: '0.5rem', lineHeight: '1.4'}}>{f}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          {/* Debilidades */}
+                          <div style={{
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(245, 158, 11, 0.3)'
+                          }}>
+                            <h4 style={{color: '#f59e0b', marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                              <span>📈</span>
+                              <span>Áreas a Mejorar</span>
+                            </h4>
+                            <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#fde68a'}}>
+                              {resultadosReading.analisis_inteligente.debilidades?.map((d, i) => (
+                                <li key={i} style={{marginBottom: '0.5rem', lineHeight: '1.4'}}>{d}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                        
+                        {/* Recomendaciones */}
+                        {resultadosReading.analisis_inteligente.recomendaciones?.length > 0 && (
+                          <div style={{
+                            background: 'rgba(102, 126, 234, 0.1)',
+                            padding: '1rem',
+                            borderRadius: '10px',
+                            marginTop: '1rem',
+                            border: '1px solid rgba(102, 126, 234, 0.3)'
+                          }}>
+                            <h4 style={{color: '#a78bfa', marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                              <span>💡</span>
+                              <span>Recomendaciones para Practicar</span>
+                            </h4>
+                            <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#c4b5fd'}}>
+                              {resultadosReading.analisis_inteligente.recomendaciones?.map((r, i) => (
+                                <li key={i} style={{marginBottom: '0.5rem', lineHeight: '1.4'}}>{r}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Detalle de respuestas */}
+                    <details style={{marginBottom: '1rem'}}>
+                      <summary style={{
+                        cursor: 'pointer',
+                        padding: '0.75rem 1rem',
+                        background: '#1a1a2e',
+                        borderRadius: '8px',
+                        color: '#94a3b8'
+                      }}>
+                        📋 Ver detalle de respuestas ({resultadosReading.resultados_por_pregunta?.length || 0})
+                      </summary>
+                      <div style={{marginTop: '0.5rem'}}>
+                        {resultadosReading.resultados_por_pregunta?.map((res, idx) => (
+                          <div 
+                            key={idx}
+                            style={{
+                              padding: '1rem',
+                              background: res.correct ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                              borderRadius: '8px',
+                              marginBottom: '0.5rem',
+                              borderLeft: `4px solid ${res.correct ? '#10b981' : '#ef4444'}`
+                            }}
+                          >
+                            <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem'}}>
+                              <span style={{fontWeight: '600', color: res.correct ? '#10b981' : '#ef4444'}}>
+                                {res.correct ? '✓ Correcto' : '✗ Incorrecto'}
+                              </span>
+                              <span style={{color: '#64748b'}}>{res.points}/10 pts</span>
+                            </div>
+                            <p style={{margin: '0 0 0.5rem 0', color: '#e2e8f0', fontSize: '0.9rem'}}>
+                              {res.question}
+                            </p>
+                            <p style={{margin: 0, color: '#94a3b8', fontSize: '0.85rem'}}>
+                              {res.feedback}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+
+                    {/* Botones de acción */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      gap: '1rem',
+                      paddingTop: '1rem',
+                      borderTop: '1px solid rgba(255,255,255,0.1)'
+                    }}>
+                      <button
+                        onClick={reiniciarEjercicioReading}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          background: 'rgba(102, 126, 234, 0.2)',
+                          border: '1px solid #667eea',
+                          borderRadius: '8px',
+                          color: '#a78bfa',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🔄 Intentar de Nuevo
+                      </button>
+                      <button
+                        onClick={() => {
+                          cerrarModoReading();
+                          setModalPracticaAbierto(true);
+                        }}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          background: 'linear-gradient(135deg, #4A90E2 0%, #667eea 100%)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: 'white',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        📖 Nuevo Ejercicio
+                      </button>
+                      <button
+                        onClick={cerrarModoReading}
+                        style={{
+                          padding: '0.75rem 1.5rem',
+                          background: 'rgba(255,255,255,0.1)',
+                          border: '1px solid rgba(255,255,255,0.2)',
+                          borderRadius: '8px',
+                          color: '#94a3b8',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✕ Cerrar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal de Examen */}
         {modalExamenAbierto && (
           <div className="modal-overlay" onClick={cerrarExamen}>
@@ -24542,9 +29824,76 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               pregunta.tipo === 'writing_sentence_builder' ? '🧩 Sentence Builder' :
                               pregunta.tipo === 'writing_picture_description' ? '🖼️ Picture Description' :
                               pregunta.tipo === 'writing_email' ? '📧 Writing Email' :
+                              // Nuevos tipos sin prefijo writing_
+                              pregunta.tipo === 'sentence_builder' ? '🧩 Sentence Builder' :
+                              pregunta.tipo === 'formal_email' ? '📧 Formal Email' :
+                              pregunta.tipo === 'picture_description' ? '🖼️ Picture Description' :
                               '📖 Desarrollo'
                             }</span>
                             <span className="pregunta-puntos">{pregunta.puntos} pts</span>
+                            {/* 🔄 Botón regenerar pregunta */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalRegenerar(index, pregunta);
+                              }}
+                              title="Regenerar pregunta"
+                              style={{
+                                marginLeft: 'auto',
+                                padding: '4px 8px',
+                                background: 'rgba(59, 130, 246, 0.2)',
+                                border: '1px solid rgba(59, 130, 246, 0.4)',
+                                borderRadius: '6px',
+                                color: '#3b82f6',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.4)';
+                                e.currentTarget.style.borderColor = '#3b82f6';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+                                e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+                              }}
+                            >
+                              🔄
+                            </button>
+                            {/* 🗑️ Botón eliminar pregunta */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                eliminarPreguntaPractica(index);
+                              }}
+                              title="Eliminar pregunta"
+                              style={{
+                                padding: '4px 8px',
+                                background: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.4)';
+                                e.currentTarget.style.borderColor = '#ef4444';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                              }}
+                            >
+                              🗑️
+                            </button>
                           </div>
                           
                           {/* Mostrar escenario para casos de estudio */}
@@ -25362,6 +30711,2288 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                               )}
                             </div>
                           )}
+
+                          {/* Ejercicios de Idiomas - Comprensión Lectora y Expresión Escrita */}
+                          {(pregunta.tipo.startsWith('reading_') || pregunta.tipo.startsWith('writing_') || ['sentence_builder', 'formal_email', 'picture_description'].includes(pregunta.tipo)) && (
+                            <div className="ejercicio-idiomas">
+                              {/* Mostrar idioma (solo si es válido y no "undefined" literal) */}
+                              {pregunta.metadata?.idioma && pregunta.metadata.idioma !== 'undefined' && (
+                                <div style={{
+                                  display: 'inline-block',
+                                  padding: '4px 12px',
+                                  background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                  borderRadius: '20px',
+                                  fontSize: '0.85rem',
+                                  marginBottom: '1rem',
+                                  color: '#fff'
+                                }}>
+                                  🌍 {pregunta.metadata.idioma.charAt(0).toUpperCase() + pregunta.metadata.idioma.slice(1)}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar texto de lectura si existe (excepto writing_short que tiene su propio renderizado) */}
+                              {pregunta.metadata?.texto_lectura && pregunta.tipo !== 'writing_short' && (
+                                <div style={{
+                                  background: 'rgba(255, 255, 255, 0.05)',
+                                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                                  borderRadius: '12px',
+                                  padding: '1rem',
+                                  marginBottom: '1rem',
+                                  fontStyle: 'italic',
+                                  lineHeight: '1.6'
+                                }}>
+                                  <h4 style={{margin: '0 0 0.5rem 0', color: '#a855f7', fontSize: '0.9rem'}}>📖 Texto de lectura:</h4>
+                                  <p style={{margin: 0, whiteSpace: 'pre-wrap'}}>{pregunta.metadata.texto_lectura}</p>
+                                </div>
+                              )}
+                              
+                              {/* Mostrar texto con huecos para Cloze */}
+                              {pregunta.metadata?.texto_con_huecos && (
+                                (() => {
+                                  // Dividir el texto por {} para crear los huecos
+                                  const partes = pregunta.metadata.texto_con_huecos.split(/\{\}/g);
+                                  const numHuecos = partes.length - 1;
+                                  const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                  
+                                  // Asegurar que el array tenga el tamaño correcto
+                                  while (respuestasArray.length < numHuecos) {
+                                    respuestasArray.push('');
+                                  }
+                                  
+                                  return (
+                                    <div style={{marginBottom: '1rem'}}>
+                                      <h4 style={{color: '#22c55e', fontSize: '0.9rem', marginBottom: '0.75rem'}}>📝 Completa el texto con las palabras correctas:</h4>
+                                      
+                                      {/* Texto con inputs inline */}
+                                      <div style={{
+                                        background: 'rgba(34, 197, 94, 0.1)',
+                                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                                        borderRadius: '12px',
+                                        padding: '1rem',
+                                        marginBottom: '1rem',
+                                        lineHeight: '2.2',
+                                        fontSize: '1rem'
+                                      }}>
+                                        {partes.map((parte, idx) => (
+                                          <span key={idx}>
+                                            {parte}
+                                            {idx < numHuecos && (
+                                              <input
+                                                type="text"
+                                                value={respuestasArray[idx] || ''}
+                                                onChange={(e) => {
+                                                  const nuevasRespuestas = [...respuestasArray];
+                                                  nuevasRespuestas[idx] = e.target.value;
+                                                  actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                                }}
+                                                placeholder={`(${idx + 1})`}
+                                                style={{
+                                                  width: '120px',
+                                                  padding: '4px 8px',
+                                                  margin: '0 4px',
+                                                  background: '#0f0f1a',
+                                                  border: '2px solid #22c55e',
+                                                  borderRadius: '6px',
+                                                  color: '#22c55e',
+                                                  fontWeight: '600',
+                                                  textAlign: 'center',
+                                                  fontSize: '0.9rem'
+                                                }}
+                                              />
+                                            )}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      
+                                      {/* Banco de palabras */}
+                                      {pregunta.metadata.opciones_disponibles && pregunta.metadata.opciones_disponibles.length > 0 && (
+                                        <div style={{
+                                          background: 'rgba(251, 191, 36, 0.1)',
+                                          border: '1px solid rgba(251, 191, 36, 0.3)',
+                                          borderRadius: '8px',
+                                          padding: '0.75rem'
+                                        }}>
+                                          <span style={{color: '#fbbf24', fontSize: '0.85rem', fontWeight: '600'}}>📚 Banco de palabras: </span>
+                                          <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                            {pregunta.metadata.opciones_disponibles.map((palabra, pIdx) => (
+                                              <span key={pIdx} style={{
+                                                padding: '4px 10px',
+                                                background: 'rgba(251, 191, 36, 0.2)',
+                                                border: '1px solid rgba(251, 191, 36, 0.4)',
+                                                borderRadius: '6px',
+                                                color: '#fcd34d',
+                                                fontSize: '0.9rem',
+                                                cursor: 'pointer'
+                                              }}
+                                              title="Haz clic para copiar"
+                                              onClick={() => navigator.clipboard.writeText(palabra)}
+                                              >
+                                                {palabra}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()
+                              )}
+                              
+                              {/* Mostrar preguntas de comprensión si existen (excluir reading_written que tiene su propio renderer) */}
+                              {pregunta.tipo !== 'reading_written' && pregunta.metadata?.preguntas_comprension && pregunta.metadata.preguntas_comprension.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#e2e8f0', fontSize: '0.9rem', marginBottom: '0.5rem'}}>📝 Responde las siguientes preguntas:</h4>
+                                  {pregunta.metadata.preguntas_comprension.map((pc, pcIndex) => (
+                                    <div key={pcIndex} style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '0.5rem'
+                                    }}>
+                                      <p style={{margin: '0 0 0.5rem 0', color: '#93c5fd'}}>{pcIndex + 1}. {pc.pregunta}</p>
+                                      <input
+                                        type="text"
+                                        placeholder="Tu respuesta..."
+                                        value={(respuestasUsuario[index] || '').split('|||')[pcIndex] || ''}
+                                        onChange={(e) => {
+                                          const respuestas = (respuestasUsuario[index] || '').split('|||');
+                                          respuestas[pcIndex] = e.target.value;
+                                          actualizarRespuesta(index, respuestas.join('|||'));
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          padding: '0.5rem',
+                                          background: '#0f0f1a',
+                                          border: '1px solid #3a3a4e',
+                                          borderRadius: '6px',
+                                          color: '#e2e8f0'
+                                        }}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar preguntas de habilidades de lectura (Reading Skills - 5 MCQ) */}
+                              {pregunta.metadata?.preguntas_skill && pregunta.metadata.preguntas_skill.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#fbbf24', fontSize: '0.9rem', marginBottom: '0.75rem'}}>🧠 Habilidades de Lectura - Responde las 5 preguntas:</h4>
+                                  {pregunta.metadata.preguntas_skill.map((skill, skillIndex) => {
+                                    const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                    const respuestaActual = respuestasArray[skillIndex] || '';
+                                    
+                                    // Etiquetas para cada tipo de skill
+                                    const skillLabels = {
+                                      main_idea: { emoji: '🎯', label: 'Idea Principal', color: '#22c55e' },
+                                      detail: { emoji: '🔍', label: 'Detalle', color: '#3b82f6' },
+                                      inference: { emoji: '💭', label: 'Inferencia', color: '#a855f7' },
+                                      purpose: { emoji: '📋', label: 'Propósito', color: '#f59e0b' },
+                                      tone: { emoji: '🎭', label: 'Tono', color: '#ec4899' }
+                                    };
+                                    
+                                    const skillInfo = skillLabels[skill.tipo_skill] || { emoji: '❓', label: skill.tipo_skill, color: '#94a3b8' };
+                                    
+                                    return (
+                                      <div key={skillIndex} style={{
+                                        background: 'rgba(251, 191, 36, 0.1)',
+                                        border: '1px solid rgba(251, 191, 36, 0.3)',
+                                        borderRadius: '8px',
+                                        padding: '0.75rem',
+                                        marginBottom: '0.75rem'
+                                      }}>
+                                        <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem'}}>
+                                          <span style={{
+                                            padding: '2px 8px',
+                                            background: `${skillInfo.color}33`,
+                                            border: `1px solid ${skillInfo.color}`,
+                                            borderRadius: '12px',
+                                            fontSize: '0.75rem',
+                                            color: skillInfo.color
+                                          }}>
+                                            {skillInfo.emoji} {skillInfo.label}
+                                          </span>
+                                        </div>
+                                        <p style={{margin: '0 0 0.75rem 0', color: '#fcd34d', fontWeight: '500'}}>
+                                          {skillIndex + 1}. {skill.pregunta}
+                                        </p>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                          {skill.opciones.map((opcion, opIdx) => {
+                                            const letra = opcion.charAt(0);
+                                            const isSelected = respuestaActual === letra;
+                                            return (
+                                              <label key={opIdx} style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                padding: '0.5rem 0.75rem',
+                                                background: isSelected ? 'rgba(251, 191, 36, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+                                                border: `1px solid ${isSelected ? '#fbbf24' : 'rgba(255, 255, 255, 0.1)'}`,
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                color: isSelected ? '#fcd34d' : '#e2e8f0'
+                                              }}>
+                                                <input
+                                                  type="radio"
+                                                  name={`skill-${index}-${skillIndex}`}
+                                                  checked={isSelected}
+                                                  onChange={() => {
+                                                    const numSkills = pregunta.metadata.preguntas_skill.length;
+                                                    const raw = respuestasUsuario[index] || '';
+                                                    let respuestas = raw ? raw.split('|||') : [];
+                                                    while (respuestas.length < numSkills) respuestas.push('');
+                                                    respuestas[skillIndex] = letra;
+                                                    actualizarRespuesta(index, respuestas.join('|||'));
+                                                  }}
+                                                  style={{accentColor: '#fbbf24'}}
+                                                />
+                                                {opcion}
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar ejercicio de Relacionar Ideas (Matching) */}
+                              {pregunta.metadata?.parrafos && pregunta.metadata?.oraciones && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#ec4899', fontSize: '0.9rem', marginBottom: '0.75rem'}}>🔗 Relaciona cada oración con el párrafo correcto:</h4>
+                                  
+                                  {/* Mostrar los párrafos */}
+                                  <div style={{
+                                    background: 'rgba(236, 72, 153, 0.1)',
+                                    border: '1px solid rgba(236, 72, 153, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    marginBottom: '1rem'
+                                  }}>
+                                    <h5 style={{color: '#f9a8d4', margin: '0 0 0.75rem 0', fontSize: '0.85rem'}}>📄 Párrafos:</h5>
+                                    {pregunta.metadata.parrafos.map((parrafo, pIdx) => (
+                                      <div key={pIdx} style={{
+                                        marginBottom: '0.75rem',
+                                        padding: '0.75rem',
+                                        background: 'rgba(0, 0, 0, 0.2)',
+                                        borderRadius: '8px',
+                                        borderLeft: '3px solid #ec4899'
+                                      }}>
+                                        <span style={{
+                                          display: 'inline-block',
+                                          padding: '2px 10px',
+                                          background: '#ec4899',
+                                          borderRadius: '4px',
+                                          fontWeight: 'bold',
+                                          marginRight: '0.5rem',
+                                          fontSize: '0.85rem'
+                                        }}>
+                                          {parrafo.letra}
+                                        </span>
+                                        <span style={{color: '#e2e8f0', lineHeight: '1.5'}}>{parrafo.texto}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  
+                                  {/* Mostrar las oraciones con dropdown para seleccionar párrafo */}
+                                  <div style={{
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '1rem'
+                                  }}>
+                                    <h5 style={{color: '#93c5fd', margin: '0 0 0.75rem 0', fontSize: '0.85rem'}}>📝 Empareja cada oración:</h5>
+                                    {pregunta.metadata.oraciones.map((oracion, oIdx) => {
+                                      const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                      const respuestaActual = respuestasArray[oIdx] || '';
+                                      
+                                      return (
+                                        <div key={oIdx} style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.75rem',
+                                          marginBottom: '0.75rem',
+                                          padding: '0.5rem',
+                                          background: 'rgba(0, 0, 0, 0.2)',
+                                          borderRadius: '8px'
+                                        }}>
+                                          <span style={{
+                                            minWidth: '24px',
+                                            height: '24px',
+                                            background: '#3b82f6',
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontWeight: 'bold',
+                                            fontSize: '0.8rem'
+                                          }}>
+                                            {oIdx + 1}
+                                          </span>
+                                          <span style={{flex: 1, color: '#e2e8f0', fontSize: '0.9rem'}}>{oracion.texto}</span>
+                                          <select
+                                            value={respuestaActual}
+                                            onChange={(e) => {
+                                              const numOraciones = pregunta.metadata.oraciones.length;
+                                              const raw = respuestasUsuario[index] || '';
+                                              let respuestas = raw ? raw.split('|||') : [];
+                                              while (respuestas.length < numOraciones) respuestas.push('');
+                                              respuestas[oIdx] = e.target.value;
+                                              actualizarRespuesta(index, respuestas.join('|||'));
+                                            }}
+                                            style={{
+                                              padding: '0.5rem',
+                                              background: respuestaActual ? '#ec4899' : '#1f2937',
+                                              border: '2px solid #ec4899',
+                                              borderRadius: '6px',
+                                              color: '#fff',
+                                              fontWeight: 'bold',
+                                              cursor: 'pointer',
+                                              minWidth: '80px'
+                                            }}
+                                          >
+                                            <option value="">--</option>
+                                            {pregunta.metadata.parrafos.map((p, pIdx) => (
+                                              <option key={pIdx} value={p.letra}>Párrafo {p.letra}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Mostrar ejercicio de Comprensión Lectora (reading_comprehension con MCQ) */}
+                              {pregunta.tipo === 'reading_comprehension' && pregunta.metadata?.preguntas && pregunta.metadata.preguntas.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#3b82f6', fontSize: '0.9rem', marginBottom: '0.75rem'}}>📖 Responde las preguntas de comprensión:</h4>
+                                  
+                                  {pregunta.metadata.preguntas.map((preguntaMCQ, mcqIndex) => {
+                                    const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                    const respuestaActual = respuestasArray[mcqIndex] || '';
+                                    
+                                    return (
+                                      <div key={mcqIndex} style={{
+                                        background: 'rgba(59, 130, 246, 0.1)',
+                                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                                        borderRadius: '8px',
+                                        padding: '0.75rem',
+                                        marginBottom: '0.75rem'
+                                      }}>
+                                        <p style={{margin: '0 0 0.75rem 0', color: '#93c5fd', fontWeight: '500'}}>
+                                          {mcqIndex + 1}. {preguntaMCQ.pregunta}
+                                        </p>
+                                        <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                          {preguntaMCQ.opciones.map((opcion, opIdx) => {
+                                            const letra = opcion.charAt(0);
+                                            const isSelected = respuestaActual === letra;
+                                            return (
+                                              <label key={opIdx} style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem',
+                                                padding: '0.5rem 0.75rem',
+                                                background: isSelected ? 'rgba(59, 130, 246, 0.3)' : 'rgba(0, 0, 0, 0.2)',
+                                                border: `1px solid ${isSelected ? '#3b82f6' : 'rgba(255, 255, 255, 0.1)'}`,
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                color: isSelected ? '#93c5fd' : '#e2e8f0'
+                                              }}>
+                                                <input
+                                                  type="radio"
+                                                  name={`comprehension-${index}-${mcqIndex}`}
+                                                  checked={isSelected}
+                                                  onChange={() => {
+                                                    const numPreguntas = pregunta.metadata.preguntas.length;
+                                                    const raw = respuestasUsuario[index] || '';
+                                                    let respuestas = raw ? raw.split('|||') : [];
+                                                    while (respuestas.length < numPreguntas) respuestas.push('');
+                                                    respuestas[mcqIndex] = letra;
+                                                    actualizarRespuesta(index, respuestas.join('|||'));
+                                                  }}
+                                                  style={{accentColor: '#3b82f6'}}
+                                                />
+                                                {opcion}
+                                              </label>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar ejercicio de Comprensión Escrita (reading_written con respuestas escritas) */}
+                              {pregunta.tipo === 'reading_written' && pregunta.metadata?.preguntas_comprension && pregunta.metadata.preguntas_comprension.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#22c55e', fontSize: '0.9rem', marginBottom: '0.75rem'}}>✍️ Responde las preguntas por escrito:</h4>
+                                  
+                                  {pregunta.metadata.preguntas_comprension.map((preguntaComp, compIndex) => {
+                                    const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                    const respuestaActual = respuestasArray[compIndex] || '';
+                                    
+                                    return (
+                                      <div key={compIndex} style={{
+                                        background: 'rgba(34, 197, 94, 0.1)',
+                                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                                        borderRadius: '8px',
+                                        padding: '0.75rem',
+                                        marginBottom: '0.75rem'
+                                      }}>
+                                        <p style={{margin: '0 0 0.75rem 0', color: '#86efac', fontWeight: '500'}}>
+                                          {compIndex + 1}. {preguntaComp.pregunta}
+                                        </p>
+                                        <textarea
+                                          value={respuestaActual}
+                                          onChange={(e) => {
+                                            const numPreguntas = pregunta.metadata.preguntas_comprension.length;
+                                            const raw = respuestasUsuario[index] || '';
+                                            let respuestas = raw ? raw.split('|||') : [];
+                                            while (respuestas.length < numPreguntas) respuestas.push('');
+                                            respuestas[compIndex] = e.target.value;
+                                            actualizarRespuesta(index, respuestas.join('|||'));
+                                          }}
+                                          placeholder="Escribe tu respuesta aquí..."
+                                          style={{
+                                            width: '100%',
+                                            minHeight: '80px',
+                                            padding: '0.75rem',
+                                            background: 'rgba(0, 0, 0, 0.3)',
+                                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                                            borderRadius: '6px',
+                                            color: '#e2e8f0',
+                                            resize: 'vertical',
+                                            fontFamily: 'inherit',
+                                            fontSize: '0.9rem'
+                                          }}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar ejercicio de Ordenar Secuencia */}
+                              {pregunta.metadata?.texto_narrativo && pregunta.metadata?.eventos && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#f59e0b', fontSize: '0.9rem', marginBottom: '0.75rem'}}>📊 Ordena los eventos según el texto:</h4>
+                                  
+                                  {/* Mostrar el texto narrativo */}
+                                  <div style={{
+                                    background: 'rgba(245, 158, 11, 0.1)',
+                                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    marginBottom: '1rem'
+                                  }}>
+                                    <h5 style={{color: '#fcd34d', margin: '0 0 0.75rem 0', fontSize: '0.85rem'}}>📖 Texto:</h5>
+                                    <p style={{
+                                      color: '#e2e8f0',
+                                      lineHeight: '1.7',
+                                      margin: 0,
+                                      fontSize: '0.95rem',
+                                      borderLeft: '3px solid #f59e0b',
+                                      paddingLeft: '1rem'
+                                    }}>
+                                      {pregunta.metadata.texto_narrativo}
+                                    </p>
+                                  </div>
+                                  
+                                  {/* Mostrar los eventos con selector de posición */}
+                                  <div style={{
+                                    background: 'rgba(59, 130, 246, 0.1)',
+                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                    borderRadius: '12px',
+                                    padding: '1rem'
+                                  }}>
+                                    <h5 style={{color: '#93c5fd', margin: '0 0 0.75rem 0', fontSize: '0.85rem'}}>🔢 Asigna el orden correcto (1 = primero, {pregunta.metadata.eventos.length} = último):</h5>
+                                    {pregunta.metadata.eventos.map((evento, eIdx) => {
+                                      const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                      const respuestaActual = respuestasArray[eIdx] || '';
+                                      
+                                      return (
+                                        <div key={eIdx} style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.75rem',
+                                          marginBottom: '0.75rem',
+                                          padding: '0.75rem',
+                                          background: 'rgba(0, 0, 0, 0.2)',
+                                          borderRadius: '8px',
+                                          borderLeft: '3px solid #3b82f6'
+                                        }}>
+                                          <span style={{
+                                            minWidth: '28px',
+                                            height: '28px',
+                                            background: '#f59e0b',
+                                            borderRadius: '4px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontWeight: 'bold',
+                                            fontSize: '0.85rem',
+                                            color: '#000'
+                                          }}>
+                                            {evento.letra}
+                                          </span>
+                                          <span style={{flex: 1, color: '#e2e8f0', fontSize: '0.9rem'}}>{evento.texto}</span>
+                                          <select
+                                            value={respuestaActual}
+                                            onChange={(e) => {
+                                              const numEventos = pregunta.metadata.eventos.length;
+                                              const raw = respuestasUsuario[index] || '';
+                                              let respuestas = raw ? raw.split('|||') : [];
+                                              while (respuestas.length < numEventos) respuestas.push('');
+                                              respuestas[eIdx] = e.target.value;
+                                              actualizarRespuesta(index, respuestas.join('|||'));
+                                            }}
+                                            style={{
+                                              padding: '0.5rem 1rem',
+                                              background: respuestaActual ? '#f59e0b' : '#1f2937',
+                                              border: '2px solid #f59e0b',
+                                              borderRadius: '6px',
+                                              color: respuestaActual ? '#000' : '#fff',
+                                              fontWeight: 'bold',
+                                              cursor: 'pointer',
+                                              minWidth: '70px',
+                                              fontSize: '1rem'
+                                            }}
+                                          >
+                                            <option value="">--</option>
+                                            {pregunta.metadata.eventos.map((_, posIdx) => (
+                                              <option key={posIdx} value={posIdx + 1}>{posIdx + 1}°</option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Mostrar afirmaciones V/F con justificación */}
+                              {pregunta.metadata?.afirmaciones && pregunta.metadata.afirmaciones.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  <h4 style={{color: '#e2e8f0', fontSize: '0.9rem', marginBottom: '0.5rem'}}>✓✗ Determina si las afirmaciones son Verdaderas o Falsas y justifica:</h4>
+                                  {pregunta.metadata.afirmaciones.map((af, afIndex) => {
+                                    // Inicializar el array con el tamaño correcto para todas las afirmaciones
+                                    const numAfirmaciones = pregunta.metadata.afirmaciones.length;
+                                    const respuestaActualRaw = respuestasUsuario[index] || '';
+                                    let respuestasArray = respuestaActualRaw ? respuestaActualRaw.split('|||') : [];
+                                    
+                                    // Asegurar que el array tenga el tamaño correcto
+                                    while (respuestasArray.length < numAfirmaciones) {
+                                      respuestasArray.push('::');
+                                    }
+                                    
+                                    const respuestaActual = respuestasArray[afIndex] || '::';
+                                    const partes = respuestaActual.split('::');
+                                    const vfValue = partes[0] || '';
+                                    const justValue = partes.slice(1).join('::') || ''; // Por si la justificación tiene ::
+                                    
+                                    return (
+                                      <div key={afIndex} style={{
+                                        background: 'rgba(168, 85, 247, 0.1)',
+                                        border: '1px solid rgba(168, 85, 247, 0.3)',
+                                        borderRadius: '8px',
+                                        padding: '0.75rem',
+                                        marginBottom: '0.75rem'
+                                      }}>
+                                        <p style={{margin: '0 0 0.75rem 0', color: '#c4b5fd', fontWeight: '500'}}>
+                                          {afIndex + 1}. "{af.texto}"
+                                        </p>
+                                        <div style={{display: 'flex', gap: '1rem', marginBottom: '0.5rem'}}>
+                                          <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            padding: '0.5rem 1rem',
+                                            background: vfValue === 'verdadero' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.1)',
+                                            border: `1px solid ${vfValue === 'verdadero' ? '#22c55e' : 'rgba(34, 197, 94, 0.3)'}`,
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            color: '#22c55e'
+                                          }}>
+                                            <input
+                                              type="radio"
+                                              name={`vf-${index}-${afIndex}`}
+                                              checked={vfValue === 'verdadero'}
+                                              onChange={() => {
+                                                const numAf = pregunta.metadata.afirmaciones.length;
+                                                const raw = respuestasUsuario[index] || '';
+                                                let respuestas = raw ? raw.split('|||') : [];
+                                                while (respuestas.length < numAf) respuestas.push('::');
+                                                const currentParts = (respuestas[afIndex] || '::').split('::');
+                                                const currentJust = currentParts.slice(1).join('::') || '';
+                                                respuestas[afIndex] = `verdadero::${currentJust}`;
+                                                actualizarRespuesta(index, respuestas.join('|||'));
+                                              }}
+                                            />
+                                            ✓ Verdadero
+                                          </label>
+                                          <label style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            padding: '0.5rem 1rem',
+                                            background: vfValue === 'falso' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.1)',
+                                            border: `1px solid ${vfValue === 'falso' ? '#ef4444' : 'rgba(239, 68, 68, 0.3)'}`,
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            color: '#ef4444'
+                                          }}>
+                                            <input
+                                              type="radio"
+                                              name={`vf-${index}-${afIndex}`}
+                                              checked={vfValue === 'falso'}
+                                              onChange={() => {
+                                                const numAf = pregunta.metadata.afirmaciones.length;
+                                                const raw = respuestasUsuario[index] || '';
+                                                let respuestas = raw ? raw.split('|||') : [];
+                                                while (respuestas.length < numAf) respuestas.push('::');
+                                                const currentParts = (respuestas[afIndex] || '::').split('::');
+                                                const currentJust = currentParts.slice(1).join('::') || '';
+                                                respuestas[afIndex] = `falso::${currentJust}`;
+                                                actualizarRespuesta(index, respuestas.join('|||'));
+                                              }}
+                                            />
+                                            ✗ Falso
+                                          </label>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          placeholder="Justifica tu respuesta..."
+                                          value={justValue}
+                                          onChange={(e) => {
+                                            const numAf = pregunta.metadata.afirmaciones.length;
+                                            const raw = respuestasUsuario[index] || '';
+                                            let respuestas = raw ? raw.split('|||') : [];
+                                            while (respuestas.length < numAf) respuestas.push('::');
+                                            const currentParts = (respuestas[afIndex] || '::').split('::');
+                                            const currentVf = currentParts[0] || '';
+                                            respuestas[afIndex] = `${currentVf}::${e.target.value}`;
+                                            actualizarRespuesta(index, respuestas.join('|||'));
+                                          }}
+                                          style={{
+                                            width: '100%',
+                                            padding: '0.5rem',
+                                            background: '#0f0f1a',
+                                            border: '1px solid #3a3a4e',
+                                            borderRadius: '6px',
+                                            color: '#e2e8f0'
+                                          }}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* Mostrar vocabulario clave si existe */}
+                              {pregunta.metadata?.vocabulario_clave && pregunta.metadata.vocabulario_clave.length > 0 && (
+                                <div style={{
+                                  background: 'rgba(251, 191, 36, 0.1)',
+                                  border: '1px solid rgba(251, 191, 36, 0.3)',
+                                  borderRadius: '8px',
+                                  padding: '0.75rem',
+                                  marginBottom: '1rem'
+                                }}>
+                                  <span style={{color: '#fbbf24', fontSize: '0.85rem'}}>📚 Vocabulario clave: </span>
+                                  <span style={{color: '#e2e8f0'}}>{pregunta.metadata.vocabulario_clave.join(', ')}</span>
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para picture_description */}
+                              {pregunta.tipo === 'picture_description' && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Información del nivel CEFR - SIEMPRE VISIBLE */}
+                                  {(pregunta.nivel_cefr || pregunta.config_nivel || pregunta.metadata?.nivel) && (
+                                    <div style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '0.75rem',
+                                      marginBottom: '1rem',
+                                      padding: '0.75rem',
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '10px'
+                                    }}>
+                                      {(pregunta.nivel_cefr || pregunta.metadata?.nivel) && (
+                                        <span style={{
+                                          padding: '6px 14px',
+                                          background: 'rgba(59, 130, 246, 0.3)',
+                                          border: '1px solid rgba(59, 130, 246, 0.5)',
+                                          borderRadius: '20px',
+                                          color: '#93c5fd',
+                                          fontSize: '0.9rem',
+                                          fontWeight: '700'
+                                        }}>
+                                          📊 Nivel: {pregunta.nivel_cefr || pregunta.metadata?.nivel}
+                                        </span>
+                                      )}
+                                      {(pregunta.config_nivel?.tipo_descripcion) && (
+                                        <span style={{
+                                          padding: '6px 14px',
+                                          background: 'rgba(168, 85, 247, 0.3)',
+                                          border: '1px solid rgba(168, 85, 247, 0.5)',
+                                          borderRadius: '20px',
+                                          color: '#c4b5fd',
+                                          fontSize: '0.9rem',
+                                          fontWeight: '600'
+                                        }}>
+                                          🎯 {pregunta.config_nivel.tipo_descripcion}
+                                        </span>
+                                      )}
+                                      {(pregunta.config_nivel?.longitud_esperada || pregunta.metadata?.oraciones_esperadas) && (
+                                        <span style={{
+                                          padding: '6px 14px',
+                                          background: 'rgba(236, 72, 153, 0.3)',
+                                          border: '1px solid rgba(236, 72, 153, 0.5)',
+                                          borderRadius: '20px',
+                                          color: '#f9a8d4',
+                                          fontSize: '0.9rem',
+                                          fontWeight: '600'
+                                        }}>
+                                          ✏️ {pregunta.config_nivel?.longitud_esperada || `${pregunta.metadata?.oraciones_esperadas} oraciones`}
+                                        </span>
+                                      )}
+                                      {(pregunta.config_nivel?.num_oraciones) && (
+                                        <span style={{
+                                          padding: '6px 14px',
+                                          background: 'rgba(34, 197, 94, 0.3)',
+                                          border: '1px solid rgba(34, 197, 94, 0.5)',
+                                          borderRadius: '20px',
+                                          color: '#86efac',
+                                          fontSize: '0.9rem',
+                                          fontWeight: '600'
+                                        }}>
+                                          📝 {pregunta.config_nivel.num_oraciones} oraciones
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {/* IMAGEN - Mostrar si existe URL válida O imagen cargada localmente */}
+                                  {(imagenesLocales[index] || (pregunta.metadata?.imagen?.url && pregunta.metadata.imagen.url !== '' && !pregunta.metadata.imagen.url.includes('['))) && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '2px solid rgba(168, 85, 247, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1rem',
+                                      marginBottom: '1rem',
+                                      textAlign: 'center'
+                                    }}>
+                                      <img 
+                                        src={imagenesLocales[index] || pregunta.metadata.imagen.url} 
+                                        alt="Imagen a describir"
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '400px',
+                                          borderRadius: '8px',
+                                          boxShadow: '0 4px 20px rgba(168, 85, 247, 0.3)'
+                                        }}
+                                        onError={(e) => {
+                                          e.target.style.display = 'none';
+                                          e.target.nextSibling.style.display = 'block';
+                                        }}
+                                      />
+                                      <div style={{display: 'none', color: '#ef4444', padding: '2rem'}}>
+                                        ⚠️ Error cargando imagen. Verifica la URL.
+                                      </div>
+                                      {/* Botón para cambiar imagen */}
+                                      <button
+                                        onClick={() => document.getElementById(`img-upload-${index}`).click()}
+                                        style={{
+                                          marginTop: '0.75rem',
+                                          padding: '6px 16px',
+                                          background: 'rgba(168, 85, 247, 0.2)',
+                                          border: '1px solid rgba(168, 85, 247, 0.4)',
+                                          borderRadius: '6px',
+                                          color: '#c084fc',
+                                          fontSize: '0.85rem',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        🔄 Cambiar imagen
+                                      </button>
+                                      <input
+                                        id={`img-upload-${index}`}
+                                        type="file"
+                                        accept="image/*"
+                                        style={{display: 'none'}}
+                                        onChange={async (e) => {
+                                          const file = e.target.files[0];
+                                          if (file) {
+                                            const reader = new FileReader();
+                                            reader.onloadend = async () => {
+                                              console.log(`📸 Imagen cargada (botón cambiar) para pregunta ${index}: ${file.name}, tamaño: ${reader.result.length} bytes`);
+                                              setImagenesLocales(prev => ({...prev, [index]: reader.result}));
+                                              console.log(`   State actualizado: imagenesLocales[${index}] = ${reader.result.substring(0, 50)}...`);
+                                              
+                                              // 🔥 GUARDAR IMAGEN INMEDIATAMENTE
+                                              await guardarImagenInmediata(reader.result, index, pregunta);
+                                            };
+                                            reader.readAsDataURL(file);
+                                          }
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                  
+                                  {/* Placeholder si no hay imagen URL válida NI imagen local */}
+                                  {!imagenesLocales[index] && (!pregunta.metadata?.imagen?.url || pregunta.metadata.imagen.url.includes('[')) && (
+                                    <div style={{
+                                      background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+                                      border: '2px dashed rgba(168, 85, 247, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '2rem',
+                                      marginBottom: '1rem',
+                                      textAlign: 'center'
+                                    }}>
+                                      <div style={{fontSize: '3rem', marginBottom: '0.5rem'}}>🖼️</div>
+                                      <p style={{color: '#c084fc', fontWeight: '600', marginBottom: '0.75rem'}}>
+                                        Carga una imagen para describir
+                                      </p>
+                                      
+                                      {/* Botón para cargar imagen */}
+                                      <label style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                        padding: '10px 20px',
+                                        background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                        border: 'none',
+                                        borderRadius: '8px',
+                                        color: '#fff',
+                                        fontSize: '1rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 4px 15px rgba(168, 85, 247, 0.4)',
+                                        transition: 'transform 0.2s'
+                                      }}>
+                                        📁 Seleccionar imagen
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          style={{display: 'none'}}
+                                          onChange={async (e) => {
+                                            const file = e.target.files[0];
+                                            if (file) {
+                                              const reader = new FileReader();
+                                              reader.onloadend = async () => {
+                                                console.log(`📸 Imagen cargada para pregunta ${index}: ${file.name}, tamaño: ${reader.result.length} bytes`);
+                                                setImagenesLocales(prev => ({...prev, [index]: reader.result}));
+                                                console.log(`   State actualizado: imagenesLocales[${index}] = ${reader.result.substring(0, 50)}...`);
+                                                
+                                                // 🔥 GUARDAR IMAGEN INMEDIATAMENTE
+                                                await guardarImagenInmediata(reader.result, index, pregunta);
+                                              };
+                                              reader.readAsDataURL(file);
+                                            }
+                                          }}
+                                        />
+                                      </label>
+                                      
+                                      <p style={{color: '#94a3b8', fontSize: '0.8rem', marginTop: '1rem', marginBottom: 0}}>
+                                        💡 Puedes generar imágenes con el prompt de IA incluido abajo
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Descripción de la escena - SIEMPRE VISIBLE */}
+                                  {(pregunta.metadata?.descripcion_escena || pregunta.imagen?.descripcion_escena) && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.15)',
+                                      border: '2px solid rgba(168, 85, 247, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <h4 style={{color: '#c084fc', fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        🖼️ Escena a describir:
+                                      </h4>
+                                      <p style={{
+                                        color: '#e2e8f0',
+                                        lineHeight: '1.7',
+                                        fontSize: '1rem',
+                                        margin: 0,
+                                        fontStyle: 'italic',
+                                        borderLeft: '3px solid #a855f7',
+                                        paddingLeft: '1rem'
+                                      }}>
+                                        {pregunta.metadata?.descripcion_escena || pregunta.imagen?.descripcion_escena}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Contexto de la escena - SIEMPRE VISIBLE */}
+                                  {(pregunta.metadata?.contexto || pregunta.imagen?.contexto) && (
+                                    <div style={{
+                                      background: 'rgba(251, 191, 36, 0.1)',
+                                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#fbbf24', fontSize: '0.85rem', fontWeight: '600'}}>📍 Contexto: </span>
+                                      <span style={{color: '#e2e8f0', fontSize: '0.9rem'}}>
+                                        {pregunta.metadata?.contexto || pregunta.imagen?.contexto}
+                                      </span>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Elementos clave a incluir */}
+                                  {(pregunta.metadata?.elementos_clave?.length > 0 || pregunta.imagen?.elementos_clave?.length > 0) && (
+                                    <div style={{
+                                      background: 'rgba(34, 197, 94, 0.1)',
+                                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#22c55e', fontSize: '0.85rem', fontWeight: '600'}}>🎯 Elementos a incluir: </span>
+                                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                        {(pregunta.metadata?.elementos_clave || pregunta.imagen?.elementos_clave || []).map((elem, eIdx) => (
+                                          <span key={eIdx} style={{
+                                            padding: '4px 10px',
+                                            background: 'rgba(34, 197, 94, 0.2)',
+                                            border: '1px solid rgba(34, 197, 94, 0.4)',
+                                            borderRadius: '16px',
+                                            color: '#86efac',
+                                            fontSize: '0.85rem'
+                                          }}>
+                                            {elem}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Vocabulario esperado */}
+                                  {(pregunta.vocabulario_esperado?.length > 0 || pregunta.metadata?.vocabulario_esperado?.length > 0) && (
+                                    <div style={{
+                                      background: 'rgba(251, 191, 36, 0.1)',
+                                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#fbbf24', fontSize: '0.85rem', fontWeight: '600'}}>📚 Vocabulario sugerido: </span>
+                                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                        {(pregunta.vocabulario_esperado || pregunta.metadata?.vocabulario_esperado || []).map((vocab, vIdx) => (
+                                          <span key={vIdx} style={{
+                                            padding: '4px 10px',
+                                            background: 'rgba(251, 191, 36, 0.2)',
+                                            border: '1px solid rgba(251, 191, 36, 0.4)',
+                                            borderRadius: '16px',
+                                            color: '#fcd34d',
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Clic para copiar"
+                                          onClick={() => navigator.clipboard.writeText(vocab)}
+                                          >
+                                            {vocab}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Prompt para IA generadora de imágenes (colapsable) */}
+                                  {(pregunta.metadata?.prompt_generador_imagen || pregunta.imagen?.prompt_generador_imagen) && (
+                                    <details style={{
+                                      background: 'rgba(99, 102, 241, 0.1)',
+                                      border: '1px solid rgba(99, 102, 241, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <summary style={{
+                                        color: '#a5b4fc',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        marginBottom: '0.5rem'
+                                      }}>
+                                        🤖 Prompt para generar imagen (DALL-E / Midjourney / Stable Diffusion)
+                                      </summary>
+                                      <div style={{
+                                        background: 'rgba(0, 0, 0, 0.3)',
+                                        padding: '0.75rem',
+                                        borderRadius: '6px',
+                                        marginTop: '0.5rem'
+                                      }}>
+                                        <code style={{
+                                          color: '#c7d2fe',
+                                          fontSize: '0.8rem',
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-word'
+                                        }}>
+                                          {pregunta.metadata?.prompt_generador_imagen || pregunta.imagen?.prompt_generador_imagen}
+                                        </code>
+                                        <button
+                                          onClick={() => navigator.clipboard.writeText(pregunta.metadata?.prompt_generador_imagen || pregunta.imagen?.prompt_generador_imagen)}
+                                          style={{
+                                            display: 'block',
+                                            marginTop: '0.5rem',
+                                            padding: '4px 12px',
+                                            background: 'rgba(99, 102, 241, 0.3)',
+                                            border: '1px solid rgba(99, 102, 241, 0.5)',
+                                            borderRadius: '6px',
+                                            color: '#a5b4fc',
+                                            fontSize: '0.8rem',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Copiar prompt"
+                                        >
+                                          📋 Copiar prompt
+                                        </button>
+                                      </div>
+                                    </details>
+                                  )}
+                                  
+                                  {/* Textarea para la descripción del estudiante */}
+                                  <textarea
+                                    className="respuesta-desarrollo"
+                                    placeholder={`Describe la imagen en ${pregunta.metadata?.idioma || 'el idioma indicado'}...\n\nIncluye: personas, objetos, acciones, colores, ubicación, emociones...`}
+                                    value={respuestasUsuario[index] || ''}
+                                    onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                    rows="8"
+                                    style={{
+                                      width: '100%',
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '2px solid rgba(168, 85, 247, 0.4)',
+                                      borderRadius: '8px',
+                                      padding: '1rem',
+                                      color: '#e2e8f0',
+                                      fontSize: '1rem',
+                                      lineHeight: '1.6',
+                                      resize: 'vertical'
+                                    }}
+                                  />
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para sentence_builder */}
+                              {pregunta.tipo === 'sentence_builder' && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Si tiene oraciones (formato con múltiples ejercicios) */}
+                                  {(pregunta.oraciones?.length > 0 || pregunta.metadata?.oraciones?.length > 0) ? (
+                                    <div style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '2px solid rgba(59, 130, 246, 0.4)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <h4 style={{color: '#93c5fd', fontSize: '1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        🧩 {pregunta.metadata?.config_nivel?.instruccion || 'Combina las ideas para formar oraciones correctas:'}
+                                      </h4>
+                                      
+                                      {(pregunta.oraciones || pregunta.metadata?.oraciones || []).map((oracion, oIdx) => (
+                                        <div key={oIdx} style={{
+                                          background: 'rgba(59, 130, 246, 0.15)',
+                                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                                          borderRadius: '8px',
+                                          padding: '1rem',
+                                          marginBottom: '1rem'
+                                        }}>
+                                          {/* Número y instrucción específica */}
+                                          <div style={{marginBottom: '0.75rem'}}>
+                                            <span style={{
+                                              background: 'rgba(59, 130, 246, 0.4)',
+                                              padding: '4px 10px',
+                                              borderRadius: '6px',
+                                              color: '#93c5fd',
+                                              fontWeight: '600',
+                                              fontSize: '0.9rem',
+                                              marginRight: '0.5rem'
+                                            }}>
+                                              Oración {oIdx + 1}
+                                            </span>
+                                            {oracion.instruccion_especifica && (
+                                              <span style={{color: '#94a3b8', fontSize: '0.9rem'}}>
+                                                {oracion.instruccion_especifica}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Si tiene elementos_obj (formato idea_1, idea_2, conector) */}
+                                          {oracion.elementos_obj ? (
+                                            <div style={{marginBottom: '0.75rem'}}>
+                                              <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                                {oracion.elementos_obj.idea_1 && (
+                                                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                                    <span style={{color: '#60a5fa', fontWeight: '600', fontSize: '0.85rem', minWidth: '60px'}}>💭 Idea 1:</span>
+                                                    <span style={{
+                                                      padding: '6px 14px',
+                                                      background: 'rgba(59, 130, 246, 0.25)',
+                                                      border: '1px solid rgba(59, 130, 246, 0.5)',
+                                                      borderRadius: '6px',
+                                                      color: '#93c5fd',
+                                                      fontSize: '0.95rem'
+                                                    }}>
+                                                      {oracion.elementos_obj.idea_1}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                                {oracion.elementos_obj.idea_2 && (
+                                                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                                    <span style={{color: '#60a5fa', fontWeight: '600', fontSize: '0.85rem', minWidth: '60px'}}>💭 Idea 2:</span>
+                                                    <span style={{
+                                                      padding: '6px 14px',
+                                                      background: 'rgba(59, 130, 246, 0.25)',
+                                                      border: '1px solid rgba(59, 130, 246, 0.5)',
+                                                      borderRadius: '6px',
+                                                      color: '#93c5fd',
+                                                      fontSize: '0.95rem'
+                                                    }}>
+                                                      {oracion.elementos_obj.idea_2}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                                {oracion.elementos_obj.conector && (
+                                                  <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                                    <span style={{color: '#22c55e', fontWeight: '600', fontSize: '0.85rem', minWidth: '60px'}}>🔗 Conector:</span>
+                                                    <span style={{
+                                                      padding: '6px 14px',
+                                                      background: 'rgba(34, 197, 94, 0.25)',
+                                                      border: '2px solid rgba(34, 197, 94, 0.6)',
+                                                      borderRadius: '6px',
+                                                      color: '#86efac',
+                                                      fontSize: '0.95rem',
+                                                      fontWeight: '600'
+                                                    }}>
+                                                      {oracion.elementos_obj.conector}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          ) : (
+                                            /* Formato antiguo: elementos como array */
+                                            <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem'}}>
+                                              {(oracion.elementos || []).map((palabra, pIdx) => (
+                                                <span key={pIdx} style={{
+                                                  padding: '8px 16px',
+                                                  background: 'rgba(59, 130, 246, 0.3)',
+                                                  border: '2px solid rgba(59, 130, 246, 0.6)',
+                                                  borderRadius: '8px',
+                                                  color: '#93c5fd',
+                                                  fontSize: '1rem',
+                                                  fontWeight: '500',
+                                                  cursor: 'pointer',
+                                                  transition: 'all 0.2s'
+                                                }}
+                                                title="Clic para copiar"
+                                                onClick={() => navigator.clipboard.writeText(palabra)}
+                                                onMouseOver={(e) => {
+                                                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.5)';
+                                                  e.currentTarget.style.transform = 'scale(1.05)';
+                                                }}
+                                                onMouseOut={(e) => {
+                                                  e.currentTarget.style.background = 'rgba(59, 130, 246, 0.3)';
+                                                  e.currentTarget.style.transform = 'scale(1)';
+                                                }}
+                                                >
+                                                  {palabra}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          
+                                          {/* Input para esta oración específica */}
+                                          <input
+                                            type="text"
+                                            placeholder={`Escribe la oración ${oIdx + 1} ordenada...`}
+                                            value={(respuestasUsuario[index]?.split('|||')[oIdx]) || ''}
+                                            onChange={(e) => {
+                                              const respuestasActuales = (respuestasUsuario[index] || '').split('|||');
+                                              while (respuestasActuales.length <= oIdx) {
+                                                respuestasActuales.push('');
+                                              }
+                                              respuestasActuales[oIdx] = e.target.value;
+                                              actualizarRespuesta(index, respuestasActuales.join('|||'));
+                                            }}
+                                            style={{
+                                              width: '100%',
+                                              padding: '10px 14px',
+                                              background: 'rgba(30, 41, 59, 0.8)',
+                                              border: '2px solid rgba(59, 130, 246, 0.4)',
+                                              borderRadius: '8px',
+                                              color: '#e2e8f0',
+                                              fontSize: '1rem'
+                                            }}
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : pregunta.metadata?.palabras_desordenadas?.length > 0 ? (
+                                    /* Formato simple con palabras_desordenadas */
+                                    <div style={{
+                                      background: 'rgba(59, 130, 246, 0.15)',
+                                      border: '2px solid rgba(59, 130, 246, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <h4 style={{color: '#93c5fd', fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        🧩 Ordena las palabras para formar oraciones correctas:
+                                      </h4>
+                                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem'}}>
+                                        {pregunta.metadata.palabras_desordenadas.map((palabra, pIdx) => (
+                                          <span key={pIdx} style={{
+                                            padding: '8px 16px',
+                                            background: 'rgba(59, 130, 246, 0.3)',
+                                            border: '2px solid rgba(59, 130, 246, 0.6)',
+                                            borderRadius: '8px',
+                                            color: '#93c5fd',
+                                            fontSize: '1rem',
+                                            fontWeight: '500',
+                                            cursor: 'pointer'
+                                          }}
+                                          title="Clic para copiar"
+                                          onClick={() => navigator.clipboard.writeText(palabra)}
+                                          >
+                                            {palabra}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    /* Sin palabras definidas - mostrar mensaje */
+                                    <div style={{
+                                      background: 'rgba(251, 191, 36, 0.15)',
+                                      border: '2px solid rgba(251, 191, 36, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <p style={{color: '#fcd34d', margin: 0}}>
+                                        ⚠️ No se encontraron palabras/elementos para ordenar en este ejercicio.
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Textarea general (solo si no hay oraciones individuales) */}
+                                  {!(pregunta.oraciones?.length > 0 || pregunta.metadata?.oraciones?.length > 0) && (
+                                    <textarea
+                                      className="respuesta-desarrollo"
+                                      placeholder={`Escribe las oraciones ordenadas en ${pregunta.metadata?.idioma || 'el idioma indicado'}...\n\nUna oración por línea.`}
+                                      value={respuestasUsuario[index] || ''}
+                                      onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                      rows="6"
+                                      style={{
+                                        width: '100%',
+                                        background: 'rgba(59, 130, 246, 0.1)',
+                                        border: '2px solid rgba(59, 130, 246, 0.4)',
+                                        borderRadius: '8px',
+                                        padding: '1rem',
+                                        color: '#e2e8f0',
+                                        fontSize: '1rem',
+                                        lineHeight: '1.6',
+                                        resize: 'vertical'
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para formal_email */}
+                              {pregunta.tipo === 'formal_email' && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Situación estructurada del email (nuevo formato con situacion) */}
+                                  {(pregunta.metadata?.situacion?.proposito || pregunta.metadata?.proposito) && (
+                                    <div style={{
+                                      background: 'rgba(236, 72, 153, 0.15)',
+                                      border: '2px solid rgba(236, 72, 153, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <h4 style={{color: '#f9a8d4', fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        📧 Situación:
+                                      </h4>
+                                      <div style={{display: 'flex', flexDirection: 'column', gap: '0.5rem'}}>
+                                        {(pregunta.metadata?.situacion?.quien_escribe || pregunta.metadata?.quien_escribe) && (
+                                          <p style={{color: '#e2e8f0', margin: 0}}>
+                                            <strong style={{color: '#f9a8d4'}}>👤 Quién escribe:</strong> {pregunta.metadata?.situacion?.quien_escribe || pregunta.metadata?.quien_escribe}
+                                          </p>
+                                        )}
+                                        {(pregunta.metadata?.situacion?.destinatario || pregunta.metadata?.destinatario) && (
+                                          <p style={{color: '#e2e8f0', margin: 0}}>
+                                            <strong style={{color: '#f9a8d4'}}>📮 Destinatario:</strong> {pregunta.metadata?.situacion?.destinatario || pregunta.metadata?.destinatario}
+                                          </p>
+                                        )}
+                                        {(pregunta.metadata?.situacion?.proposito || pregunta.metadata?.proposito) && (
+                                          <p style={{color: '#e2e8f0', margin: 0}}>
+                                            <strong style={{color: '#f9a8d4'}}>🎯 Propósito:</strong> {pregunta.metadata?.situacion?.proposito || pregunta.metadata?.proposito}
+                                          </p>
+                                        )}
+                                        {(pregunta.metadata?.situacion?.contexto || pregunta.metadata?.contexto) && (
+                                          <p style={{color: '#e2e8f0', margin: 0, marginTop: '0.5rem'}}>
+                                            <strong style={{color: '#f9a8d4'}}>📝 Contexto:</strong> {pregunta.metadata?.situacion?.contexto || pregunta.metadata?.contexto}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Contexto simple (formato antiguo, solo si no hay situacion) */}
+                                  {pregunta.metadata?.contexto && !pregunta.metadata?.situacion?.proposito && !pregunta.metadata?.proposito && (
+                                    <div style={{
+                                      background: 'rgba(236, 72, 153, 0.15)',
+                                      border: '2px solid rgba(236, 72, 153, 0.5)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <h4 style={{color: '#f9a8d4', fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        📧 Situación:
+                                      </h4>
+                                      <p style={{
+                                        color: '#e2e8f0',
+                                        lineHeight: '1.7',
+                                        fontSize: '1rem',
+                                        margin: 0
+                                      }}>
+                                        {pregunta.metadata.contexto}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Estructura esperada del email */}
+                                  {pregunta.metadata?.estructura_esperada && pregunta.metadata.estructura_esperada.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#60a5fa', fontSize: '0.85rem', fontWeight: '600'}}>📋 Estructura esperada:</span>
+                                      <ol style={{margin: '0.5rem 0 0 1.5rem', padding: 0, color: '#93c5fd', fontSize: '0.9rem'}}>
+                                        {pregunta.metadata.estructura_esperada.map((parte, pIdx) => (
+                                          <li key={pIdx} style={{marginBottom: '0.25rem'}}>{parte}</li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Fórmulas útiles */}
+                                  {pregunta.metadata?.formulas_utiles && pregunta.metadata.formulas_utiles.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(34, 197, 94, 0.1)',
+                                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#22c55e', fontSize: '0.85rem', fontWeight: '600'}}>💡 Fórmulas útiles:</span>
+                                      <div style={{marginTop: '0.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem'}}>
+                                        {pregunta.metadata.formulas_utiles.map((formula, fIdx) => (
+                                          <span key={fIdx} style={{
+                                            background: 'rgba(34, 197, 94, 0.2)',
+                                            border: '1px solid rgba(34, 197, 94, 0.4)',
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            color: '#86efac',
+                                            fontSize: '0.85rem',
+                                            fontStyle: 'italic'
+                                          }}>
+                                            "{formula}"
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Puntos a incluir */}
+                                  {pregunta.metadata?.puntos_requeridos && pregunta.metadata.puntos_requeridos.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(34, 197, 94, 0.1)',
+                                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#22c55e', fontSize: '0.85rem', fontWeight: '600'}}>✅ Puntos que debe incluir tu email: </span>
+                                      <ul style={{margin: '0.5rem 0 0 1rem', padding: 0, color: '#86efac', fontSize: '0.9rem'}}>
+                                        {pregunta.metadata.puntos_requeridos.map((punto, pIdx) => (
+                                          <li key={pIdx} style={{marginBottom: '0.25rem'}}>{punto}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Registro/tono */}
+                                  {pregunta.metadata?.registro && (
+                                    <div style={{
+                                      display: 'inline-block',
+                                      padding: '4px 12px',
+                                      background: 'rgba(251, 191, 36, 0.2)',
+                                      border: '1px solid rgba(251, 191, 36, 0.4)',
+                                      borderRadius: '20px',
+                                      color: '#fcd34d',
+                                      fontSize: '0.85rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      📝 Registro: {pregunta.metadata.registro}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Plantilla de email */}
+                                  <div style={{
+                                    background: 'rgba(236, 72, 153, 0.1)',
+                                    border: '2px solid rgba(236, 72, 153, 0.4)',
+                                    borderRadius: '8px',
+                                    padding: '1rem'
+                                  }}>
+                                    <div style={{marginBottom: '0.75rem'}}>
+                                      <label style={{color: '#f9a8d4', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem'}}>To:</label>
+                                      <input
+                                        type="text"
+                                        placeholder="destinatario@email.com"
+                                        value={(respuestasUsuario[index] || '').split('|||')[0] || ''}
+                                        onChange={(e) => {
+                                          const partes = (respuestasUsuario[index] || '').split('|||');
+                                          partes[0] = e.target.value;
+                                          while (partes.length < 4) partes.push('');
+                                          actualizarRespuesta(index, partes.join('|||'));
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          padding: '0.5rem',
+                                          background: 'rgba(0,0,0,0.3)',
+                                          border: '1px solid rgba(236, 72, 153, 0.3)',
+                                          borderRadius: '6px',
+                                          color: '#e2e8f0'
+                                        }}
+                                      />
+                                    </div>
+                                    <div style={{marginBottom: '0.75rem'}}>
+                                      <label style={{color: '#f9a8d4', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem'}}>Subject:</label>
+                                      <input
+                                        type="text"
+                                        placeholder="Asunto del email"
+                                        value={(respuestasUsuario[index] || '').split('|||')[1] || ''}
+                                        onChange={(e) => {
+                                          const partes = (respuestasUsuario[index] || '').split('|||');
+                                          while (partes.length < 4) partes.push('');
+                                          partes[1] = e.target.value;
+                                          actualizarRespuesta(index, partes.join('|||'));
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          padding: '0.5rem',
+                                          background: 'rgba(0,0,0,0.3)',
+                                          border: '1px solid rgba(236, 72, 153, 0.3)',
+                                          borderRadius: '6px',
+                                          color: '#e2e8f0'
+                                        }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{color: '#f9a8d4', fontSize: '0.85rem', display: 'block', marginBottom: '0.25rem'}}>Body:</label>
+                                      <textarea
+                                        placeholder={`Escribe el cuerpo del email en ${pregunta.metadata?.idioma || 'el idioma indicado'}...\n\nRecuerda incluir:\n- Saludo formal\n- Los puntos requeridos\n- Despedida apropiada`}
+                                        value={(respuestasUsuario[index] || '').split('|||')[2] || ''}
+                                        onChange={(e) => {
+                                          const partes = (respuestasUsuario[index] || '').split('|||');
+                                          while (partes.length < 4) partes.push('');
+                                          partes[2] = e.target.value;
+                                          actualizarRespuesta(index, partes.join('|||'));
+                                        }}
+                                        rows="10"
+                                        style={{
+                                          width: '100%',
+                                          padding: '1rem',
+                                          background: 'rgba(0,0,0,0.3)',
+                                          border: '1px solid rgba(236, 72, 153, 0.3)',
+                                          borderRadius: '6px',
+                                          color: '#e2e8f0',
+                                          fontSize: '1rem',
+                                          lineHeight: '1.6',
+                                          resize: 'vertical'
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para writing_essay */}
+                              {pregunta.tipo === 'writing_essay' && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Preguntas guía */}
+                                  {pregunta.metadata?.preguntas_guia && pregunta.metadata.preguntas_guia.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(34, 197, 94, 0.1)',
+                                      border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#22c55e', fontSize: '0.85rem', fontWeight: '600'}}>❓ Preguntas a responder en tu texto:</span>
+                                      <ul style={{margin: '0.5rem 0 0 1rem', padding: 0, color: '#86efac', fontSize: '0.9rem'}}>
+                                        {pregunta.metadata.preguntas_guia.map((pregGuia, pIdx) => (
+                                          <li key={pIdx} style={{marginBottom: '0.25rem'}}>{pregGuia}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Estructura esperada */}
+                                  {pregunta.metadata?.estructura_esperada && (
+                                    <div style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#60a5fa', fontSize: '0.85rem', fontWeight: '600'}}>📋 Estructura esperada: </span>
+                                      <span style={{color: '#93c5fd', fontSize: '0.9rem'}}>{pregunta.metadata.estructura_esperada}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Conectores sugeridos */}
+                                  {pregunta.metadata?.conectores_sugeridos && pregunta.metadata.conectores_sugeridos.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#c084fc', fontSize: '0.85rem', fontWeight: '600'}}>🔗 Conectores sugeridos: </span>
+                                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                        {pregunta.metadata.conectores_sugeridos.map((conector, cIdx) => (
+                                          <span key={cIdx} style={{
+                                            background: 'rgba(168, 85, 247, 0.2)',
+                                            padding: '4px 10px',
+                                            borderRadius: '15px',
+                                            color: '#e9d5ff',
+                                            fontSize: '0.85rem'
+                                          }}>{conector}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Vocabulario clave (si existe) */}
+                                  {pregunta.metadata?.vocabulario_clave && pregunta.metadata.vocabulario_clave.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(251, 191, 36, 0.1)',
+                                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#fcd34d', fontSize: '0.85rem', fontWeight: '600'}}>📝 Vocabulario clave: </span>
+                                      <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem'}}>
+                                        {pregunta.metadata.vocabulario_clave.map((vocab, vIdx) => (
+                                          <span key={vIdx} style={{
+                                            background: 'rgba(251, 191, 36, 0.2)',
+                                            padding: '4px 10px',
+                                            borderRadius: '15px',
+                                            color: '#fef3c7',
+                                            fontSize: '0.85rem'
+                                          }}>{vocab}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Longitud esperada */}
+                                  {pregunta.metadata?.longitud_esperada && (
+                                    <div style={{
+                                      display: 'inline-block',
+                                      padding: '4px 12px',
+                                      background: 'rgba(236, 72, 153, 0.2)',
+                                      border: '1px solid rgba(236, 72, 153, 0.4)',
+                                      borderRadius: '20px',
+                                      color: '#f9a8d4',
+                                      fontSize: '0.85rem',
+                                      marginBottom: '1rem',
+                                      marginRight: '0.5rem'
+                                    }}>
+                                      📏 Longitud: {pregunta.metadata.longitud_esperada}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Nivel */}
+                                  {pregunta.metadata?.nivel && (
+                                    <div style={{
+                                      display: 'inline-block',
+                                      padding: '4px 12px',
+                                      background: 'rgba(59, 130, 246, 0.2)',
+                                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                                      borderRadius: '20px',
+                                      color: '#93c5fd',
+                                      fontSize: '0.85rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      🎯 Nivel: {pregunta.metadata.nivel}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Textarea para escribir el ensayo */}
+                                  <textarea
+                                    className="respuesta-desarrollo"
+                                    placeholder={`Escribe tu ${pregunta.metadata?.estructura_esperada || 'texto'} en ${pregunta.metadata?.idioma || 'el idioma indicado'}...\n\n${pregunta.metadata?.longitud_esperada ? `Longitud esperada: ${pregunta.metadata.longitud_esperada}` : ''}`}
+                                    value={respuestasUsuario[index] || ''}
+                                    onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                    rows="8"
+                                    style={{
+                                      width: '100%',
+                                      padding: '1rem',
+                                      background: 'rgba(0,0,0,0.3)',
+                                      border: '2px solid rgba(34, 197, 94, 0.4)',
+                                      borderRadius: '8px',
+                                      color: '#e2e8f0',
+                                      fontSize: '1rem',
+                                      lineHeight: '1.6',
+                                      resize: 'vertical'
+                                    }}
+                                  />
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para writing_paraphrase (parafraseo de oraciones) */}
+                              {pregunta.tipo === 'writing_paraphrase' && pregunta.metadata?.oraciones_originales?.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Nivel y errores típicos */}
+                                  <div style={{display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center'}}>
+                                    {pregunta.metadata?.nivel && (
+                                      <span style={{
+                                        background: 'rgba(168, 85, 247, 0.2)',
+                                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                                        padding: '4px 12px',
+                                        borderRadius: '20px',
+                                        color: '#e9d5ff',
+                                        fontSize: '0.85rem'
+                                      }}>🎯 Nivel: {pregunta.metadata.nivel}</span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Errores típicos a evitar */}
+                                  {pregunta.metadata?.errores_tipicos && pregunta.metadata.errores_tipicos.length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(239, 68, 68, 0.1)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      <span style={{color: '#fca5a5', fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '0.5rem'}}>⚠️ Errores típicos a evitar:</span>
+                                      <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#fecaca', fontSize: '0.85rem'}}>
+                                        {pregunta.metadata.errores_tipicos.map((error, eIdx) => (
+                                          <li key={eIdx} style={{marginBottom: '0.25rem'}}>{error}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Lista de oraciones a parafrasear */}
+                                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                                    {pregunta.metadata.oraciones_originales.map((oracion, oIdx) => {
+                                      const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                      return (
+                                        <div key={oIdx} style={{
+                                          background: 'rgba(168, 85, 247, 0.1)',
+                                          border: '2px solid rgba(168, 85, 247, 0.3)',
+                                          borderRadius: '12px',
+                                          padding: '1rem'
+                                        }}>
+                                          {/* Número de oración */}
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <span style={{
+                                              background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                                              color: '#fff',
+                                              padding: '4px 10px',
+                                              borderRadius: '20px',
+                                              fontSize: '0.85rem',
+                                              fontWeight: '600'
+                                            }}>
+                                              {oIdx + 1}/{pregunta.metadata.oraciones_originales.length}
+                                            </span>
+                                          </div>
+                                          
+                                          {/* Oración original */}
+                                          <div style={{
+                                            background: 'rgba(59, 130, 246, 0.15)',
+                                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                                            borderRadius: '8px',
+                                            padding: '0.75rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <span style={{color: '#60a5fa', fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '0.25rem'}}>📝 Oración original:</span>
+                                            <span style={{color: '#93c5fd', fontSize: '1rem', fontStyle: 'italic'}}>{oracion.original}</span>
+                                          </div>
+                                          
+                                          {/* Instrucción */}
+                                          <div style={{
+                                            background: 'rgba(34, 197, 94, 0.15)',
+                                            border: '1px solid rgba(34, 197, 94, 0.4)',
+                                            borderRadius: '8px',
+                                            padding: '0.5rem 0.75rem',
+                                            marginBottom: '0.75rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                          }}>
+                                            <span style={{fontSize: '1.1rem'}}>💡</span>
+                                            <span style={{color: '#86efac', fontSize: '0.9rem', fontWeight: '500'}}>{oracion.instruccion}</span>
+                                          </div>
+                                          
+                                          {/* Campo de respuesta */}
+                                          <div>
+                                            <label style={{color: '#e9d5ff', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem'}}>✏️ Tu parafraseo:</label>
+                                            <input
+                                              type="text"
+                                              placeholder="Escribe la oración parafraseada..."
+                                              value={respuestasArray[oIdx] || ''}
+                                              onChange={(e) => {
+                                                const nuevasRespuestas = [...respuestasArray];
+                                                while (nuevasRespuestas.length < pregunta.metadata.oraciones_originales.length) {
+                                                  nuevasRespuestas.push('');
+                                                }
+                                                nuevasRespuestas[oIdx] = e.target.value;
+                                                actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                              }}
+                                              style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                background: 'rgba(0,0,0,0.3)',
+                                                border: '2px solid rgba(168, 85, 247, 0.4)',
+                                                borderRadius: '8px',
+                                                color: '#e2e8f0',
+                                                fontSize: '1rem'
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  {/* Criterios de evaluación */}
+                                  {pregunta.metadata?.criterios_evaluacion && Object.keys(pregunta.metadata.criterios_evaluacion).length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(251, 191, 36, 0.1)',
+                                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginTop: '1rem'
+                                    }}>
+                                      <span style={{color: '#fcd34d', fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '0.5rem'}}>📋 Criterios de evaluación:</span>
+                                      <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#fef3c7', fontSize: '0.85rem'}}>
+                                        {Object.entries(pregunta.metadata.criterios_evaluacion).map(([clave, valor], cIdx) => (
+                                          <li key={cIdx} style={{marginBottom: '0.25rem'}}>
+                                            <strong>{clave}:</strong> {valor}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para writing_short (respuestas cortas con texto de lectura) */}
+                              {pregunta.tipo === 'writing_short' && pregunta.metadata?.preguntas_short?.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Texto de lectura */}
+                                  {pregunta.metadata?.texto_lectura && (
+                                    <div style={{
+                                      background: 'rgba(59, 130, 246, 0.1)',
+                                      border: '2px solid rgba(59, 130, 246, 0.4)',
+                                      borderRadius: '12px',
+                                      padding: '1.25rem',
+                                      marginBottom: '1.5rem'
+                                    }}>
+                                      <h4 style={{color: '#60a5fa', fontSize: '1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                        📖 Texto de lectura:
+                                      </h4>
+                                      <p style={{
+                                        color: '#e2e8f0',
+                                        lineHeight: '1.8',
+                                        fontSize: '1.05rem',
+                                        margin: 0,
+                                        whiteSpace: 'pre-wrap'
+                                      }}>
+                                        {pregunta.metadata.texto_lectura}
+                                      </p>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Nivel y longitud esperada */}
+                                  <div style={{display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap'}}>
+                                    {pregunta.metadata?.nivel && (
+                                      <span style={{
+                                        background: 'rgba(168, 85, 247, 0.2)',
+                                        border: '1px solid rgba(168, 85, 247, 0.4)',
+                                        padding: '4px 12px',
+                                        borderRadius: '20px',
+                                        color: '#e9d5ff',
+                                        fontSize: '0.85rem'
+                                      }}>🎯 Nivel: {pregunta.metadata.nivel}</span>
+                                    )}
+                                    {pregunta.metadata?.criterios_evaluacion?.longitud && (
+                                      <span style={{
+                                        background: 'rgba(34, 197, 94, 0.2)',
+                                        border: '1px solid rgba(34, 197, 94, 0.4)',
+                                        padding: '4px 12px',
+                                        borderRadius: '20px',
+                                        color: '#86efac',
+                                        fontSize: '0.85rem'
+                                      }}>📏 {pregunta.metadata.criterios_evaluacion.longitud}</span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Lista de preguntas cortas */}
+                                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                                    {pregunta.metadata.preguntas_short.map((pregShort, pIdx) => {
+                                      const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                      return (
+                                        <div key={pIdx} style={{
+                                          background: 'rgba(34, 197, 94, 0.1)',
+                                          border: '2px solid rgba(34, 197, 94, 0.3)',
+                                          borderRadius: '12px',
+                                          padding: '1rem'
+                                        }}>
+                                          {/* Número de pregunta */}
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '0.75rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <span style={{
+                                              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                              color: '#fff',
+                                              padding: '4px 10px',
+                                              borderRadius: '20px',
+                                              fontSize: '0.85rem',
+                                              fontWeight: '600',
+                                              flexShrink: 0
+                                            }}>
+                                              {pIdx + 1}
+                                            </span>
+                                            <span style={{color: '#e2e8f0', fontSize: '1rem', fontWeight: '500'}}>
+                                              {pregShort.pregunta}
+                                            </span>
+                                          </div>
+                                          
+                                          {/* Palabras clave como pista */}
+                                          {pregShort.palabras_clave && pregShort.palabras_clave.length > 0 && (
+                                            <div style={{
+                                              background: 'rgba(251, 191, 36, 0.1)',
+                                              border: '1px solid rgba(251, 191, 36, 0.3)',
+                                              borderRadius: '8px',
+                                              padding: '0.5rem 0.75rem',
+                                              marginBottom: '0.75rem',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem',
+                                              flexWrap: 'wrap'
+                                            }}>
+                                              <span style={{fontSize: '1rem'}}>💡</span>
+                                              <span style={{color: '#fcd34d', fontSize: '0.85rem'}}>Palabras clave:</span>
+                                              {pregShort.palabras_clave.map((palabra, kwIdx) => (
+                                                <span key={kwIdx} style={{
+                                                  background: 'rgba(251, 191, 36, 0.2)',
+                                                  padding: '2px 8px',
+                                                  borderRadius: '10px',
+                                                  color: '#fef3c7',
+                                                  fontSize: '0.85rem',
+                                                  fontStyle: 'italic'
+                                                }}>{palabra}</span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          
+                                          {/* Campo de respuesta */}
+                                          <div>
+                                            <input
+                                              type="text"
+                                              placeholder="Escribe tu respuesta corta..."
+                                              value={respuestasArray[pIdx] || ''}
+                                              onChange={(e) => {
+                                                const nuevasRespuestas = [...respuestasArray];
+                                                while (nuevasRespuestas.length < pregunta.metadata.preguntas_short.length) {
+                                                  nuevasRespuestas.push('');
+                                                }
+                                                nuevasRespuestas[pIdx] = e.target.value;
+                                                actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                              }}
+                                              style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                background: 'rgba(0,0,0,0.3)',
+                                                border: '2px solid rgba(34, 197, 94, 0.4)',
+                                                borderRadius: '8px',
+                                                color: '#e2e8f0',
+                                                fontSize: '1rem'
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  {/* Criterios de evaluación */}
+                                  {pregunta.metadata?.criterios_evaluacion && Object.keys(pregunta.metadata.criterios_evaluacion).length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginTop: '1rem'
+                                    }}>
+                                      <span style={{color: '#c084fc', fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '0.5rem'}}>📋 Criterios de evaluación:</span>
+                                      <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#e9d5ff', fontSize: '0.85rem'}}>
+                                        {Object.entries(pregunta.metadata.criterios_evaluacion).map(([clave, valor], cIdx) => (
+                                          <li key={cIdx} style={{marginBottom: '0.25rem'}}>
+                                            <strong>{clave}:</strong> {valor}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para writing_correction */}
+                              {pregunta.tipo === 'writing_correction' && pregunta.metadata?.frases_con_errores?.length > 0 && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Tipos de errores esperados */}
+                                  {pregunta.metadata?.tipos_errores_esperados && pregunta.metadata.tipos_errores_esperados.length > 0 && (
+                                    <div style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '0.5rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      {pregunta.metadata.tipos_errores_esperados.map((tipo, tIdx) => (
+                                        <span key={tIdx} style={{
+                                          background: 'rgba(239, 68, 68, 0.2)',
+                                          border: '1px solid rgba(239, 68, 68, 0.4)',
+                                          padding: '4px 10px',
+                                          borderRadius: '15px',
+                                          color: '#fca5a5',
+                                          fontSize: '0.8rem'
+                                        }}>⚠️ {tipo}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Lista de frases con errores */}
+                                  <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                                    {pregunta.metadata.frases_con_errores.map((frase, fIdx) => {
+                                      const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                      return (
+                                        <div key={fIdx} style={{
+                                          background: 'rgba(239, 68, 68, 0.1)',
+                                          border: '2px solid rgba(239, 68, 68, 0.3)',
+                                          borderRadius: '12px',
+                                          padding: '1rem'
+                                        }}>
+                                          {/* Número de frase */}
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <span style={{
+                                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                              color: '#fff',
+                                              padding: '4px 10px',
+                                              borderRadius: '20px',
+                                              fontSize: '0.85rem',
+                                              fontWeight: '600'
+                                            }}>
+                                              {fIdx + 1}/{pregunta.metadata.frases_con_errores.length}
+                                            </span>
+                                            {frase.tipo_error && (
+                                              <span style={{
+                                                background: 'rgba(251, 191, 36, 0.2)',
+                                                padding: '4px 10px',
+                                                borderRadius: '15px',
+                                                color: '#fcd34d',
+                                                fontSize: '0.8rem'
+                                              }}>🏷️ {frase.tipo_error}</span>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Frase con error */}
+                                          <div style={{
+                                            background: 'rgba(239, 68, 68, 0.15)',
+                                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                                            borderRadius: '8px',
+                                            padding: '0.75rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <span style={{color: '#fca5a5', fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '0.25rem'}}>❌ Frase con error:</span>
+                                            <span style={{color: '#fecaca', fontSize: '1rem', fontStyle: 'italic'}}>{frase.frase_con_error}</span>
+                                          </div>
+                                          
+                                          {/* Pista gramatical */}
+                                          {frase.pista && (
+                                            <div style={{
+                                              background: 'rgba(59, 130, 246, 0.15)',
+                                              border: '1px solid rgba(59, 130, 246, 0.4)',
+                                              borderRadius: '8px',
+                                              padding: '0.5rem 0.75rem',
+                                              marginBottom: '0.75rem',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem'
+                                            }}>
+                                              <span style={{fontSize: '1.1rem'}}>💡</span>
+                                              <span style={{color: '#93c5fd', fontSize: '0.9rem', fontStyle: 'italic'}}>{frase.pista}</span>
+                                            </div>
+                                          )}
+                                          
+                                          {/* Campo de respuesta */}
+                                          <div>
+                                            <label style={{color: '#86efac', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem'}}>✅ Tu corrección:</label>
+                                            <input
+                                              type="text"
+                                              placeholder="Escribe la frase corregida..."
+                                              value={respuestasArray[fIdx] || ''}
+                                              onChange={(e) => {
+                                                const nuevasRespuestas = [...respuestasArray];
+                                                while (nuevasRespuestas.length < pregunta.metadata.frases_con_errores.length) {
+                                                  nuevasRespuestas.push('');
+                                                }
+                                                nuevasRespuestas[fIdx] = e.target.value;
+                                                actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                              }}
+                                              style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                background: 'rgba(0,0,0,0.3)',
+                                                border: '2px solid rgba(34, 197, 94, 0.4)',
+                                                borderRadius: '8px',
+                                                color: '#e2e8f0',
+                                                fontSize: '1rem'
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  
+                                  {/* Criterios de evaluación */}
+                                  {pregunta.metadata?.criterios_evaluacion && Object.keys(pregunta.metadata.criterios_evaluacion).length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginTop: '1rem'
+                                    }}>
+                                      <span style={{color: '#c084fc', fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '0.5rem'}}>📋 Criterios de evaluación:</span>
+                                      <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#e9d5ff', fontSize: '0.85rem'}}>
+                                        {Object.entries(pregunta.metadata.criterios_evaluacion).map(([clave, valor], cIdx) => (
+                                          <li key={cIdx} style={{marginBottom: '0.25rem'}}>
+                                            <strong>{clave}:</strong> {valor}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Renderizado especial para writing_transformation */}
+                              {pregunta.tipo === 'writing_transformation' && (
+                                <div style={{marginBottom: '1rem'}}>
+                                  {/* Tipos de transformación */}
+                                  {pregunta.metadata?.tipos_transformacion && pregunta.metadata.tipos_transformacion.length > 0 && (
+                                    <div style={{
+                                      display: 'flex',
+                                      flexWrap: 'wrap',
+                                      gap: '0.5rem',
+                                      marginBottom: '1rem'
+                                    }}>
+                                      {pregunta.metadata.tipos_transformacion.map((tipo, tIdx) => (
+                                        <span key={tIdx} style={{
+                                          background: 'rgba(168, 85, 247, 0.2)',
+                                          border: '1px solid rgba(168, 85, 247, 0.4)',
+                                          padding: '4px 10px',
+                                          borderRadius: '15px',
+                                          color: '#e9d5ff',
+                                          fontSize: '0.8rem'
+                                        }}>🔄 {tipo}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Lista de transformaciones */}
+                                  {pregunta.metadata?.transformaciones && pregunta.metadata.transformaciones.length > 0 && (
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '1rem'}}>
+                                      {pregunta.metadata.transformaciones.map((transform, tIdx) => {
+                                        const respuestasArray = (respuestasUsuario[index] || '').split('|||');
+                                        return (
+                                          <div key={tIdx} style={{
+                                            background: 'rgba(59, 130, 246, 0.1)',
+                                            border: '2px solid rgba(59, 130, 246, 0.3)',
+                                            borderRadius: '12px',
+                                            padding: '1rem'
+                                          }}>
+                                            {/* Número de transformación */}
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.5rem',
+                                              marginBottom: '0.75rem'
+                                            }}>
+                                              <span style={{
+                                                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                                                color: '#fff',
+                                                padding: '4px 10px',
+                                                borderRadius: '20px',
+                                                fontSize: '0.85rem',
+                                                fontWeight: '600'
+                                              }}>
+                                                {tIdx + 1}/{pregunta.metadata.transformaciones.length}
+                                              </span>
+                                            </div>
+                                            
+                                            {/* Oración base */}
+                                            <div style={{
+                                              background: 'rgba(251, 191, 36, 0.1)',
+                                              border: '1px solid rgba(251, 191, 36, 0.3)',
+                                              borderRadius: '8px',
+                                              padding: '0.75rem',
+                                              marginBottom: '0.75rem'
+                                            }}>
+                                              <span style={{color: '#fcd34d', fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '0.25rem'}}>📝 Oración original:</span>
+                                              <span style={{color: '#fef3c7', fontSize: '1rem', fontStyle: 'italic'}}>{transform.oracion_base}</span>
+                                            </div>
+                                            
+                                            {/* Instrucción */}
+                                            <div style={{
+                                              background: 'rgba(34, 197, 94, 0.1)',
+                                              border: '1px solid rgba(34, 197, 94, 0.3)',
+                                              borderRadius: '8px',
+                                              padding: '0.75rem',
+                                              marginBottom: '0.75rem'
+                                            }}>
+                                              <span style={{color: '#22c55e', fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '0.25rem'}}>🎯 Instrucción:</span>
+                                              <span style={{color: '#86efac', fontSize: '0.95rem'}}>{transform.instruccion}</span>
+                                            </div>
+                                            
+                                            {/* Pista gramatical */}
+                                            {transform.pista && (
+                                              <div style={{
+                                                background: 'rgba(168, 85, 247, 0.15)',
+                                                border: '1px solid rgba(168, 85, 247, 0.4)',
+                                                borderRadius: '8px',
+                                                padding: '0.5rem 0.75rem',
+                                                marginBottom: '0.75rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.5rem'
+                                              }}>
+                                                <span style={{fontSize: '1.1rem'}}>💡</span>
+                                                <span style={{color: '#e9d5ff', fontSize: '0.9rem', fontStyle: 'italic'}}>{transform.pista}</span>
+                                              </div>
+                                            )}
+                                            
+                                            {/* Campo de respuesta */}
+                                            <div>
+                                              <label style={{color: '#93c5fd', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem'}}>✏️ Tu transformación:</label>
+                                              <input
+                                                type="text"
+                                                placeholder="Escribe la oración transformada..."
+                                                value={respuestasArray[tIdx] || ''}
+                                                onChange={(e) => {
+                                                  const nuevasRespuestas = [...respuestasArray];
+                                                  while (nuevasRespuestas.length < pregunta.metadata.transformaciones.length) {
+                                                    nuevasRespuestas.push('');
+                                                  }
+                                                  nuevasRespuestas[tIdx] = e.target.value;
+                                                  actualizarRespuesta(index, nuevasRespuestas.join('|||'));
+                                                }}
+                                                style={{
+                                                  width: '100%',
+                                                  padding: '0.75rem',
+                                                  background: 'rgba(0,0,0,0.3)',
+                                                  border: '2px solid rgba(59, 130, 246, 0.4)',
+                                                  borderRadius: '8px',
+                                                  color: '#e2e8f0',
+                                                  fontSize: '1rem'
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Criterios de evaluación */}
+                                  {pregunta.metadata?.criterios_evaluacion && Object.keys(pregunta.metadata.criterios_evaluacion).length > 0 && (
+                                    <div style={{
+                                      background: 'rgba(168, 85, 247, 0.1)',
+                                      border: '1px solid rgba(168, 85, 247, 0.3)',
+                                      borderRadius: '8px',
+                                      padding: '0.75rem',
+                                      marginTop: '1rem'
+                                    }}>
+                                      <span style={{color: '#c084fc', fontSize: '0.85rem', fontWeight: '600', display: 'block', marginBottom: '0.5rem'}}>📋 Criterios de evaluación:</span>
+                                      <ul style={{margin: 0, paddingLeft: '1.25rem', color: '#e9d5ff', fontSize: '0.85rem'}}>
+                                        {Object.entries(pregunta.metadata.criterios_evaluacion).map(([clave, valor], cIdx) => (
+                                          <li key={cIdx} style={{marginBottom: '0.25rem'}}>
+                                            <strong>{clave}:</strong> {valor}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* Para otros tipos de escritura sin preguntas_comprension, mostrar textarea simple */}
+                              {pregunta.tipo.startsWith('writing_') && pregunta.tipo !== 'writing_essay' && pregunta.tipo !== 'writing_transformation' && pregunta.tipo !== 'writing_correction' && pregunta.tipo !== 'writing_short' && pregunta.tipo !== 'writing_paraphrase' && !pregunta.metadata?.preguntas_comprension && !pregunta.metadata?.frases_con_errores?.length && !pregunta.metadata?.preguntas_short?.length && !pregunta.metadata?.oraciones_originales?.length && (
+                                <textarea
+                                  className="respuesta-desarrollo"
+                                  placeholder={`Escribe tu respuesta en ${pregunta.metadata?.idioma || 'el idioma indicado'}...`}
+                                  value={respuestasUsuario[index] || ''}
+                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                  rows="6"
+                                  style={{width: '100%'}}
+                                />
+                              )}
+                              
+                              {/* Para reading sin preguntas_comprension ni afirmaciones ni texto_con_huecos */}
+                              {pregunta.tipo.startsWith('reading_') && !pregunta.metadata?.preguntas_comprension && !pregunta.metadata?.afirmaciones && !pregunta.metadata?.texto_con_huecos && (
+                                <textarea
+                                  className="respuesta-desarrollo"
+                                  placeholder="Escribe tu respuesta aquí..."
+                                  value={respuestasUsuario[index] || ''}
+                                  onChange={(e) => actualizarRespuesta(index, e.target.value)}
+                                  rows="4"
+                                  style={{width: '100%'}}
+                                />
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                       })}
@@ -25375,7 +33006,17 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     <div className="examen-acciones">
                       <button onClick={enviarExamen} className="btn-enviar-examen" disabled={generandoExamen}>
                         {generandoExamen ? '⏳ Calificando...' : '✅ Enviar Examen'}
-
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setModalCalificarChatGPTAbierto(true);
+                          setPasoCalificacionChatGPT(1);
+                        }} 
+                        className="btn-pausar-examen"
+                        style={{background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}}
+                        disabled={Object.keys(respuestasUsuario).length === 0}
+                      >
+                        🤖 Calificar con ChatGPT
                       </button>
                       <button onClick={pausarExamen} className="btn-pausar-examen">
                         ⏸️ Pausar
@@ -25425,6 +33066,69 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                                 </span>
                               )}
                             </span>
+                            {/* 🔄 Botón regenerar pregunta */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalRegenerar(index, preguntasExamen[index] || resultado);
+                              }}
+                              title="Regenerar pregunta"
+                              style={{
+                                marginLeft: 'auto',
+                                padding: '4px 8px',
+                                background: 'rgba(59, 130, 246, 0.2)',
+                                border: '1px solid rgba(59, 130, 246, 0.4)',
+                                borderRadius: '6px',
+                                color: '#3b82f6',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.4)';
+                                e.currentTarget.style.borderColor = '#3b82f6';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+                                e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+                              }}
+                            >
+                              🔄
+                            </button>
+                            {/* 🗑️ Botón eliminar pregunta */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                eliminarPreguntaPractica(index);
+                              }}
+                              title="Eliminar pregunta"
+                              style={{
+                                padding: '4px 8px',
+                                background: 'rgba(239, 68, 68, 0.2)',
+                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                borderRadius: '6px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontSize: '0.85rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease'
+                              }}
+                              onMouseOver={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.4)';
+                                e.currentTarget.style.borderColor = '#ef4444';
+                              }}
+                              onMouseOut={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                                e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                              }}
+                            >
+                              🗑️
+                            </button>
                           </div>
                           
                           {/* Mostrar próxima revisión si existe */}
@@ -25453,50 +33157,246 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                             </div>
                           )}
                           
+                          {/* 🖼️ MOSTRAR INFORMACIÓN COMPLETA PARA PICTURE_DESCRIPTION */}
+                          {(resultado.tipo === 'picture_description' || preguntasExamen[index]?.tipo === 'picture_description') && (
+                            <div style={{
+                              background: 'rgba(168, 85, 247, 0.1)',
+                              border: '1px solid rgba(168, 85, 247, 0.3)',
+                              borderRadius: '12px',
+                              padding: '1rem',
+                              marginBottom: '1rem'
+                            }}>
+                              {/* Imagen si existe */}
+                              {(imagenesLocales[index] || preguntasExamen[index]?.metadata?.imagen?.url || preguntasExamen[index]?.imagen?.url) && (
+                                <div style={{marginBottom: '1rem', textAlign: 'center'}}>
+                                  <img 
+                                    src={imagenesLocales[index] || preguntasExamen[index]?.metadata?.imagen?.url || preguntasExamen[index]?.imagen?.url}
+                                    alt="Imagen del ejercicio"
+                                    style={{maxWidth: '300px', maxHeight: '200px', borderRadius: '8px', border: '2px solid rgba(168, 85, 247, 0.4)'}}
+                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                  />
+                                </div>
+                              )}
+                              
+                              {/* Descripción de la escena */}
+                              {(preguntasExamen[index]?.metadata?.descripcion_escena || preguntasExamen[index]?.imagen?.descripcion_escena) && (
+                                <div style={{marginBottom: '0.75rem'}}>
+                                  <strong style={{color: '#c084fc'}}>🎬 Escena a describir:</strong>
+                                  <p style={{color: '#e2e8f0', marginTop: '0.25rem', fontSize: '0.9rem'}}>
+                                    {preguntasExamen[index]?.metadata?.descripcion_escena || preguntasExamen[index]?.imagen?.descripcion_escena}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Instrucción */}
+                              {(preguntasExamen[index]?.instruccion || resultado.instruccion) && (
+                                <div style={{marginBottom: '0.75rem'}}>
+                                  <strong style={{color: '#60a5fa'}}>📝 Instrucción:</strong>
+                                  <p style={{color: '#e2e8f0', marginTop: '0.25rem', fontSize: '0.9rem'}}>
+                                    {preguntasExamen[index]?.instruccion || resultado.instruccion}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Qué describir */}
+                              {(preguntasExamen[index]?.que_describir?.length > 0 || preguntasExamen[index]?.metadata?.que_describir?.length > 0) && (
+                                <div style={{marginBottom: '0.75rem'}}>
+                                  <strong style={{color: '#34d399'}}>🎯 Qué describir:</strong>
+                                  <ul style={{color: '#e2e8f0', marginTop: '0.25rem', fontSize: '0.9rem', paddingLeft: '1.5rem'}}>
+                                    {(preguntasExamen[index]?.que_describir || preguntasExamen[index]?.metadata?.que_describir || []).map((item, i) => (
+                                      <li key={i}>{item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              
+                              {/* Vocabulario esperado */}
+                              {(preguntasExamen[index]?.vocabulario_esperado?.length > 0 || preguntasExamen[index]?.metadata?.vocabulario_esperado?.length > 0) && (
+                                <div style={{marginBottom: '0.75rem'}}>
+                                  <strong style={{color: '#fbbf24'}}>📚 Vocabulario esperado:</strong>
+                                  <div style={{display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem'}}>
+                                    {(preguntasExamen[index]?.vocabulario_esperado || preguntasExamen[index]?.metadata?.vocabulario_esperado || []).map((vocab, i) => (
+                                      <span key={i} style={{
+                                        padding: '4px 10px',
+                                        background: 'rgba(251, 191, 36, 0.2)',
+                                        border: '1px solid rgba(251, 191, 36, 0.4)',
+                                        borderRadius: '6px',
+                                        fontSize: '0.85rem',
+                                        color: '#fcd34d'
+                                      }}>{vocab}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Ejemplo de producción */}
+                              {(preguntasExamen[index]?.ejemplo_produccion?.length > 0 || 
+                                (Array.isArray(preguntasExamen[index]?.metadata?.ejemplo_produccion) && preguntasExamen[index]?.metadata?.ejemplo_produccion?.length > 0)) && (
+                                <div style={{marginBottom: '0.75rem'}}>
+                                  <strong style={{color: '#22d3ee'}}>💡 Ejemplo de respuesta esperada:</strong>
+                                  <div style={{
+                                    background: 'rgba(34, 211, 238, 0.1)',
+                                    padding: '0.75rem',
+                                    borderRadius: '8px',
+                                    marginTop: '0.25rem',
+                                    fontStyle: 'italic',
+                                    color: '#67e8f9',
+                                    fontSize: '0.9rem'
+                                  }}>
+                                    {(preguntasExamen[index]?.ejemplo_produccion || preguntasExamen[index]?.metadata?.ejemplo_produccion || []).map((ej, i) => (
+                                      <p key={i} style={{margin: '0.25rem 0'}}>"{ej}"</p>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Nivel y configuración */}
+                              <div style={{display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.5rem'}}>
+                                {(preguntasExamen[index]?.nivel_cefr || preguntasExamen[index]?.metadata?.nivel) && (
+                                  <span style={{
+                                    padding: '4px 10px',
+                                    background: 'rgba(139, 92, 246, 0.2)',
+                                    border: '1px solid rgba(139, 92, 246, 0.4)',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    color: '#a78bfa'
+                                  }}>
+                                    📊 Nivel: {preguntasExamen[index]?.nivel_cefr || preguntasExamen[index]?.metadata?.nivel}
+                                  </span>
+                                )}
+                                {(preguntasExamen[index]?.config_nivel?.num_oraciones || preguntasExamen[index]?.metadata?.oraciones_esperadas) && (
+                                  <span style={{
+                                    padding: '4px 10px',
+                                    background: 'rgba(59, 130, 246, 0.2)',
+                                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    color: '#93c5fd'
+                                  }}>
+                                    ✏️ {preguntasExamen[index]?.config_nivel?.num_oraciones || preguntasExamen[index]?.metadata?.oraciones_esperadas} oraciones esperadas
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
                           <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
                           
                           <div className="resultado-respuesta">
                             <strong>Tu respuesta:</strong>
-                            <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                            {/* Para reading_cloze, formatear las respuestas */}
+                            {resultado.tipo === 'reading_cloze' && resultado.respuesta_usuario?.includes('|||') ? (
+                              <div style={{marginTop: '0.5rem'}}>
+                                {resultado.respuesta_usuario.split('|||').map((resp, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-block',
+                                    padding: '4px 10px',
+                                    margin: '2px 4px',
+                                    background: resp.trim() ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                    border: `1px solid ${resp.trim() ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)'}`,
+                                    borderRadius: '6px',
+                                    color: resp.trim() ? '#93c5fd' : '#fca5a5'
+                                  }}>
+                                    {idx + 1}. {resp.trim() || '(vacío)'}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>{resultado.respuesta_usuario || '(Sin respuesta)'}</p>
+                            )}
                           </div>
                           
                           {resultado.respuesta_correcta && (
                             <div className="resultado-respuesta-correcta">
                               <strong>Respuesta correcta:</strong>
-                              <p>{resultado.respuesta_correcta}</p>
+                              {/* Para reading_cloze, mostrar cada respuesta claramente */}
+                              {resultado.tipo === 'reading_cloze' ? (
+                                <div style={{marginTop: '0.5rem'}}>
+                                  {resultado.respuesta_correcta.split(', ').map((resp, idx) => (
+                                    <span key={idx} style={{
+                                      display: 'inline-block',
+                                      padding: '4px 10px',
+                                      margin: '2px 4px',
+                                      background: 'rgba(34, 197, 94, 0.2)',
+                                      border: '1px solid rgba(34, 197, 94, 0.4)',
+                                      borderRadius: '6px',
+                                      color: '#86efac'
+                                    }}>
+                                      {resp}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p>{resultado.respuesta_correcta}</p>
+                              )}
                             </div>
                           )}
                           
                           {/* Botón para marcar como comprendida si falló */}
                           {resultado.puntos < resultado.puntos_maximos && (
-                            <div style={{marginTop: '0.5rem'}}>
-                              {preguntasComprendidas[examenActivo?.id]?.[index] ? (
+                            <div style={{marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap'}}>
+                              {resultado.apelacion_aceptada ? (
                                 <div style={{
                                   padding: '0.5rem',
-                                  background: '#22c55e',
+                                  background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
                                   color: 'white',
                                   borderRadius: '4px',
                                   textAlign: 'center',
-                                  fontSize: '0.9rem'
+                                  fontSize: '0.9rem',
+                                  flex: 1
                                 }}>
-                                  ✅ Pregunta comprendida y corregida
+                                  ✅ Apelación aceptada - Respuesta correcta
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => marcarPreguntaComprendida(index)}
-                                  style={{
-                                    padding: '0.5rem 1rem',
-                                    background: '#3b82f6',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    cursor: 'pointer',
-                                    fontSize: '0.9rem',
-                                    width: '100%'
-                                  }}
-                                >
-                                  ✓ Marcar como Comprendida
-                                </button>
+                                <>
+                                  {preguntasComprendidas[examenActivo?.id]?.[index] ? (
+                                    <div style={{
+                                      padding: '0.5rem',
+                                      background: '#22c55e',
+                                      color: 'white',
+                                      borderRadius: '4px',
+                                      textAlign: 'center',
+                                      fontSize: '0.9rem',
+                                      flex: 1
+                                    }}>
+                                      ✅ Pregunta comprendida y corregida
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => marcarPreguntaComprendida(index)}
+                                      style={{
+                                        padding: '0.5rem 1rem',
+                                        background: '#3b82f6',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        flex: 1
+                                      }}
+                                    >
+                                      ✓ Marcar como Comprendida
+                                    </button>
+                                  )}
+                                  {/* ⚖️ Botón de Apelar */}
+                                  <button
+                                    onClick={() => abrirModalApelar(index, resultado)}
+                                    style={{
+                                      padding: '0.5rem 1rem',
+                                      background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontSize: '0.9rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}
+                                  >
+                                    ⚖️ Apelar
+                                  </button>
+                                </>
                               )}
                             </div>
                           )}
@@ -25521,6 +33421,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         setRespuestasUsuario({})
                         setExamenCompletado(false)
                         setResultadoExamen(null)
+                        setImagenesLocales({}) // 🔥 Limpiar imágenes locales
                       }} className="btn-close-resultado">
                         Cerrar Práctica
                       </button>
@@ -25575,6 +33476,70 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         }}>
                           {resultado.puntos} / {resultado.puntos_maximos} pts
                         </span>
+                        {/* 🔄 Botón regenerar pregunta */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const preguntaOriginal = viendoExamen.preguntas?.[index] || resultado;
+                            abrirModalRegenerar(index, preguntaOriginal, viendoExamen);
+                          }}
+                          title="Regenerar pregunta"
+                          style={{
+                            marginLeft: 'auto',
+                            padding: '4px 8px',
+                            background: 'rgba(59, 130, 246, 0.2)',
+                            border: '1px solid rgba(59, 130, 246, 0.4)',
+                            borderRadius: '6px',
+                            color: '#3b82f6',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.4)';
+                            e.currentTarget.style.borderColor = '#3b82f6';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+                            e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+                          }}
+                        >
+                          🔄
+                        </button>
+                        {/* 🗑️ Botón eliminar pregunta */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            eliminarPreguntaPractica(index, viendoExamen);
+                          }}
+                          title="Eliminar pregunta"
+                          style={{
+                            padding: '4px 8px',
+                            background: 'rgba(239, 68, 68, 0.2)',
+                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            borderRadius: '6px',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease'
+                          }}
+                          onMouseOver={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.4)';
+                            e.currentTarget.style.borderColor = '#ef4444';
+                          }}
+                          onMouseOut={(e) => {
+                            e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)';
+                            e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                          }}
+                        >
+                          🗑️
+                        </button>
                       </div>
                       
                       <p className="resultado-pregunta-texto">{resultado.pregunta}</p>
@@ -25598,6 +33563,44 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         <strong>Retroalimentación:</strong>
                         <p>{resultado.feedback}</p>
                       </div>
+                      
+                      {/* ⚖️ Botón de Apelar si no tiene puntos máximos */}
+                      {resultado.puntos < resultado.puntos_maximos && !resultado.apelacion_aceptada && (
+                        <div style={{marginTop: '0.5rem'}}>
+                          <button
+                            onClick={() => abrirModalApelar(index, resultado, viendoExamen)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              width: '100%',
+                              justifyContent: 'center'
+                            }}
+                          >
+                            ⚖️ Apelar Respuesta
+                          </button>
+                        </div>
+                      )}
+                      {resultado.apelacion_aceptada && (
+                        <div style={{
+                          marginTop: '0.5rem',
+                          padding: '0.5rem',
+                          background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                          color: 'white',
+                          borderRadius: '4px',
+                          textAlign: 'center',
+                          fontSize: '0.9rem'
+                        }}>
+                          ✅ Apelación aceptada - Respuesta correcta
+                        </div>
+                      )}
                     </div>
                   ))
                   ) : (
@@ -25619,6 +33622,343 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     setResultadoExamen(null)
                   }} className="btn-close-resultado">
                     Cerrar Práctica
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🔄 Modal para regenerar pregunta */}
+        {modalRegenerarAbierto && (
+          <div className="modal-overlay" onClick={() => !regenerandoPregunta && setModalRegenerarAbierto(false)}>
+            <div 
+              className="modal-content" 
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '600px',
+                background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                borderRadius: '16px',
+                border: '1px solid rgba(59, 130, 246, 0.3)'
+              }}
+            >
+              <div className="modal-header" style={{
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
+                paddingBottom: '1rem'
+              }}>
+                <h2 style={{
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  color: '#e2e8f0'
+                }}>
+                  🔄 Regenerar Pregunta {preguntaARegenerar ? preguntaARegenerar.index + 1 : ''}
+                </h2>
+                <button 
+                  onClick={() => !regenerandoPregunta && setModalRegenerarAbierto(false)} 
+                  className="btn-close"
+                  disabled={regenerandoPregunta}
+                  style={{ opacity: regenerandoPregunta ? 0.5 : 1 }}
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="modal-body" style={{ padding: '1.5rem' }}>
+                {/* Info de la pregunta actual */}
+                {preguntaARegenerar && (
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    marginBottom: '1.5rem'
+                  }}>
+                    <div style={{
+                      fontSize: '0.85rem',
+                      color: '#ef4444',
+                      marginBottom: '0.5rem',
+                      fontWeight: '600'
+                    }}>
+                      Pregunta actual (será reemplazada):
+                    </div>
+                    <p style={{
+                      margin: 0,
+                      color: '#cbd5e1',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.5'
+                    }}>
+                      {preguntaARegenerar.pregunta?.pregunta || 'Sin pregunta definida'}
+                    </p>
+                    <div style={{
+                      marginTop: '0.5rem',
+                      fontSize: '0.8rem',
+                      color: '#94a3b8'
+                    }}>
+                      Tipo: {preguntaARegenerar.pregunta?.tipo || 'desconocido'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Campo de instrucciones */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    color: '#93c5fd',
+                    fontWeight: '600'
+                  }}>
+                    📝 Instrucciones para la nueva pregunta (opcional):
+                  </label>
+                  <textarea
+                    value={instruccionesRegenerar}
+                    onChange={(e) => setInstruccionesRegenerar(e.target.value)}
+                    placeholder="Ej: Hazla más difícil, enfócate en conceptos de X, que sea más práctica, incluye ejemplos reales..."
+                    disabled={regenerandoPregunta}
+                    style={{
+                      width: '100%',
+                      minHeight: '120px',
+                      padding: '1rem',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: '1px solid rgba(148, 163, 184, 0.2)',
+                      borderRadius: '8px',
+                      color: '#e2e8f0',
+                      fontSize: '0.95rem',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                  <p style={{
+                    margin: '0.5rem 0 0 0',
+                    fontSize: '0.8rem',
+                    color: '#64748b'
+                  }}>
+                    💡 Si dejas vacío, se generará una pregunta mejorada del mismo tipo automáticamente.
+                  </p>
+                </div>
+
+                {/* Botones */}
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  justifyContent: 'flex-end'
+                }}>
+                  <button
+                    onClick={() => setModalRegenerarAbierto(false)}
+                    disabled={regenerandoPregunta}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: '8px',
+                      color: '#94a3b8',
+                      cursor: regenerandoPregunta ? 'not-allowed' : 'pointer',
+                      opacity: regenerandoPregunta ? 0.5 : 1
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={regenerarPreguntaPractica}
+                    disabled={regenerandoPregunta}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: regenerandoPregunta 
+                        ? 'rgba(59, 130, 246, 0.5)' 
+                        : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      cursor: regenerandoPregunta ? 'not-allowed' : 'pointer',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    {regenerandoPregunta ? (
+                      <>
+                        <span className="spinner" style={{
+                          width: '16px',
+                          height: '16px',
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTop: '2px solid white',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }}></span>
+                        Generando...
+                      </>
+                    ) : (
+                      <>🔄 Regenerar Pregunta</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ⚖️ Modal para Apelar Respuesta */}
+        {modalApelarAbierto && preguntaAApelar && (
+          <div className="modal-overlay" onClick={() => setModalApelarAbierto(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
+              maxWidth: '600px',
+              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+              borderRadius: '16px',
+              border: '1px solid rgba(245, 158, 11, 0.3)'
+            }}>
+              <div className="modal-header" style={{
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                borderRadius: '16px 16px 0 0',
+                padding: '1rem 1.5rem'
+              }}>
+                <h2 style={{margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                  ⚖️ Apelar Respuesta
+                </h2>
+                <button onClick={() => setModalApelarAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body" style={{padding: '1.5rem'}}>
+                {/* Información de la pregunta */}
+                <div style={{
+                  background: 'rgba(30, 41, 59, 0.8)',
+                  padding: '1rem',
+                  borderRadius: '8px',
+                  marginBottom: '1rem',
+                  border: '1px solid rgba(148, 163, 184, 0.2)'
+                }}>
+                  <p style={{margin: '0 0 0.5rem 0', fontWeight: '600', color: '#93c5fd'}}>
+                    📝 Pregunta:
+                  </p>
+                  <p style={{margin: 0, color: '#e2e8f0'}}>
+                    {preguntaAApelar.resultado?.pregunta}
+                  </p>
+                </div>
+                
+                <div style={{display: 'grid', gap: '1rem', gridTemplateColumns: '1fr 1fr'}}>
+                  <div style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(239, 68, 68, 0.3)'
+                  }}>
+                    <p style={{margin: '0 0 0.5rem 0', fontWeight: '600', color: '#fca5a5'}}>
+                      ❌ Tu respuesta:
+                    </p>
+                    <p style={{margin: 0, color: '#e2e8f0'}}>
+                      {preguntaAApelar.resultado?.respuesta_usuario || '(Sin respuesta)'}
+                    </p>
+                  </div>
+                  
+                  <div style={{
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(34, 197, 94, 0.3)'
+                  }}>
+                    <p style={{margin: '0 0 0.5rem 0', fontWeight: '600', color: '#86efac'}}>
+                      ✓ Respuesta esperada:
+                    </p>
+                    <p style={{margin: 0, color: '#e2e8f0'}}>
+                      {preguntaAApelar.resultado?.respuesta_correcta}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Campo de argumento */}
+                <div style={{marginTop: '1.5rem'}}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    color: '#e2e8f0',
+                    fontWeight: '500'
+                  }}>
+                    💬 ¿Por qué crees que tu respuesta es correcta? (opcional)
+                  </label>
+                  <textarea
+                    value={argumentoApelacion}
+                    onChange={(e) => setArgumentoApelacion(e.target.value)}
+                    placeholder="Explica por qué tu respuesta debería ser aceptada... (ej: es un sinónimo, es la misma idea expresada diferente, etc.)"
+                    style={{
+                      width: '100%',
+                      minHeight: '100px',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      color: '#e2e8f0',
+                      resize: 'vertical',
+                      fontSize: '0.95rem'
+                    }}
+                  />
+                </div>
+                
+                <p style={{
+                  marginTop: '1rem',
+                  padding: '0.75rem',
+                  background: 'rgba(59, 130, 246, 0.1)',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  color: '#93c5fd',
+                  fontSize: '0.85rem'
+                }}>
+                  💡 La IA evaluará si tu respuesta es equivalente a la correcta. Si la apelación es aceptada, se actualizará tu puntuación y se mejorará el intervalo de repaso.
+                </p>
+                
+                {/* Botones */}
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  marginTop: '1.5rem',
+                  justifyContent: 'flex-end'
+                }}>
+                  <button
+                    onClick={() => setModalApelarAbierto(false)}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: 'rgba(148, 163, 184, 0.2)',
+                      border: '1px solid rgba(148, 163, 184, 0.3)',
+                      borderRadius: '8px',
+                      color: '#94a3b8',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={apelarRespuesta}
+                    disabled={apelandoPregunta}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: apelandoPregunta 
+                        ? 'rgba(148, 163, 184, 0.3)' 
+                        : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      cursor: apelandoPregunta ? 'not-allowed' : 'pointer',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    {apelandoPregunta ? (
+                      <>
+                        <span className="loading-spinner" style={{
+                          width: '16px',
+                          height: '16px',
+                          border: '2px solid rgba(255,255,255,0.3)',
+                          borderTopColor: 'white',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }}></span>
+                        Evaluando...
+                      </>
+                    ) : (
+                      <>⚖️ Enviar Apelación</>
+                    )}
                   </button>
                 </div>
               </div>
@@ -26105,6 +34445,21 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         onChange={(e) => setNumCloze(Math.max(0, Math.min(15, parseInt(e.target.value) || 0)))}
                         className="input-number"
                       />
+                    </div>
+                    
+                    {/* Opción de Transferencia Conceptual */}
+                    <div className="config-control toggle-control" style={{ marginTop: '12px' }}>
+                      <label className="toggle-label">
+                        <input 
+                          type="checkbox" 
+                          checked={clozeTransferenciaConceptual}
+                          onChange={(e) => setClozeTransferenciaConceptual(e.target.checked)}
+                        />
+                        <span className="toggle-text">🧠 Transferencia Conceptual</span>
+                      </label>
+                      <p className="option-hint" style={{ fontSize: '0.8rem', color: '#888', marginTop: '4px' }}>
+                        Genera ejemplos aplicados con contexto, causalidad y decisiones humanas en lugar de rellenar palabras sueltas.
+                      </p>
                     </div>
                   </div>
                 </details>
@@ -26906,6 +35261,29 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 >
                   Cancelar
                 </button>
+                
+                {/* 🎯 Botón especial para Reading Comprehension Interactivo */}
+                {numReadingComprehension > 0 && 
+                 numMCQ === 0 && numFlashcards === 0 && numVerdaderoFalso === 0 && 
+                 numCloze === 0 && numRespuestaCorta === 0 && numOpenQuestion === 0 && 
+                 numCasoEstudio === 0 && numReadingTrueFalse === 0 && numReadingCloze === 0 && 
+                 numReadingSkill === 0 && numReadingMatching === 0 && numReadingSequence === 0 &&
+                 numWritingShort === 0 && numWritingParaphrase === 0 && numWritingCorrection === 0 &&
+                 numWritingTransformation === 0 && numWritingEssay === 0 && numWritingSentenceBuilder === 0 &&
+                 numWritingPictureDescription === 0 && numWritingEmail === 0 && (
+                  <button 
+                    onClick={generarEjercicioReading} 
+                    className="btn-primary"
+                    disabled={generandoReading}
+                    style={{
+                      background: 'linear-gradient(135deg, #4A90E2 0%, #667eea 100%)',
+                      marginRight: '0.5rem'
+                    }}
+                  >
+                    {generandoReading ? '⏳ Generando...' : '📖 Iniciar Reading Interactivo'}
+                  </button>
+                )}
+                
                 <button 
                   onClick={confirmarGenerarPractica} 
                   className="btn-primary"
@@ -26913,6 +35291,1443 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                 >
                   🚀 Generar Práctica
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🎯 Modal para "Haz tus propias preguntas" (importar desde ChatGPT) */}
+        {modalPreguntasPropiasAbierto && (
+          <div className="modal-overlay" onClick={() => setModalPreguntasPropiasAbierto(false)}>
+            <div className="modal-content modal-config-practica" onClick={(e) => e.stopPropagation()} style={{maxWidth: '900px'}}>
+              <div className="modal-header">
+                <h2>🎯 Haz tus propias preguntas</h2>
+                <button onClick={() => setModalPreguntasPropiasAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body" style={{maxHeight: '70vh', overflowY: 'auto'}}>
+                {!mostrarInstruccionesChatGPT ? (
+                  <>
+                    {/* Paso 1: Configurar cantidades */}
+                    <div className="config-section" style={{marginBottom: '1.5rem'}}>
+                      <h3 style={{color: '#e2e8f0', marginBottom: '1rem'}}>📊 Paso 1: Configura las cantidades</h3>
+                      
+                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', boxSizing: 'border-box'}}>
+                        {/* MCQ */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(59, 130, 246, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#93c5fd', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            🔘 Opción Múltiple
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="20"
+                            value={preguntasPropiasConfig.mcq}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, mcq: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                        </div>
+                        
+                        {/* True/False */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#6ee7b7', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            ✓✗ Verdadero/Falso
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="20"
+                            value={preguntasPropiasConfig.true_false}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, true_false: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                        </div>
+                        
+                        {/* Cloze */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(168, 85, 247, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(168, 85, 247, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#c4b5fd', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            📝 Relleno de Huecos
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="20"
+                            value={preguntasPropiasConfig.cloze}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, cloze: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                        </div>
+
+                        {/* Short Answer */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(251, 191, 36, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(251, 191, 36, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#fcd34d', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            ✍️ Respuesta Corta
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="15"
+                            value={preguntasPropiasConfig.short_answer}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, short_answer: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                        </div>
+
+                        {/* Open Question */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(244, 114, 182, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(244, 114, 182, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#f9a8d4', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            📖 Explicación Detallada
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            value={preguntasPropiasConfig.open_question}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, open_question: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                        </div>
+
+                        {/* Case Study */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}>
+                          <label style={{color: '#fca5a5', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            💼 Caso de Estudio
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="5"
+                            value={preguntasPropiasConfig.case_study}
+                            onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, case_study: Math.max(0, parseInt(e.target.value) || 0)})}
+                            style={{width: '100%', boxSizing: 'border-box', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                          />
+                          {/* Selector de tipo dentro del mismo card */}
+                          {preguntasPropiasConfig.case_study > 0 && (
+                            <select
+                              value={preguntasPropiasConfig.tipo_caso}
+                              onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, tipo_caso: e.target.value})}
+                              style={{
+                                width: '100%',
+                                boxSizing: 'border-box',
+                                padding: '0.5rem',
+                                marginTop: '0.75rem',
+                                background: '#1e293b',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                color: '#e2e8f0',
+                                fontSize: '0.75rem',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="descriptivo">1. Descriptivo</option>
+                              <option value="analitico">2. Analítico</option>
+                              <option value="resolucion">3. Resolución</option>
+                              <option value="decision">4. Decisiones</option>
+                              <option value="comparativo">5. Comparativo</option>
+                              <option value="predictivo">6. Predictivo</option>
+                              <option value="simulacion">7. Simulación</option>
+                              <option value="inverso">8. Inverso</option>
+                              <option value="fallo">9. Fallo</option>
+                              <option value="creativo">10. Creativo</option>
+                              <option value="etico">11. Ético</option>
+                              <option value="tecnico">12. Técnico</option>
+                            </select>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Sección de Idiomas */}
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        marginTop: '1rem',
+                        padding: '1rem',
+                        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+                        border: '1px solid #2a2a3e',
+                        borderRadius: '12px'
+                      }}>
+                        <h4 style={{color: '#a855f7', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                          <span>🌍</span> Ejercicios de Idiomas
+                        </h4>
+                        
+                        {/* Dropdown: Comprensión Lectora */}
+                        <div style={{marginBottom: '1rem'}}>
+                          <button
+                            onClick={() => setSeccionIdiomaExpandida(seccionIdiomaExpandida === 'comprension' ? '' : 'comprension')}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem 1rem',
+                              background: (preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence) > 0 
+                                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' 
+                                : 'rgba(59, 130, 246, 0.2)',
+                              border: '1px solid rgba(59, 130, 246, 0.5)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '0.95rem',
+                              fontWeight: '600'
+                            }}
+                          >
+                            <span>📖 Comprensión Lectora</span>
+                            <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                              {(preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence) > 0 && (
+                                <span style={{
+                                  background: '#fff',
+                                  color: '#3b82f6',
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.8rem'
+                                }}>
+                                  {preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence}
+                                </span>
+                              )}
+                              <span style={{transform: seccionIdiomaExpandida === 'comprension' ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s'}}>▼</span>
+                            </span>
+                          </button>
+                          
+                          {seccionIdiomaExpandida === 'comprension' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              padding: '1rem',
+                              background: 'rgba(59, 130, 246, 0.05)',
+                              border: '1px solid rgba(59, 130, 246, 0.2)',
+                              borderRadius: '8px'
+                            }}>
+                              <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem'}}>
+                                
+                                {/* Comprensión MCQ */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(59, 130, 246, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_comprehension > 0 ? '2px solid #3b82f6' : '1px solid rgba(59, 130, 246, 0.3)'
+                                }}>
+                                  <label style={{color: '#93c5fd', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    ✅ Comprensión MCQ
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="10"
+                                      value={preguntasPropiasConfig.reading_comprehension}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_comprehension: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_comprehension_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_comprehension_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  {/* Selector de número de MCQs internas */}
+                                  {preguntasPropiasConfig.reading_comprehension > 0 && (
+                                    <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                      <span style={{color: '#64748b', fontSize: '0.75rem'}}>MCQs:</span>
+                                      <input
+                                        type="number"
+                                        min="2"
+                                        value={preguntasPropiasConfig.reading_comprehension_preguntas || 3}
+                                        onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_comprehension_preguntas: Math.max(2, parseInt(e.target.value) || 3)})}
+                                        style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                      />
+                                    </div>
+                                  )}
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>Texto + {preguntasPropiasConfig.reading_comprehension_preguntas || 3} MCQ</p>
+                                </div>
+                                
+                                {/* Comprensión Escrita */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(34, 197, 94, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_written > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)'
+                                }}>
+                                  <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    ✍️ Comprensión Escrita
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="10"
+                                      value={preguntasPropiasConfig.reading_written}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_written: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_written_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_written_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  {/* Selector de número de preguntas internas */}
+                                  {preguntasPropiasConfig.reading_written > 0 && (
+                                    <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                      <span style={{color: '#64748b', fontSize: '0.75rem'}}>Preguntas:</span>
+                                      <input
+                                        type="number"
+                                        min="2"
+                                        value={preguntasPropiasConfig.reading_written_preguntas || 3}
+                                        onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_written_preguntas: Math.max(2, parseInt(e.target.value) || 3)})}
+                                        style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                      />
+                                    </div>
+                                  )}
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>Texto + {preguntasPropiasConfig.reading_written_preguntas || 3} preguntas escritas</p>
+                                </div>
+                                
+                                {/* V/F con Justificación */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(168, 85, 247, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_true_false > 0 ? '2px solid #a855f7' : '1px solid rgba(168, 85, 247, 0.3)'
+                                }}>
+                                  <label style={{color: '#c4b5fd', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    ✓✗ V/F Justificación
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="10"
+                                      value={preguntasPropiasConfig.reading_true_false}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_true_false: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_true_false_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_true_false_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>3 afirmaciones + justificación</p>
+                                </div>
+                                
+                                {/* Completar Texto (Cloze) */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(251, 191, 36, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_cloze > 0 ? '2px solid #fbbf24' : '1px solid rgba(251, 191, 36, 0.3)'
+                                }}>
+                                  <label style={{color: '#fcd34d', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    📝 Completar Texto
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="10"
+                                      value={preguntasPropiasConfig.reading_cloze}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_cloze: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_cloze_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_cloze_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>Cloze + banco palabras</p>
+                                </div>
+                                
+                                {/* Habilidades de Lectura */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(236, 72, 153, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_skill > 0 ? '2px solid #ec4899' : '1px solid rgba(236, 72, 153, 0.3)'
+                                }}>
+                                  <label style={{color: '#f9a8d4', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    🎯 Habilidades Lectura
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="5"
+                                      value={preguntasPropiasConfig.reading_skill}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_skill: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_skill_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_skill_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>5 MCQ: Idea, Detalle, Inferencia...</p>
+                                </div>
+                                
+                                {/* Relacionar Ideas */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(14, 165, 233, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_matching > 0 ? '2px solid #0ea5e9' : '1px solid rgba(14, 165, 233, 0.3)'
+                                }}>
+                                  <label style={{color: '#7dd3fc', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    🔗 Relacionar Ideas
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="5"
+                                      value={preguntasPropiasConfig.reading_matching}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_matching: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_matching_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_matching_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>Emparejar párrafos</p>
+                                </div>
+                                
+                                {/* Ordenar Secuencia */}
+                                <div style={{
+                                  padding: '0.75rem',
+                                  background: 'rgba(245, 158, 11, 0.1)',
+                                  borderRadius: '8px',
+                                  border: preguntasPropiasConfig.reading_sequence > 0 ? '2px solid #f59e0b' : '1px solid rgba(245, 158, 11, 0.3)',
+                                  gridColumn: 'span 2'
+                                }}>
+                                  <label style={{color: '#fcd34d', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem'}}>
+                                    📊 Ordenar Secuencia
+                                  </label>
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="5"
+                                      value={preguntasPropiasConfig.reading_sequence}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_sequence: Math.max(0, parseInt(e.target.value) || 0)})}
+                                      style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    />
+                                    <select
+                                      value={preguntasPropiasConfig.reading_sequence_lang}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, reading_sequence_lang: e.target.value})}
+                                      style={{flex: 1, padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                    >
+                                      <option value="ingles">🇬🇧 Inglés</option>
+                                      <option value="frances">🇫🇷 Francés</option>
+                                      <option value="aleman">🇩🇪 Alemán</option>
+                                      <option value="italiano">🇮🇹 Italiano</option>
+                                      <option value="portugues">🇵🇹 Portugués</option>
+                                      <option value="japones">🇯🇵 Japonés</option>
+                                      <option value="chino">🇨🇳 Chino</option>
+                                      <option value="coreano">🇰🇷 Coreano</option>
+                                      <option value="ruso">🇷🇺 Ruso</option>
+                                      <option value="arabe">🇸🇦 Árabe</option>
+                                    </select>
+                                  </div>
+                                  <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.3rem 0 0 0'}}>Ordenar eventos cronológicamente</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Dropdown: Expresión Escrita */}
+                        <div>
+                          <button
+                            onClick={() => setSeccionIdiomaExpandida(seccionIdiomaExpandida === 'expresion' ? '' : 'expresion')}
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem 1rem',
+                              background: (preguntasPropiasConfig.writing_short > 0 || preguntasPropiasConfig.writing_paraphrase > 0 || preguntasPropiasConfig.writing_correction > 0 || preguntasPropiasConfig.writing_transformation > 0 || preguntasPropiasConfig.writing_essay > 0 || preguntasPropiasConfig.sentence_builder > 0 || preguntasPropiasConfig.formal_email > 0 || preguntasPropiasConfig.picture_description > 0)
+                                ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
+                                : 'rgba(34, 197, 94, 0.2)',
+                              border: '1px solid rgba(34, 197, 94, 0.5)',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '0.95rem',
+                              fontWeight: '600'
+                            }}
+                          >
+                            <span>✍️ Expresión Escrita</span>
+                            <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                              {(preguntasPropiasConfig.writing_short > 0 || preguntasPropiasConfig.writing_paraphrase > 0 || preguntasPropiasConfig.writing_correction > 0 || preguntasPropiasConfig.writing_transformation > 0 || preguntasPropiasConfig.writing_essay > 0 || preguntasPropiasConfig.sentence_builder > 0 || preguntasPropiasConfig.formal_email > 0 || preguntasPropiasConfig.picture_description > 0) && (
+                                <span style={{
+                                  background: '#fff',
+                                  color: '#22c55e',
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  fontSize: '0.8rem'
+                                }}>{preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description}</span>
+                              )}
+                              <span style={{transform: seccionIdiomaExpandida === 'expresion' ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.2s'}}>▼</span>
+                            </span>
+                          </button>
+                          
+                          {seccionIdiomaExpandida === 'expresion' && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              padding: '1rem',
+                              background: 'rgba(34, 197, 94, 0.05)',
+                              border: '1px solid rgba(34, 197, 94, 0.2)',
+                              borderRadius: '8px'
+                            }}>
+                              {/* Respuesta Corta Escrita - Con cantidad, nivel y número de preguntas */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.writing_short > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  ✍️ Respuesta Corta Escrita
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.writing_short}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_short: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.writing_short_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_short_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y número de preguntas */}
+                                {preguntasPropiasConfig.writing_short > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.writing_short_nivel || 'B1'}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_short_nivel: e.target.value})}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Básico</option>
+                                      <option value="A2">🟢 A2 - Elemental</option>
+                                      <option value="B1">🟡 B1 - Intermedio</option>
+                                      <option value="B2">🟡 B2 - Intermedio Alto</option>
+                                      <option value="C1">🔵 C1 - Avanzado</option>
+                                      <option value="C2">🔵 C2 - Maestría</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Preguntas:</span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      value={preguntasPropiasConfig.writing_short_preguntas || 3}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_short_preguntas: Math.max(2, parseInt(e.target.value) || 3)})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  Texto + {preguntasPropiasConfig.writing_short_preguntas || 3} preguntas cortas (nivel {preguntasPropiasConfig.writing_short_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Parafraseo - Con cantidad, nivel CEFR y número de frases */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.writing_paraphrase > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  🔄 Parafraseo (Reescribir con otras palabras)
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.writing_paraphrase}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_paraphrase: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.writing_paraphrase_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_paraphrase_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y número de frases */}
+                                {preguntasPropiasConfig.writing_paraphrase > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.writing_paraphrase_nivel || 'B1'}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_paraphrase_nivel: e.target.value})}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Guiado (sinónimo dado)</option>
+                                      <option value="A2">🟢 A2 - Guiado (estructura dada)</option>
+                                      <option value="B1">🟡 B1 - Funcional (reestructuración)</option>
+                                      <option value="B2">🟡 B2 - Funcional (expresiones)</option>
+                                      <option value="C1">🔵 C1 - Estratégico (precisión)</option>
+                                      <option value="C2">🔵 C2 - Estratégico (elegancia)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Frases:</span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      value={preguntasPropiasConfig.writing_paraphrase_frases || 3}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_paraphrase_frases: Math.max(2, parseInt(e.target.value) || 3)})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  {preguntasPropiasConfig.writing_paraphrase_frases || 3} frases para parafrasear (nivel {preguntasPropiasConfig.writing_paraphrase_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Corrección de Errores - Con cantidad, nivel CEFR y número de frases */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.writing_correction > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  🔧 Corrección de Errores
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.writing_correction}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_correction: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.writing_correction_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_correction_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y número de frases */}
+                                {preguntasPropiasConfig.writing_correction > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.writing_correction_nivel || 'B1'}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_correction_nivel: e.target.value})}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Localizado (1 error obvio)</option>
+                                      <option value="A2">🟢 A2 - Localizado (error visible)</option>
+                                      <option value="B1">🟡 B1 - Contextual (2-3 errores)</option>
+                                      <option value="B2">🟡 B2 - Contextual (collocations)</option>
+                                      <option value="C1">🔵 C1 - Editorial (+ explicación)</option>
+                                      <option value="C2">🔵 C2 - Editorial (estilo)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Frases:</span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      value={preguntasPropiasConfig.writing_correction_frases || 3}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_correction_frases: Math.max(2, parseInt(e.target.value) || 3)})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  {preguntasPropiasConfig.writing_correction_frases || 3} frases con errores (nivel {preguntasPropiasConfig.writing_correction_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Transformación Gramatical - Con cantidad, nivel CEFR y número de transformaciones */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.writing_transformation > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  🎭 Transformación Gramatical
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.writing_transformation}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_transformation: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.writing_transformation_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_transformation_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y número de transformaciones */}
+                                {preguntasPropiasConfig.writing_transformation > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.writing_transformation_nivel || 'B1'}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_transformation_nivel: e.target.value})}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Mecánica (neg/interrog)</option>
+                                      <option value="A2">🟢 A2 - Mecánica (tiempos)</option>
+                                      <option value="B1">🟡 B1 - Estructural (pasiva)</option>
+                                      <option value="B2">🟡 B2 - Estructural (condicionales)</option>
+                                      <option value="C1">🔵 C1 - Semántica (nominalización)</option>
+                                      <option value="C2">🔵 C2 - Semántica (registro)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Items:</span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      value={preguntasPropiasConfig.writing_transformation_frases || 3}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_transformation_frases: Math.max(2, parseInt(e.target.value) || 3)})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  {preguntasPropiasConfig.writing_transformation_frases || 3} transformaciones (nivel {preguntasPropiasConfig.writing_transformation_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Mini-Ensayo - Con cantidad, nivel CEFR y palabras */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.writing_essay > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  📄 Mini-Ensayo
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.writing_essay}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_essay: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.writing_essay_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_essay_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y palabras */}
+                                {preguntasPropiasConfig.writing_essay > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.writing_essay_nivel || 'B1'}
+                                      onChange={(e) => {
+                                        const nivel = e.target.value;
+                                        const palabrasDefecto = {A1: 60, A2: 70, B1: 100, B2: 130, C1: 200, C2: 220};
+                                        setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_essay_nivel: nivel, writing_essay_palabras: palabrasDefecto[nivel] || 100});
+                                      }}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Descriptivo (40-80 pal)</option>
+                                      <option value="A2">🟢 A2 - Descriptivo+ (60-80 pal)</option>
+                                      <option value="B1">🟡 B1 - Opinativo (90-120 pal)</option>
+                                      <option value="B2">🟡 B2 - Opinativo+ (120-150 pal)</option>
+                                      <option value="C1">🔵 C1 - Argumentativo (180-220 pal)</option>
+                                      <option value="C2">🔵 C2 - Académico (200-250 pal)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>~Palabras:</span>
+                                    <input
+                                      type="number"
+                                      min="40"
+                                      max="300"
+                                      step="10"
+                                      value={preguntasPropiasConfig.writing_essay_palabras || 100}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, writing_essay_palabras: Math.max(40, parseInt(e.target.value) || 100)})}
+                                      style={{width: '60px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  ~{preguntasPropiasConfig.writing_essay_palabras || 100} palabras (nivel {preguntasPropiasConfig.writing_essay_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Constructor de Oraciones - Con cantidad, nivel CEFR y número de oraciones */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.sentence_builder > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  🧩 Constructor de Oraciones
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.sentence_builder}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, sentence_builder: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.sentence_builder_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, sentence_builder_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y número de oraciones */}
+                                {preguntasPropiasConfig.sentence_builder > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.sentence_builder_nivel || 'B1'}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, sentence_builder_nivel: e.target.value})}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Ordenar palabras</option>
+                                      <option value="A2">🟢 A2 - Ordenar + ajuste verbal</option>
+                                      <option value="B1">🟡 B1 - Combinar ideas</option>
+                                      <option value="B2">🟡 B2 - Construir condicionales</option>
+                                      <option value="C1">🔵 C1 - Reformular estructuras</option>
+                                      <option value="C2">🔵 C2 - Construcción estilística</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Oraciones:</span>
+                                    <input
+                                      type="number"
+                                      min="3"
+                                      max="10"
+                                      value={preguntasPropiasConfig.sentence_builder_oraciones || 5}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, sentence_builder_oraciones: Math.max(3, Math.min(10, parseInt(e.target.value) || 5))})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  {preguntasPropiasConfig.sentence_builder_oraciones || 5} oraciones (nivel {preguntasPropiasConfig.sentence_builder_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Email/Carta Formal - Con cantidad, nivel CEFR y palabras */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.formal_email > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  📧 Email/Carta Formal
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.formal_email}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, formal_email: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.formal_email_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, formal_email_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y palabras */}
+                                {preguntasPropiasConfig.formal_email > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.formal_email_nivel || 'B1'}
+                                      onChange={(e) => {
+                                        const nivel = e.target.value;
+                                        const palabrasDefecto = {A1: 50, A2: 70, B1: 100, B2: 130, C1: 180, C2: 220};
+                                        setPreguntasPropiasConfig({...preguntasPropiasConfig, formal_email_nivel: nivel, formal_email_palabras: palabrasDefecto[nivel] || 100});
+                                      }}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Pedir info (40-60 pal)</option>
+                                      <option value="A2">🟢 A2 - Solicitud simple (50-80 pal)</option>
+                                      <option value="B1">🟡 B1 - Queja/Solicitud (80-120 pal)</option>
+                                      <option value="B2">🟡 B2 - Reclamación razonada (100-150 pal)</option>
+                                      <option value="C1">🔵 C1 - Propuesta/Negociación (150-200 pal)</option>
+                                      <option value="C2">🔵 C2 - Situación sensible (180-250 pal)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>~Palabras:</span>
+                                    <input
+                                      type="number"
+                                      min="40"
+                                      max="300"
+                                      step="10"
+                                      value={preguntasPropiasConfig.formal_email_palabras || 100}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, formal_email_palabras: Math.max(40, parseInt(e.target.value) || 100)})}
+                                      style={{width: '60px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  ~{preguntasPropiasConfig.formal_email_palabras || 100} palabras (nivel {preguntasPropiasConfig.formal_email_nivel || 'B1'})
+                                </p>
+                              </div>
+
+                              {/* Descripción de Imagen - Con cantidad, nivel CEFR, oraciones y prompt IA */}
+                              <div style={{
+                                padding: '0.75rem',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                borderRadius: '8px',
+                                border: preguntasPropiasConfig.picture_description > 0 ? '2px solid #22c55e' : '1px solid rgba(34, 197, 94, 0.3)',
+                                marginBottom: '1rem'
+                              }}>
+                                <label style={{color: '#86efac', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                                  🖼️ Descripción de Imagen
+                                </label>
+                                <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap'}}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="10"
+                                    value={preguntasPropiasConfig.picture_description}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, picture_description: Math.max(0, parseInt(e.target.value) || 0)})}
+                                    style={{width: '50px', padding: '0.4rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '0.9rem'}}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.picture_description_lang}
+                                    onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, picture_description_lang: e.target.value})}
+                                    style={{flex: 1, minWidth: '100px', padding: '0.4rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '6px', color: '#e2e8f0', fontSize: '0.8rem'}}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {/* Selector de nivel CEFR y oraciones */}
+                                {preguntasPropiasConfig.picture_description > 0 && (
+                                  <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap'}}>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem'}}>Nivel:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.picture_description_nivel || 'B1'}
+                                      onChange={(e) => {
+                                        const nivel = e.target.value;
+                                        const oracionesDefecto = {A1: 4, A2: 5, B1: 6, B2: 10, C1: 12, C2: 15};
+                                        setPreguntasPropiasConfig({...preguntasPropiasConfig, picture_description_nivel: nivel, picture_description_oraciones: oracionesDefecto[nivel] || 5});
+                                      }}
+                                      style={{padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    >
+                                      <option value="A1">🟢 A1 - Literal (3-5 orac)</option>
+                                      <option value="A2">🟢 A2 - Literal+ (4-6 orac)</option>
+                                      <option value="B1">🟡 B1 - Funcional (5-8 orac)</option>
+                                      <option value="B2">🟡 B2 - Hipótesis (8-12 orac)</option>
+                                      <option value="C1">🔵 C1 - Análisis (10-15 orac)</option>
+                                      <option value="C2">🔵 C2 - Crítico (12-18 orac)</option>
+                                    </select>
+                                    <span style={{color: '#64748b', fontSize: '0.75rem', marginLeft: '0.5rem'}}>Oraciones:</span>
+                                    <input
+                                      type="number"
+                                      min="3"
+                                      max="20"
+                                      value={preguntasPropiasConfig.picture_description_oraciones || 5}
+                                      onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, picture_description_oraciones: Math.max(3, Math.min(20, parseInt(e.target.value) || 5))})}
+                                      style={{width: '50px', padding: '0.3rem', background: '#1f2937', border: '1px solid #374151', borderRadius: '4px', color: '#e2e8f0', fontSize: '0.75rem'}}
+                                    />
+                                  </div>
+                                )}
+                                <p style={{color: '#64748b', fontSize: '0.7rem', margin: '0.4rem 0 0 0'}}>
+                                  {preguntasPropiasConfig.picture_description_oraciones || 5} oraciones (nivel {preguntasPropiasConfig.picture_description_nivel || 'B1'})
+                                </p>
+                                {preguntasPropiasConfig.picture_description > 0 && (
+                                  <p style={{color: '#fbbf24', fontSize: '0.7rem', margin: '0.3rem 0 0 0', background: 'rgba(251, 191, 36, 0.1)', padding: '0.3rem 0.5rem', borderRadius: '4px'}}>
+                                    ⚠️ Incluye prompt para DALL-E/Midjourney/Stable Diffusion
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <p style={{color: '#94a3b8', marginTop: '1rem', fontSize: '0.9rem', gridColumn: '1 / -1'}}>
+                        Total: <strong style={{color: '#e2e8f0'}}>{preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description}</strong> preguntas
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={() => setMostrarInstruccionesChatGPT(true)}
+                      disabled={preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description === 0}
+                      className="btn-primary"
+                      style={{width: '100%', padding: '1rem', fontSize: '1.1rem'}}
+                    >
+                      📋 Generar instrucciones para ChatGPT
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Paso 2: Instrucciones para ChatGPT */}
+                    <div className="config-section" style={{marginBottom: '1.5rem'}}>
+                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem'}}>
+                        <h3 style={{color: '#e2e8f0', margin: 0}}>📋 Paso 2: Copia esto en ChatGPT</h3>
+                        <button
+                          onClick={() => setMostrarInstruccionesChatGPT(false)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: 'rgba(148, 163, 184, 0.2)',
+                            border: '1px solid rgba(148, 163, 184, 0.3)',
+                            borderRadius: '8px',
+                            color: '#94a3b8',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ← Volver
+                        </button>
+                      </div>
+                      
+                      <div style={{
+                        position: 'relative',
+                        background: '#1e293b',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        padding: '1rem'
+                      }}>
+                        <button
+                          onClick={() => {
+                            const instrucciones = generarInstruccionesChatGPT();
+                            navigator.clipboard.writeText(instrucciones);
+                            setMensaje({tipo: 'exito', texto: '✅ Instrucciones copiadas al portapapeles'});
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '0.5rem',
+                            right: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            background: 'rgba(59, 130, 246, 0.3)',
+                            border: '1px solid rgba(59, 130, 246, 0.5)',
+                            borderRadius: '8px',
+                            color: '#93c5fd',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          📋 Copiar
+                        </button>
+                        <pre style={{
+                          color: '#94a3b8',
+                          fontSize: '0.8rem',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          margin: 0,
+                          paddingRight: '80px'
+                        }}>
+                          {generarInstruccionesChatGPT()}
+                        </pre>
+                      </div>
+                    </div>
+                    
+                    {/* Paso 3: Pegar JSON */}
+                    <div className="config-section" style={{marginBottom: '1.5rem'}}>
+                      <h3 style={{color: '#e2e8f0', marginBottom: '1rem'}}>📥 Paso 3: Pega aquí el JSON de ChatGPT</h3>
+                      
+                      <textarea
+                        value={preguntasPropiasJSON}
+                        onChange={(e) => setPreguntasPropiasJSON(e.target.value)}
+                        rows={8}
+                        placeholder='Pega aquí el JSON que te devuelva ChatGPT. Debe empezar con [ y terminar con ]'
+                        style={{
+                          width: '100%',
+                          padding: '1rem',
+                          background: '#0f172a',
+                          border: '2px solid rgba(59, 130, 246, 0.3)',
+                          borderRadius: '12px',
+                          color: '#e2e8f0',
+                          fontFamily: 'monospace',
+                          fontSize: '0.85rem',
+                          resize: 'vertical'
+                        }}
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={cargarPreguntasPropias}
+                      disabled={!preguntasPropiasJSON.trim()}
+                      className="btn-primary"
+                      style={{width: '100%', padding: '1rem', fontSize: '1.1rem'}}
+                    >
+                      🚀 Cargar Preguntas y Comenzar
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🤖 Modal para calificar con ChatGPT */}
+        {modalCalificarChatGPTAbierto && (
+          <div className="modal-overlay" onClick={() => setModalCalificarChatGPTAbierto(false)}>
+            <div className="modal-content modal-config-practica" onClick={(e) => e.stopPropagation()} style={{maxWidth: '900px'}}>
+              <div className="modal-header">
+                <h2>🤖 Calificar con ChatGPT</h2>
+                <button onClick={() => setModalCalificarChatGPTAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body" style={{maxHeight: '70vh', overflowY: 'auto'}}>
+                {pasoCalificacionChatGPT === 1 ? (
+                  <>
+                    {/* Paso 1: Exportar para ChatGPT */}
+                    <div className="config-section" style={{marginBottom: '1.5rem'}}>
+                      <h3 style={{color: '#e2e8f0', marginBottom: '1rem'}}>📤 Paso 1: Copia esto y pégalo en ChatGPT</h3>
+                      
+                      <div style={{
+                        position: 'relative',
+                        background: '#1e293b',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(102, 126, 234, 0.3)',
+                        padding: '1rem'
+                      }}>
+                        <button
+                          onClick={() => {
+                            const instrucciones = generarInstruccionesCalificacionChatGPT();
+                            navigator.clipboard.writeText(instrucciones);
+                            setMensaje({tipo: 'exito', texto: '✅ Copiado al portapapeles. Pégalo en ChatGPT.'});
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '10px',
+                            right: '10px',
+                            padding: '0.5rem 1rem',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: 'white',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            fontWeight: '600'
+                          }}
+                        >
+                          📋 Copiar
+                        </button>
+                        <pre style={{
+                          margin: 0,
+                          padding: '0.5rem',
+                          paddingTop: '2.5rem',
+                          color: '#94a3b8',
+                          fontSize: '0.75rem',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          maxHeight: '300px',
+                          overflowY: 'auto',
+                          fontFamily: 'monospace'
+                        }}>
+                          {generarInstruccionesCalificacionChatGPT()}
+                        </pre>
+                      </div>
+                      
+                      <p style={{color: '#94a3b8', marginTop: '1rem', fontSize: '0.9rem'}}>
+                        📝 <strong>Preguntas:</strong> {preguntasExamen.length} | 
+                        <strong> Respondidas:</strong> {Object.keys(respuestasUsuario).length}
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={() => setPasoCalificacionChatGPT(2)}
+                      className="btn-primary"
+                      style={{width: '100%', padding: '1rem', fontSize: '1.1rem'}}
+                    >
+                      ➡️ Ya lo copié, siguiente paso
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {/* Paso 2: Importar calificación de ChatGPT */}
+                    <div className="config-section" style={{marginBottom: '1.5rem'}}>
+                      <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem'}}>
+                        <h3 style={{color: '#e2e8f0', margin: 0}}>📥 Paso 2: Pega la respuesta de ChatGPT</h3>
+                        <button
+                          onClick={() => setPasoCalificacionChatGPT(1)}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: 'rgba(148, 163, 184, 0.2)',
+                            border: '1px solid rgba(148, 163, 184, 0.3)',
+                            borderRadius: '8px',
+                            color: '#94a3b8',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ← Volver
+                        </button>
+                      </div>
+                      
+                      <p style={{color: '#94a3b8', marginBottom: '1rem', fontSize: '0.9rem'}}>
+                        ChatGPT te dará un JSON con la calificación. Pégalo aquí:
+                      </p>
+                      
+                      <textarea
+                        value={jsonCalificacionChatGPT}
+                        onChange={(e) => setJsonCalificacionChatGPT(e.target.value)}
+                        placeholder='Pega aquí el JSON de ChatGPT...
+
+Ejemplo:
+{
+  "resultados": [
+    {
+      "pregunta_numero": 1,
+      "correcto": true,
+      "puntos": 3,
+      "puntos_maximos": 3,
+      "feedback": "Respuesta correcta..."
+    }
+  ],
+  "puntos_obtenidos": 3,
+  "puntos_totales": 3,
+  "porcentaje": 100
+}'
+                        style={{
+                          width: '100%',
+                          minHeight: '250px',
+                          padding: '1rem',
+                          background: '#1e293b',
+                          border: '1px solid rgba(102, 126, 234, 0.3)',
+                          borderRadius: '12px',
+                          color: '#e2e8f0',
+                          fontSize: '0.85rem',
+                          fontFamily: 'monospace',
+                          resize: 'vertical',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+                    </div>
+                    
+                    <button
+                      onClick={procesarCalificacionChatGPT}
+                      disabled={!jsonCalificacionChatGPT.trim()}
+                      className="btn-primary"
+                      style={{width: '100%', padding: '1rem', fontSize: '1.1rem'}}
+                    >
+                      ✅ Procesar Calificación
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -27094,8 +36909,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           const toggleHtml = `
                             <details class="toggle-heading toggle-h1" data-toggle-id="${toggleId}">
                               <summary class="toggle-summary toggle-h1-summary">
+                                <span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span>
                                 <span class="toggle-arrow">▶</span>
                                 <span class="toggle-title" contenteditable="true">Toggle Heading 1</span>
+                                <button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button>
                               </summary>
                               <div class="toggle-content" contenteditable="true">
                                 <p>Escribe tu contenido aquí...</p>
@@ -27127,8 +36944,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           const toggleHtml = `
                             <details class="toggle-heading toggle-h2" data-toggle-id="${toggleId}">
                               <summary class="toggle-summary toggle-h2-summary">
+                                <span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span>
                                 <span class="toggle-arrow">▶</span>
                                 <span class="toggle-title" contenteditable="true">Toggle Heading 2</span>
+                                <button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button>
                               </summary>
                               <div class="toggle-content" contenteditable="true">
                                 <p>Escribe tu contenido aquí...</p>
@@ -27159,8 +36978,10 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                           const toggleHtml = `
                             <details class="toggle-heading toggle-h3" data-toggle-id="${toggleId}">
                               <summary class="toggle-summary toggle-h3-summary">
+                                <span class="toggle-drag-handle" contenteditable="false" draggable="true" title="Arrastrar para mover">☰</span>
                                 <span class="toggle-arrow">▶</span>
                                 <span class="toggle-title" contenteditable="true">Toggle Heading 3</span>
+                                <button type="button" class="toggle-delete-btn" contenteditable="false" title="Eliminar toggle" onclick="event.stopPropagation(); if(confirm('¿Eliminar este toggle?')) this.closest('.toggle-heading').remove();">🗑️</button>
                               </summary>
                               <div class="toggle-content" contenteditable="true">
                                 <p>Escribe tu contenido aquí...</p>
@@ -27254,6 +37075,90 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     
                     <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
                     
+                    {/* Botones de tamaño de texto */}
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      const selection = window.getSelection();
+                      if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                        // Usar fontSize con valores del 1-7 (1=pequeño, 7=grande)
+                        document.execCommand('styleWithCSS', false, true);
+                        // Incrementar tamaño - usamos un span con font-size larger
+                        const range = selection.getRangeAt(0);
+                        const selectedText = range.extractContents();
+                        const span = document.createElement('span');
+                        span.style.fontSize = 'larger';
+                        span.appendChild(selectedText);
+                        range.insertNode(span);
+                        // Mantener la selección
+                        selection.removeAllRanges();
+                        const newRange = document.createRange();
+                        newRange.selectNodeContents(span);
+                        selection.addRange(newRange);
+                      }
+                    }} title="Aumentar tamaño del texto seleccionado">
+                      A+
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      const selection = window.getSelection();
+                      if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                        document.execCommand('styleWithCSS', false, true);
+                        // Reducir tamaño - usamos un span con font-size smaller
+                        const range = selection.getRangeAt(0);
+                        const selectedText = range.extractContents();
+                        const span = document.createElement('span');
+                        span.style.fontSize = 'smaller';
+                        span.appendChild(selectedText);
+                        range.insertNode(span);
+                        // Mantener la selección
+                        selection.removeAllRanges();
+                        const newRange = document.createRange();
+                        newRange.selectNodeContents(span);
+                        selection.addRange(newRange);
+                      }
+                    }} title="Reducir tamaño del texto seleccionado">
+                      A-
+                    </button>
+                    <select 
+                      className="btn-toolbar" 
+                      style={{minWidth: '70px', padding: '0.25rem 0.5rem', cursor: 'pointer'}}
+                      onChange={(e) => {
+                        editorRef.current?.focus();
+                        const selection = window.getSelection();
+                        if (selection.rangeCount > 0 && !selection.isCollapsed && e.target.value) {
+                          document.execCommand('styleWithCSS', false, true);
+                          const range = selection.getRangeAt(0);
+                          const selectedText = range.extractContents();
+                          const span = document.createElement('span');
+                          span.style.fontSize = e.target.value;
+                          span.appendChild(selectedText);
+                          range.insertNode(span);
+                          // Mantener la selección
+                          selection.removeAllRanges();
+                          const newRange = document.createRange();
+                          newRange.selectNodeContents(span);
+                          selection.addRange(newRange);
+                        }
+                        e.target.value = ''; // Reset para poder seleccionar el mismo valor
+                      }}
+                      title="Seleccionar tamaño específico"
+                    >
+                      <option value="">Tamaño</option>
+                      <option value="10px">10px</option>
+                      <option value="12px">12px</option>
+                      <option value="14px">14px</option>
+                      <option value="16px">16px</option>
+                      <option value="18px">18px</option>
+                      <option value="20px">20px</option>
+                      <option value="24px">24px</option>
+                      <option value="28px">28px</option>
+                      <option value="32px">32px</option>
+                      <option value="36px">36px</option>
+                      <option value="48px">48px</option>
+                    </select>
+                    
+                    <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
+                    
                     <button type="button" className="btn-toolbar" onClick={() => {
                       editorRef.current?.focus();
                       document.execCommand('insertUnorderedList', false, null);
@@ -27275,6 +37180,7 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         <div class="checklist-item" data-checklist-id="${checklistId}" contenteditable="false" style="display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0; margin: 0.25rem 0;">
                           <input type="checkbox" class="checklist-checkbox" id="${checklistId}" style="width: 18px; height: 18px; cursor: pointer; margin-top: 2px; accent-color: #22c55e;" onclick="this.parentElement.classList.toggle('checked'); if(this.checked) { this.nextElementSibling.style.textDecoration = 'line-through'; this.nextElementSibling.style.color = '#808080'; } else { this.nextElementSibling.style.textDecoration = 'none'; this.nextElementSibling.style.color = 'inherit'; }">
                           <span class="checklist-text" contenteditable="true" style="flex: 1; outline: none; min-height: 1.2em;">Nueva tarea...</span>
+                          <button type="button" class="checklist-delete-btn" contenteditable="false" title="Eliminar tarea" onclick="event.stopPropagation(); this.closest('.checklist-item').remove();">✕</button>
                         </div>
                       `;
                       
@@ -27407,6 +37313,13 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                         style={{width: '0px', height: '0px', opacity: 0, position: 'absolute'}}
                       />
                     </label>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      setModalTablaAbierto(true);
+                      setFilasTabla(3);
+                      setColumnasTabla(3);
+                    }} title="Insertar tabla">
+                      📊 Tabla
+                    </button>
                     
                     <span style={{borderLeft: '1px solid #555', margin: '0 0.5rem'}}></span>
                     
@@ -27440,6 +37353,74 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     }} title="Limpiar formato">
                       🧹 Limpiar
                     </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      // Insertar un nuevo párrafo después del elemento actual
+                      const selection = window.getSelection();
+                      if (selection.rangeCount > 0) {
+                        const range = selection.getRangeAt(0);
+                        // Buscar el elemento contenedor más cercano (toggle, checklist, imagen, tabla)
+                        let currentNode = range.commonAncestorContainer;
+                        while (currentNode && currentNode !== editorRef.current) {
+                          if (currentNode.classList && 
+                              (currentNode.classList.contains('toggle-heading') || 
+                               currentNode.classList.contains('checklist-item') || 
+                               currentNode.classList.contains('imagen-contenedor') ||
+                               currentNode.classList.contains('tabla-contenedor'))) {
+                            // Insertar párrafo después del elemento
+                            const newP = document.createElement('p');
+                            newP.innerHTML = '<br>';
+                            currentNode.parentNode.insertBefore(newP, currentNode.nextSibling);
+                            // Mover cursor al nuevo párrafo
+                            const newRange = document.createRange();
+                            newRange.setStart(newP, 0);
+                            newRange.collapse(true);
+                            selection.removeAllRanges();
+                            selection.addRange(newRange);
+                            return;
+                          }
+                          currentNode = currentNode.parentNode;
+                        }
+                      }
+                      // Si no está dentro de un elemento especial, insertar normalmente
+                      document.execCommand('insertHTML', false, '<p><br></p>');
+                    }} title="Insertar línea debajo del elemento actual">
+                      ⏎ Línea Abajo
+                    </button>
+                    <button type="button" className="btn-toolbar" onClick={() => {
+                      editorRef.current?.focus();
+                      // Insertar un nuevo párrafo ANTES del elemento actual
+                      const selection = window.getSelection();
+                      if (selection.rangeCount > 0) {
+                        const range = selection.getRangeAt(0);
+                        // Buscar el elemento contenedor más cercano (toggle, checklist, imagen, tabla)
+                        let currentNode = range.commonAncestorContainer;
+                        while (currentNode && currentNode !== editorRef.current) {
+                          if (currentNode.classList && 
+                              (currentNode.classList.contains('toggle-heading') || 
+                               currentNode.classList.contains('checklist-item') || 
+                               currentNode.classList.contains('imagen-contenedor') ||
+                               currentNode.classList.contains('tabla-contenedor'))) {
+                            // Insertar párrafo ANTES del elemento
+                            const newP = document.createElement('p');
+                            newP.innerHTML = '<br>';
+                            currentNode.parentNode.insertBefore(newP, currentNode);
+                            // Mover cursor al nuevo párrafo
+                            const newRange = document.createRange();
+                            newRange.setStart(newP, 0);
+                            newRange.collapse(true);
+                            selection.removeAllRanges();
+                            selection.addRange(newRange);
+                            return;
+                          }
+                          currentNode = currentNode.parentNode;
+                        }
+                      }
+                      // Si no está dentro de un elemento especial, insertar normalmente
+                      document.execCommand('insertHTML', false, '<p><br></p>');
+                    }} title="Insertar línea encima del elemento actual">
+                      ⬆ Línea Arriba
+                    </button>
                   </div>
                   )}
                   
@@ -27448,7 +37429,15 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                     contentEditable={!modoSoloLectura}
                     dir="ltr"
                     className="editor-html-simple"
-                    style={modoSoloLectura ? { cursor: 'default' } : {}}
+                    style={{
+                      direction: 'ltr',
+                      textAlign: 'left',
+                      backgroundColor: '#1a1a2e',
+                      color: '#e0e0e0',
+                      writingMode: 'horizontal-tb',
+                      unicodeBidi: 'bidi-override',
+                      ...(modoSoloLectura ? { cursor: 'default' } : {})
+                    }}
                     onClickCapture={(e) => {
                       // Capturar clicks en referencias a notas ANTES de cualquier otro handler
                       const linkElement = e.target.closest('a[data-nota-id]');
@@ -27592,14 +37581,6 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                       }
                     }}
                     suppressContentEditableWarning={true}
-                    style={{
-                      direction: 'ltr',
-                      textAlign: 'left',
-                      backgroundColor: '#1a1a2e',
-                      color: '#e0e0e0',
-                      writingMode: 'horizontal-tb',
-                      unicodeBidi: 'bidi-override'
-                    }}
                   />
                   
                   <div className="nota-hint">
@@ -29613,6 +39594,134 @@ Ahora genera las ${totalPreguntas} preguntas en formato JSON:`;
                   disabled={tipoHipervinculo === 'url' ? !urlHipervinculo : !notaReferenciaId}
                 >
                   🔗 Insertar Enlace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal para Insertar Tabla */}
+        {modalTablaAbierto && (
+          <div className="modal-overlay" onClick={() => setModalTablaAbierto(false)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{maxWidth: '450px'}}>
+              <div className="modal-header">
+                <h2>📊 Insertar Tabla</h2>
+                <button onClick={() => setModalTablaAbierto(false)} className="btn-close">✕</button>
+              </div>
+              
+              <div className="modal-body">
+                <div className="config-section">
+                  <label className="config-label">
+                    <span>Número de filas</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={filasTabla}
+                    onChange={(e) => setFilasTabla(Math.min(20, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="input-nota-titulo"
+                    style={{marginTop: '0.5rem', width: '100%'}}
+                  />
+                </div>
+
+                <div className="config-section">
+                  <label className="config-label">
+                    <span>Número de columnas</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={columnasTabla}
+                    onChange={(e) => setColumnasTabla(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="input-nota-titulo"
+                    style={{marginTop: '0.5rem', width: '100%'}}
+                  />
+                </div>
+
+                {/* Vista previa de la tabla */}
+                <div className="config-section">
+                  <label className="config-label">
+                    <span>Vista previa ({filasTabla} x {columnasTabla})</span>
+                  </label>
+                  <div style={{
+                    marginTop: '0.5rem',
+                    padding: '1rem',
+                    background: 'rgba(255,255,255,0.05)',
+                    borderRadius: '8px',
+                    overflowX: 'auto'
+                  }}>
+                    <table style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '0.8rem'
+                    }}>
+                      <tbody>
+                        {Array.from({length: Math.min(filasTabla, 5)}).map((_, rowIdx) => (
+                          <tr key={rowIdx}>
+                            {Array.from({length: Math.min(columnasTabla, 5)}).map((_, colIdx) => (
+                              <td key={colIdx} style={{
+                                border: '1px solid #555',
+                                padding: '0.25rem 0.5rem',
+                                textAlign: 'center',
+                                color: '#888'
+                              }}>
+                                {rowIdx === 0 ? `Col ${colIdx + 1}` : '...'}
+                              </td>
+                            ))}
+                            {columnasTabla > 5 && (
+                              <td style={{border: '1px solid #555', padding: '0.25rem', color: '#666'}}>...</td>
+                            )}
+                          </tr>
+                        ))}
+                        {filasTabla > 5 && (
+                          <tr>
+                            {Array.from({length: Math.min(columnasTabla, 5) + (columnasTabla > 5 ? 1 : 0)}).map((_, colIdx) => (
+                              <td key={colIdx} style={{border: '1px solid #555', padding: '0.25rem', color: '#666', textAlign: 'center'}}>...</td>
+                            ))}
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button onClick={() => setModalTablaAbierto(false)} className="btn-cancelar">
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    editorRef.current?.focus();
+                    
+                    // Generar HTML de la tabla
+                    const tableId = 'table_' + Date.now();
+                    let tableHtml = `<div class="tabla-contenedor" data-table-id="${tableId}" style="margin: 1rem 0; overflow-x: auto;"><table class="tabla-editable" style="width: 100%; border-collapse: collapse; min-width: 300px;">`;
+                    
+                    for (let i = 0; i < filasTabla; i++) {
+                      tableHtml += '<tr>';
+                      for (let j = 0; j < columnasTabla; j++) {
+                        if (i === 0) {
+                          // Primera fila como encabezado
+                          tableHtml += `<th contenteditable="true" style="border: 1px solid #555; padding: 0.5rem 0.75rem; background: rgba(100, 108, 255, 0.15); color: #fff; font-weight: 600; text-align: left;">Encabezado ${j + 1}</th>`;
+                        } else {
+                          tableHtml += `<td contenteditable="true" style="border: 1px solid #444; padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.03);">Celda</td>`;
+                        }
+                      }
+                      tableHtml += '</tr>';
+                    }
+                    
+                    tableHtml += '</table><button type="button" class="tabla-delete-btn" contenteditable="false" title="Eliminar tabla" onclick="event.stopPropagation(); if(confirm(\'¿Eliminar esta tabla?\')) this.closest(\'.tabla-contenedor\').remove();" style="position: absolute; top: 0.25rem; right: 0.25rem; background: rgba(239, 68, 68, 0.8); border: none; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.75rem; opacity: 0; transition: opacity 0.2s;">🗑️</button></div><p><br></p>';
+                    
+                    document.execCommand('insertHTML', false, tableHtml);
+                    setContenidoNota(editorRef.current?.innerHTML || '');
+                    setModalTablaAbierto(false);
+                  }} 
+                  className="btn-primary"
+                >
+                  📊 Insertar Tabla
                 </button>
               </div>
             </div>

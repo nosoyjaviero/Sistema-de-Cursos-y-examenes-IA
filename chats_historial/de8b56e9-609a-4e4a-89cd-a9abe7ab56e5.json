@@ -1,0 +1,17 @@
+{
+  "id": "de8b56e9-609a-4e4a-89cd-a9abe7ab56e5",
+  "nombre": "Chat 15/12/2025",
+  "fecha": "2025-12-15T18:20:17.361260",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "que dice el archivo?",
+      "hora": "18:19"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "El archivo parece ser un archivo JSON (JavaScript Object Notation) llamado \"qqqqq\", pero no contiene ninguna información legible ni estructurada en forma de clave-valor como se espera en los archivos JSON estándar.\n\nEn su lugar, el contenido del archivo parece consistir en una etiqueta HTML con detalles y una suma que muestra un texto aleatorio entre paréntesis: \"jbedkcgedkcerc\" y una referencia al archivo \"[Archivo: qqqqq.json]\".",
+      "hora": "18:20"
+    }
+  ]
+}

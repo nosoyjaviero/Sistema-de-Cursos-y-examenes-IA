@@ -2084,45 +2084,50 @@
 }
 
 .carpetas-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  max-height: 300px;
-  overflow-y: auto;
   padding: 0.5rem;
 }
 
 .carpeta-card {
-  background: rgba(100, 108, 255, 0.1);
-  border: 2px solid rgba(100, 108, 255, 0.2);
-  border-radius: 10px;
-  padding: 1rem;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 1px solid #2a2a3e;
+  border-left: 4px solid #646cff;
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-align: center;
+  transition: all 0.2s;
+  text-align: left;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
 .carpeta-card:hover {
-  background: rgba(100, 108, 255, 0.2);
-  border-color: rgba(100, 108, 255, 0.4);
-  transform: translateY(-3px);
-  box-shadow: 0 6px 16px rgba(100, 108, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(100, 108, 255, 0.2);
+  border-color: #646cff;
+  background: linear-gradient(135deg, #1f1f38 0%, #1a2548 100%);
 }
 
 .carpeta-icono {
-  font-size: 2rem;
-  filter: drop-shadow(0 2px 8px rgba(100, 108, 255, 0.3));
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  width: 40px;
+  text-align: center;
+  filter: drop-shadow(0 2px 4px rgba(100, 108, 255, 0.2));
 }
 
 .carpeta-nombre {
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 1rem;
   font-weight: 600;
-  word-break: break-word;
+  flex: 1;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .carpeta-info {
@@ -9070,6 +9075,26 @@
   background: rgba(139, 92, 246, 0.15);
   border-color: rgba(139, 92, 246, 0.6);
   color: #8b5cf6;
+}
+
+.btn-examenes {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.btn-examenes:hover {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.6);
+  color: #22c55e;
+}
+
+.btn-practicas {
+  border-color: rgba(249, 115, 22, 0.3);
+}
+
+.btn-practicas:hover {
+  background: rgba(249, 115, 22, 0.15);
+  border-color: rgba(249, 115, 22, 0.6);
+  color: #f97316;
 }
 
 /* Responsive para accesos rápidos */

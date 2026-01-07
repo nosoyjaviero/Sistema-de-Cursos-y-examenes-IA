@@ -1,0 +1,17 @@
+{
+  "id": "eb73acf3-e8ce-4551-81e7-0b4aee1e2849",
+  "nombre": "Chat 15/12/2025",
+  "fecha": "2025-12-15T18:23:05.475663",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "cual es la constante pi?",
+      "hora": "18:22"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "La constante pi (pi) se representa con la letra griega π. Es una constante matemática fundamental en geometría y trigonometría, que representa la proporción entre la circunferencia de un círculo y su diámetro.\n\nEl valor aproximado de pi es 3,14159, pero este número se extiende infinitamente sin repetición (es una constante irracional). Por lo tanto, no hay un valor exacto para expresar completamente. Sin embargo, generalmente se utiliza la representación en forma decimal o en su versión fraccionaria como \\(\\frac{22}{7}\\), que es más fácil de manejar en cálculos y aplicaciones cotidianas.\n\nPero pi, por sí mismo, se expresa gráficamente con la letra griega π.",
+      "hora": "18:23"
+    }
+  ]
+}

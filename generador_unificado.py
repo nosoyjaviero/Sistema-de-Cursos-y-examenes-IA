@@ -509,11 +509,16 @@ Puedes razonar primero, pero al final SIEMPRE incluye el JSON completo."""
                       archivos: list = None,
                       session_id: str = None,
                       sin_prompt_sistema: bool = False,
-                      tipo_caso: str = None) -> List[PreguntaExamen]:
+                      tipo_caso: str = None,
+                      cloze_transferencia: bool = False) -> List[PreguntaExamen]:
         """Genera examen usando Ollama o GGUF
         sin_prompt_sistema: Si es True, usa el contenido directamente sin agregar instrucciones
         tipo_caso: Para casos de estudio, especifica el tipo (descriptivo, analitico, resolucion, etc.)
+        cloze_transferencia: Si es True, genera ejercicios de transferencia conceptual en lugar de cloze tradicional
         """
+        
+        # Guardar parámetros para uso en métodos internos
+        self._cloze_transferencia = cloze_transferencia
         
         # INICIAR LOG DETALLADO
         self._iniciar_log()
@@ -922,6 +927,115 @@ Responde SOLO con JSON válido, sin código markdown ni explicaciones adicionale
         }
         
         info = tipo_info.get(tipo, tipo_info['mcq'])
+        
+        # 🧠 MODO TRANSFERENCIA CONCEPTUAL PARA CLOZE
+        if tipo == 'cloze' and getattr(self, '_cloze_transferencia', False):
+            print("🧠 Usando modo TRANSFERENCIA CONCEPTUAL para Cloze")
+            
+            # PROMPT ESPECIAL PARA TRANSFERENCIA CONCEPTUAL
+            prompt_transferencia = f"""TAREA: Crear ejercicios de APLICACIÓN PRÁCTICA de conocimiento
+
+═══════════════════════════════════════════════════════════════
+PASO 1 - ANÁLISIS PROFUNDO DEL CONTENIDO
+═══════════════════════════════════════════════════════════════
+
+Lee este texto y ANTES de generar nada, identifica:
+
+CONTENIDO:
+{contenido}
+
+PREGUNTAS DE ANÁLISIS (responde mentalmente):
+1. ¿Es un tema de GRAMÁTICA (uso correcto de palabras)?
+2. ¿Es un tema de VOCABULARIO (significado de términos)?
+3. ¿Es un CONCEPTO TEÓRICO (idea abstracta)?
+4. ¿Es una HABILIDAD PRÁCTICA (cómo hacer algo)?
+5. ¿Cuál es el OBJETIVO DE APRENDIZAJE? (¿qué debe saber HACER el estudiante?)
+
+═══════════════════════════════════════════════════════════════
+PASO 2 - GENERA {cantidad} EJERCICIOS SEGÚN EL TIPO DE CONTENIDO
+═══════════════════════════════════════════════════════════════
+
+🎯 SI EL TEMA ES GRAMÁTICA (como "uso de porqué/porque/por qué/por que"):
+- El estudiante debe USAR CORRECTAMENTE la forma gramatical en contexto
+- Los huecos deben ser la FORMA CORRECTA + su justificación
+- Ejemplo: "Le pregunté {{}} había llegado tarde, y me respondió que {{}} se quedó dormido."
+  answers: ["por qué", "porque"]
+  (El estudiante practica CUÁNDO usar cada forma)
+
+🎯 SI EL TEMA ES UN CONCEPTO (como "causalidad" o "toma de decisiones"):  
+- El estudiante debe APLICAR el concepto en una situación real
+- Los huecos son EXPLICACIONES que demuestran comprensión
+- Ejemplo: "La causa de mi decisión fue {{}} y la consecuencia fue {{}}."
+  answers: ["que necesitaba más tiempo para reflexionar", "que perdí la oportunidad"]
+
+🎯 SI EL TEMA ES VOCABULARIO:
+- El estudiante usa las palabras en CONTEXTO apropiado
+- Los huecos muestran USO CORRECTO del término
+
+═══════════════════════════════════════════════════════════════
+EJEMPLOS SEGÚN TIPO DE CONTENIDO
+═══════════════════════════════════════════════════════════════
+
+EJEMPLO A - Si el contenido es sobre "porqué/porque/por qué":
+{{
+  "tipo": "cloze",
+  "pregunta": "Cuando el profesor preguntó {{}} no había hecho la tarea, Juan respondió {{}} había estado enfermo.",
+  "metadata": {{
+    "text_with_gaps": "Cuando el profesor preguntó {{}} no había hecho la tarea, Juan respondió {{}} había estado enfermo.",
+    "answers": ["por qué", "porque"],
+    "hint": "¿Cuál forma se usa para PREGUNTAR y cuál para RESPONDER/explicar?"
+  }},
+  "respuesta_correcta": "por qué, porque",
+  "puntos": 2
+}}
+
+EJEMPLO B - Si el contenido es sobre "el porqué" (sustantivo):
+{{
+  "tipo": "cloze",
+  "pregunta": "María quería entender {{}} de la decisión de su jefe, así que le preguntó {{}} había tomado esa medida tan drástica.",
+  "metadata": {{
+    "text_with_gaps": "María quería entender {{}} de la decisión de su jefe, así que le preguntó {{}} había tomado esa medida tan drástica.",
+    "answers": ["el porqué", "por qué"],
+    "hint": "'El porqué' es sustantivo (la razón), 'por qué' es para preguntar"
+  }},
+  "respuesta_correcta": "el porqué, por qué",
+  "puntos": 2
+}}
+
+EJEMPLO C - Si el contenido es sobre razonamiento/causalidad:
+{{
+  "tipo": "cloze",
+  "pregunta": "El porqué de mi renuncia fue {{}}; tomé esa decisión porque {{}}.",
+  "metadata": {{
+    "text_with_gaps": "El porqué de mi renuncia fue {{}}; tomé esa decisión porque {{}}.",
+    "answers": ["la falta de oportunidades de crecimiento en la empresa", "valoraba más mi desarrollo profesional que la estabilidad"],
+    "hint": "Primero da LA RAZÓN (el porqué), luego EXPLICA (porque)"
+  }},
+  "respuesta_correcta": "la falta de oportunidades de crecimiento en la empresa, valoraba más mi desarrollo profesional que la estabilidad",
+  "puntos": 2
+}}
+
+═══════════════════════════════════════════════════════════════
+REGLAS CRÍTICAS
+═══════════════════════════════════════════════════════════════
+
+1. ANALIZA el contenido para saber QUÉ debe practicar el estudiante
+2. Los ejercicios deben EVALUAR la habilidad del texto, no inventar historias
+3. Si es gramática: los huecos son las FORMAS CORRECTAS
+4. Si es concepto: los huecos son APLICACIONES del concepto
+5. Usa {{}} para huecos (NO {{{{}}}})
+6. 2-3 huecos por ejercicio
+7. El hint debe AYUDAR a elegir la respuesta correcta
+
+Genera EXACTAMENTE {cantidad} ejercicios en formato JSON array:
+[
+  {{ "tipo": "cloze", "pregunta": "...", "metadata": {{...}}, "respuesta_correcta": "...", "puntos": 2 }},
+  ...
+]
+
+Responde SOLO con el JSON válido, sin explicaciones."""
+
+            return prompt_transferencia
         
         prompt = f"""Eres un experto en crear exámenes educativos. Tu tarea es generar EXACTAMENTE {cantidad} preguntas de tipo "{tipo}" ({info['nombre']}) basadas en el contenido proporcionado.
 

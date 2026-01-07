@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Guardado de Imágenes</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .container { background: white; padding: 20px; border-radius: 8px; max-width: 600px; }
+        h1 { color: #333; }
+        .test-box { margin: 20px 0; padding: 15px; background: #f0f0f0; border-left: 4px solid #4CAF50; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #45a049; }
+        input { padding: 8px; margin: 10px 0; display: block; width: 100%; }
+        .result { margin-top: 15px; padding: 10px; background: #eeeeee; border-radius: 4px; font-family: monospace; }
+        .error { color: red; }
+        .success { color: green; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ Test: Sistema de Guardado de Imágenes</h1>
+        
+        <div class="test-box">
+            <h3>1. Probar Endpoint de Guardado</h3>
+            <label>Carpeta (ej: 🌐 Plataforma - Cosas):</label>
+            <input type="text" id="carpeta" value="🌐 Plataforma - Cosas" placeholder="Nombre de carpeta">
+            
+            <label>Seleccionar imagen:</label>
+            <input type="file" id="imagen" accept="image/*">
+            
+            <button onclick="testGuardarImagen()">Probar Guardado</button>
+            <div class="result" id="resultado1"></div>
+        </div>
+
+        <div class="test-box">
+            <h3>2. Verificar Imagen Guardada</h3>
+            <button onclick="listarImagenes()">Listar Imágenes en Carpeta</button>
+            <div class="result" id="resultado2"></div>
+        </div>
+
+        <div class="test-box">
+            <h3>3. Verificar Práctica JSON</h3>
+            <label>Nombre archivo práctica (ej: practica_20260104_103938.json):</label>
+            <input type="text" id="practicaFile" value="practica_20260104_103938.json">
+            <button onclick="verificarJSON()">Verificar JSON</button>
+            <div class="result" id="resultado3"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        function mostrarResultado(elementId, mensaje, tipo = 'info') {
+            const elem = document.getElementById(elementId);
+            elem.innerHTML = `<div class="${tipo}">${mensaje}</div>`;
+        }
+
+        async function testGuardarImagen() {
+            const carpeta = document.getElementById('carpeta').value;
+            const archivo = document.getElementById('imagen').files[0];
+
+            if (!archivo) {
+                mostrarResultado('resultado1', '❌ Selecciona una imagen', 'error');
+                return;
+            }
+
+            mostrarResultado('resultado1', '⏳ Enviando imagen...', 'info');
+
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const response = await fetch(`${API_URL}/api/guardar-imagen-practica`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            carpeta: carpeta,
+                            base64: reader.result,
+                            nombre_archivo: `test_${Date.now()}.${archivo.name.split('.').pop()}`
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        mostrarResultado('resultado1', 
+                            `✅ Imagen guardada<br>Ruta: ${data.ruta}<br>Respuesta: ${JSON.stringify(data, null, 2)}`,
+                            'success'
+                        );
+                    } else {
+                        mostrarResultado('resultado1', 
+                            `❌ Error ${response.status}: ${await response.text()}`,
+                            'error'
+                        );
+                    }
+                } catch (error) {
+                    mostrarResultado('resultado1', 
+                        `❌ Error: ${error.message}`,
+                        'error'
+                    );
+                }
+            };
+            reader.readAsDataURL(archivo);
+        }
+
+        async function listarImagenes() {
+            mostrarResultado('resultado2', '⏳ Listando imágenes...', 'info');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/listar-imagenes-practica`, {
+                    method: 'GET'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const imagenes = data.imagenes || [];
+                    mostrarResultado('resultado2',
+                        `✅ Encontradas ${imagenes.length} imagen(s):<br>${imagenes.join('<br>')}`,
+                        'success'
+                    );
+                } else {
+                    mostrarResultado('resultado2',
+                        `ℹ️ Endpoint de listado aún no existe (optional)`,
+                        'info'
+                    );
+                }
+            } catch (error) {
+                mostrarResultado('resultado2',
+                    `ℹ️ No se puede listar (necesita endpoint adicional)`,
+                    'info'
+                );
+            }
+        }
+
+        async function verificarJSON() {
+            const archivo = document.getElementById('practicaFile').value;
+            mostrarResultado('resultado3', '⏳ Verificando JSON...', 'info');
+            
+            try {
+                // Intentar obtener el archivo desde el servidor
+                const response = await fetch(`${API_URL}/api/verificar-json-practica`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ archivo: archivo })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    mostrarResultado('resultado3',
+                        `✅ JSON verificado:<br>Preguntas picture_description: ${data.imagen_urls?.length || 0}<br>${data.imagen_urls?.map(u => `- ${u}`).join('<br>') || 'Sin URLs'}`,
+                        'success'
+                    );
+                } else {
+                    mostrarResultado('resultado3',
+                        `ℹ️ Endpoint aún no implementado o no disponible`,
+                        'info'
+                    );
+                }
+            } catch (error) {
+                mostrarResultado('resultado3',
+                    `ℹ️ No se puede verificar localmente. Verifica manualmente en: extracciones/🌐 Plataforma - Cosas/${archivo}`,
+                    'info'
+                );
+            }
+        }
+    </script>
+</body>
+</html>

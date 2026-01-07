@@ -1,0 +1,27 @@
+{
+  "id": "0560484a-a409-48c6-8c96-a16ae1a3d1ee",
+  "nombre": "Chat 15/12/2025",
+  "fecha": "2025-12-15T18:21:35.032667",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "que dice el archivo?",
+      "hora": "18:19"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "El archivo parece ser un archivo JSON (JavaScript Object Notation) llamado \"qqqqq\", pero no contiene ninguna información legible ni estructurada en forma de clave-valor como se espera en los archivos JSON estándar.\n\nEn su lugar, el contenido del archivo parece consistir en una etiqueta HTML con detalles y una suma que muestra un texto aleatorio entre paréntesis: \"jbedkcgedkcerc\" y una referencia al archivo \"[Archivo: qqqqq.json]\".",
+      "hora": "18:20"
+    },
+    {
+      "tipo": "usuario",
+      "texto": "cual es la constante pi?",
+      "hora": "18:21"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "Lo siento, pero no hay información en el documento sobre la constante Pi (π). El contenido del documento parece ser una etiqueta HTML con detalles y un texto aleatorio entre paréntesis, sin referencias a números matemáticos o constantes como π. Por lo tanto, no puedo proporcionar respuesta alguna sobre el valor de la constante pi basado en este documento.",
+      "hora": "18:21"
+    }
+  ]
+}

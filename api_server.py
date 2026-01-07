@@ -2982,6 +2982,7 @@ async def generar_practica(datos: dict):
     num_mcq = datos.get("num_mcq", 0)
     num_verdadero_falso = datos.get("num_verdadero_falso", 0)
     num_cloze = datos.get("num_cloze", 0)
+    cloze_transferencia_conceptual = datos.get("cloze_transferencia_conceptual", False)  # 🧠 Modo transferencia conceptual
     num_respuesta_corta = datos.get("num_respuesta_corta", 0)
     num_open_question = datos.get("num_open_question", 0)
     num_caso_estudio = datos.get("num_caso_estudio", 0)
@@ -3260,7 +3261,8 @@ async def generar_practica(datos: dict):
             ajustes_modelo=ajustes,
             callback_progreso=callback_progreso,
             session_id=session_id,
-            tipo_caso=tipo_caso  # Pasar el tipo de caso de estudio seleccionado
+            tipo_caso=tipo_caso,  # Pasar el tipo de caso de estudio seleccionado
+            cloze_transferencia=cloze_transferencia_conceptual  # 🧠 Modo transferencia conceptual
         )
         print(f"✅ Generadas {len(preguntas)} preguntas exitosamente")
         
@@ -3469,10 +3471,14 @@ async def evaluar_examen(datos: dict):
                 
                 proxima_revision_pregunta = (ahora + timedelta(days=intervalo_dias)).isoformat()
 
+                # 🔥 Obtener opciones del dict original o del objeto pregunta
+                opciones_finales = pregunta.opciones or pregunta_dict.get('opciones') or pregunta_dict.get('options') or []
+                
                 resultados.append({
                     "pregunta": pregunta.pregunta,
                     "tipo": pregunta.tipo,
-                    "opciones": pregunta.opciones if pregunta.tipo == 'multiple' else [],
+                    # 🔥 SIEMPRE guardar opciones si existen (del objeto o del dict original)
+                    "opciones": opciones_finales,
                     "respuesta_usuario": respuesta_usuario,
                     "respuesta_correcta": pregunta.respuesta_correcta,
                     "puntos": puntos,
@@ -3730,6 +3736,435 @@ NO incluyas texto adicional fuera del JSON. NO uses markdown. Solo el JSON puro.
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error al evaluar respuesta: {str(e)}")
+
+
+# ============================================================================
+# 🎯 READING COMPREHENSION - Generación y Evaluación Inteligente
+# ============================================================================
+
+@app.post("/api/generar-reading-comprehension")
+async def generar_reading_comprehension(datos: dict):
+    """
+    Genera un ejercicio de Reading Comprehension completo:
+    - Texto de 100-200 palabras basado en el material del curso
+    - 3-5 preguntas mixtas (MCQ, True/False, Short Answer)
+    """
+    try:
+        # Extraer parámetros
+        contenido_material = datos.get("contenido", "")
+        idioma = datos.get("idioma", "ingles")
+        modelo = datos.get("modelo")
+        dificultad = datos.get("dificultad", "medium")
+        tema_especifico = datos.get("tema", "")
+        
+        if not modelo:
+            raise HTTPException(status_code=400, detail="Debe especificar un modelo de Ollama")
+        
+        if not contenido_material:
+            raise HTTPException(status_code=400, detail="Se requiere contenido del material para generar el ejercicio")
+        
+        # Mapear idioma a nombre completo
+        idiomas_map = {
+            "ingles": "English",
+            "frances": "French", 
+            "aleman": "German",
+            "italiano": "Italian",
+            "portugues": "Portuguese",
+            "espanol": "Spanish"
+        }
+        idioma_completo = idiomas_map.get(idioma, "English")
+        
+        print(f"\n{'='*60}")
+        print(f"📖 GENERANDO READING COMPREHENSION")
+        print(f"   🌍 Idioma: {idioma_completo}")
+        print(f"   🎯 Dificultad: {dificultad}")
+        print(f"   🤖 Modelo: {modelo}")
+        print(f"   📚 Material: {len(contenido_material)} caracteres")
+        print(f"{'='*60}\n")
+        
+        # Construir prompt específico para Reading Comprehension
+        prompt = f"""You are an expert language teacher creating a Reading Comprehension exercise.
+
+INSTRUCTIONS:
+1. Read the provided study material carefully
+2. Create an original text of 100-200 words in {idioma_completo} based on the material's topic
+3. The text should be coherent, educational, and appropriate for {dificultad} level
+4. Generate 3-5 questions about the text, mixing:
+   - At least 1 Multiple Choice Question (MCQ) with 4 options
+   - At least 1 True/False question
+   - At least 1 Short Answer question
+
+STUDY MATERIAL (use this as the topic/context):
+{contenido_material[:3000]}
+
+{"SPECIFIC FOCUS: " + tema_especifico if tema_especifico else ""}
+
+IMPORTANT: Respond ONLY with valid JSON in this exact format:
+{{
+  "title": "Title of the reading passage",
+  "text": "The reading passage text in {idioma_completo} (100-200 words)",
+  "topic": "Main topic of the text",
+  "difficulty": "{dificultad}",
+  "questions": [
+    {{
+      "id": 1,
+      "type": "mcq",
+      "question": "Question text in {idioma_completo}",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_answer": 0,
+      "explanation": "Why this is correct"
+    }},
+    {{
+      "id": 2,
+      "type": "true_false",
+      "statement": "Statement to evaluate in {idioma_completo}",
+      "correct_answer": true,
+      "explanation": "Evidence from the text"
+    }},
+    {{
+      "id": 3,
+      "type": "short_answer",
+      "question": "Question requiring a brief written response in {idioma_completo}",
+      "expected_answer": "The expected key points",
+      "keywords": ["key", "terms", "expected"]
+    }}
+  ]
+}}
+
+Generate at least 3 questions with varied types. Make the questions test different comprehension skills:
+- MCQ: Test main ideas or specific details
+- True/False: Test critical understanding of statements
+- Short Answer: Test ability to express understanding in writing
+
+Respond ONLY with the JSON, no additional text."""
+
+        # Llamar a Ollama
+        import httpx
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                'http://localhost:11434/api/generate',
+                json={
+                    'model': modelo,
+                    'prompt': prompt,
+                    'stream': False,
+                    'options': {
+                        'temperature': 0.7,
+                        'top_p': 0.9,
+                        'num_predict': 2000
+                    }
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error de Ollama: {response.status_code}"
+                )
+            
+            resultado = response.json()
+            respuesta_ia = resultado.get('response', '').strip()
+            
+            print(f"📝 Respuesta IA recibida: {len(respuesta_ia)} caracteres")
+            
+            # Extraer JSON de la respuesta
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', respuesta_ia)
+            if json_match:
+                ejercicio = json.loads(json_match.group())
+                
+                # Validar estructura mínima
+                if 'text' not in ejercicio or 'questions' not in ejercicio:
+                    raise ValueError("JSON incompleto: falta text o questions")
+                
+                if len(ejercicio.get('questions', [])) < 3:
+                    print("⚠️ Menos de 3 preguntas generadas, pero continuando...")
+                
+                # Añadir metadata
+                ejercicio['idioma'] = idioma
+                ejercicio['idioma_completo'] = idioma_completo
+                ejercicio['modelo_usado'] = modelo
+                ejercicio['timestamp'] = datetime.now().isoformat()
+                
+                print(f"✅ Ejercicio generado exitosamente:")
+                print(f"   📖 Título: {ejercicio.get('title', 'Sin título')}")
+                print(f"   📝 Texto: {len(ejercicio.get('text', ''))} caracteres")
+                print(f"   ❓ Preguntas: {len(ejercicio.get('questions', []))}")
+                
+                return {
+                    "success": True,
+                    "ejercicio": ejercicio
+                }
+            else:
+                raise ValueError("No se pudo extraer JSON válido de la respuesta")
+                
+    except json.JSONDecodeError as e:
+        print(f"❌ Error parseando JSON: {e}")
+        raise HTTPException(status_code=500, detail=f"Error en formato de respuesta: {str(e)}")
+    except Exception as e:
+        print(f"❌ Error generando reading comprehension: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al generar ejercicio: {str(e)}")
+
+
+@app.post("/api/evaluar-reading-comprehension")
+async def evaluar_reading_comprehension(datos: dict):
+    """
+    Evalúa las respuestas del usuario en un ejercicio de Reading Comprehension
+    y proporciona análisis inteligente de fortalezas/debilidades
+    """
+    try:
+        ejercicio = datos.get("ejercicio", {})
+        respuestas_usuario = datos.get("respuestas", {})
+        modelo = datos.get("modelo")
+        
+        if not modelo:
+            raise HTTPException(status_code=400, detail="Debe especificar un modelo")
+        
+        if not ejercicio or not respuestas_usuario:
+            raise HTTPException(status_code=400, detail="Faltan datos: ejercicio y respuestas")
+        
+        texto = ejercicio.get("text", "")
+        preguntas = ejercicio.get("questions", [])
+        idioma = ejercicio.get("idioma_completo", "English")
+        
+        print(f"\n{'='*60}")
+        print(f"🎯 EVALUANDO READING COMPREHENSION")
+        print(f"   ❓ Preguntas: {len(preguntas)}")
+        print(f"   💬 Respuestas: {len(respuestas_usuario)}")
+        print(f"{'='*60}\n")
+        
+        # Evaluar cada pregunta y recopilar resultados
+        resultados_por_pregunta = []
+        puntaje_total = 0
+        puntaje_maximo = 0
+        
+        # Contadores por tipo de pregunta
+        stats = {
+            "mcq": {"correct": 0, "total": 0},
+            "true_false": {"correct": 0, "total": 0},
+            "short_answer": {"correct": 0, "total": 0, "scores": []}
+        }
+        
+        for pregunta in preguntas:
+            pregunta_id = str(pregunta.get("id", ""))
+            tipo = pregunta.get("type", "")
+            respuesta_usuario = respuestas_usuario.get(pregunta_id, "")
+            
+            resultado = {
+                "id": pregunta_id,
+                "type": tipo,
+                "question": pregunta.get("question") or pregunta.get("statement", ""),
+                "user_answer": respuesta_usuario,
+                "correct": False,
+                "points": 0,
+                "max_points": 10,
+                "feedback": ""
+            }
+            
+            puntaje_maximo += 10
+            
+            if tipo == "mcq":
+                stats["mcq"]["total"] += 1
+                correct_idx = pregunta.get("correct_answer", 0)
+                try:
+                    user_idx = int(respuesta_usuario) if respuesta_usuario else -1
+                except:
+                    user_idx = -1
+                
+                if user_idx == correct_idx:
+                    resultado["correct"] = True
+                    resultado["points"] = 10
+                    resultado["feedback"] = "¡Correcto! " + pregunta.get("explanation", "")
+                    stats["mcq"]["correct"] += 1
+                    puntaje_total += 10
+                else:
+                    resultado["feedback"] = f"Incorrecto. La respuesta correcta era: {pregunta.get('options', [])[correct_idx] if correct_idx < len(pregunta.get('options', [])) else 'N/A'}. {pregunta.get('explanation', '')}"
+                    
+            elif tipo == "true_false":
+                stats["true_false"]["total"] += 1
+                correct_answer = pregunta.get("correct_answer", True)
+                user_answer = str(respuesta_usuario).lower() in ["true", "verdadero", "1", "si", "sí"]
+                
+                if user_answer == correct_answer:
+                    resultado["correct"] = True
+                    resultado["points"] = 10
+                    resultado["feedback"] = "¡Correcto! " + pregunta.get("explanation", "")
+                    stats["true_false"]["correct"] += 1
+                    puntaje_total += 10
+                else:
+                    resultado["feedback"] = f"Incorrecto. La afirmación es {'verdadera' if correct_answer else 'falsa'}. {pregunta.get('explanation', '')}"
+                    
+            elif tipo == "short_answer":
+                stats["short_answer"]["total"] += 1
+                # Evaluar respuesta corta con IA
+                expected = pregunta.get("expected_answer", "")
+                keywords = pregunta.get("keywords", [])
+                
+                # Verificar keywords primero (evaluación rápida)
+                keywords_found = sum(1 for kw in keywords if kw.lower() in str(respuesta_usuario).lower())
+                keyword_score = (keywords_found / len(keywords)) * 10 if keywords else 5
+                
+                # Si hay keywords y la respuesta las contiene, dar puntuación base
+                if keyword_score >= 6:
+                    resultado["correct"] = True
+                    resultado["points"] = int(keyword_score)
+                    resultado["feedback"] = f"Buena respuesta. Incluiste {keywords_found}/{len(keywords)} conceptos clave."
+                    puntaje_total += resultado["points"]
+                    stats["short_answer"]["correct"] += 1
+                    stats["short_answer"]["scores"].append(keyword_score)
+                else:
+                    # Evaluación más detallada con IA si no hay suficientes keywords
+                    resultado["points"] = int(keyword_score)
+                    resultado["feedback"] = f"Respuesta parcial. Esperado: {expected}. Palabras clave faltantes: {[kw for kw in keywords if kw.lower() not in str(respuesta_usuario).lower()]}"
+                    puntaje_total += resultado["points"]
+                    stats["short_answer"]["scores"].append(keyword_score)
+            
+            resultados_por_pregunta.append(resultado)
+        
+        # Calcular porcentaje general
+        porcentaje = (puntaje_total / puntaje_maximo * 100) if puntaje_maximo > 0 else 0
+        
+        # Construir prompt para análisis inteligente
+        resumen_respuestas = "\n".join([
+            f"- {r['type'].upper()}: {'✓' if r['correct'] else '✗'} ({r['points']}/10) - {r['question'][:50]}..."
+            for r in resultados_por_pregunta
+        ])
+        
+        prompt_analisis = f"""You are an expert language teacher analyzing a student's Reading Comprehension performance.
+
+EXERCISE DETAILS:
+- Language: {idioma}
+- Text topic: {ejercicio.get('topic', 'General')}
+- Total score: {puntaje_total}/{puntaje_maximo} ({porcentaje:.1f}%)
+
+RESULTS BY QUESTION:
+{resumen_respuestas}
+
+STATISTICS:
+- MCQ: {stats['mcq']['correct']}/{stats['mcq']['total']} correct
+- True/False: {stats['true_false']['correct']}/{stats['true_false']['total']} correct  
+- Short Answer: {len([s for s in stats['short_answer']['scores'] if s >= 6])}/{stats['short_answer']['total']} satisfactory
+
+Provide a brief but insightful analysis in Spanish. Include:
+1. What comprehension skills the student DOMINATES (be specific)
+2. What areas need IMPROVEMENT (be specific)
+3. Recommended PRACTICE areas (actionable suggestions)
+
+Respond ONLY with valid JSON:
+{{
+  "fortalezas": ["Fortaleza 1", "Fortaleza 2"],
+  "debilidades": ["Debilidad 1", "Debilidad 2"],
+  "recomendaciones": ["Recomendación práctica 1", "Recomendación práctica 2"],
+  "mensaje_general": "Mensaje motivador y constructivo de 2-3 líneas",
+  "nivel_comprension": "basico|intermedio|avanzado"
+}}"""
+
+        # Llamar a Ollama para análisis
+        import httpx
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                'http://localhost:11434/api/generate',
+                json={
+                    'model': modelo,
+                    'prompt': prompt_analisis,
+                    'stream': False,
+                    'options': {
+                        'temperature': 0.5,
+                        'num_predict': 500
+                    }
+                }
+            )
+            
+            analisis = {
+                "fortalezas": [],
+                "debilidades": [],
+                "recomendaciones": [],
+                "mensaje_general": "",
+                "nivel_comprension": "intermedio"
+            }
+            
+            if response.status_code == 200:
+                resultado_ia = response.json()
+                respuesta_ia = resultado_ia.get('response', '').strip()
+                
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', respuesta_ia)
+                if json_match:
+                    try:
+                        analisis = json.loads(json_match.group())
+                    except:
+                        pass
+        
+        # Determinar nivel basado en porcentaje si no lo dio la IA
+        if porcentaje >= 80:
+            nivel_por_puntaje = "avanzado"
+        elif porcentaje >= 50:
+            nivel_por_puntaje = "intermedio"
+        else:
+            nivel_por_puntaje = "basico"
+        
+        # Generar fortalezas/debilidades automáticas si la IA no las dio
+        if not analisis.get("fortalezas"):
+            fortalezas = []
+            if stats["mcq"]["total"] > 0 and stats["mcq"]["correct"] / stats["mcq"]["total"] >= 0.7:
+                fortalezas.append("Buena comprensión de ideas principales y detalles específicos (MCQ)")
+            if stats["true_false"]["total"] > 0 and stats["true_false"]["correct"] / stats["true_false"]["total"] >= 0.7:
+                fortalezas.append("Habilidad para evaluar afirmaciones críticamente (True/False)")
+            if stats["short_answer"]["scores"] and sum(stats["short_answer"]["scores"]) / len(stats["short_answer"]["scores"]) >= 6:
+                fortalezas.append("Capacidad de expresar comprensión por escrito (Short Answer)")
+            if not fortalezas:
+                fortalezas.append("Participación activa en el ejercicio")
+            analisis["fortalezas"] = fortalezas
+        
+        if not analisis.get("debilidades"):
+            debilidades = []
+            if stats["mcq"]["total"] > 0 and stats["mcq"]["correct"] / stats["mcq"]["total"] < 0.5:
+                debilidades.append("Necesita mejorar identificación de ideas principales (MCQ)")
+            if stats["true_false"]["total"] > 0 and stats["true_false"]["correct"] / stats["true_false"]["total"] < 0.5:
+                debilidades.append("Dificultad para evaluar veracidad de afirmaciones (True/False)")
+            if stats["short_answer"]["scores"] and sum(stats["short_answer"]["scores"]) / len(stats["short_answer"]["scores"]) < 5:
+                debilidades.append("Expresión escrita de conceptos puede mejorar (Short Answer)")
+            if not debilidades:
+                debilidades.append("Sigue practicando para consolidar conocimientos")
+            analisis["debilidades"] = debilidades
+        
+        if not analisis.get("recomendaciones"):
+            analisis["recomendaciones"] = [
+                "Practica lectura de textos similares y subraya ideas principales",
+                "Antes de responder, relee el fragmento relevante del texto",
+                "Para respuestas escritas, incluye siempre las palabras clave del tema"
+            ]
+        
+        print(f"✅ Evaluación completada:")
+        print(f"   📊 Puntaje: {puntaje_total}/{puntaje_maximo} ({porcentaje:.1f}%)")
+        print(f"   🎯 Nivel: {analisis.get('nivel_comprension', nivel_por_puntaje)}")
+        
+        return {
+            "success": True,
+            "evaluacion": {
+                "puntaje_total": puntaje_total,
+                "puntaje_maximo": puntaje_maximo,
+                "porcentaje": round(porcentaje, 1),
+                "aprobado": porcentaje >= 60,
+                "resultados_por_pregunta": resultados_por_pregunta,
+                "estadisticas": {
+                    "mcq": stats["mcq"],
+                    "true_false": stats["true_false"],
+                    "short_answer": {
+                        "total": stats["short_answer"]["total"],
+                        "satisfactory": len([s for s in stats["short_answer"]["scores"] if s >= 6])
+                    }
+                },
+                "analisis_inteligente": analisis
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Error evaluando reading comprehension: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error al evaluar: {str(e)}")
 
 
 @app.post("/api/examenes/pausar")
@@ -4400,6 +4835,49 @@ def get_datos(tipo: str):
             
             print(f"📝 Notas cargadas: {len(todas_notas)} total")
             return JSONResponse(content=todas_notas)
+        
+        # Si es errores, leer desde el banco de errores global
+        elif tipo == "errores":
+            todos_errores = []
+            
+            # Ruta principal del banco de errores
+            banco_errores_path = Path("examenes/error_bank/banco_errores_global.json")
+            if banco_errores_path.exists():
+                try:
+                    with open(banco_errores_path, "r", encoding="utf-8") as f:
+                        errores_banco = json.load(f)
+                        if isinstance(errores_banco, list):
+                            todos_errores.extend(errores_banco)
+                        elif isinstance(errores_banco, dict) and "errores" in errores_banco:
+                            todos_errores.extend(errores_banco["errores"])
+                except Exception as e:
+                    print(f"⚠️ Error leyendo banco de errores: {e}")
+            
+            # También buscar errores.json en extracciones (legacy)
+            archivo_legacy = EXTRACCIONES_PATH / "errores" / "errores.json"
+            if archivo_legacy.exists():
+                try:
+                    with open(archivo_legacy, "r", encoding="utf-8") as f:
+                        errores_legacy = json.load(f)
+                        if isinstance(errores_legacy, list):
+                            todos_errores.extend(errores_legacy)
+                except Exception as e:
+                    print(f"⚠️ Error leyendo errores legacy: {e}")
+            
+            # Buscar errores.json en cada carpeta
+            for archivo_error in EXTRACCIONES_PATH.rglob("errores.json"):
+                if archivo_error == archivo_legacy:
+                    continue
+                try:
+                    with open(archivo_error, "r", encoding="utf-8") as f:
+                        errores_carpeta = json.load(f)
+                        if isinstance(errores_carpeta, list):
+                            todos_errores.extend(errores_carpeta)
+                except Exception as e:
+                    print(f"⚠️ Error leyendo {archivo_error}: {e}")
+            
+            print(f"❌ Errores cargados: {len(todos_errores)} total")
+            return JSONResponse(content=todos_errores)
         
         else:
             # Para otros tipos, usar el archivo central
@@ -5378,35 +5856,669 @@ async def actualizar_archivo_practica(request: Request):
         traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+@app.post("/datos/practicas/eliminar-pregunta")
+async def eliminar_pregunta_practica(request: Request):
+    """Elimina una pregunta específica de una práctica por su índice"""
+    try:
+        data = await request.json()
+        practica_id = data.get("practica_id")
+        pregunta_index = data.get("pregunta_index")
+        archivo = data.get("archivo")
+        carpeta_ruta = data.get("carpeta_ruta")
+        
+        print(f"\n{'='*60}")
+        print(f"🗑️ DELETE /datos/practicas/eliminar-pregunta")
+        print(f"{'='*60}")
+        print(f"   practica_id: {practica_id}")
+        print(f"   pregunta_index: {pregunta_index}")
+        print(f"   archivo: {archivo}")
+        print(f"   carpeta_ruta: {carpeta_ruta}")
+        
+        if pregunta_index is None or pregunta_index < 0:
+            return JSONResponse(content={"error": "Índice de pregunta inválido"}, status_code=400)
+        
+        archivo_encontrado = None
+        practica_data = None
+        
+        # MÉTODO 1: Buscar por archivo y carpeta_ruta
+        if archivo and carpeta_ruta:
+            carpeta_limpia = carpeta_ruta.replace('/', '\\')
+            carpeta_destino = EXTRACCIONES_PATH / carpeta_limpia
+            archivo_path = carpeta_destino / archivo
+            
+            print(f"   🔍 Buscando en ruta exacta: {archivo_path}")
+            if archivo_path.exists():
+                archivo_encontrado = archivo_path
+        
+        # MÉTODO 2: Buscar por nombre de archivo en todas las carpetas
+        if not archivo_encontrado and archivo:
+            for archivo_json in EXTRACCIONES_PATH.rglob(archivo):
+                archivo_encontrado = archivo_json
+                print(f"   ✅ Encontrado por nombre: {archivo_encontrado}")
+                break
+        
+        # MÉTODO 3: Buscar practica_*.json por ID
+        if not archivo_encontrado and practica_id:
+            print(f"   🔍 Buscando por ID: {practica_id}")
+            for archivo_json in EXTRACCIONES_PATH.rglob("practica_*.json"):
+                try:
+                    with open(archivo_json, "r", encoding="utf-8") as f:
+                        temp_data = json.load(f)
+                    if isinstance(temp_data, dict) and temp_data.get("id") == practica_id:
+                        archivo_encontrado = archivo_json
+                        print(f"   ✅ Encontrado por ID: {archivo_encontrado}")
+                        break
+                except:
+                    continue
+        
+        if not archivo_encontrado:
+            return JSONResponse(content={"error": "Práctica no encontrada"}, status_code=404)
+        
+        # Leer la práctica
+        with open(archivo_encontrado, "r", encoding="utf-8") as f:
+            practica_data = json.load(f)
+        
+        # Verificar que sea un dict (práctica individual)
+        if not isinstance(practica_data, dict):
+            return JSONResponse(content={"error": "Formato de práctica inválido"}, status_code=400)
+        
+        # Verificar que existan las preguntas
+        preguntas = practica_data.get("preguntas", [])
+        resultados = practica_data.get("resultados", [])
+        
+        if pregunta_index >= len(preguntas):
+            return JSONResponse(content={"error": f"Índice {pregunta_index} fuera de rango (máx: {len(preguntas)-1})"}, status_code=400)
+        
+        # Obtener info de la pregunta a eliminar para el log
+        pregunta_eliminada = preguntas[pregunta_index]
+        print(f"   🗑️ Eliminando pregunta {pregunta_index + 1}: {str(pregunta_eliminada.get('pregunta', ''))[:50]}...")
+        
+        # Eliminar la pregunta del array
+        preguntas.pop(pregunta_index)
+        practica_data["preguntas"] = preguntas
+        
+        # Eliminar el resultado correspondiente si existe
+        if pregunta_index < len(resultados):
+            resultados.pop(pregunta_index)
+            practica_data["resultados"] = resultados
+        
+        # Recalcular puntos totales
+        puntos_totales = sum(p.get("puntos", 10) for p in preguntas)
+        puntos_obtenidos = sum(r.get("puntos", 0) for r in resultados)
+        practica_data["puntos_totales"] = puntos_totales
+        practica_data["puntos_obtenidos"] = puntos_obtenidos
+        if puntos_totales > 0:
+            practica_data["porcentaje"] = round((puntos_obtenidos / puntos_totales) * 100, 2)
+        
+        # Si no quedan preguntas, eliminar el archivo completo
+        if len(preguntas) == 0:
+            archivo_encontrado.unlink()
+            print(f"   ✅ Práctica vacía, archivo eliminado: {archivo_encontrado}")
+            return JSONResponse(content={
+                "mensaje": "Práctica eliminada completamente (no quedaban preguntas)",
+                "practica_eliminada": True
+            })
+        
+        # Guardar archivo actualizado
+        with open(archivo_encontrado, "w", encoding="utf-8") as f:
+            json.dump(practica_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"   ✅ Pregunta eliminada. Quedan {len(preguntas)} preguntas")
+        
+        return JSONResponse(content={
+            "mensaje": f"Pregunta {pregunta_index + 1} eliminada correctamente",
+            "preguntas_restantes": len(preguntas),
+            "practica_actualizada": practica_data
+        })
+        
+    except Exception as e:
+        print(f"❌ Error eliminando pregunta: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/practicas/regenerar-pregunta")
+async def regenerar_pregunta_practica(request: Request):
+    """Regenera una pregunta específica de una práctica con instrucciones opcionales"""
+    global generador_actual
+    
+    try:
+        data = await request.json()
+        practica_id = data.get("practica_id")
+        pregunta_index = data.get("pregunta_index")
+        archivo = data.get("archivo")
+        carpeta_ruta = data.get("carpeta_ruta")
+        instrucciones = data.get("instrucciones", "")  # Prompt personalizado del usuario
+        pregunta_actual = data.get("pregunta_actual", {})  # La pregunta a regenerar
+        
+        print(f"\n{'='*60}")
+        print(f"🔄 POST /datos/practicas/regenerar-pregunta")
+        print(f"{'='*60}")
+        print(f"   practica_id: {practica_id}")
+        print(f"   pregunta_index: {pregunta_index}")
+        print(f"   tipo: {pregunta_actual.get('tipo', 'desconocido')}")
+        print(f"   instrucciones: {instrucciones[:100] if instrucciones else 'ninguna'}...")
+        
+        if pregunta_index is None or pregunta_index < 0:
+            return JSONResponse(content={"error": "Índice de pregunta inválido"}, status_code=400)
+        
+        # Buscar el archivo de práctica
+        archivo_encontrado = None
+        
+        if archivo and carpeta_ruta:
+            carpeta_limpia = carpeta_ruta.replace('/', '\\')
+            carpeta_destino = EXTRACCIONES_PATH / carpeta_limpia
+            archivo_path = carpeta_destino / archivo
+            if archivo_path.exists():
+                archivo_encontrado = archivo_path
+        
+        if not archivo_encontrado and archivo:
+            for archivo_json in EXTRACCIONES_PATH.rglob(archivo):
+                archivo_encontrado = archivo_json
+                break
+        
+        if not archivo_encontrado and practica_id:
+            for archivo_json in EXTRACCIONES_PATH.rglob("practica_*.json"):
+                try:
+                    with open(archivo_json, "r", encoding="utf-8") as f:
+                        temp_data = json.load(f)
+                    if isinstance(temp_data, dict) and temp_data.get("id") == practica_id:
+                        archivo_encontrado = archivo_json
+                        break
+                except:
+                    continue
+        
+        if not archivo_encontrado:
+            return JSONResponse(content={"error": "Práctica no encontrada"}, status_code=404)
+        
+        # Leer la práctica
+        with open(archivo_encontrado, "r", encoding="utf-8") as f:
+            practica_data = json.load(f)
+        
+        preguntas = practica_data.get("preguntas", [])
+        if pregunta_index >= len(preguntas):
+            return JSONResponse(content={"error": f"Índice {pregunta_index} fuera de rango"}, status_code=400)
+        
+        pregunta_original = preguntas[pregunta_index]
+        tipo_pregunta = pregunta_original.get("tipo", "mcq")
+        
+        # Obtener contexto del documento si está disponible
+        contexto = ""
+        carpeta_path = practica_data.get("carpeta_ruta", "")
+        if carpeta_path:
+            # Intentar cargar contenido del documento original
+            try:
+                carpeta_completa = EXTRACCIONES_PATH / carpeta_path.replace('/', '\\')
+                for ext in [".txt", ".md", ".pdf"]:
+                    for doc in carpeta_completa.glob(f"*{ext}"):
+                        texto = obtener_texto(str(doc))
+                        if texto:
+                            contexto = texto[:4000]  # Limitar contexto
+                            break
+                    if contexto:
+                        break
+            except Exception as e:
+                print(f"   ⚠️ No se pudo cargar contexto: {e}")
+        
+        # Construir prompt para regenerar la pregunta
+        tipo_instrucciones = {
+            "mcq": "una pregunta de opción múltiple con 4 opciones (A, B, C, D) donde solo una es correcta",
+            "verdadero_falso": "una pregunta de Verdadero/Falso",
+            "true_false": "una pregunta de Verdadero/Falso", 
+            "cloze": "una pregunta de completar espacios en blanco (cloze)",
+            "short_answer": "una pregunta de respuesta corta",
+            "corta": "una pregunta de respuesta corta",
+            "open_question": "una pregunta abierta de desarrollo",
+            "desarrollo": "una pregunta abierta de desarrollo",
+            "flashcard": "una flashcard con pregunta y respuesta"
+        }
+        
+        tipo_desc = tipo_instrucciones.get(tipo_pregunta, "una pregunta educativa")
+        
+        prompt_sistema = f"""Eres un experto creador de material educativo. Tu tarea es regenerar {tipo_desc}.
+
+INSTRUCCIONES IMPORTANTES:
+1. La pregunta debe ser DIFERENTE a la original pero del mismo tipo ({tipo_pregunta})
+2. Debe ser clara, precisa y educativa
+3. La respuesta correcta debe ser inequívoca
+4. {"INSTRUCCIONES DEL USUARIO: " + instrucciones if instrucciones else "Mejora la calidad y claridad de la pregunta"}
+
+PREGUNTA ORIGINAL (para referencia de qué NO repetir):
+{json.dumps(pregunta_original, ensure_ascii=False, indent=2)}
+
+{"CONTEXTO DEL DOCUMENTO:" + chr(10) + contexto[:2000] if contexto else ""}
+
+FORMATO DE RESPUESTA (JSON válido):
+"""
+
+        # Añadir formato específico según el tipo
+        if tipo_pregunta in ["mcq", "multiple"]:
+            prompt_sistema += """{
+  "pregunta": "La pregunta aquí",
+  "opciones": ["A) Primera opción", "B) Segunda opción", "C) Tercera opción", "D) Cuarta opción"],
+  "respuesta_correcta": "A",
+  "explicacion": "Explicación de por qué es correcta"
+}"""
+        elif tipo_pregunta in ["verdadero_falso", "true_false"]:
+            prompt_sistema += """{
+  "pregunta": "Afirmación aquí",
+  "opciones": ["Verdadero", "Falso"],
+  "respuesta_correcta": "Verdadero",
+  "explicacion": "Explicación"
+}"""
+        elif tipo_pregunta == "cloze":
+            prompt_sistema += """{
+  "pregunta": "El texto con _____ para completar",
+  "respuesta_correcta": "palabra que va en el hueco",
+  "explicacion": "Explicación"
+}"""
+        else:
+            prompt_sistema += """{
+  "pregunta": "La pregunta aquí",
+  "respuesta_correcta": "La respuesta esperada",
+  "explicacion": "Explicación detallada"
+}"""
+
+        prompt_sistema += "\n\nResponde SOLO con el JSON, sin texto adicional."
+
+        # Generar nueva pregunta con el modelo
+        print(f"🤖 Generando nueva pregunta tipo {tipo_pregunta}...")
+        
+        if generador_actual and hasattr(generador_actual, '_generar_ollama_chat'):
+            messages = [
+                {"role": "system", "content": prompt_sistema},
+                {"role": "user", "content": f"Genera una nueva pregunta de tipo {tipo_pregunta}. {instrucciones if instrucciones else 'Hazla clara y educativa.'}"}
+            ]
+            
+            respuesta_texto = generador_actual._generar_ollama_chat(
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.8
+            )
+        else:
+            return JSONResponse(content={"error": "Generador no disponible"}, status_code=500)
+        
+        print(f"📝 Respuesta del modelo: {respuesta_texto[:200]}...")
+        
+        # Parsear la respuesta JSON
+        try:
+            # Limpiar la respuesta
+            respuesta_limpia = respuesta_texto.strip()
+            if respuesta_limpia.startswith("```json"):
+                respuesta_limpia = respuesta_limpia[7:]
+            if respuesta_limpia.startswith("```"):
+                respuesta_limpia = respuesta_limpia[3:]
+            if respuesta_limpia.endswith("```"):
+                respuesta_limpia = respuesta_limpia[:-3]
+            respuesta_limpia = respuesta_limpia.strip()
+            
+            nueva_pregunta = json.loads(respuesta_limpia)
+            
+            # Mantener campos originales que no cambian
+            nueva_pregunta["tipo"] = tipo_pregunta
+            nueva_pregunta["puntos"] = pregunta_original.get("puntos", 10)
+            if "id" in pregunta_original:
+                nueva_pregunta["id"] = pregunta_original["id"]
+            
+            # Actualizar la pregunta en el array
+            preguntas[pregunta_index] = nueva_pregunta
+            practica_data["preguntas"] = preguntas
+            
+            # Si hay resultados, actualizar también
+            resultados = practica_data.get("resultados", [])
+            if pregunta_index < len(resultados):
+                resultados[pregunta_index]["pregunta"] = nueva_pregunta.get("pregunta", "")
+                resultados[pregunta_index]["respuesta_correcta"] = nueva_pregunta.get("respuesta_correcta", "")
+                if "opciones" in nueva_pregunta:
+                    resultados[pregunta_index]["opciones"] = nueva_pregunta["opciones"]
+                practica_data["resultados"] = resultados
+            
+            # Guardar archivo actualizado
+            with open(archivo_encontrado, "w", encoding="utf-8") as f:
+                json.dump(practica_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Pregunta {pregunta_index + 1} regenerada exitosamente")
+            
+            return JSONResponse(content={
+                "mensaje": f"Pregunta {pregunta_index + 1} regenerada correctamente",
+                "pregunta_nueva": nueva_pregunta,
+                "practica_actualizada": practica_data
+            })
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ Error parseando JSON: {e}")
+            print(f"   Respuesta recibida: {respuesta_texto}")
+            return JSONResponse(content={
+                "error": "El modelo no generó un JSON válido",
+                "respuesta_raw": respuesta_texto
+            }, status_code=500)
+        
+    except Exception as e:
+        print(f"❌ Error regenerando pregunta: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/datos/practicas/apelar-respuesta")
+async def apelar_respuesta_practica(request: Request):
+    """Apela una respuesta para recalificarla usando IA"""
+    global generador_actual
+    
+    try:
+        data = await request.json()
+        practica_id = data.get("practica_id")
+        pregunta_index = data.get("pregunta_index")
+        archivo = data.get("archivo")
+        carpeta_ruta = data.get("carpeta_ruta")
+        argumento = data.get("argumento", "")
+        respuesta_usuario = data.get("respuesta_usuario", "")
+        respuesta_correcta = data.get("respuesta_correcta", "")
+        pregunta_texto = data.get("pregunta", "")
+        
+        print(f"\n{'='*60}")
+        print(f"⚖️ POST /datos/practicas/apelar-respuesta")
+        print(f"{'='*60}")
+        print(f"   practica_id: {practica_id}")
+        print(f"   pregunta_index: {pregunta_index}")
+        print(f"   pregunta: {pregunta_texto[:50]}...")
+        print(f"   respuesta_usuario: {respuesta_usuario[:50] if respuesta_usuario else 'N/A'}...")
+        print(f"   respuesta_correcta: {respuesta_correcta[:50] if respuesta_correcta else 'N/A'}...")
+        print(f"   argumento: {argumento[:100] if argumento else 'ninguno'}...")
+        
+        if pregunta_index is None or pregunta_index < 0:
+            return JSONResponse(content={"error": "Índice de pregunta inválido"}, status_code=400)
+        
+        # Buscar el archivo de práctica
+        archivo_encontrado = None
+        
+        if archivo and carpeta_ruta:
+            carpeta_limpia = carpeta_ruta.replace('/', '\\')
+            carpeta_destino = EXTRACCIONES_PATH / carpeta_limpia
+            archivo_path = carpeta_destino / archivo
+            if archivo_path.exists():
+                archivo_encontrado = archivo_path
+        
+        if not archivo_encontrado and archivo:
+            for archivo_json in EXTRACCIONES_PATH.rglob(archivo):
+                archivo_encontrado = archivo_json
+                break
+        
+        if not archivo_encontrado and practica_id:
+            for archivo_json in EXTRACCIONES_PATH.rglob("practica_*.json"):
+                try:
+                    with open(archivo_json, "r", encoding="utf-8") as f:
+                        temp_data = json.load(f)
+                    if isinstance(temp_data, dict) and temp_data.get("id") == practica_id:
+                        archivo_encontrado = archivo_json
+                        break
+                except:
+                    continue
+        
+        if not archivo_encontrado:
+            return JSONResponse(content={"error": "Práctica no encontrada"}, status_code=404)
+        
+        # Leer la práctica
+        with open(archivo_encontrado, "r", encoding="utf-8") as f:
+            practica_data = json.load(f)
+        
+        resultados = practica_data.get("resultados", [])
+        if pregunta_index >= len(resultados):
+            return JSONResponse(content={"error": f"Índice {pregunta_index} fuera de rango"}, status_code=400)
+        
+        resultado_actual = resultados[pregunta_index]
+        
+        # Si ya tiene puntos máximos, no hay nada que apelar
+        if resultado_actual.get("puntos", 0) >= resultado_actual.get("puntos_maximos", 10):
+            return JSONResponse(content={
+                "apelacion_aceptada": False,
+                "razon": "Esta respuesta ya tiene la puntuación máxima."
+            })
+        
+        # Usar IA para evaluar la apelación
+        prompt_sistema = f"""Eres un evaluador educativo justo y objetivo. Tu tarea es determinar si la respuesta del estudiante es equivalente o aceptable comparada con la respuesta correcta esperada.
+
+PREGUNTA: {pregunta_texto}
+
+RESPUESTA CORRECTA ESPERADA: {respuesta_correcta}
+
+RESPUESTA DEL ESTUDIANTE: {respuesta_usuario}
+
+{"ARGUMENTO DEL ESTUDIANTE: " + argumento if argumento else ""}
+
+CRITERIOS DE EVALUACIÓN:
+1. ¿La respuesta del estudiante transmite el mismo significado que la respuesta correcta?
+2. ¿Contiene los conceptos clave necesarios?
+3. ¿Es una forma válida alternativa de expresar la misma idea?
+4. Acepta variaciones razonables (sinónimos, parafraseo, abreviaciones comunes)
+5. NO penalices por errores ortográficos menores si el contenido es correcto
+6. Para preguntas de opción múltiple, la respuesta debe coincidir exactamente
+
+Responde SOLO con un JSON válido:
+{{
+  "aceptada": true/false,
+  "razon": "Explicación breve de la decisión",
+  "confianza": 0.0-1.0
+}}"""
+
+        print(f"🤖 Evaluando apelación con IA...")
+        
+        if generador_actual and hasattr(generador_actual, '_generar_ollama_chat'):
+            messages = [
+                {"role": "system", "content": prompt_sistema},
+                {"role": "user", "content": "Evalúa si la respuesta del estudiante es correcta o equivalente a la respuesta esperada."}
+            ]
+            
+            respuesta_texto = generador_actual._generar_ollama_chat(
+                messages=messages,
+                max_tokens=500,
+                temperature=0.3
+            )
+        else:
+            return JSONResponse(content={"error": "Generador no disponible"}, status_code=500)
+        
+        print(f"📝 Respuesta del modelo: {respuesta_texto[:200]}...")
+        
+        # Parsear la respuesta
+        try:
+            respuesta_limpia = respuesta_texto.strip()
+            if respuesta_limpia.startswith("```json"):
+                respuesta_limpia = respuesta_limpia[7:]
+            if respuesta_limpia.startswith("```"):
+                respuesta_limpia = respuesta_limpia[3:]
+            if respuesta_limpia.endswith("```"):
+                respuesta_limpia = respuesta_limpia[:-3]
+            respuesta_limpia = respuesta_limpia.strip()
+            
+            evaluacion = json.loads(respuesta_limpia)
+            apelacion_aceptada = evaluacion.get("aceptada", False)
+            razon = evaluacion.get("razon", "")
+            confianza = evaluacion.get("confianza", 0.5)
+            
+        except json.JSONDecodeError:
+            # Si no puede parsear, buscar palabras clave
+            texto_lower = respuesta_texto.lower()
+            apelacion_aceptada = "true" in texto_lower or "aceptada" in texto_lower or "correcta" in texto_lower
+            razon = respuesta_texto[:200]
+            confianza = 0.5
+        
+        print(f"⚖️ Resultado: {'ACEPTADA' if apelacion_aceptada else 'RECHAZADA'} (confianza: {confianza})")
+        
+        if apelacion_aceptada:
+            # Actualizar puntos y calcular nuevo intervalo
+            puntos_maximos = resultado_actual.get("puntos_maximos", 10)
+            
+            # Calcular nuevo intervalo (como si hubiera acertado)
+            ahora = datetime.now()
+            intervalo_actual = resultado_actual.get("intervalo", 1)
+            repeticiones = resultado_actual.get("repeticiones", 0)
+            facilidad = resultado_actual.get("facilidad", 2.5)
+            
+            # SM-2: Como acertó fácilmente (apelación exitosa = sabía la respuesta)
+            nuevo_intervalo = max(1, int(intervalo_actual * facilidad * 1.2))  # Bonus por apelación
+            nueva_facilidad = min(2.5, facilidad + 0.1)
+            nuevas_repeticiones = repeticiones + 1
+            
+            proxima_revision = (ahora + timedelta(days=nuevo_intervalo)).isoformat()
+            
+            # Actualizar resultado
+            resultados[pregunta_index] = {
+                **resultado_actual,
+                "puntos": puntos_maximos,
+                "feedback": f"✅ Apelación aceptada: {razon}",
+                "apelacion_aceptada": True,
+                "fecha_apelacion": ahora.isoformat(),
+                "proximaRevision": proxima_revision,
+                "intervalo": nuevo_intervalo,
+                "repeticiones": nuevas_repeticiones,
+                "facilidad": nueva_facilidad
+            }
+            
+            practica_data["resultados"] = resultados
+            
+            # Recalcular puntos totales
+            puntos_obtenidos = sum(r.get("puntos", 0) for r in resultados)
+            puntos_totales = sum(r.get("puntos_maximos", 10) for r in resultados)
+            practica_data["puntos_obtenidos"] = puntos_obtenidos
+            practica_data["porcentaje"] = round((puntos_obtenidos / puntos_totales) * 100, 2) if puntos_totales > 0 else 0
+            
+            # Guardar archivo actualizado
+            with open(archivo_encontrado, "w", encoding="utf-8") as f:
+                json.dump(practica_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"✅ Apelación aceptada. Nuevo intervalo: {nuevo_intervalo} días")
+            
+            return JSONResponse(content={
+                "apelacion_aceptada": True,
+                "razon": razon,
+                "nuevos_puntos": puntos_maximos,
+                "nuevo_feedback": f"✅ Apelación aceptada: {razon}",
+                "proximaRevision": proxima_revision,
+                "intervalo": nuevo_intervalo,
+                "confianza": confianza
+            })
+        else:
+            print(f"❌ Apelación rechazada: {razon}")
+            return JSONResponse(content={
+                "apelacion_aceptada": False,
+                "razon": razon,
+                "confianza": confianza
+            })
+        
+    except Exception as e:
+        print(f"❌ Error en apelación: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
 @app.post("/datos/practicas/eliminar")
 async def eliminar_practica(request: Request):
-    """Elimina un archivo de práctica"""
+    """Elimina un archivo de práctica (individual o de archivo centralizado)"""
     try:
         data = await request.json()
         archivo = data.get("archivo")
         carpeta_ruta = data.get("carpeta_ruta")
-        
-        if not archivo or not carpeta_ruta:
-            return JSONResponse(content={"error": "Faltan parámetros: archivo y carpeta_ruta"}, status_code=400)
+        practica_id = data.get("id")  # También aceptar ID para eliminar de archivos centralizados
         
         print(f"\n{'='*60}")
         print(f"🗑️ DELETE /datos/practicas/eliminar")
         print(f"{'='*60}")
         print(f"   archivo: {archivo}")
         print(f"   carpeta_ruta: {carpeta_ruta}")
+        print(f"   id: {practica_id}")
         
-        # Normalizar ruta
-        carpeta_limpia = carpeta_ruta.replace('/', '\\')
-        carpeta_destino = EXTRACCIONES_PATH / carpeta_limpia
-        archivo_path = carpeta_destino / archivo
+        eliminado = False
         
-        if not archivo_path.exists():
-            print(f"⚠️ Archivo no encontrado: {archivo_path}")
-            return JSONResponse(content={"error": "Archivo no encontrado"}, status_code=404)
+        # MÉTODO 1: Intentar eliminar archivo individual en la ruta exacta
+        if archivo and carpeta_ruta:
+            # Normalizar ruta
+            carpeta_limpia = carpeta_ruta.replace('/', '\\')
+            carpeta_destino = EXTRACCIONES_PATH / carpeta_limpia
+            archivo_path = carpeta_destino / archivo
+            
+            print(f"   🔍 Buscando en ruta exacta: {archivo_path}")
+            if archivo_path.exists():
+                archivo_path.unlink()
+                print(f"✅ Archivo individual eliminado: {archivo_path}")
+                eliminado = True
         
-        # Eliminar archivo
-        archivo_path.unlink()
-        print(f"✅ Archivo eliminado: {archivo}")
+        # MÉTODO 2: Buscar archivo practica_*.json por nombre en todas las carpetas
+        if not eliminado and archivo:
+            print(f"🔍 Buscando archivo {archivo} en todas las carpetas...")
+            for archivo_encontrado in EXTRACCIONES_PATH.rglob(archivo):
+                try:
+                    archivo_encontrado.unlink()
+                    print(f"   ✅ Archivo eliminado: {archivo_encontrado}")
+                    eliminado = True
+                    break
+                except Exception as e:
+                    print(f"   ⚠️ Error eliminando {archivo_encontrado}: {e}")
+        
+        # MÉTODO 3: Buscar archivos practica_*.json por ID
+        if not eliminado and practica_id:
+            print(f"🔍 Buscando práctica por ID: {practica_id}")
+            for archivo_json in EXTRACCIONES_PATH.rglob("practica_*.json"):
+                try:
+                    with open(archivo_json, "r", encoding="utf-8") as f:
+                        practica_data = json.load(f)
+                    
+                    # Verificar si el ID coincide
+                    if isinstance(practica_data, dict) and practica_data.get("id") == practica_id:
+                        archivo_json.unlink()
+                        print(f"   ✅ Archivo eliminado por ID: {archivo_json}")
+                        eliminado = True
+                        break
+                except Exception as e:
+                    print(f"   ⚠️ Error leyendo {archivo_json}: {e}")
+                    continue
+        
+        # MÉTODO 4: Buscar y eliminar de archivos centralizados (practicas.json, practicasArchivos.json)
+        if not eliminado:
+            print(f"🔍 Buscando en archivos centralizados...")
+            
+            # Buscar en todos los archivos practicas.json y practicasArchivos.json
+            for patron in ["practicas.json", "practicasArchivos.json"]:
+                for archivo_json in EXTRACCIONES_PATH.rglob(patron):
+                    try:
+                        with open(archivo_json, "r", encoding="utf-8") as f:
+                            practicas = json.load(f)
+                        
+                        if not isinstance(practicas, list):
+                            continue
+                        
+                        # Buscar la práctica por ID o por archivo
+                        practicas_filtradas = []
+                        encontrada = False
+                        
+                        for p in practicas:
+                            if practica_id and p.get("id") == practica_id:
+                                encontrada = True
+                                print(f"   ✅ Encontrada por ID: {practica_id}")
+                                continue  # No agregar a la lista filtrada (eliminar)
+                            elif archivo and p.get("archivo") == archivo:
+                                encontrada = True
+                                print(f"   ✅ Encontrada por archivo: {archivo}")
+                                continue  # No agregar a la lista filtrada (eliminar)
+                            else:
+                                practicas_filtradas.append(p)
+                        
+                        if encontrada:
+                            # Guardar archivo sin la práctica eliminada
+                            with open(archivo_json, "w", encoding="utf-8") as f:
+                                json.dump(practicas_filtradas, f, indent=2, ensure_ascii=False)
+                            print(f"   ✅ Práctica eliminada de: {archivo_json}")
+                            eliminado = True
+                            break  # Ya encontramos y eliminamos, salir
+                            
+                    except Exception as e:
+                        print(f"   ⚠️ Error procesando {archivo_json}: {e}")
+                        continue
+                
+                if eliminado:
+                    break
+        
+        if not eliminado:
+            print(f"⚠️ Práctica no encontrada en ninguna ubicación")
+            return JSONResponse(content={"error": "Práctica no encontrada"}, status_code=404)
         
         return JSONResponse(content={
             "success": True,
@@ -6282,6 +7394,71 @@ async def mover_carpeta_chats(ruta: str, data: dict):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/guardar-imagen-practica")
+async def guardar_imagen_practica(request: Request):
+    """
+    Guarda una imagen base64 para una pregunta picture_description.
+    La imagen se guarda en la carpeta de la práctica dentro de extracciones/
+    
+    Body JSON esperado:
+    {
+        "carpeta": "🌐 Plataforma - Cosas",
+        "base64": "data:image/png;base64,...",
+        "nombre_archivo": "business_meeting_team_discussion.png"
+    }
+    """
+    try:
+        data = await request.json()
+        carpeta = data.get("carpeta", "").strip()
+        base64_str = data.get("base64", "").strip()
+        nombre_archivo = data.get("nombre_archivo", "imagen.png").strip()
+        
+        if not carpeta or not base64_str:
+            return JSONResponse(
+                content={"error": "Faltan parámetros: carpeta y base64"},
+                status_code=400
+            )
+        
+        # Extraer la parte base64 sin el prefijo data:image/...;base64,
+        if base64_str.startswith("data:"):
+            base64_str = base64_str.split(",", 1)[1]
+        
+        # Decodificar base64 a bytes
+        import base64
+        imagen_bytes = base64.b64decode(base64_str)
+        
+        # Construir ruta de la carpeta de extracciones
+        from pathlib import Path
+        extracciones_path = Path("extracciones") / carpeta
+        extracciones_path.mkdir(parents=True, exist_ok=True)
+        
+        # Guardar imagen
+        imagen_path = extracciones_path / nombre_archivo
+        with open(imagen_path, "wb") as f:
+            f.write(imagen_bytes)
+        
+        print(f"✅ Imagen guardada: {imagen_path}")
+        
+        # Retornar la ruta relativa para usar en el JSON
+        ruta_relativa = f"extracciones/{carpeta}/{nombre_archivo}"
+        
+        return JSONResponse(content={
+            "success": True,
+            "mensaje": f"Imagen guardada en {ruta_relativa}",
+            "ruta": ruta_relativa,
+            "ruta_absoluta": str(imagen_path)
+        })
+        
+    except Exception as e:
+        print(f"❌ Error guardando imagen: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            content={"error": str(e)},
+            status_code=500
+        )
 
 
 if __name__ == "__main__":
