@@ -837,7 +837,7 @@ function App() {
         proximaRevision: e.proximaRevision || e.proxima_revision,
         ultimaRevision: e.ultimaRevision || e.ultima_revision,
         fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado,
-        resultados: e.resultados || [],
+        resultados: e.resultados || e.resultado?.resultados || [],
         preguntas: e.preguntas || [],
         respuestas: e.respuestas || {}
       }));
@@ -1025,7 +1025,7 @@ function App() {
             ultimaRevision: e.ultimaRevision || e.ultima_revision,
             fechaCreacion: e.fechaCreacion || e.fecha_creacion || e.fecha_completado,
             // Asegurar que resultados y preguntas se mantengan
-            resultados: e.resultados || [],
+            resultados: e.resultados || e.resultado?.resultados || [],
             preguntas: e.preguntas || [],
             respuestas: e.respuestas || {}
           }));
@@ -11046,6 +11046,10 @@ JSON:`
     open_question: 0,
     case_study: 0,
     tipo_caso: 'descriptivo',
+    // Sección Experimental
+    experimental_caso_descriptivo: 0,
+    experimental_tipo_caso: 'descriptivo',
+    experimental_incluir_imagen: false,
     // Idiomas con cantidad
     reading_comprehension: 0, // Comprensión lectora (texto + MCQ)
     reading_comprehension_lang: 'ingles',
@@ -11253,7 +11257,7 @@ JSON:`
 
   // 🎯 Generar instrucciones para ChatGPT
   const generarInstruccionesChatGPT = () => {
-    const { mcq, true_false, cloze, short_answer, open_question, case_study, tipo_caso, reading_comprehension, reading_comprehension_lang, reading_comprehension_preguntas, reading_written, reading_written_lang, reading_written_preguntas, reading_true_false, reading_true_false_lang, reading_cloze, reading_cloze_lang, reading_skill, reading_skill_lang, reading_matching, reading_matching_lang, reading_sequence, reading_sequence_lang, writing_short, writing_short_lang, writing_short_nivel, writing_short_preguntas, writing_paraphrase, writing_paraphrase_lang, writing_paraphrase_nivel, writing_paraphrase_frases, writing_correction, writing_correction_lang, writing_correction_nivel, writing_correction_frases, writing_transformation, writing_transformation_lang, writing_transformation_nivel, writing_transformation_frases, writing_essay, writing_essay_lang, writing_essay_nivel, writing_essay_palabras, sentence_builder, sentence_builder_lang, sentence_builder_nivel, sentence_builder_oraciones, formal_email, formal_email_lang, formal_email_nivel, formal_email_palabras, picture_description, picture_description_lang, picture_description_nivel, picture_description_oraciones, idioma_tipo, idioma_lang } = preguntasPropiasConfig;
+    const { mcq, true_false, cloze, short_answer, open_question, case_study, tipo_caso, experimental_caso_descriptivo, experimental_tipo_caso, experimental_incluir_imagen, reading_comprehension, reading_comprehension_lang, reading_comprehension_preguntas, reading_written, reading_written_lang, reading_written_preguntas, reading_true_false, reading_true_false_lang, reading_cloze, reading_cloze_lang, reading_skill, reading_skill_lang, reading_matching, reading_matching_lang, reading_sequence, reading_sequence_lang, writing_short, writing_short_lang, writing_short_nivel, writing_short_preguntas, writing_paraphrase, writing_paraphrase_lang, writing_paraphrase_nivel, writing_paraphrase_frases, writing_correction, writing_correction_lang, writing_correction_nivel, writing_correction_frases, writing_transformation, writing_transformation_lang, writing_transformation_nivel, writing_transformation_frases, writing_essay, writing_essay_lang, writing_essay_nivel, writing_essay_palabras, sentence_builder, sentence_builder_lang, sentence_builder_nivel, sentence_builder_oraciones, formal_email, formal_email_lang, formal_email_nivel, formal_email_palabras, picture_description, picture_description_lang, picture_description_nivel, picture_description_oraciones, idioma_tipo, idioma_lang } = preguntasPropiasConfig;
     
     // Mapeo de tipos de caso a descripciones
     const tiposCasoDescripcion = {
@@ -11400,6 +11404,40 @@ FORMATO REQUERIDO:
     "respuesta_esperada": "Análisis completo y solución propuesta",
     "explicacion": "Explicación de los criterios de evaluación",
     "puntos": 5
+  },
+`;
+    }
+
+    // 🔬 EXPERIMENTAL - Estudio de Casos
+    if (experimental_caso_descriptivo > 0) {
+      instrucciones += `  // ${experimental_caso_descriptivo} ESTUDIO(S) DE CASOS EXPERIMENTAL(ES) (tipo: "case_study", subtipo: "${experimental_tipo_caso}")${experimental_incluir_imagen ? ' + IMÁGENES (TÚ DECIDES CUÁNTAS: 0-5)' : ''}:
+  // Tipo seleccionado: ${tiposCasoDescripcion[experimental_tipo_caso]}
+  {
+    "tipo": "case_study",
+    "pregunta": "¿Qué pasó?",
+    "metadata": {
+      "titulo": "Título del caso de estudio",
+      "subtipo": "${experimental_tipo_caso}",
+      "contexto": "Descripción del contexto y situación inicial (mínimo 100 palabras)",
+      "descripcion": "Descripción detallada de qué sucedió (mínimo 150 palabras)",
+      "scenario": "Escenario específico con hechos observables",
+      "datos_clave": ["Dato relevante 1", "Dato relevante 2", "Dato relevante 3", "Dato relevante 4"],
+      "actores_involucrados": ["Actor 1", "Actor 2", "Actor 3"]${experimental_incluir_imagen ? `,
+      "prompts_imagen": [
+        {
+          "numero": 1,
+          "titulo": "Nombre corto de la imagen",
+          "tipo": "contextual|documental|secuencial",
+          "prompt_generacion": "Prompt detallado para DALL-E/Midjourney/SD. Incluye: composición, elementos visibles, estilo visual (fotográfico realista, ilustración, etc.), paleta de colores si aplica. SIN interpretaciones ni conclusiones.",
+          "ubicacion_sugerida": "contexto|descripcion|datos_clave|final",
+          "resolucion": "1024x1024",
+          "justificacion": "Por qué esta imagen ayuda a entender el caso"
+        }
+      ]` : ''}
+    },
+    "respuesta_esperada": "Respuesta modelo que describe qué pasó (mínimo 150 palabras)",
+    "explicacion": "Criterios de evaluación basados en observación de hechos",
+    "puntos": 10
   },
 `;
     }
@@ -12695,6 +12733,7 @@ ${transformacionesEjemplo.join(',\n')}
     if (short_answer > 0) cantidades.push(`${short_answer} tipo "short_answer"`);
     if (open_question > 0) cantidades.push(`${open_question} tipo "open_question"`);
     if (case_study > 0) cantidades.push(`${case_study} tipo "case_study" (subtipo: ${tipo_caso})`);
+    if (experimental_caso_descriptivo > 0) cantidades.push(`${experimental_caso_descriptivo} tipo "case_study" EXPERIMENTAL (subtipo: ${experimental_tipo_caso})${experimental_incluir_imagen ? ' + IMÁGENES' : ''}`);
     if (reading_comprehension > 0) cantidades.push(`${reading_comprehension} tipo "reading_comprehension" en ${idiomasNombre[reading_comprehension_lang]} (${reading_comprehension_preguntas || 3} MCQ c/u)`);
     if (reading_written > 0) cantidades.push(`${reading_written} tipo "reading_written" en ${idiomasNombre[reading_written_lang]} (${reading_written_preguntas || 3} preguntas escritas c/u)`);
     if (reading_true_false > 0) cantidades.push(`${reading_true_false} tipo "reading_true_false" en ${idiomasNombre[reading_true_false_lang]}`);
@@ -12713,6 +12752,44 @@ ${transformacionesEjemplo.join(',\n')}
     if (picture_description > 0) cantidades.push(`${picture_description} tipo "picture_description" en ${idiomasNombre[picture_description_lang]} (${picture_description_oraciones || 5} oraciones, nivel ${picture_description_nivel || 'B1'}) ⚠️ INCLUYE PROMPT PARA GENERAR IMAGEN`);
     if (idioma_tipo) cantidades.push(`1 tipo "${idioma_tipo}" en ${idiomasNombre[idioma_lang]}`);
 
+    let reglasAdicionales = '';
+    if (experimental_caso_descriptivo > 0 && experimental_incluir_imagen) {
+      reglasAdicionales = `
+10. ⚠️ GENERAR PROMPTS PARA IMÁGENES DEL CASO DE ESTUDIO:
+    TÚ DECIDES CUÁNTAS IMÁGENES NECESITA EL EJERCICIO (0-5 imágenes según lo que el caso requiera).
+    Analiza el contenido y determina qué imágenes ayudarían a entender el caso.
+    
+    DEBES incluir el campo "prompts_imagen" en metadata:
+    
+    ✅ USAR IMÁGENES SOLO SI:
+    - Contextual: Muestran el entorno físico, digital o social (interfaz, laboratorio, aula, oficina, planta industrial)
+    - Documental: Registran un hecho observable (dashboard, producto, equipamiento, pizarra, documento)
+    - Secuencial: Apoyan una cronología (Antes/Durante/Después, pasos de un proceso)
+    
+    ❌ NUNCA USAR IMÁGENES SI:
+    - Sugieren interpretación emocional (fotos dramáticas, personas llorando)
+    - Incluyen gráficos con conclusiones (flechas, círculos interpretativos)
+    - Contienen texto analítico ("Esto demuestra que...")
+    - La imagen "opina" o funciona como argumento
+    
+    ESTRUCTURA OBLIGATORIA del campo "prompts_imagen" (array de 0 a 5 objetos):
+    "prompts_imagen": [
+      {
+        "numero": 1,
+        "titulo": "Título descriptivo corto de la imagen",
+        "tipo": "contextual|documental|secuencial",
+        "prompt_generacion": "Prompt detallado para DALL-E/Midjourney/SD. Descripción técnica y neutra del contenido visual. Incluye estilo (fotográfico realista, ilustración técnica, captura de pantalla), composición, elementos visibles.",
+        "ubicacion_sugerida": "contexto|descripcion|datos_clave|final",
+        "resolucion": "1024x1024",
+        "justificacion": "Por qué esta imagen ayuda a entender el caso"
+      }
+    ]
+    
+    Si el caso NO necesita imágenes, usa: "prompts_imagen": []
+    
+    REGLA DE ORO: Si la imagen opina o interpreta, se descarta. Solo descripciones neutras y factuales.`;
+    }
+
     instrucciones += `]
 
 REGLAS:
@@ -12728,7 +12805,7 @@ REGLAS:
 6. Para true_false: respuesta_correcta debe ser "verdadero" o "falso"
 7. Para short_answer: incluye palabras_clave para evaluar la respuesta
 8. Para open_question: incluye key_points con los puntos a desarrollar
-9. Para case_study: incluye un escenario detallado con contexto realista
+9. Para case_study: incluye un escenario detallado con contexto realista${reglasAdicionales}
 
 ═══════════════════════════════════════════════════════════════
 📋 PEGA TUS PREGUNTAS/CONTENIDO AQUÍ ABAJO (reemplaza este texto):
@@ -14258,6 +14335,12 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           });
         }
       }
+      
+      // 🔄 RECARGAR CALENDARIO Y LISTAS PARA QUE APAREZCAN LOS RESULTADOS
+      console.log('🔄 Recargando calendario y listas de exámenes...');
+      await recargarCalendarioRepasos();
+      cargarExamenesGuardados();
+      cargarCarpetasExamenes(rutaActualExamenes);
       
       // Cerrar modal de calificación
       setModalCalificarChatGPTAbierto(false);
@@ -22195,7 +22278,7 @@ Generate an educational reading passage about this topic that would be suitable 
               </div>
               <button
                 onClick={() => {
-                  setPreguntasPropiasConfig({ mcq: 0, true_false: 0, cloze: 0, short_answer: 0, open_question: 0, case_study: 0, tipo_caso: 'descriptivo', reading_true_false: 0, reading_true_false_lang: 'ingles', idioma_tipo: '', idioma_lang: 'ingles' });
+                  setPreguntasPropiasConfig({ mcq: 0, true_false: 0, cloze: 0, short_answer: 0, open_question: 0, case_study: 0, tipo_caso: 'descriptivo', experimental_caso_descriptivo: 0, experimental_tipo_caso: 'descriptivo', experimental_incluir_imagen: false, reading_true_false: 0, reading_true_false_lang: 'ingles', idioma_tipo: '', idioma_lang: 'ingles' });
                   setPreguntasPropiasJSON('');
                   setMostrarInstruccionesChatGPT(false);
                   // 🔥 Guardar la carpeta actual para usarla al cargar las preguntas
@@ -22996,7 +23079,7 @@ Generate an educational reading passage about this topic that would be suitable 
                   totalPreguntas += resultados.filter(r => r.proximaRevision).length;
                 });
                 examenes.forEach(e => {
-                  const resultados = e.resultados || [];
+                  const resultados = e.resultados || e.resultado?.resultados || [];
                   totalPreguntas += resultados.filter(r => r.proximaRevision).length;
                 });
                 
@@ -23040,7 +23123,7 @@ Generate an educational reading passage about this topic that would be suitable 
                     tipoInterno: 'examen',
                     titulo: e.titulo || e.nombre || 'Examen sin título',
                     preguntas: e.preguntas || [],
-                    resultados: e.resultados || [],
+                    resultados: e.resultados || e.resultado?.resultados || [],
                     respuestas: e.respuestas || {}
                   }))
                 ];
@@ -23068,7 +23151,7 @@ Generate an educational reading passage about this topic that would be suitable 
                 
                 // Extraer de exámenes
                 examenes.forEach(e => {
-                  const resultados = e.resultados || [];
+                  const resultados = e.resultados || e.resultado?.resultados || [];
                   resultados.forEach((r, idx) => {
                     if (r.proximaRevision) {
                       preguntasIndividuales.push({
@@ -23111,7 +23194,7 @@ Generate an educational reading passage about this topic that would be suitable 
                 
                 // Extraer errores de exámenes
                 examenes.forEach(e => {
-                  const resultados = e.resultados || [];
+                  const resultados = e.resultados || e.resultado?.resultados || [];
                   resultados.forEach((r, idx) => {
                     const esError = r.porcentaje !== undefined ? r.porcentaje < 60 : 
                                    (r.estado && ['nuevo', 'fallo', 'critical'].includes(r.estado));
@@ -29969,6 +30052,35 @@ Generate an educational reading passage about this topic that would be suitable 
                                 }}>
                                   <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem'}}>🎯 Contexto</h4>
                                   <p style={{whiteSpace: 'pre-wrap', lineHeight: '1.6', margin: 0}}>{pregunta.metadata.contexto}</p>
+                                  
+                                  {/* Imágenes de ubicación: contexto */}
+                                  {pregunta.metadata?.prompts_imagen?.filter(img => img.ubicacion_sugerida === 'contexto' && img.imagen_subida).map((img, imgIdx) => (
+                                    <div key={imgIdx} style={{
+                                      marginTop: '1rem',
+                                      textAlign: 'center'
+                                    }}>
+                                      <img 
+                                        src={img.imagen_subida.startsWith('http') || img.imagen_subida.startsWith('data:') 
+                                          ? img.imagen_subida 
+                                          : `${API_URL}/${img.imagen_subida}`}
+                                        alt={img.titulo}
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '400px',
+                                          borderRadius: '8px',
+                                          border: '2px solid rgba(139, 92, 246, 0.3)'
+                                        }}
+                                      />
+                                      {img.titulo && (
+                                        <p style={{
+                                          color: '#a78bfa',
+                                          fontSize: '0.85rem',
+                                          marginTop: '0.5rem',
+                                          fontStyle: 'italic'
+                                        }}>📷 {img.titulo}</p>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                               
@@ -29983,6 +30095,35 @@ Generate an educational reading passage about this topic that would be suitable 
                                 }}>
                                   <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem', color: '#f5576c'}}>📋 Descripción</h4>
                                   <p style={{whiteSpace: 'pre-wrap', lineHeight: '1.6', margin: 0}}>{pregunta.metadata.descripcion}</p>
+                                  
+                                  {/* Imágenes de ubicación: descripcion */}
+                                  {pregunta.metadata?.prompts_imagen?.filter(img => img.ubicacion_sugerida === 'descripcion' && img.imagen_subida).map((img, imgIdx) => (
+                                    <div key={imgIdx} style={{
+                                      marginTop: '1rem',
+                                      textAlign: 'center'
+                                    }}>
+                                      <img 
+                                        src={img.imagen_subida.startsWith('http') || img.imagen_subida.startsWith('data:') 
+                                          ? img.imagen_subida 
+                                          : `${API_URL}/${img.imagen_subida}`}
+                                        alt={img.titulo}
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '400px',
+                                          borderRadius: '8px',
+                                          border: '2px solid rgba(139, 92, 246, 0.3)'
+                                        }}
+                                      />
+                                      {img.titulo && (
+                                        <p style={{
+                                          color: '#a78bfa',
+                                          fontSize: '0.85rem',
+                                          marginTop: '0.5rem',
+                                          fontStyle: 'italic'
+                                        }}>📷 {img.titulo}</p>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                               
@@ -30019,6 +30160,35 @@ Generate an educational reading passage about this topic that would be suitable 
                                       }}>{dato}</li>
                                     ))}
                                   </ul>
+                                  
+                                  {/* Imágenes de ubicación: datos_clave */}
+                                  {pregunta.metadata?.prompts_imagen?.filter(img => img.ubicacion_sugerida === 'datos_clave' && img.imagen_subida).map((img, imgIdx) => (
+                                    <div key={imgIdx} style={{
+                                      marginTop: '1rem',
+                                      textAlign: 'center'
+                                    }}>
+                                      <img 
+                                        src={img.imagen_subida.startsWith('http') || img.imagen_subida.startsWith('data:') 
+                                          ? img.imagen_subida 
+                                          : `${API_URL}/${img.imagen_subida}`}
+                                        alt={img.titulo}
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '400px',
+                                          borderRadius: '8px',
+                                          border: '2px solid rgba(245, 158, 11, 0.3)'
+                                        }}
+                                      />
+                                      {img.titulo && (
+                                        <p style={{
+                                          color: '#fbbf24',
+                                          fontSize: '0.85rem',
+                                          marginTop: '0.5rem',
+                                          fontStyle: 'italic'
+                                        }}>📷 {img.titulo}</p>
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
                               )}
                               
@@ -30299,11 +30469,48 @@ Generate an educational reading passage about this topic that would be suitable 
                                 </div>
                               )}
                               
+                              {/* Imágenes de ubicación: final (antes de la pregunta) */}
+                              {pregunta.metadata?.prompts_imagen?.filter(img => img.ubicacion_sugerida === 'final' && img.imagen_subida).length > 0 && (
+                                <div style={{
+                                  padding: '1rem 1.5rem',
+                                  background: 'rgba(139, 92, 246, 0.1)',
+                                  borderTop: '1px solid rgba(255,255,255,0.05)'
+                                }}>
+                                  {pregunta.metadata.prompts_imagen.filter(img => img.ubicacion_sugerida === 'final' && img.imagen_subida).map((img, imgIdx) => (
+                                    <div key={imgIdx} style={{
+                                      textAlign: 'center',
+                                      marginBottom: imgIdx < pregunta.metadata.prompts_imagen.filter(i => i.ubicacion_sugerida === 'final' && i.imagen_subida).length - 1 ? '1rem' : 0
+                                    }}>
+                                      <img 
+                                        src={img.imagen_subida.startsWith('http') || img.imagen_subida.startsWith('data:') 
+                                          ? img.imagen_subida 
+                                          : `${API_URL}/${img.imagen_subida}`}
+                                        alt={img.titulo}
+                                        style={{
+                                          maxWidth: '100%',
+                                          maxHeight: '400px',
+                                          borderRadius: '8px',
+                                          border: '2px solid rgba(139, 92, 246, 0.3)'
+                                        }}
+                                      />
+                                      {img.titulo && (
+                                        <p style={{
+                                          color: '#a78bfa',
+                                          fontSize: '0.85rem',
+                                          marginTop: '0.5rem',
+                                          fontStyle: 'italic'
+                                        }}>📷 {img.titulo}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
                               {/* Pregunta principal del caso */}
                               <div style={{
                                 padding: '1.5rem',
                                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                borderRadius: '0 0 8px 8px',
+                                borderRadius: pregunta.metadata?.prompts_imagen?.length > 0 ? '0' : '0 0 8px 8px',
                                 marginTop: '0',
                                 color: 'white',
                                 borderTop: '2px solid rgba(255,255,255,0.2)'
@@ -30311,6 +30518,340 @@ Generate an educational reading passage about this topic that would be suitable 
                                 <h4 style={{marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem'}}>❓ Pregunta</h4>
                                 <p style={{margin: 0, fontSize: '1.05rem', fontWeight: '500'}}>{pregunta.pregunta}</p>
                               </div>
+                              
+                              {/* 🖼️ Sección de Imágenes del Caso de Estudio */}
+                              {pregunta.metadata?.prompts_imagen && pregunta.metadata.prompts_imagen.length > 0 && (
+                                <div style={{
+                                  background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%)',
+                                  borderRadius: '0 0 8px 8px',
+                                  overflow: 'hidden',
+                                  borderTop: '1px solid rgba(139, 92, 246, 0.3)'
+                                }}>
+                                  <details style={{margin: 0}}>
+                                    <summary style={{
+                                      padding: '1rem 1.5rem',
+                                      background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(168, 85, 247, 0.1) 100%)',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.75rem',
+                                      color: '#c4b5fd',
+                                      fontWeight: '600',
+                                      fontSize: '1rem',
+                                      listStyle: 'none',
+                                      userSelect: 'none'
+                                    }}>
+                                      <span style={{fontSize: '1.2rem'}}>🖼️</span>
+                                      <span>Imágenes del Caso</span>
+                                      <span style={{
+                                        background: pregunta.metadata.prompts_imagen.filter(img => img.imagen_subida).length === pregunta.metadata.prompts_imagen.length 
+                                          ? 'rgba(34, 197, 94, 0.3)' 
+                                          : 'rgba(249, 115, 22, 0.3)',
+                                        color: pregunta.metadata.prompts_imagen.filter(img => img.imagen_subida).length === pregunta.metadata.prompts_imagen.length 
+                                          ? '#86efac' 
+                                          : '#fdba74',
+                                        padding: '0.2rem 0.5rem',
+                                        borderRadius: '4px',
+                                        fontSize: '0.8rem'
+                                      }}>
+                                        {pregunta.metadata.prompts_imagen.filter(img => img.imagen_subida).length}/{pregunta.metadata.prompts_imagen.length} subidas
+                                      </span>
+                                      <span style={{
+                                        marginLeft: 'auto',
+                                        fontSize: '0.8rem',
+                                        opacity: 0.7
+                                      }}>▼ Click para expandir</span>
+                                    </summary>
+                                    
+                                    <div style={{padding: '1rem'}}>
+                                      {pregunta.metadata.prompts_imagen.map((promptImg, imgIdx) => (
+                                        <div key={imgIdx} style={{
+                                          background: 'rgba(30, 27, 75, 0.5)',
+                                          borderRadius: '12px',
+                                          padding: '1rem',
+                                          marginBottom: imgIdx < pregunta.metadata.prompts_imagen.length - 1 ? '1rem' : 0,
+                                          border: '1px solid rgba(139, 92, 246, 0.2)'
+                                        }}>
+                                          {/* Header de la imagen */}
+                                          <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
+                                              <span style={{
+                                                background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                color: 'white',
+                                                padding: '0.25rem 0.5rem',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8rem',
+                                                fontWeight: '600'
+                                              }}>
+                                                #{promptImg.numero || imgIdx + 1}
+                                              </span>
+                                              <span style={{color: '#e9d5ff', fontWeight: '600', fontSize: '0.95rem'}}>
+                                                {promptImg.titulo || 'Imagen'}
+                                              </span>
+                                            </div>
+                                            <span style={{
+                                              background: promptImg.tipo === 'contextual' ? 'rgba(59, 130, 246, 0.3)' : 
+                                                         promptImg.tipo === 'documental' ? 'rgba(34, 197, 94, 0.3)' : 
+                                                         'rgba(249, 115, 22, 0.3)',
+                                              color: promptImg.tipo === 'contextual' ? '#93c5fd' : 
+                                                    promptImg.tipo === 'documental' ? '#86efac' : '#fdba74',
+                                              padding: '0.2rem 0.5rem',
+                                              borderRadius: '4px',
+                                              fontSize: '0.75rem',
+                                              textTransform: 'uppercase'
+                                            }}>
+                                              {promptImg.tipo || 'general'}
+                                            </span>
+                                          </div>
+                                          
+                                          {/* Prompt para generación */}
+                                          <div style={{
+                                            background: 'rgba(0, 0, 0, 0.3)',
+                                            padding: '0.75rem',
+                                            borderRadius: '8px',
+                                            marginBottom: '0.75rem',
+                                            border: '1px solid rgba(139, 92, 246, 0.1)'
+                                          }}>
+                                            <div style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'space-between',
+                                              marginBottom: '0.5rem'
+                                            }}>
+                                              <span style={{color: '#a78bfa', fontSize: '0.8rem', fontWeight: '500'}}>
+                                                📝 Prompt para IA:
+                                              </span>
+                                              <button
+                                                onClick={() => {
+                                                  navigator.clipboard.writeText(promptImg.prompt_generacion || promptImg.descripcion_tecnica || '');
+                                                  // Mini feedback visual
+                                                  const btn = event.target;
+                                                  const originalText = btn.textContent;
+                                                  btn.textContent = '✅ Copiado!';
+                                                  setTimeout(() => btn.textContent = originalText, 1500);
+                                                }}
+                                                style={{
+                                                  background: 'rgba(139, 92, 246, 0.3)',
+                                                  border: '1px solid rgba(139, 92, 246, 0.5)',
+                                                  color: '#c4b5fd',
+                                                  padding: '0.25rem 0.5rem',
+                                                  borderRadius: '4px',
+                                                  fontSize: '0.75rem',
+                                                  cursor: 'pointer',
+                                                  transition: 'all 0.2s'
+                                                }}
+                                              >
+                                                📋 Copiar
+                                              </button>
+                                            </div>
+                                            <p style={{
+                                              color: '#d1d5db',
+                                              fontSize: '0.85rem',
+                                              lineHeight: '1.5',
+                                              margin: 0,
+                                              fontFamily: 'monospace',
+                                              whiteSpace: 'pre-wrap'
+                                            }}>
+                                              {promptImg.prompt_generacion || promptImg.descripcion_tecnica || 'Sin prompt'}
+                                            </p>
+                                          </div>
+                                          
+                                          {/* Info adicional */}
+                                          <div style={{
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            gap: '0.5rem',
+                                            marginBottom: '0.75rem'
+                                          }}>
+                                            {promptImg.ubicacion_sugerida && (
+                                              <span style={{
+                                                background: 'rgba(99, 102, 241, 0.2)',
+                                                color: '#a5b4fc',
+                                                padding: '0.2rem 0.5rem',
+                                                borderRadius: '4px',
+                                                fontSize: '0.75rem'
+                                              }}>
+                                                📍 {promptImg.ubicacion_sugerida}
+                                              </span>
+                                            )}
+                                            {promptImg.resolucion && (
+                                              <span style={{
+                                                background: 'rgba(99, 102, 241, 0.2)',
+                                                color: '#a5b4fc',
+                                                padding: '0.2rem 0.5rem',
+                                                borderRadius: '4px',
+                                                fontSize: '0.75rem'
+                                              }}>
+                                                📐 {promptImg.resolucion}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Justificación */}
+                                          {promptImg.justificacion && (
+                                            <p style={{
+                                              color: '#9ca3af',
+                                              fontSize: '0.8rem',
+                                              fontStyle: 'italic',
+                                              margin: '0 0 0.75rem 0',
+                                              paddingLeft: '0.5rem',
+                                              borderLeft: '2px solid rgba(139, 92, 246, 0.3)'
+                                            }}>
+                                              💡 {promptImg.justificacion}
+                                            </p>
+                                          )}
+                                          
+                                          {/* Área de imagen subida o upload */}
+                                          <div style={{
+                                            background: 'rgba(139, 92, 246, 0.1)',
+                                            border: '2px dashed rgba(139, 92, 246, 0.4)',
+                                            borderRadius: '8px',
+                                            padding: '1rem',
+                                            textAlign: 'center'
+                                          }}>
+                                            {/* Si ya hay imagen subida */}
+                                            {promptImg.imagen_subida ? (
+                                              <div>
+                                                <img 
+                                                  src={promptImg.imagen_subida.startsWith('http') || promptImg.imagen_subida.startsWith('data:') 
+                                                    ? promptImg.imagen_subida 
+                                                    : `${API_URL}/${promptImg.imagen_subida}`}
+                                                  alt={promptImg.titulo}
+                                                  style={{
+                                                    maxWidth: '100%',
+                                                    maxHeight: '300px',
+                                                    borderRadius: '8px',
+                                                    marginBottom: '0.5rem'
+                                                  }}
+                                                />
+                                                <button
+                                                  onClick={() => {
+                                                    // Eliminar imagen
+                                                    const nuevasPreguntas = [...preguntasExamen];
+                                                    nuevasPreguntas[index].metadata.prompts_imagen[imgIdx].imagen_subida = null;
+                                                    setPreguntasExamen(nuevasPreguntas);
+                                                  }}
+                                                  style={{
+                                                    background: 'rgba(239, 68, 68, 0.3)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                                    color: '#fca5a5',
+                                                    padding: '0.4rem 0.75rem',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.8rem',
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >
+                                                  🗑️ Eliminar imagen
+                                                </button>
+                                              </div>
+                                            ) : (
+                                              <div>
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  id={`img-upload-${index}-${imgIdx}`}
+                                                  style={{display: 'none'}}
+                                                  onChange={async (e) => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+                                                    
+                                                    // Leer como base64
+                                                    const reader = new FileReader();
+                                                    reader.onload = async (event) => {
+                                                      const base64 = event.target.result;
+                                                      
+                                                      // Determinar carpeta del curso
+                                                      const carpetaCurso = examenActivo?.metadata?.carpeta || 
+                                                                          examenActivo?.carpeta ||
+                                                                          cursoActual?.nombre ||
+                                                                          'General';
+                                                      
+                                                      // Nombre del archivo
+                                                      const nombreArchivo = `caso_${index}_img_${imgIdx + 1}_${Date.now()}.${file.name.split('.').pop()}`;
+                                                      
+                                                      try {
+                                                        // Subir al servidor
+                                                        const response = await fetch(`${API_URL}/api/guardar-imagen-practica`, {
+                                                          method: 'POST',
+                                                          headers: { 'Content-Type': 'application/json' },
+                                                          body: JSON.stringify({
+                                                            carpeta: carpetaCurso,
+                                                            base64: base64,
+                                                            nombre_archivo: nombreArchivo
+                                                          })
+                                                        });
+                                                        
+                                                        if (response.ok) {
+                                                          const data = await response.json();
+                                                          console.log('✅ Imagen subida:', data.ruta);
+                                                          
+                                                          // Actualizar la pregunta con la ruta de la imagen
+                                                          const nuevasPreguntas = [...preguntasExamen];
+                                                          if (nuevasPreguntas[index]?.metadata?.prompts_imagen?.[imgIdx]) {
+                                                            nuevasPreguntas[index].metadata.prompts_imagen[imgIdx].imagen_subida = data.ruta;
+                                                            setPreguntasExamen(nuevasPreguntas);
+                                                            
+                                                            // También guardar en la práctica
+                                                            if (examenActivo) {
+                                                              const practicaActualizada = {
+                                                                ...examenActivo,
+                                                                preguntas: nuevasPreguntas
+                                                              };
+                                                              await guardarPracticaEnCarpeta(practicaActualizada);
+                                                            }
+                                                          }
+                                                        } else {
+                                                          console.error('Error al subir imagen:', await response.text());
+                                                          alert('Error al subir la imagen');
+                                                        }
+                                                      } catch (error) {
+                                                        console.error('Error:', error);
+                                                        alert('Error al subir la imagen: ' + error.message);
+                                                      }
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                  }}
+                                                />
+                                                <label 
+                                                  htmlFor={`img-upload-${index}-${imgIdx}`}
+                                                  style={{
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '0.5rem',
+                                                    background: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+                                                    color: 'white',
+                                                    padding: '0.6rem 1rem',
+                                                    borderRadius: '8px',
+                                                    cursor: 'pointer',
+                                                    fontWeight: '500',
+                                                    fontSize: '0.9rem',
+                                                    transition: 'all 0.2s'
+                                                  }}
+                                                >
+                                                  📤 Subir imagen desde PC
+                                                </label>
+                                                <p style={{
+                                                  color: '#9ca3af',
+                                                  fontSize: '0.75rem',
+                                                  marginTop: '0.5rem',
+                                                  marginBottom: 0
+                                                }}>
+                                                  Genera la imagen con DALL-E/Midjourney/SD y súbela aquí
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                </div>
+                              )}
                             </div>
                           )}
                           
@@ -35477,6 +36018,103 @@ Generate an educational reading passage about this topic that would be suitable 
                           )}
                         </div>
                       </div>
+
+                      {/* 🔬 SECCIÓN EXPERIMENTAL */}
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        marginTop: '1.5rem',
+                        padding: '1rem',
+                        background: 'linear-gradient(135deg, #3f3f66 0%, #2a2a4e 100%)',
+                        border: '2px solid rgba(168, 85, 247, 0.5)',
+                        borderRadius: '12px'
+                      }}>
+                        <h4 style={{color: '#d8b4fe', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: '700'}}>
+                          <span>🔬</span> Experimental
+                        </h4>
+                        
+                        {/* Caso Descriptivo Experimental */}
+                        <div style={{
+                          padding: '1rem',
+                          background: 'rgba(168, 85, 247, 0.1)',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(168, 85, 247, 0.3)',
+                          boxSizing: 'border-box'
+                        }}>
+                          <label style={{color: '#d8b4fe', fontWeight: '600', display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem'}}>
+                            📚 Estudio de Casos
+                          </label>
+                          
+                          {/* Cantidad de ejercicios */}
+                          <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem'}}>
+                            <label style={{color: '#c4b5fd', fontSize: '0.8rem', minWidth: '60px'}}>Cantidad:</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              value={preguntasPropiasConfig.experimental_caso_descriptivo}
+                              onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, experimental_caso_descriptivo: Math.max(0, parseInt(e.target.value) || 0)})}
+                              style={{width: '70px', padding: '0.5rem', borderRadius: '6px', border: '1px solid #374151', background: '#1f2937', color: '#e2e8f0', fontSize: '1rem'}}
+                            />
+                          </div>
+                          
+                          {/* Tipo de caso */}
+                          {preguntasPropiasConfig.experimental_caso_descriptivo > 0 && (
+                            <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem'}}>
+                              <label style={{color: '#c4b5fd', fontSize: '0.8rem', minWidth: '60px'}}>Tipo:</label>
+                              <select
+                                value={preguntasPropiasConfig.experimental_tipo_caso}
+                                onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, experimental_tipo_caso: e.target.value})}
+                                style={{
+                                  flex: 1,
+                                  padding: '0.5rem',
+                                  background: '#1e293b',
+                                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#e2e8f0',
+                                  fontSize: '0.8rem',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="descriptivo">📖 Descriptivo</option>
+                                <option value="analitico">🔍 Analítico-Diagnóstico</option>
+                                <option value="resolucion">🎯 Resolución de Problemas</option>
+                                <option value="decision">⚖️ Decisión</option>
+                                <option value="comparativo">🔄 Comparativo</option>
+                                <option value="predictivo">🔮 Predictivo</option>
+                                <option value="simulacion">🎮 Simulación</option>
+                                <option value="inverso">🔙 Inverso</option>
+                                <option value="fallo">❌ Fallo o Desastre</option>
+                                <option value="creativo">💡 Creativo/Innovación</option>
+                                <option value="etico">⚡ Ético</option>
+                                <option value="tecnico">⚙️ Técnico-Operativo</option>
+                              </select>
+                            </div>
+                          )}
+                          
+                          {/* Checkbox para generar prompts de imagen */}
+                          {preguntasPropiasConfig.experimental_caso_descriptivo > 0 && (
+                            <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.75rem'}}>
+                              <input
+                                type="checkbox"
+                                id="experimental-imagen"
+                                checked={preguntasPropiasConfig.experimental_incluir_imagen}
+                                onChange={(e) => setPreguntasPropiasConfig({...preguntasPropiasConfig, experimental_incluir_imagen: e.target.checked})}
+                                style={{cursor: 'pointer', width: '18px', height: '18px'}}
+                              />
+                              <label htmlFor="experimental-imagen" style={{color: '#c4b5fd', fontSize: '0.85rem', cursor: 'pointer', margin: 0}}>
+                                🖼️ Generar prompts para imágenes (DALL-E/Midjourney/SD)
+                              </label>
+                            </div>
+                          )}
+                          
+                          {preguntasPropiasConfig.experimental_caso_descriptivo > 0 && (
+                            <p style={{color: '#a78bfa', fontSize: '0.75rem', margin: '0.5rem 0 0 0', fontStyle: 'italic'}}>
+                              {preguntasPropiasConfig.experimental_caso_descriptivo} caso(s) tipo "{preguntasPropiasConfig.experimental_tipo_caso}" 
+                              {preguntasPropiasConfig.experimental_incluir_imagen ? ' + prompts para generar imágenes' : ''}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                       
                       {/* Sección de Idiomas */}
                       <div style={{
@@ -36467,13 +37105,13 @@ Generate an educational reading passage about this topic that would be suitable 
                       </div>
                       
                       <p style={{color: '#94a3b8', marginTop: '1rem', fontSize: '0.9rem', gridColumn: '1 / -1'}}>
-                        Total: <strong style={{color: '#e2e8f0'}}>{preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description}</strong> preguntas
+                        Total: <strong style={{color: '#e2e8f0'}}>{preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.experimental_caso_descriptivo + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description}</strong> preguntas
                       </p>
                     </div>
                     
                     <button
                       onClick={() => setMostrarInstruccionesChatGPT(true)}
-                      disabled={preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description === 0}
+                      disabled={preguntasPropiasConfig.mcq + preguntasPropiasConfig.true_false + preguntasPropiasConfig.cloze + preguntasPropiasConfig.short_answer + preguntasPropiasConfig.open_question + preguntasPropiasConfig.case_study + preguntasPropiasConfig.experimental_caso_descriptivo + preguntasPropiasConfig.reading_comprehension + preguntasPropiasConfig.reading_written + preguntasPropiasConfig.reading_true_false + preguntasPropiasConfig.reading_cloze + preguntasPropiasConfig.reading_skill + preguntasPropiasConfig.reading_matching + preguntasPropiasConfig.reading_sequence + preguntasPropiasConfig.writing_short + preguntasPropiasConfig.writing_paraphrase + preguntasPropiasConfig.writing_correction + preguntasPropiasConfig.writing_transformation + preguntasPropiasConfig.writing_essay + preguntasPropiasConfig.sentence_builder + preguntasPropiasConfig.formal_email + preguntasPropiasConfig.picture_description === 0}
                       className="btn-primary"
                       style={{width: '100%', padding: '1rem', fontSize: '1.1rem'}}
                     >
