@@ -43,56 +43,89 @@ class CursosDatabase:
         return carpetas
     
     def listar_documentos(self, ruta_relativa: str = "") -> List[dict]:
-        """Lista todos los documentos .txt en una ruta"""
+        """Lista todos los documentos de texto en una ruta (.txt, .md, .json, .html)"""
         ruta_completa = self.base_path / ruta_relativa
         
         if not ruta_completa.exists():
             return []
         
-        documentos = []
-        for archivo in sorted(ruta_completa.glob("*.txt")):
-            # Excluir carpetas especiales y archivos de sistema
-            if archivo.parent.name in ["resultados", "examenes_progreso"]:
-                continue
-            
-            stat = archivo.stat()
-            documentos.append({
-                "nombre": archivo.stem,
-                "nombre_completo": archivo.name,
-                "ruta": str(archivo.relative_to(self.base_path)),
-                "ruta_completa": str(archivo),
-                "tamaño_kb": round(stat.st_size / 1024, 2),
-                "fecha_modificacion": datetime.fromtimestamp(stat.st_mtime).isoformat()
-            })
+        # Extensiones de texto soportadas
+        extensiones_texto = ["*.txt", "*.md", "*.json", "*.html", "*.htm"]
         
+        documentos = []
+        archivos_vistos = set()  # Evitar duplicados
+        
+        for patron in extensiones_texto:
+            for archivo in ruta_completa.glob(patron):
+                # Evitar duplicados
+                if archivo.name in archivos_vistos:
+                    continue
+                archivos_vistos.add(archivo.name)
+                
+                # Excluir carpetas especiales y archivos de sistema
+                if archivo.parent.name in ["resultados", "examenes_progreso"]:
+                    continue
+                # Excluir archivos JSON de prácticas/exámenes
+                if archivo.name.startswith("practica_") or archivo.name.startswith("examen_"):
+                    continue
+                
+                stat = archivo.stat()
+                documentos.append({
+                    "nombre": archivo.stem,
+                    "nombre_completo": archivo.name,
+                    "extension": archivo.suffix.lstrip('.').lower(),
+                    "ruta": str(archivo.relative_to(self.base_path)),
+                    "ruta_completa": str(archivo),
+                    "tamaño_kb": round(stat.st_size / 1024, 2),
+                    "fecha_modificacion": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+        
+        # Ordenar por nombre
+        documentos.sort(key=lambda x: x["nombre"].lower())
         return documentos
     
     def listar_documentos_recursivo(self, ruta_relativa: str = "") -> List[dict]:
-        """Lista todos los documentos .txt en una ruta y todas sus subcarpetas"""
+        """Lista todos los documentos de texto en una ruta y todas sus subcarpetas"""
         ruta_completa = self.base_path / ruta_relativa
         
         if not ruta_completa.exists():
             return []
         
-        documentos = []
-        # Buscar recursivamente todos los .txt
-        for archivo in ruta_completa.rglob("*.txt"):
-            # Excluir carpetas especiales
-            if any(parte in ["resultados", "examenes_progreso", "temp", "logs"] for parte in archivo.parts):
-                continue
-            
-            stat = archivo.stat()
-            documentos.append({
-                "nombre": archivo.stem,
-                "nombre_completo": archivo.name,
-                "ruta": str(archivo.relative_to(self.base_path)),
-                "ruta_completa": str(archivo),
-                "tamaño_kb": round(stat.st_size / 1024, 2),
-                "fecha_modificacion": datetime.fromtimestamp(stat.st_mtime).isoformat()
-            })
+        # Extensiones de texto soportadas
+        extensiones_texto = ["*.txt", "*.md", "*.json", "*.html", "*.htm"]
         
+        documentos = []
+        archivos_vistos = set()
+        
+        for patron in extensiones_texto:
+            for archivo in ruta_completa.rglob(patron):
+                # Evitar duplicados
+                if str(archivo) in archivos_vistos:
+                    continue
+                archivos_vistos.add(str(archivo))
+                
+                # Excluir carpetas especiales
+                if any(parte in ["resultados", "examenes_progreso", "temp", "logs"] for parte in archivo.parts):
+                    continue
+                # Excluir archivos JSON de prácticas/exámenes
+                if archivo.name.startswith("practica_") or archivo.name.startswith("examen_"):
+                    continue
+                
+                stat = archivo.stat()
+                documentos.append({
+                    "nombre": archivo.stem,
+                    "nombre_completo": archivo.name,
+                    "extension": archivo.suffix.lstrip('.').lower(),
+                    "ruta": str(archivo.relative_to(self.base_path)),
+                    "ruta_completa": str(archivo),
+                    "tamaño_kb": round(stat.st_size / 1024, 2),
+                    "fecha_modificacion": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+        
+        # Ordenar por nombre
+        documentos.sort(key=lambda x: x["nombre"].lower())
         return documentos
-    
+
     def crear_carpeta(self, ruta_relativa: str, nombre: str) -> dict:
         """Crea una nueva carpeta"""
         ruta_completa = self.base_path / ruta_relativa / nombre

@@ -482,7 +482,7 @@ if __name__ == '__main__':
     # Usar waitress en lugar de Flask dev server (más estable con CUDA)
     try:
         from waitress import serve
-        serve(app, host='0.0.0.0', port=5001, threads=4)
+        serve(app, host='127.0.0.1', port=5001, threads=4)
     except KeyboardInterrupt:
         print("\n\n🛑 Servidor detenido por el usuario")
     except Exception as e:

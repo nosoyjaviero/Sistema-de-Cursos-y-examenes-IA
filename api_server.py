@@ -19,6 +19,7 @@ from generador_unificado import GeneradorUnificado
 from generador_examenes import guardar_examen
 from cursos_db import CursosDatabase
 from busqueda_web import buscar_y_resumir
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Examinator API", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
@@ -29,14 +30,20 @@ except Exception as e:
     print(f"⚠️  Error inicializando base de datos: {e}")
     cursos_db = None
 
-# Configurar CORS para permitir peticiones desde React y red local
+# Configurar CORS para permitir peticiones desde React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas las IPs de la red local
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Solo localhost
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 🖼️ Montar archivos estáticos de extracciones para servir imágenes
+# Esto permite acceder a imágenes directamente con URLs como /extracciones/carpeta/imagen.png
+if Path("extracciones").exists():
+    app.mount("/extracciones", StaticFiles(directory="extracciones"), name="extracciones")
+    print("✅ Carpeta extracciones montada para servir archivos estáticos")
 
 # Estado global
 config_path = Path("config.json")
@@ -82,16 +89,17 @@ def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
     Normaliza una pregunta para incluir todos los campos necesarios para Spaced Repetition.
     
     Correcciones aplicadas:
-    1. Tipos de pregunta: "verdadero-falso" → "verdadero_falso", "multiple" → "mcq"
-    2. Intervalos: decimales → enteros, mínimo 1 día
-    3. Campos SM-2: asegura todos los campos requeridos
+    1. Tipos de pregunta normalizados al estándar del sistema
+    2. Respuestas de true/false normalizadas
+    3. Intervalos: decimales → enteros, mínimo 1 día
+    4. Campos SM-2: asegura todos los campos requeridos
     """
-    # 🔥 CORRECCIÓN 1: Normalizar tipo de pregunta
+    # 🔥 CORRECCIÓN 1: Normalizar tipo de pregunta al ESTÁNDAR
     tipo_mapa = {
-        "verdadero-falso": "verdadero_falso",
-        "true_false": "verdadero_falso",
-        "true-false": "verdadero_falso",
-        "vf": "verdadero_falso",
+        "verdadero-falso": "true_false",
+        "verdadero_falso": "true_false",
+        "true-false": "true_false",
+        "vf": "true_false",
         "multiple": "mcq",
         "opcion_multiple": "mcq",
         "multiple_choice": "mcq",
@@ -105,7 +113,33 @@ def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
         tipo_original = pregunta_dict['tipo']
         pregunta_dict['tipo'] = tipo_mapa.get(tipo_original, tipo_original)
     
-    # 🔥 CORRECCIÓN 2: Intervalos enteros (no decimales)
+    # 🔥 CORRECCIÓN 2: Normalizar respuestas de true/false
+    tipo = pregunta_dict.get('tipo', '')
+    if tipo == 'true_false':
+        resp = pregunta_dict.get('respuesta_correcta', '')
+        if isinstance(resp, str):
+            resp_lower = resp.lower().strip()
+            if resp_lower in ['verdadero', 'true', 'v', 'sí', 'si', '1']:
+                pregunta_dict['respuesta_correcta'] = True
+            elif resp_lower in ['falso', 'false', 'f', 'no', '0']:
+                pregunta_dict['respuesta_correcta'] = False
+        elif isinstance(resp, bool):
+            pregunta_dict['respuesta_correcta'] = resp
+    
+    # 🔥 CORRECCIÓN 3: Limpiar opciones de MCQ (quitar A), B), etc.)
+    if tipo == 'mcq' and 'opciones' in pregunta_dict:
+        import re
+        opciones_limpias = []
+        for opcion in pregunta_dict['opciones']:
+            if isinstance(opcion, str):
+                # Quitar prefijos como "A)", "A.", "a)", etc.
+                opcion_limpia = re.sub(r'^[A-Da-d][\).\-:\s]+\s*', '', opcion).strip()
+                opciones_limpias.append(opcion_limpia if opcion_limpia else opcion)
+            else:
+                opciones_limpias.append(opcion)
+        pregunta_dict['opciones'] = opciones_limpias
+    
+    # 🔥 CORRECCIÓN 4: Intervalos enteros (no decimales)
     if 'intervalo' in pregunta_dict and isinstance(pregunta_dict['intervalo'], (int, float)):
         pregunta_dict['intervalo'] = max(1, int(round(pregunta_dict['intervalo'])))
     
@@ -136,6 +170,18 @@ def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
     
     if 'estadoRevision' not in pregunta_dict:
         pregunta_dict['estadoRevision'] = 'nueva'
+    
+    # Asegurar historial
+    if 'historial_respuestas' not in pregunta_dict:
+        pregunta_dict['historial_respuestas'] = []
+    
+    # Puntos por defecto según tipo
+    if 'puntos' not in pregunta_dict:
+        puntos_defecto = {
+            'mcq': 3, 'true_false': 2, 'cloze': 3, 
+            'short_answer': 4, 'open_question': 5, 'case_study': 6
+        }
+        pregunta_dict['puntos'] = puntos_defecto.get(tipo, 3)
     
     return pregunta_dict
 
@@ -3351,6 +3397,386 @@ async def generar_practica(datos: dict):
         raise HTTPException(status_code=500, detail=f"Error al generar práctica: {str(e)}")
 
 
+@app.post("/api/generar_con_prompt_chatgpt")
+async def generar_con_prompt_chatgpt(datos: dict):
+    """
+    Genera ejercicios usando Ollama con un prompt estilo ChatGPT.
+    Versión simplificada y robusta con validación de cantidades.
+    """
+    
+    try:
+        prompt = datos.get("prompt", "")
+        total_preguntas = datos.get("total_preguntas", 5)
+        cantidades_por_tipo = datos.get("cantidades_por_tipo", {})
+        
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Se requiere un prompt")
+        
+        print(f"\n{'='*60}")
+        print(f"🤖 GENERACIÓN CON OLLAMA")
+        print(f"📝 Prompt: {len(prompt)} caracteres")
+        print(f"📊 Preguntas solicitadas: {total_preguntas}")
+        print(f"📋 Cantidades por tipo: {cantidades_por_tipo}")
+        print(f"{'='*60}\n")
+        
+        # Configuración
+        config = cargar_config()
+        modelo_ollama = config.get("modelo_ollama_activo", "llama3.2:3b")
+        ajustes = config.get("ajustes_avanzados", {})
+        temperature = ajustes.get("temperature", 0.5)  # Más bajo para JSON más estable
+        
+        print(f"🎯 Modelo: {modelo_ollama}")
+        
+        # Prompt simplificado para mejor generación de JSON
+        prompt_sistema = f"""Eres un generador de ejercicios educativos.
+RESPONDE SOLO CON JSON VÁLIDO. Sin explicaciones, sin markdown, solo el array JSON.
+
+{prompt}
+
+FORMATOS DE EJEMPLO SEGÚN TIPO:
+
+1. MCQ (opcion_multiple):
+{{"tipo": "mcq", "pregunta": "¿Qué es X?", "opciones": ["Opción A", "Opción B", "Opción C", "Opción D"], "respuesta_correcta": "A", "explicacion": "Porque..."}}
+
+2. TRUE_FALSE (verdadero/falso):
+{{"tipo": "true_false", "pregunta": "¿Es verdad que X?", "respuesta_correcta": true, "explicacion": "Porque..."}}
+
+3. CLOZE (rellenar huecos):
+{{"tipo": "cloze", "pregunta": "El {{{{}}}} es un concepto que...", "answers": ["término"], "respuesta_correcta": "término"}}
+
+4. SHORT_ANSWER (respuesta corta):
+{{"tipo": "short_answer", "pregunta": "¿Qué significa X?", "respuesta_esperada": "X significa...", "palabras_clave": ["keyword1", "keyword2"], "explicacion": "Puntos clave..."}}
+
+5. OPEN_QUESTION (explicación/desarrollo):
+{{"tipo": "open_question", "pregunta": "Explica detalladamente el concepto X", "metadata": {{"key_points": ["Punto 1", "Punto 2", "Punto 3"]}}, "respuesta_esperada": "Una explicación completa debe incluir..."}}
+
+6. CASE_STUDY (caso de estudio):
+{{"tipo": "case_study", "pregunta": "¿Cómo resolverías esta situación?", "metadata": {{"titulo": "Título del caso", "subtipo": "diagnostico", "contexto": "Contexto inicial...", "descripcion": "Descripción detallada del caso...", "scenario": "Escenario específico...", "datos_clave": ["Dato 1", "Dato 2"]}}, "respuesta_esperada": "Análisis y solución propuesta..."}}
+
+GENERA EL JSON SEGÚN LOS TIPOS SOLICITADOS EN EL PROMPT ANTERIOR.
+RESPONDE ÚNICAMENTE EL JSON (un array que empieza con [ y termina con ]):"""
+
+        import requests
+        
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": modelo_ollama,
+                "prompt": prompt_sistema,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": 8192,
+                    "stop": ["```", "Explicación:", "Nota:"]
+                }
+            },
+            timeout=300
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ Ollama error: {response.status_code}")
+            raise HTTPException(status_code=500, detail=f"Error Ollama: {response.status_code}")
+        
+        respuesta_texto = response.json().get('response', '')
+        print(f"📬 Respuesta: {len(respuesta_texto)} caracteres")
+        print(f"📄 Primeros 500: {respuesta_texto[:500]}")
+        
+        # Extraer JSON con múltiples estrategias
+        preguntas = _extraer_json_robusto(respuesta_texto)
+        
+        if not preguntas:
+            print(f"⚠️ No se pudo extraer JSON válido")
+            print(f"📄 Respuesta completa:\n{respuesta_texto}")
+            raise HTTPException(status_code=500, detail="No se pudo generar JSON válido. Intenta con menos preguntas.")
+        
+        print(f"✅ Preguntas extraídas: {len(preguntas)}")
+        
+        # 🎯 FILTRAR Y AJUSTAR CANTIDADES POR TIPO
+        if cantidades_por_tipo:
+            preguntas_filtradas = _filtrar_por_cantidades(preguntas, cantidades_por_tipo)
+            print(f"📊 Después de filtrar: {len(preguntas_filtradas)} preguntas")
+        else:
+            preguntas_filtradas = preguntas
+        
+        # Normalizar
+        preguntas_normalizadas = []
+        for p in preguntas_filtradas:
+            try:
+                pn = normalizar_pregunta_spaced_repetition(p)
+                preguntas_normalizadas.append(pn)
+            except Exception as e:
+                print(f"⚠️ Error normalizando: {e}")
+                preguntas_normalizadas.append(p)
+        
+        return {
+            "success": True,
+            "preguntas": preguntas_normalizadas,
+            "total_preguntas": len(preguntas_normalizadas)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"❌ Error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _filtrar_por_cantidades(preguntas: list, cantidades_por_tipo: dict) -> list:
+    """
+    Filtra las preguntas generadas para respetar las cantidades solicitadas por tipo.
+    Si Ollama generó más de lo pedido, recorta. Si generó menos, mantiene lo que hay.
+    """
+    resultado = []
+    
+    # Agrupar preguntas por tipo
+    por_tipo = {}
+    for p in preguntas:
+        tipo = p.get("tipo", "unknown")
+        if tipo not in por_tipo:
+            por_tipo[tipo] = []
+        por_tipo[tipo].append(p)
+    
+    print(f"📊 Preguntas agrupadas por tipo: {[(t, len(ps)) for t, ps in por_tipo.items()]}")
+    
+    # Para cada tipo solicitado, tomar la cantidad exacta
+    for tipo, cantidad_solicitada in cantidades_por_tipo.items():
+        if cantidad_solicitada > 0:
+            preguntas_de_tipo = por_tipo.get(tipo, [])
+            
+            if len(preguntas_de_tipo) > cantidad_solicitada:
+                # Ollama generó de más - recortar
+                print(f"✂️ {tipo}: Recortando de {len(preguntas_de_tipo)} a {cantidad_solicitada}")
+                resultado.extend(preguntas_de_tipo[:cantidad_solicitada])
+            elif len(preguntas_de_tipo) < cantidad_solicitada:
+                # Ollama generó de menos - usar lo que hay y avisar
+                print(f"⚠️ {tipo}: Solicitado {cantidad_solicitada}, generado solo {len(preguntas_de_tipo)}")
+                resultado.extend(preguntas_de_tipo)
+            else:
+                # Cantidad exacta
+                print(f"✅ {tipo}: {cantidad_solicitada} preguntas (exacto)")
+                resultado.extend(preguntas_de_tipo)
+    
+    # Si hay preguntas de tipos no solicitados explícitamente, no incluirlas
+    tipos_solicitados = [t for t, c in cantidades_por_tipo.items() if c > 0]
+    tipos_no_solicitados = [t for t in por_tipo.keys() if t not in tipos_solicitados]
+    if tipos_no_solicitados:
+        print(f"🚫 Descartando tipos no solicitados: {tipos_no_solicitados}")
+    
+    return resultado
+
+
+def _extraer_json_robusto(texto: str) -> list:
+    """Extrae JSON de la respuesta con múltiples estrategias"""
+    import re
+    
+    if not texto:
+        return []
+    
+    # Limpiar texto
+    texto = texto.strip()
+    
+    # Estrategia 1: Si empieza y termina con [ ]
+    if texto.startswith('[') and ']' in texto:
+        try:
+            # Encontrar el último ]
+            ultimo_bracket = texto.rfind(']')
+            json_str = texto[:ultimo_bracket + 1]
+            return json.loads(json_str)
+        except:
+            pass
+    
+    # Estrategia 2: Buscar array JSON con regex más robusto
+    patterns = [
+        r'\[\s*\{[^]]*\}\s*\]',  # Array simple
+        r'\[[\s\S]*?\{[\s\S]*?"tipo"[\s\S]*?\}[\s\S]*?\]',  # Con tipo
+        r'```json\s*(\[[\s\S]*?\])\s*```',  # En bloque de código
+        r'```\s*(\[[\s\S]*?\])\s*```',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, texto, re.DOTALL)
+        if match:
+            try:
+                json_str = match.group(1) if match.lastindex else match.group(0)
+                return json.loads(json_str)
+            except:
+                continue
+    
+    # Estrategia 3: Encontrar [ y ] y limpiar
+    start = texto.find('[')
+    end = texto.rfind(']')
+    if start != -1 and end != -1 and end > start:
+        try:
+            json_str = texto[start:end + 1]
+            # Limpiar caracteres problemáticos
+            json_str = re.sub(r',\s*]', ']', json_str)  # Trailing comma
+            json_str = re.sub(r',\s*}', '}', json_str)
+            return json.loads(json_str)
+        except Exception as e:
+            print(f"⚠️ Error parseando JSON extraído: {e}")
+    
+    # Estrategia 4: Intentar reparar JSON
+    try:
+        start = texto.find('[')
+        if start != -1:
+            json_str = texto[start:]
+            # Contar brackets
+            count = 0
+            end_pos = 0
+            for i, c in enumerate(json_str):
+                if c == '[':
+                    count += 1
+                elif c == ']':
+                    count -= 1
+                    if count == 0:
+                        end_pos = i
+                        break
+            if end_pos > 0:
+                json_str = json_str[:end_pos + 1]
+                return json.loads(json_str)
+    except:
+        pass
+    
+    return []
+
+
+def _ajustar_prompt_bloque(prompt_original: str, cantidad: int, bloque_actual: int, total_bloques: int) -> str:
+    """Ajusta el prompt para un bloque específico"""
+    # Buscar y reemplazar cantidades en el prompt
+    import re
+    
+    # Añadir instrucciones anti-repetición
+    instrucciones_extra = f"""
+BLOQUE {bloque_actual} de {total_bloques}:
+- Genera EXACTAMENTE {cantidad} preguntas en este bloque
+- PRIORIZA preguntas sobre conceptos CLAVE y DETERMINANTES
+- Enfócate en lo que un estudiante DEBE saber para aprobar
+- NO repitas conceptos similares
+"""
+    
+    return instrucciones_extra + "\n" + prompt_original
+
+
+async def _generar_bloque_ollama(prompt: str, modelo: str, temperature: float, 
+                                  bloques_previos: list, es_ultimo: bool) -> list:
+    """Genera un bloque de preguntas con Ollama"""
+    import requests
+    
+    # Si hay preguntas previas, añadir contexto para evitar repetición
+    contexto_previo = ""
+    if bloques_previos:
+        temas_previos = []
+        for p in bloques_previos[-10:]:  # Últimas 10 como contexto
+            if isinstance(p, dict):
+                pregunta_texto = p.get('pregunta', p.get('question', ''))[:80]
+                if pregunta_texto:
+                    temas_previos.append(f"- {pregunta_texto}")
+        
+        if temas_previos:
+            contexto_previo = f"""
+⚠️ PREGUNTAS YA GENERADAS (NO REPETIR estos temas):
+{chr(10).join(temas_previos)}
+
+GENERA PREGUNTAS SOBRE TEMAS DIFERENTES a los anteriores.
+"""
+    
+    prompt_final = f"""Eres un generador de ejercicios educativos profesional. 
+{contexto_previo}
+
+REGLAS OBLIGATORIAS:
+1. Responde ÚNICAMENTE con un array JSON válido
+2. NO repitas preguntas ni conceptos similares
+3. Prioriza preguntas DETERMINANTES (las más importantes del tema)
+4. Cada pregunta debe evaluar un concepto DIFERENTE
+5. El JSON debe comenzar con [ y terminar con ]
+
+{prompt}
+
+IMPORTANTE: Tu respuesta debe ser SOLO el array JSON, sin texto adicional."""
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": modelo,
+                "prompt": prompt_final,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": 4096
+                }
+            },
+            timeout=180
+        )
+        
+        if response.status_code != 200:
+            print(f"❌ Error Ollama: {response.status_code}")
+            return []
+        
+        respuesta_texto = response.json().get('response', '')
+        
+        # Extraer JSON
+        import re
+        json_match = re.search(r'\[\s*\{.*\}\s*\]', respuesta_texto, re.DOTALL)
+        
+        if json_match:
+            return json.loads(json_match.group())
+        
+        # Intentar objeto con preguntas
+        json_match = re.search(r'\{[^{}]*"preguntas"\s*:\s*(\[.*\])\s*\}', respuesta_texto, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(1))
+        
+        print(f"⚠️ No se encontró JSON válido")
+        return []
+        
+    except requests.exceptions.Timeout:
+        print(f"⏱️ Timeout en bloque")
+        return []
+    except Exception as e:
+        print(f"❌ Error en bloque: {e}")
+        return []
+
+
+def _eliminar_duplicados(preguntas: list) -> list:
+    """Elimina preguntas duplicadas o muy similares"""
+    if not preguntas:
+        return []
+    
+    unicas = []
+    textos_vistos = set()
+    
+    for p in preguntas:
+        if not isinstance(p, dict):
+            continue
+            
+        # Obtener texto de la pregunta
+        texto = p.get('pregunta', p.get('question', p.get('texto', ''))).lower().strip()
+        
+        if not texto:
+            unicas.append(p)
+            continue
+        
+        # Normalizar para comparación
+        texto_norm = ''.join(c for c in texto if c.isalnum() or c.isspace())[:100]
+        
+        # Verificar si es similar a alguna ya vista
+        es_duplicado = False
+        for visto in textos_vistos:
+            # Similitud simple: primeras palabras
+            if texto_norm[:50] == visto[:50]:
+                es_duplicado = True
+                break
+        
+        if not es_duplicado:
+            unicas.append(p)
+            textos_vistos.add(texto_norm)
+    
+    return unicas
+
+
 @app.post("/api/evaluar-examen")
 async def evaluar_examen(datos: dict):
     """Evalúa las respuestas de un examen"""
@@ -3474,7 +3900,16 @@ async def evaluar_examen(datos: dict):
                 # 🔥 Obtener opciones del dict original o del objeto pregunta
                 opciones_finales = pregunta.opciones or pregunta_dict.get('opciones') or pregunta_dict.get('options') or []
                 
+                # 🔥 Obtener ID único de la pregunta para identificación en repetición espaciada
+                pregunta_id = pregunta_dict.get('id') or pregunta_dict.get('pregunta_id') or f"q_{i}"
+                
+                # 🔥 Obtener metadata completa (crucial para case_study con titulo, scenario, contexto, etc.)
+                metadata_original = pregunta_dict.get('metadata') or {}
+                
                 resultados.append({
+                    # 🔥 ID ÚNICO: Crucial para identificar preguntas en case_study donde el texto es igual
+                    "id": pregunta_id,
+                    "indice_original": i,
                     "pregunta": pregunta.pregunta,
                     "tipo": pregunta.tipo,
                     # 🔥 SIEMPRE guardar opciones si existen (del objeto o del dict original)
@@ -3484,6 +3919,15 @@ async def evaluar_examen(datos: dict):
                     "puntos": puntos,
                     "puntos_maximos": pregunta.puntos,
                     "feedback": feedback,
+                    # 🔥 METADATA: Esencial para case_study (titulo, scenario, contexto, descripcion, datos_clave)
+                    "metadata": metadata_original,
+                    # 🔥 CAMPOS ADICIONALES PARA CASE_STUDY - Extracción directa para facilitar acceso
+                    "titulo": pregunta_dict.get('titulo') or metadata_original.get('titulo'),
+                    "scenario": pregunta_dict.get('scenario') or metadata_original.get('scenario'),
+                    "contexto": pregunta_dict.get('contexto') or metadata_original.get('contexto'),
+                    "descripcion": pregunta_dict.get('descripcion') or metadata_original.get('descripcion'),
+                    "datos_clave": pregunta_dict.get('datos_clave') or metadata_original.get('datos_clave'),
+                    "subtipo": pregunta_dict.get('subtipo') or metadata_original.get('subtipo'),
                     # Repetición espaciada individual
                     "porcentaje": porcentaje_pregunta,
                     "proximaRevision": proxima_revision_pregunta,
@@ -4704,14 +5148,16 @@ def get_datos(tipo: str):
     try:
         # Si es flashcards, agregar todas las flashcards de todas las carpetas
         if tipo == "flashcards":
-            todas_flashcards = []
+            flashcards_por_id = {}  # Diccionario para deduplicar por ID
+            archivos_modificados = []  # Archivos que necesitan actualización
             
             # Leer flashcards.json central (legacy)
             archivo_central = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
             if archivo_central.exists():
                 with open(archivo_central, "r", encoding="utf-8") as f:
                     flashcards_central = json.load(f)
-                    todas_flashcards.extend(flashcards_central)
+                    for fc in flashcards_central:
+                        flashcards_por_id[str(fc.get("id"))] = fc
             
             # Leer flashcards.json de cada carpeta recursivamente
             for archivo_flashcard in EXTRACCIONES_PATH.rglob("flashcards.json"):
@@ -4719,13 +5165,47 @@ def get_datos(tipo: str):
                 if archivo_flashcard == archivo_central:
                     continue
                 try:
+                    # Calcular la carpeta real basada en la ubicación física
+                    carpeta_real = str(archivo_flashcard.parent.relative_to(EXTRACCIONES_PATH))
+                    if carpeta_real == ".":
+                        carpeta_real = ""
+                    
                     with open(archivo_flashcard, "r", encoding="utf-8") as f:
                         flashcards_carpeta = json.load(f)
-                        todas_flashcards.extend(flashcards_carpeta)
+                    
+                    flashcards_actualizadas = False
+                    for fc in flashcards_carpeta:
+                        fc_id = str(fc.get("id"))
+                        carpeta_en_fc = fc.get("carpeta", "")
+                        
+                        # Si la carpeta guardada no coincide con la ubicación física, actualizar
+                        if carpeta_en_fc != carpeta_real:
+                            print(f"📍 Corrigiendo flashcard: '{carpeta_en_fc}' -> '{carpeta_real}'")
+                            fc["carpeta"] = carpeta_real
+                            flashcards_actualizadas = True
+                        
+                        # Deduplicar: priorizar versión de ubicación física
+                        if fc_id in flashcards_por_id:
+                            print(f"⚠️ Flashcard duplicada ID={fc_id}, usando: {archivo_flashcard}")
+                        flashcards_por_id[fc_id] = fc
+                    
+                    # Si hubo cambios, guardar el archivo actualizado
+                    if flashcards_actualizadas:
+                        archivos_modificados.append((archivo_flashcard, flashcards_carpeta))
                 except Exception as e:
                     print(f"⚠️ Error leyendo {archivo_flashcard}: {e}")
             
-            print(f"📚 Flashcards cargadas: {len(todas_flashcards)} total")
+            # Guardar archivos que fueron modificados
+            for archivo, flashcards in archivos_modificados:
+                try:
+                    with open(archivo, "w", encoding="utf-8") as f:
+                        json.dump(flashcards, f, indent=2, ensure_ascii=False)
+                    print(f"✅ Flashcards actualizado: {archivo}")
+                except Exception as e:
+                    print(f"❌ Error actualizando {archivo}: {e}")
+            
+            todas_flashcards = list(flashcards_por_id.values())
+            print(f"📚 Flashcards cargadas: {len(todas_flashcards)} (deduplicadas)")
             return JSONResponse(content=todas_flashcards)
         
         # Si es practicas, agregar todas las prácticas de todas las carpetas
@@ -4812,14 +5292,16 @@ def get_datos(tipo: str):
         
         # Si es notas, agregar todas las notas de todas las carpetas
         elif tipo == "notas":
-            todas_notas = []
+            notas_por_id = {}  # Diccionario para deduplicar por ID
+            archivos_modificados = []  # Archivos que necesitan actualización
             
             # Leer notas.json central (legacy)
             archivo_central = EXTRACCIONES_PATH / tipo / f"{tipo}.json"
             if archivo_central.exists():
                 with open(archivo_central, "r", encoding="utf-8") as f:
                     notas_central = json.load(f)
-                    todas_notas.extend(notas_central)
+                    for nota in notas_central:
+                        notas_por_id[str(nota.get("id"))] = nota
             
             # Leer notas.json de cada carpeta recursivamente
             for archivo_nota in EXTRACCIONES_PATH.rglob("notas.json"):
@@ -4827,13 +5309,47 @@ def get_datos(tipo: str):
                 if archivo_nota == archivo_central:
                     continue
                 try:
+                    # Calcular la carpeta real basada en la ubicación física
+                    carpeta_real = str(archivo_nota.parent.relative_to(EXTRACCIONES_PATH))
+                    if carpeta_real == ".":
+                        carpeta_real = ""
+                    
                     with open(archivo_nota, "r", encoding="utf-8") as f:
                         notas_carpeta = json.load(f)
-                        todas_notas.extend(notas_carpeta)
+                    
+                    notas_actualizadas = False
+                    for nota in notas_carpeta:
+                        nota_id = str(nota.get("id"))
+                        carpeta_en_nota = nota.get("carpeta", "")
+                        
+                        # Si la carpeta guardada no coincide con la ubicación física, actualizar
+                        if carpeta_en_nota != carpeta_real:
+                            print(f"📍 Corrigiendo ubicación: '{carpeta_en_nota}' -> '{carpeta_real}'")
+                            nota["carpeta"] = carpeta_real
+                            notas_actualizadas = True
+                        
+                        # Deduplicar: priorizar versión de ubicación física
+                        if nota_id in notas_por_id:
+                            print(f"⚠️ Duplicado ID={nota_id}, usando: {archivo_nota}")
+                        notas_por_id[nota_id] = nota
+                    
+                    # Si hubo cambios, guardar el archivo actualizado
+                    if notas_actualizadas:
+                        archivos_modificados.append((archivo_nota, notas_carpeta))
                 except Exception as e:
                     print(f"⚠️ Error leyendo {archivo_nota}: {e}")
             
-            print(f"📝 Notas cargadas: {len(todas_notas)} total")
+            # Guardar archivos que fueron modificados
+            for archivo, notas in archivos_modificados:
+                try:
+                    with open(archivo, "w", encoding="utf-8") as f:
+                        json.dump(notas, f, indent=2, ensure_ascii=False)
+                    print(f"✅ Actualizado: {archivo}")
+                except Exception as e:
+                    print(f"❌ Error actualizando {archivo}: {e}")
+            
+            todas_notas = list(notas_por_id.values())
+            print(f"📝 Notas cargadas: {len(todas_notas)} (deduplicadas)")
             return JSONResponse(content=todas_notas)
         
         # Si es errores, leer desde el banco de errores global
@@ -6427,6 +6943,53 @@ async def eliminar_practica(request: Request):
         print(f"   id: {practica_id}")
         
         eliminado = False
+        imagenes_eliminadas = []
+        
+        # 🖼️ Función auxiliar para eliminar imágenes de una práctica
+        def eliminar_imagenes_practica(practica_data, carpeta_base=None):
+            """Busca y elimina imágenes asociadas a las preguntas de la práctica"""
+            imagenes_borradas = []
+            if not isinstance(practica_data, dict):
+                return imagenes_borradas
+            
+            preguntas = practica_data.get("preguntas", [])
+            for pregunta in preguntas:
+                # Buscar imagen en metadata
+                metadata = pregunta.get("metadata", {})
+                imagen_archivo = metadata.get("imagen_archivo") or metadata.get("imagen", {}).get("url") if isinstance(metadata.get("imagen"), dict) else None
+                imagen_url = metadata.get("imagen") if isinstance(metadata.get("imagen"), str) else None
+                
+                # También buscar en pregunta directamente
+                if not imagen_archivo:
+                    imagen_archivo = pregunta.get("imagen_archivo") or pregunta.get("imagen", {}).get("url") if isinstance(pregunta.get("imagen"), dict) else None
+                
+                # Si es una URL del servidor, extraer la ruta
+                if imagen_url and "/extracciones/" in str(imagen_url):
+                    try:
+                        ruta_relativa = str(imagen_url).split("/extracciones/")[-1]
+                        imagen_archivo = f"extracciones/{ruta_relativa}"
+                    except:
+                        pass
+                
+                if imagen_archivo:
+                    # Intentar eliminar el archivo de imagen
+                    try:
+                        # Normalizar la ruta
+                        if imagen_archivo.startswith("extracciones/"):
+                            imagen_path = EXTRACCIONES_PATH / imagen_archivo.replace("extracciones/", "")
+                        elif carpeta_base:
+                            imagen_path = Path(carpeta_base) / Path(imagen_archivo).name
+                        else:
+                            imagen_path = EXTRACCIONES_PATH / imagen_archivo
+                        
+                        if imagen_path.exists():
+                            imagen_path.unlink()
+                            imagenes_borradas.append(str(imagen_path))
+                            print(f"   🖼️ Imagen eliminada: {imagen_path}")
+                    except Exception as e:
+                        print(f"   ⚠️ Error eliminando imagen {imagen_archivo}: {e}")
+            
+            return imagenes_borradas
         
         # MÉTODO 1: Intentar eliminar archivo individual en la ruta exacta
         if archivo and carpeta_ruta:
@@ -6437,6 +7000,14 @@ async def eliminar_practica(request: Request):
             
             print(f"   🔍 Buscando en ruta exacta: {archivo_path}")
             if archivo_path.exists():
+                # 🖼️ Leer práctica y eliminar imágenes antes de borrar el archivo
+                try:
+                    with open(archivo_path, "r", encoding="utf-8") as f:
+                        practica_data = json.load(f)
+                    imagenes_eliminadas = eliminar_imagenes_practica(practica_data, carpeta_destino)
+                except:
+                    pass
+                
                 archivo_path.unlink()
                 print(f"✅ Archivo individual eliminado: {archivo_path}")
                 eliminado = True
@@ -6446,6 +7017,14 @@ async def eliminar_practica(request: Request):
             print(f"🔍 Buscando archivo {archivo} en todas las carpetas...")
             for archivo_encontrado in EXTRACCIONES_PATH.rglob(archivo):
                 try:
+                    # 🖼️ Leer práctica y eliminar imágenes antes de borrar
+                    try:
+                        with open(archivo_encontrado, "r", encoding="utf-8") as f:
+                            practica_data = json.load(f)
+                        imagenes_eliminadas = eliminar_imagenes_practica(practica_data, archivo_encontrado.parent)
+                    except:
+                        pass
+                    
                     archivo_encontrado.unlink()
                     print(f"   ✅ Archivo eliminado: {archivo_encontrado}")
                     eliminado = True
@@ -6463,6 +7042,9 @@ async def eliminar_practica(request: Request):
                     
                     # Verificar si el ID coincide
                     if isinstance(practica_data, dict) and practica_data.get("id") == practica_id:
+                        # 🖼️ Eliminar imágenes asociadas
+                        imagenes_eliminadas = eliminar_imagenes_practica(practica_data, archivo_json.parent)
+                        
                         archivo_json.unlink()
                         print(f"   ✅ Archivo eliminado por ID: {archivo_json}")
                         eliminado = True
@@ -6488,20 +7070,27 @@ async def eliminar_practica(request: Request):
                         # Buscar la práctica por ID o por archivo
                         practicas_filtradas = []
                         encontrada = False
+                        practica_eliminada = None
                         
                         for p in practicas:
                             if practica_id and p.get("id") == practica_id:
                                 encontrada = True
+                                practica_eliminada = p
                                 print(f"   ✅ Encontrada por ID: {practica_id}")
                                 continue  # No agregar a la lista filtrada (eliminar)
                             elif archivo and p.get("archivo") == archivo:
                                 encontrada = True
+                                practica_eliminada = p
                                 print(f"   ✅ Encontrada por archivo: {archivo}")
                                 continue  # No agregar a la lista filtrada (eliminar)
                             else:
                                 practicas_filtradas.append(p)
                         
                         if encontrada:
+                            # 🖼️ Eliminar imágenes asociadas antes de guardar
+                            if practica_eliminada:
+                                imagenes_eliminadas = eliminar_imagenes_practica(practica_eliminada, archivo_json.parent)
+                            
                             # Guardar archivo sin la práctica eliminada
                             with open(archivo_json, "w", encoding="utf-8") as f:
                                 json.dump(practicas_filtradas, f, indent=2, ensure_ascii=False)
@@ -6522,7 +7111,8 @@ async def eliminar_practica(request: Request):
         
         return JSONResponse(content={
             "success": True,
-            "archivo": archivo
+            "archivo": archivo,
+            "imagenes_eliminadas": imagenes_eliminadas
         })
     except Exception as e:
         print(f"❌ Error eliminando práctica: {e}")
@@ -6668,17 +7258,74 @@ async def guardar_nota_carpeta(request: Request):
 def get_notas():
     """Obtiene todas las notas de todas las carpetas"""
     try:
-        todas_notas = []
+        notas_por_id = {}  # Diccionario para deduplicar por ID
+        archivos_modificados = []  # Archivos que necesitan actualización
         
         # Buscar recursivamente todos los notas.json
         for archivo in EXTRACCIONES_PATH.rglob("notas.json"):
             try:
+                # Calcular la carpeta real basada en la ubicación física
+                carpeta_real = str(archivo.parent.relative_to(EXTRACCIONES_PATH))
+                if carpeta_real == ".":
+                    carpeta_real = ""
+                
                 with open(archivo, "r", encoding="utf-8") as f:
                     notas = json.load(f)
-                    todas_notas.extend(notas)
+                
+                notas_actualizadas = False
+                for nota in notas:
+                    nota_id = str(nota.get("id"))
+                    carpeta_en_nota = nota.get("carpeta", "")
+                    
+                    # Si la carpeta guardada no coincide con la ubicación física, actualizar
+                    if carpeta_en_nota != carpeta_real:
+                        print(f"📍 Corrigiendo ubicación de nota {nota_id}: '{carpeta_en_nota}' -> '{carpeta_real}'")
+                        nota["carpeta"] = carpeta_real
+                        notas_actualizadas = True
+                    
+                    # 🔥 AGREGAR CAMPOS SM-2 POR DEFECTO SI NO EXISTEN
+                    if "proximaRevision" not in nota:
+                        nota["proximaRevision"] = nota.get("fecha", datetime.now().isoformat())
+                        notas_actualizadas = True
+                    if "intervalo" not in nota and "intervaloActual" not in nota:
+                        nota["intervalo"] = 1
+                        notas_actualizadas = True
+                    # Convertir intervaloActual a intervalo si existe
+                    if "intervaloActual" in nota and "intervalo" not in nota:
+                        nota["intervalo"] = nota.pop("intervaloActual")
+                        notas_actualizadas = True
+                    if "repeticiones" not in nota:
+                        nota["repeticiones"] = 0
+                        notas_actualizadas = True
+                    if "facilidad" not in nota:
+                        nota["facilidad"] = 2.5
+                        notas_actualizadas = True
+                    if "estadoRevision" not in nota:
+                        nota["estadoRevision"] = "nueva"
+                        notas_actualizadas = True
+                    
+                    # Deduplicar: si ya existe, priorizar esta versión (ubicación física correcta)
+                    if nota_id in notas_por_id:
+                        print(f"⚠️ Nota duplicada detectada ID={nota_id}, usando versión de: {archivo}")
+                    notas_por_id[nota_id] = nota
+                
+                # Si hubo cambios, guardar el archivo actualizado
+                if notas_actualizadas:
+                    archivos_modificados.append((archivo, notas))
             except Exception as e:
                 print(f"Error leyendo {archivo}: {e}")
         
+        # Guardar archivos que fueron modificados (actualizar carpeta en el JSON)
+        for archivo, notas in archivos_modificados:
+            try:
+                with open(archivo, "w", encoding="utf-8") as f:
+                    json.dump(notas, f, indent=2, ensure_ascii=False)
+                print(f"✅ Actualizado: {archivo}")
+            except Exception as e:
+                print(f"❌ Error actualizando {archivo}: {e}")
+        
+        todas_notas = list(notas_por_id.values())
+        print(f"📝 Notas cargadas: {len(todas_notas)} (deduplicadas)")
         return JSONResponse(content=todas_notas)
     except Exception as e:
         print(f"❌ Error obteniendo notas: {e}")
@@ -6868,6 +7515,112 @@ async def eliminar_modelo_ollama(nombre_modelo: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/ollama/install-model")
+async def instalar_modelo_gguf(
+    archivo: UploadFile = File(...),
+    nombre_modelo: str = Form(...)
+):
+    """
+    Instala un modelo GGUF en Ollama.
+    Recibe el archivo .gguf y crea el modelo con el nombre especificado.
+    """
+    import subprocess
+    import tempfile
+    
+    print(f"📦 Instalando modelo GGUF: {archivo.filename} como '{nombre_modelo}'")
+    
+    # Validar extensión
+    if not archivo.filename.lower().endswith('.gguf'):
+        raise HTTPException(status_code=400, detail="El archivo debe ser un .gguf")
+    
+    # Crear directorio temporal para el modelo
+    modelos_dir = Path("modelos_gguf")
+    modelos_dir.mkdir(exist_ok=True)
+    
+    archivo_destino = modelos_dir / archivo.filename
+    
+    try:
+        # Guardar archivo GGUF
+        print(f"💾 Guardando archivo en: {archivo_destino}")
+        with open(archivo_destino, "wb") as buffer:
+            content = await archivo.read()
+            buffer.write(content)
+        
+        print(f"✅ Archivo guardado ({len(content) / (1024**3):.2f} GB)")
+        
+        # Crear Modelfile para Ollama
+        modelfile_path = modelos_dir / f"Modelfile_{nombre_modelo.replace(':', '_').replace('/', '_')}"
+        
+        # Ruta absoluta del archivo GGUF
+        ruta_absoluta = archivo_destino.resolve()
+        
+        modelfile_content = f'''FROM "{ruta_absoluta}"
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
+
+SYSTEM """Eres un asistente de IA útil y preciso. Responde en español de manera clara y concisa."""
+'''
+        
+        with open(modelfile_path, "w", encoding="utf-8") as f:
+            f.write(modelfile_content)
+        
+        print(f"📝 Modelfile creado en: {modelfile_path}")
+        
+        # Ejecutar ollama create
+        print(f"🚀 Ejecutando: ollama create {nombre_modelo} -f {modelfile_path}")
+        
+        resultado = subprocess.run(
+            ["ollama", "create", nombre_modelo, "-f", str(modelfile_path)],
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=600  # 10 minutos máximo
+        )
+        
+        if resultado.returncode != 0:
+            error_msg = resultado.stderr or resultado.stdout or "Error desconocido"
+            print(f"❌ Error en ollama create: {error_msg}")
+            raise HTTPException(status_code=500, detail=f"Error al crear modelo: {error_msg}")
+        
+        print(f"✅ Modelo '{nombre_modelo}' creado exitosamente")
+        print(f"   Salida: {resultado.stdout}")
+        
+        # Obtener lista actualizada de modelos
+        try:
+            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            modelos = []
+            if response.status_code == 200:
+                data = response.json()
+                for modelo in data.get('models', []):
+                    modelos.append({
+                        'nombre': modelo.get('name', ''),
+                        'tamaño_gb': round(modelo.get('size', 0) / (1024**3), 2)
+                    })
+        except:
+            modelos = []
+        
+        return {
+            "success": True,
+            "mensaje": f"✅ Modelo '{nombre_modelo}' instalado correctamente",
+            "modelo_nombre": nombre_modelo,
+            "archivo_gguf": str(archivo_destino),
+            "modelos_disponibles": modelos
+        }
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Tiempo de espera agotado al crear el modelo")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error instalando modelo GGUF: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/motor/cambiar")
 async def cambiar_motor(data: dict):
     """Cambia la configuración del motor de IA"""
@@ -6939,20 +7692,72 @@ async def reparar_motor():
     
     try:
         print("\n🔧 Reparando motor de IA...")
+        problemas_resueltos = []
         
-        # Reinicializar generador con configuración actual
+        # 1. Limpiar archivos temporales/corruptos de modelos GGUF
+        modelos_dir = Path("modelos_gguf")
+        if modelos_dir.exists():
+            # Limpiar Modelfiles huérfanos o corruptos
+            for modelfile in modelos_dir.glob("Modelfile_*"):
+                try:
+                    contenido = modelfile.read_text(encoding='utf-8')
+                    # Verificar si el archivo GGUF referenciado existe
+                    if 'FROM "' in contenido:
+                        import re
+                        match = re.search(r'FROM "([^"]+)"', contenido)
+                        if match:
+                            ruta_gguf = Path(match.group(1))
+                            if not ruta_gguf.exists():
+                                modelfile.unlink()
+                                problemas_resueltos.append(f"🗑️ Modelfile huérfano eliminado: {modelfile.name}")
+                except Exception as e:
+                    print(f"⚠️ Error verificando {modelfile}: {e}")
+        
+        # 2. Verificar conexión con Ollama
+        ollama_ok = False
+        try:
+            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            if response.status_code == 200:
+                ollama_ok = True
+                problemas_resueltos.append("✅ Ollama está funcionando")
+            else:
+                problemas_resueltos.append("⚠️ Ollama responde pero con error")
+        except requests.exceptions.ConnectionError:
+            problemas_resueltos.append("❌ Ollama no está ejecutándose - Inícialo con 'ollama serve'")
+        except Exception as e:
+            problemas_resueltos.append(f"⚠️ Error verificando Ollama: {str(e)[:50]}")
+        
+        # 3. Intentar reparar modelos huérfanos en Ollama
+        if ollama_ok:
+            try:
+                response = requests.get("http://localhost:11434/api/tags", timeout=5)
+                if response.status_code == 200:
+                    modelos = response.json().get('models', [])
+                    for modelo in modelos:
+                        nombre = modelo.get('name', '')
+                        # Verificar si el modelo funciona haciendo un ping rápido
+                        try:
+                            test_response = requests.post(
+                                "http://localhost:11434/api/generate",
+                                json={"model": nombre, "prompt": "test", "stream": False},
+                                timeout=10
+                            )
+                            if test_response.status_code != 200:
+                                problemas_resueltos.append(f"⚠️ Modelo '{nombre}' puede tener problemas")
+                        except:
+                            pass  # No bloquear por timeout en prueba
+            except Exception as e:
+                print(f"⚠️ Error verificando modelos: {e}")
+        
+        # 4. Reinicializar generador con configuración actual
         config = cargar_config()
         generador_actual = GeneradorUnificado()
         
-        # Verificar estado
+        # 5. Verificar estado final
         if generador_actual.usar_ollama:
-            try:
-                response = requests.get("http://localhost:11434/api/tags", timeout=2)
-                if response.status_code == 200:
-                    mensaje = f"✅ Motor reparado - Ollama OK (modelo: {config.get('modelo_ollama_activo', 'default')})"
-                else:
-                    mensaje = "⚠️ Motor reiniciado pero Ollama no responde"
-            except:
+            if ollama_ok:
+                mensaje = f"✅ Motor reparado - Ollama OK (modelo: {config.get('modelo_ollama_activo', 'default')})"
+            else:
                 mensaje = "⚠️ Motor reiniciado pero Ollama no está disponible"
         else:
             if generador_actual.llm:
@@ -6960,9 +7765,16 @@ async def reparar_motor():
             else:
                 mensaje = "⚠️ Motor reiniciado pero no hay modelo GGUF cargado"
         
+        # Agregar resumen de problemas resueltos
+        if problemas_resueltos:
+            mensaje += "\n\n📋 Diagnóstico:\n" + "\n".join(problemas_resueltos)
+        
+        print(f"🔧 Reparación completada: {mensaje}")
+        
         return {
             'success': True,
-            'mensaje': mensaje
+            'mensaje': mensaje,
+            'diagnostico': problemas_resueltos
         }
     except Exception as e:
         print(f"❌ Error reparando motor: {e}")
@@ -7463,4 +8275,4 @@ async def guardar_imagen_practica(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")

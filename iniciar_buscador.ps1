@@ -27,7 +27,6 @@ Write-Host "✅ Índice encontrado" -ForegroundColor Green
 Write-Host "🚀 Iniciando servidor de búsqueda..." -ForegroundColor Cyan
 Write-Host ""
 Write-Host "📡 El servidor estará en: http://localhost:5001" -ForegroundColor Yellow
-Write-Host "🌐 Accesible desde red local para multiusuario" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "⏹️  Para detener: CTRL+C" -ForegroundColor Gray
 Write-Host ""

@@ -29,7 +29,7 @@ if __name__ == "__main__":
         sys.executable,
         "-m", "uvicorn",
         "api_server:app",
-        "--host", "0.0.0.0",
+        "--host", "127.0.0.1",
         "--port", "8000",
         "--log-level", "info",
         "--timeout-keep-alive", "30",

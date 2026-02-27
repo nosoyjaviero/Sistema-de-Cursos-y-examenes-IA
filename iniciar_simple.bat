@@ -1,30 +1,10 @@
 @echo off
 chcp 65001 > nul
-title 📱 Examinator - Iniciar en Red
+title 📚 Examinator - Inicio Local
 
 echo.
 echo ════════════════════════════════════════════════════════════════
-echo    📱 EXAMINATOR - INICIO RÁPIDO PARA RED LOCAL
-echo ════════════════════════════════════════════════════════════════
-echo.
-
-:: Obtener IP local
-echo 🔍 Detectando tu IP...
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
-    set IP=%%a
-    goto :ip_found
-)
-
-:ip_found
-set IP=%IP: =%
-echo ✅ Tu IP es: %IP%
-echo.
-
-:: Guardar IP
-echo %IP% > .ip_local.txt
-
-echo ════════════════════════════════════════════════════════════════
-echo    🚀 INICIANDO SERVIDORES
+echo    📚 EXAMINATOR - INICIO LOCAL
 echo ════════════════════════════════════════════════════════════════
 echo.
 
@@ -37,49 +17,35 @@ echo ✓ Puertos liberados
 echo.
 
 :: Iniciar Buscador IA
-echo 🔍 Iniciando Buscador IA con GPU (puerto 5001)...
-start "Buscador IA - GPU" cmd /k "title Buscador IA GPU && cd /d %~dp0 && echo 🔍 Servidor Buscador corriendo en puerto 5001... && venv\Scripts\activate.bat && python api_buscador.py"
-timeout /t 3 >nul
+echo 🔍 Iniciando Buscador IA (puerto 5001)...
+start /min "Buscador IA" cmd /c "cd /d %~dp0 && venv\Scripts\activate.bat && python api_buscador.py"
+timeout /t 2 >nul
 
 :: Iniciar Backend
 echo 🔥 Iniciando Backend API (puerto 8000)...
-start "Examinator Backend" cmd /k "title Backend API && echo Backend corriendo en puerto 8000... && python api_server.py"
-timeout /t 3 >nul
+start /min "Backend API" cmd /c "cd /d %~dp0 && venv\Scripts\activate.bat && python api_server.py"
+timeout /t 2 >nul
 
 :: Iniciar Frontend
 echo 🎨 Iniciando Frontend Web (puerto 5173)...
-start "Examinator Frontend" cmd /k "title Frontend Web && echo Frontend corriendo... && cd examinator-web && npm run dev -- --host"
-timeout /t 5 >nul
+start /min "Frontend" cmd /c "cd /d %~dp0\examinator-web && npm run dev"
+timeout /t 3 >nul
 
 echo.
 echo ════════════════════════════════════════════════════════════════
 echo    ✅ SERVIDORES INICIADOS
 echo ════════════════════════════════════════════════════════════════
 echo.
-echo 📱 DESDE TU MÓVIL/TABLET:
-echo    Abre el navegador y ve a:
-echo.
-echo    🌐 http://%IP%:5173
-echo.
-echo ════════════════════════════════════════════════════════════════
-echo.
-echo 💻 DESDE ESTA PC:
-echo    🌐 http://localhost:5173
-echo.
-echo ════════════════════════════════════════════════════════════════
-echo.
-echo ⚠️  IMPORTANTE:
-echo    Si no puedes conectarte desde el móvil, ejecuta:
-echo    configurar_firewall.bat (como Administrador)
+echo 🌐 Abre: http://localhost:5173
 echo.
 echo ════════════════════════════════════════════════════════════════
 echo.
 
-:: Abrir navegador local
+:: Abrir navegador
 timeout /t 2 >nul
 start http://localhost:5173
 
-echo ✅ Todo listo! Presiona cualquier tecla para cerrar.
-echo    (Los servidores seguirán corriendo en las otras ventanas)
+echo ✅ Listo! Los servidores corren en segundo plano (minimizados).
+echo    Para cerrarlos: usa el Administrador de tareas o DETENER_BUSCADOR.ps1
 echo.
 pause >nul

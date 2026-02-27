@@ -20,6 +20,7 @@
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -221,7 +222,8 @@
 
 /* Modo TODO - Sesión Completa */
 .prioridad-todo {
-  grid-column: 1 / -1; /* Ocupa todo el ancho */
+  grid-column: 1 / -1;
+  /* Ocupa todo el ancho */
   background: linear-gradient(135deg, rgba(234, 179, 8, 0.1) 0%, rgba(251, 191, 36, 0.1) 100%) !important;
   border-color: rgba(234, 179, 8, 0.3) !important;
 }
@@ -377,14 +379,16 @@
 .sesion-estudio-container {
   min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  padding-top: 100px; /* Espacio para header fijo - reducido */
+  padding-top: 100px;
+  /* Espacio para header fijo - reducido */
 }
 
 /* Header Fijo */
 .sesion-header-fixed {
   position: fixed;
   top: 0;
-  left: 260px; /* Ancho del sidebar */
+  left: 260px;
+  /* Ancho del sidebar */
   right: 0;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-bottom: 2px solid rgba(102, 126, 234, 0.3);
@@ -469,8 +473,16 @@
 }
 
 @keyframes blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .cronometro-progreso-fases {
@@ -506,8 +518,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 /* Controles */
@@ -1195,6 +1214,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1262,7 +1282,7 @@
   border-radius: 20px;
   padding: 1.5rem;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4),
-              0 0 0 1px rgba(255, 255, 255, 0.1);
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   min-width: 280px;
   position: relative;
 }
@@ -1416,7 +1436,7 @@
   gap: 0.75rem;
   cursor: pointer;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
-              0 0 0 1px rgba(255, 255, 255, 0.1);
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   transition: all 0.3s ease;
   min-width: 160px;
 }
@@ -1424,7 +1444,7 @@
 .timer-mini:hover {
   transform: scale(1.05);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5),
-              0 0 0 1px rgba(100, 108, 255, 0.3);
+    0 0 0 1px rgba(100, 108, 255, 0.3);
 }
 
 .timer-mini-icon {
@@ -2172,6 +2192,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -2644,6 +2665,7 @@
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -2992,8 +3014,13 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .respuesta-textual-hint {
@@ -3193,9 +3220,12 @@
 }
 
 @keyframes bounce {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-20px);
   }
@@ -3715,9 +3745,12 @@
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0);
   }
+
   50% {
     transform: translateY(-15px);
   }
@@ -4151,6 +4184,7 @@
   from {
     transform: translateX(100%);
   }
+
   to {
     transform: translateX(0);
   }
@@ -4656,12 +4690,19 @@
 }
 
 @keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {
+
+  0%,
+  20%,
+  50%,
+  80%,
+  100% {
     transform: translateY(0);
   }
+
   40% {
     transform: translateY(-20px);
   }
+
   60% {
     transform: translateY(-10px);
   }
@@ -4776,8 +4817,10 @@
 /* Tab 3: Notas */
 .tab-notas-contenido {
   flex: 1;
-  overflow: hidden; /* Cambio: auto -> hidden para que el layout Notion maneje el scroll */
-  padding: 0; /* Cambio: 2rem -> 0 para que el layout Notion ocupe todo el espacio */
+  overflow: hidden;
+  /* Cambio: auto -> hidden para que el layout Notion maneje el scroll */
+  padding: 0;
+  /* Cambio: 2rem -> 0 para que el layout Notion ocupe todo el espacio */
   width: 100%;
   max-width: 100%;
 }
@@ -5206,10 +5249,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.1);
     opacity: 0.8;
@@ -5347,12 +5393,19 @@
 }
 
 @keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {
+
+  0%,
+  20%,
+  50%,
+  80%,
+  100% {
     transform: translateY(0);
   }
+
   40% {
     transform: translateY(-20px);
   }
+
   60% {
     transform: translateY(-10px);
   }
@@ -5469,6 +5522,7 @@
     opacity: 0;
     transform: scale(0.5);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -5913,11 +5967,11 @@
   transition: all 0.3s ease;
 }
 
-.toggle-container input[type="checkbox"]:checked + .toggle-slider {
+.toggle-container input[type="checkbox"]:checked+.toggle-slider {
   background: linear-gradient(135deg, #646cff 0%, #764ba2 100%);
 }
 
-.toggle-container input[type="checkbox"]:checked + .toggle-slider::before {
+.toggle-container input[type="checkbox"]:checked+.toggle-slider::before {
   transform: translateX(24px);
 }
 
@@ -5967,12 +6021,14 @@
 .header-sesion-fijo {
   position: fixed;
   top: 0;
-  left: 260px; /* Dejar espacio para el sidebar */
+  left: 260px;
+  /* Dejar espacio para el sidebar */
   right: 0;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
   border-bottom: 2px solid rgba(100, 108, 255, 0.2);
   padding: 1rem 2rem;
-  z-index: 999; /* Menor que el sidebar (100) pero mayor que el contenido */
+  z-index: 999;
+  /* Menor que el sidebar (100) pero mayor que el contenido */
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
 }
@@ -6202,7 +6258,8 @@
 }
 
 .sesion-estudio-container.con-selector {
-  margin-left: 0; /* El selector ya empuja el contenido */
+  margin-left: 0;
+  /* El selector ya empuja el contenido */
 }
 
 .sesion-header-fixed.oculto {
@@ -6260,7 +6317,8 @@
 .input-buscar-curso {
   width: 100%;
   padding: 0.75rem 1rem;
-  padding-right: 2.5rem; /* Espacio para el botón de limpiar */
+  padding-right: 2.5rem;
+  /* Espacio para el botón de limpiar */
   background: rgba(51, 65, 85, 0.6);
   border: 2px solid rgba(148, 163, 184, 0.3);
   border-radius: 10px;
@@ -6437,19 +6495,21 @@
   .header-sesion-content {
     gap: 1rem;
   }
-  
+
   .header-sesion-left {
     gap: 1rem;
   }
-  
+
   .sesion-siguiente-info {
-    display: none; /* Ocultar en pantallas medianas */
+    display: none;
+    /* Ocultar en pantallas medianas */
   }
-  
+
   .btn-text {
-    display: none; /* Solo íconos en mobile */
+    display: none;
+    /* Solo íconos en mobile */
   }
-  
+
   .selector-cursos-panel {
     width: 300px;
   }
@@ -6458,31 +6518,32 @@
 @media (max-width: 768px) {
   .header-sesion-fijo {
     padding: 0.75rem 1rem;
-    left: 0; /* En móvil el sidebar se oculta, así que left: 0 */
+    left: 0;
+    /* En móvil el sidebar se oculta, así que left: 0 */
   }
-  
+
   .header-sesion-center {
     gap: 0.5rem;
   }
-  
+
   .btn-header-sesion {
     padding: 0.5rem 0.75rem;
     gap: 0;
   }
-  
+
   .timer-compacto {
     gap: 0.5rem;
     padding: 0.5rem 1rem;
   }
-  
+
   .timer-display {
     font-size: 1.2rem;
   }
-  
+
   .sesion-estudio-container-wrapper {
     padding-top: 70px;
   }
-  
+
   .selector-cursos-panel {
     width: 280px;
   }
@@ -6494,15 +6555,15 @@
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
+
   .sesion-guardado-indicator {
     display: none;
   }
-  
+
   .timer-progreso-mini {
     width: 60px;
   }
-  
+
   .selector-cursos-panel {
     position: fixed;
     top: 70px;
@@ -6933,6 +6994,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -7050,24 +7112,24 @@
   .fuente-opciones {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .toolbar-grupo {
     flex-wrap: wrap;
   }
-  
+
   .editor-inline-titulo {
     font-size: 1.5rem;
   }
-  
+
   .editor-inline-content {
     font-size: 1rem;
     min-height: 300px;
   }
-  
+
   .editor-toolbar {
     padding: 0.75rem;
   }
-  
+
   .toolbar-btn {
     padding: 0.4rem 0.6rem;
     font-size: 0.85rem;
@@ -7079,21 +7141,21 @@
   .fuente-opciones {
     grid-template-columns: 1fr;
   }
-  
+
   .editor-actions {
     width: 100%;
     justify-content: stretch;
   }
-  
+
   .btn-editor-action {
     flex: 1;
   }
-  
+
   .editor-inline-footer {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .footer-info {
     flex-direction: column;
     gap: 0.5rem;
@@ -7430,8 +7492,15 @@
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-20px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
 }
 
 .flashcards-placeholder h3 {
@@ -8040,33 +8109,33 @@
   .controles-calendario {
     padding: 1rem;
   }
-  
+
   .botones-filtro {
     flex-direction: column;
   }
-  
+
   .btn-filtro {
     width: 100%;
   }
-  
+
   .grafico-barras {
     height: 150px;
     gap: 0.25rem;
   }
-  
+
   .barra-semana {
     min-width: 20px;
   }
-  
+
   .barra-valor {
     font-size: 0.65rem;
   }
-  
+
   .item-repaso {
     grid-template-columns: 1fr;
     gap: 0.5rem;
   }
-  
+
   .item-repaso-info {
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -8138,7 +8207,7 @@
     gap: 1rem;
     padding: 1.5rem;
   }
-  
+
   .info-icono {
     font-size: 3rem;
     text-align: center;
@@ -8259,11 +8328,11 @@
   .items-nuevos-seccion {
     padding: 1.5rem;
   }
-  
+
   .lista-items-nuevos {
     grid-template-columns: 1fr;
   }
-  
+
   .item-nuevo-card {
     flex-direction: column;
     align-items: flex-start;
@@ -9010,23 +9079,23 @@
     max-height: 100vh;
     border-radius: 0;
   }
-  
+
   .modal-mapa-header {
     padding: 1rem;
   }
-  
+
   .modal-mapa-header h2 {
     font-size: 1.3rem;
   }
-  
+
   .modal-mapa-body {
     padding: 1rem;
   }
-  
+
   .mapa-escenarios {
     grid-template-columns: 1fr;
   }
-  
+
   .mapa-item-stats {
     grid-template-columns: 1fr;
   }
@@ -9069,7 +9138,7 @@
   border-bottom: 1px solid rgba(100, 108, 255, 0.2);
 }
 
-.accesos-rapidos-titulo > span:first-child {
+.accesos-rapidos-titulo>span:first-child {
   font-weight: 600;
   color: #646cff;
   font-size: 0.95rem;
@@ -9168,17 +9237,17 @@
   .accesos-rapidos-fase {
     padding: 1rem;
   }
-  
+
   .accesos-rapidos-titulo {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
+
   .accesos-rapidos-botones {
     grid-template-columns: 1fr;
   }
-  
+
   .btn-acceso-rapido {
     font-size: 0.85rem;
     padding: 0.65rem 0.85rem;
@@ -9194,7 +9263,7 @@
   .sesion-estudio-container {
     padding-top: 80px;
   }
-  
+
   .sesion-header-fixed {
     padding: 1.25rem 1.5rem;
     left: 240px;
@@ -9208,68 +9277,68 @@
     margin-left: 0 !important;
     width: 100%;
   }
-  
+
   .sesion-header-fixed {
     left: 0;
     padding: 1rem;
     position: relative;
   }
-  
+
   .sesion-info {
     flex-direction: column;
     gap: 0.75rem;
   }
-  
+
   /* Notas responsive */
   .tab-notas-contenido {
     padding: 1rem;
   }
-  
+
   .notas-editor-notion-layout {
     flex-direction: column !important;
     gap: 1rem;
   }
-  
+
   .editor-sidebar-izq {
     width: 100% !important;
     margin-bottom: 1rem;
     order: -1;
   }
-  
+
   .editor-principal {
     width: 100% !important;
   }
-  
+
   .vista-previa-notion {
     width: 100% !important;
     margin-top: 1rem;
   }
-  
+
   /* Flashcards responsive */
   .tab-flashcards-contenido {
     padding: 0.75rem;
   }
-  
+
   .flashcards-layout {
     padding: 1rem;
   }
-  
+
   /* Accesos rápidos responsive */
   .accesos-rapidos-fase {
     margin-bottom: 1rem;
     padding: 1rem;
   }
-  
+
   .accesos-rapidos-botones {
     grid-template-columns: 1fr !important;
     gap: 0.5rem;
   }
-  
+
   .btn-acceso-rapido {
     width: 100%;
     justify-content: center;
   }
-  
+
   /* Fases responsive */
   .fase-calentamiento,
   .fase-errores,
@@ -9286,26 +9355,26 @@
   .sesion-estudio-container {
     padding-top: 50px !important;
   }
-  
+
   .sesion-header-fixed {
     padding: 0.75rem;
   }
-  
+
   .accesos-rapidos-fase {
     padding: 0.75rem;
   }
-  
+
   .accesos-rapidos-titulo {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
+
   .btn-acceso-rapido {
     font-size: 0.85rem;
     padding: 0.65rem;
   }
-  
+
   .fase-calentamiento,
   .fase-errores,
   .fase-flashcards,
@@ -9321,11 +9390,11 @@
   .sesion-estudio-container {
     padding-top: 40px !important;
   }
-  
+
   .sesion-header-fixed {
     padding: 0.5rem 1rem;
   }
-  
+
   .accesos-rapidos-fase {
     padding: 0.5rem;
     margin-bottom: 0.75rem;
@@ -9417,8 +9486,15 @@
 }
 
 @keyframes pulse-critical {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .error-estado-ok {
@@ -9437,7 +9513,8 @@
 }
 
 .repaso-header .errores-title h2 {
-  color: #a78bfa; /* Violeta para diferenciar de errores */
+  color: #a78bfa;
+  /* Violeta para diferenciar de errores */
 }
 
 .repaso-progress-bar .progress-fill {
@@ -10268,12 +10345,13 @@
   margin: 0;
   color: #22c55e;
 }
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem;
-  max-width: 900px;
-  margin: 0 auto;
+
+display: flex;
+flex-direction: column;
+gap: 1.5rem;
+padding: 1.5rem;
+max-width: 900px;
+margin: 0 auto;
 }
 
 .fase-header-practicas {
@@ -10657,25 +10735,980 @@
     text-align: center;
     gap: 1rem;
   }
-  
+
   .calificacion-botones {
     flex-direction: column;
   }
-  
+
   .btn-calificacion {
     width: 100%;
   }
-  
+
   .notas-navegacion {
     flex-direction: column;
   }
-  
+
   .carpetas-grid-practicas {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .btn-generar-practica-grande {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* ============================================ */
+/* 📝 MODO APUNTES AVANZADOS - ESTILOS */
+/* ============================================ */
+
+/* Toggle en configuración */
+.apuntes-avanzados-config {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%);
+  border-radius: 16px;
+  padding: 1.5rem;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  margin-top: 1rem;
+}
+
+.apuntes-modo-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.toggle-apuntes-avanzado {
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 12px;
+}
+
+.toggle-apuntes-avanzado .toggle-label {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #22c55e;
+}
+
+.apuntes-avanzados-descripcion {
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  border-left: 4px solid #22c55e;
+}
+
+.apuntes-avanzados-descripcion .descripcion-principal {
+  color: #e2e8f0;
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
+.apuntes-avanzados-descripcion .lista-etapas-preview {
+  margin: 0.5rem 0 1rem 1.5rem;
+  padding: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.apuntes-avanzados-descripcion .lista-etapas-preview li {
+  margin-bottom: 0.35rem;
+}
+
+.apuntes-avanzados-descripcion .lista-etapas-preview strong {
+  color: #22c55e;
+}
+
+.apuntes-avanzados-descripcion .descripcion-final {
+  color: #a5b4fc;
+  margin: 0;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+/* Contenedor principal del modo avanzado */
+.apuntes-avanzados-container {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 20px;
+  padding: 2rem;
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Header con progreso */
+.apuntes-avanzados-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header-titulo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-titulo .header-icon {
+  font-size: 2rem;
+}
+
+.header-titulo h2 {
+  color: #fff;
+  font-size: 1.5rem;
+  margin: 0;
+  font-weight: 700;
+}
+
+.header-titulo .header-carpeta {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+}
+
+/* Indicadores de progreso */
+.header-progreso {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.progreso-paso {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.progreso-paso:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.progreso-paso.activo {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: #fff;
+  transform: scale(1.1);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}
+
+.progreso-paso.completado {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-color: #22c55e;
+  color: #fff;
+}
+
+.progreso-paso.final {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  border-color: #f59e0b;
+}
+
+.progreso-paso.final.activo {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border-color: #22c55e;
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+}
+
+/* Input de título */
+.apuntes-titulo-input {
+  margin-bottom: 0.5rem;
+}
+
+.input-titulo-apuntes {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.input-titulo-apuntes:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.input-titulo-apuntes::placeholder {
+  color: #64748b;
+  font-weight: 400;
+}
+
+/* Contenedor de etapas */
+.etapa-contenido-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Estilos comunes de etapas */
+.etapa-apuntes {
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 16px;
+  padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: fadeInEtapa 0.3s ease-out;
+}
+
+@keyframes fadeInEtapa {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.etapa-header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.etapa-icono {
+  font-size: 2.5rem;
+  min-width: 60px;
+  text-align: center;
+}
+
+.etapa-info h3 {
+  color: #fff;
+  font-size: 1.3rem;
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+}
+
+.etapa-descripcion {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.etapa-descripcion strong {
+  color: #e2e8f0;
+}
+
+/* Tips científicos */
+.etapa-tip {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border-radius: 12px;
+  border-left: 4px solid #667eea;
+}
+
+.tip-icono {
+  font-size: 1.5rem;
+}
+
+.tip-texto {
+  color: #cbd5e1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.tip-texto strong {
+  color: #a5b4fc;
+}
+
+/* Advertencia */
+.etapa-advertencia {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  color: #fbbf24;
+  font-size: 0.9rem;
+}
+
+.advertencia-icono {
+  font-size: 1.2rem;
+}
+
+/* Preguntas guía */
+.etapa-preguntas-guia {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.etapa-preguntas-guia p {
+  color: #e2e8f0;
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.etapa-preguntas-guia ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.etapa-preguntas-guia li {
+  margin-bottom: 0.25rem;
+}
+
+/* Textarea de etapa */
+.etapa-textarea {
+  flex: 1;
+  min-height: 200px;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #e2e8f0;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.etapa-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.etapa-textarea::placeholder {
+  color: #64748b;
+  line-height: 1.8;
+}
+
+/* Colores específicos por etapa */
+.etapa-esencial .etapa-icono {
+  color: #22c55e;
+}
+
+.etapa-esencial .etapa-header .etapa-info h3 {
+  color: #22c55e;
+}
+
+.etapa-esencial .etapa-textarea:focus {
+  border-color: #22c55e;
+}
+
+.etapa-ideas .etapa-icono {
+  color: #667eea;
+}
+
+.etapa-ideas .etapa-header .etapa-info h3 {
+  color: #a5b4fc;
+}
+
+.etapa-ideas .etapa-textarea:focus {
+  border-color: #667eea;
+}
+
+.etapa-contra .etapa-icono {
+  color: #f59e0b;
+}
+
+.etapa-contra .etapa-header .etapa-info h3 {
+  color: #fbbf24;
+}
+
+.etapa-contra .etapa-textarea:focus {
+  border-color: #f59e0b;
+}
+
+.etapa-propias .etapa-icono {
+  color: #ec4899;
+}
+
+.etapa-propias .etapa-header .etapa-info h3 {
+  color: #f472b6;
+}
+
+.etapa-propias .etapa-textarea:focus {
+  border-color: #ec4899;
+}
+
+.etapa-proceso .etapa-icono {
+  color: #06b6d4;
+}
+
+.etapa-proceso .etapa-header .etapa-info h3 {
+  color: #22d3ee;
+}
+
+.etapa-proceso .etapa-textarea:focus {
+  border-color: #06b6d4;
+}
+
+/* Etapa Finalizar */
+.etapa-finalizar {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.preview-apuntes-final {
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 12px;
+  padding: 1.25rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.preview-apuntes-final h4 {
+  color: #e2e8f0;
+  margin: 0 0 1rem;
+  font-size: 1rem;
+}
+
+.preview-seccion {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.preview-seccion:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.preview-titulo {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.preview-seccion p {
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Toggle unir apuntes */
+.opcion-unir-apuntes {
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.5);
+  border-radius: 12px;
+  margin: 1rem 0;
+}
+
+.toggle-unir .toggle-label {
+  font-size: 1rem;
+  color: #e2e8f0;
+}
+
+/* Botón guardar apuntes */
+.btn-guardar-apuntes-avanzados {
+  width: 100%;
+  padding: 1.25rem 2rem;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-guardar-apuntes-avanzados:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
+}
+
+.btn-guardar-apuntes-avanzados:disabled {
+  background: #475569;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Navegación entre etapas */
+.apuntes-navegacion {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-etapa-anterior,
+.btn-etapa-siguiente {
+  padding: 0.875rem 1.5rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+}
+
+.btn-etapa-anterior {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+}
+
+.btn-etapa-anterior:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.btn-etapa-siguiente {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  margin-left: auto;
+}
+
+.btn-etapa-siguiente:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.apuntes-navegacion .btn-avanzar-fase {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #fff;
+  padding: 0.875rem 1.5rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.apuntes-navegacion .btn-avanzar-fase:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+}
+
+/* Responsive para apuntes avanzados */
+@media (max-width: 768px) {
+  .apuntes-avanzados-container {
+    padding: 1rem;
+  }
+
+  .apuntes-avanzados-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-titulo {
+    flex-wrap: wrap;
+  }
+
+  .header-titulo h2 {
+    font-size: 1.25rem;
+  }
+
+  .header-progreso {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .progreso-paso {
+    width: 32px;
+    height: 32px;
+    font-size: 0.8rem;
+  }
+
+  .etapa-header {
+    flex-direction: column;
+    text-align: center;
+    align-items: center;
+  }
+
+  .etapa-icono {
+    font-size: 2rem;
+  }
+
+  .etapa-info h3 {
+    font-size: 1.1rem;
+  }
+
+  .apuntes-navegacion {
+    flex-direction: column;
+  }
+
+  .btn-etapa-siguiente {
+    margin-left: 0;
+  }
+}
+
+/* ============================================= */
+/* DROPDOWN DE EJEMPLOS - APUNTES AVANZADOS     */
+/* ============================================= */
+
+.ejemplo-dropdown {
+  margin: 1rem 0;
+}
+
+.btn-toggle-ejemplo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.btn-toggle-ejemplo:hover {
+  background: linear-gradient(135deg, #334155 0%, #475569 100%);
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.btn-toggle-ejemplo .flecha {
+  transition: transform 0.3s ease;
+  font-size: 0.7rem;
+}
+
+.btn-toggle-ejemplo .flecha.abierto {
+  transform: rotate(180deg);
+}
+
+.ejemplo-contenido {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ejemplo-ejercicio {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+.ejemplo-ejercicio strong {
+  color: #fbbf24;
+}
+
+.ejemplo-pasos {
+  margin-top: 0.75rem;
+}
+
+.ejemplo-pasos p {
+  color: #94a3b8;
+}
+
+.ejemplo-pasos ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+  color: #cbd5e1;
+}
+
+.ejemplo-pasos li {
+  margin: 0.3rem 0;
+}
+
+.ejemplo-resultado {
+  background: #0f172a;
+  padding: 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid #22c55e;
+  margin: 0.75rem 0;
+  font-family: 'Monaco', 'Consolas', monospace;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
+.ejemplo-resultado code {
+  background: #334155;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-size: 0.85em;
+  color: #67e8f9;
+}
+
+.ejemplo-nota {
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #86efac;
+}
+
+/* ============================================= */
+/* TOOLBAR DE APUNTES AVANZADOS                 */
+/* ============================================= */
+
+.apuntes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  flex-wrap: wrap;
+}
+
+.apuntes-toolbar button,
+.apuntes-toolbar label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.6rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  transition: all 0.15s ease;
+  min-width: 32px;
+}
+
+.apuntes-toolbar button:hover,
+.apuntes-toolbar label:hover {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+.apuntes-toolbar button:active {
+  background: #475569;
+}
+
+.apuntes-toolbar .toolbar-separator {
+  color: #475569;
+  margin: 0 0.25rem;
+  font-size: 1rem;
+}
+
+.apuntes-toolbar select {
+  padding: 0.4rem 0.5rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.apuntes-toolbar select:hover {
+  background: #334155;
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+/* ============================================= */
+/* EDITOR CONTENTEDITABLE - APUNTES AVANZADOS   */
+/* ============================================= */
+
+.etapa-editor {
+  min-height: 200px;
+  padding: 1rem;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 0 0 8px 8px;
+  font-size: 1rem;
+  line-height: 1.6;
+  outline: none;
+  color: #e2e8f0;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.etapa-editor:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.etapa-editor:empty:before {
+  content: attr(data-placeholder);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.etapa-editor ul,
+.etapa-editor ol {
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.etapa-editor li {
+  margin: 0.25rem 0;
+}
+
+.etapa-editor b,
+.etapa-editor strong {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.etapa-editor i,
+.etapa-editor em {
+  font-style: italic;
+}
+
+.etapa-editor u {
+  text-decoration: underline;
+}
+
+/* Colores del borde según la etapa */
+.etapa-esencial .etapa-editor {
+  border-color: #fbbf24;
+}
+
+.etapa-esencial .etapa-editor:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.etapa-esencial .apuntes-toolbar {
+  border-color: #fbbf24;
+  border-bottom: none;
+}
+
+.etapa-ideas .etapa-editor {
+  border-color: #a78bfa;
+}
+
+.etapa-ideas .etapa-editor:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.etapa-ideas .apuntes-toolbar {
+  border-color: #a78bfa;
+  border-bottom: none;
+}
+
+.etapa-contra .etapa-editor {
+  border-color: #f87171;
+}
+
+.etapa-contra .etapa-editor:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+.etapa-contra .apuntes-toolbar {
+  border-color: #f87171;
+  border-bottom: none;
+}
+
+.etapa-propias .etapa-editor {
+  border-color: #60a5fa;
+}
+
+.etapa-propias .etapa-editor:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.etapa-propias .apuntes-toolbar {
+  border-color: #60a5fa;
+  border-bottom: none;
+}
+
+.etapa-proceso .etapa-editor {
+  border-color: #34d399;
+}
+
+.etapa-proceso .etapa-editor:focus {
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+.etapa-proceso .apuntes-toolbar {
+  border-color: #34d399;
+  border-bottom: none;
+}
+
+/* Preview contenido en finalizar */
+.preview-contenido {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Responsive para toolbar y editores */
+@media (max-width: 768px) {
+  .apuntes-toolbar {
+    padding: 0.4rem;
+    gap: 0.15rem;
+  }
+
+  .apuntes-toolbar button {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
+    min-width: 28px;
+  }
+
+  .etapa-editor {
+    min-height: 150px;
+    padding: 0.75rem;
+    font-size: 0.95rem;
+  }
+
+  .ejemplo-dropdown {
+    margin: 0.75rem 0;
+  }
+
+  .btn-toggle-ejemplo {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .ejemplo-contenido {
+    padding: 0.75rem;
+  }
+
+  .ejemplo-ejercicio {
+    font-size: 0.85rem;
   }
 }

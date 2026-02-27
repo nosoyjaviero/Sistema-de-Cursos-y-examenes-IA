@@ -19,7 +19,7 @@ try:
     print("✅ Sistema inicializado")
     
     print("\n3. Iniciando Flask...")
-    app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)
+    app.run(host='127.0.0.1', port=5001, debug=False, threaded=True)
     
 except Exception as e:
     print(f"\n❌ ERROR: {e}\n")

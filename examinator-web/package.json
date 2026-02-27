@@ -16,6 +16,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-katex": "^3.1.0",
+    "react-syntax-highlighter": "^16.1.0",
     "smiles-drawer": "^2.1.7"
   },
   "devDependencies": {

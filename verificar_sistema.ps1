@@ -17,7 +17,7 @@ try {
     }
 } catch {
     Write-Host "   ❌ Servidor backend NO responde en puerto 8000" -ForegroundColor Red
-    Write-Host "      Solución: Ejecutar 'python -m uvicorn api_server:app --host 0.0.0.0 --port 8000'" -ForegroundColor Gray
+    Write-Host "      Solución: Ejecutar 'python -m uvicorn api_server:app --host 127.0.0.1 --port 8000'" -ForegroundColor Gray
     $errores++
 }
 

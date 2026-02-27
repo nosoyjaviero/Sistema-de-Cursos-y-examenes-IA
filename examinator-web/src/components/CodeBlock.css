@@ -1,0 +1,644 @@
+/**
+ * Estilos para CodeBlock y prácticas de programación
+ * Estilo VS Code oscuro
+ */
+
+/* ============================================
+   CONTENEDOR PRINCIPAL DE CÓDIGO
+   ============================================ */
+.code-block-container {
+  font-family: 'Fira Code', 'Cascadia Code', 'Consolas', 'Monaco', 'SF Mono', monospace;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-block: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* ============================================
+   CÓDIGO INLINE
+   ============================================ */
+.code-inline {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  white-space: nowrap;
+}
+
+.code-inline.dark {
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+}
+
+.code-inline.light {
+  background-color: #f3f4f6;
+  color: #1f2937;
+}
+
+/* ============================================
+   PRÁCTICA DE PROGRAMACIÓN - CONTENEDOR
+   ============================================ */
+.practica-codigo-container {
+  background: linear-gradient(145deg, #1a1a2e 0%, #16162a 100%);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.practica-codigo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.practica-codigo-titulo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.practica-codigo-titulo h2 {
+  color: #e5e7eb;
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.practica-codigo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-teoria {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white;
+}
+
+.badge-desarrollo {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+  color: white;
+}
+
+.badge-error {
+  background: linear-gradient(135deg, #ef4444, #f97316);
+  color: white;
+}
+
+.badge-industria {
+  background: linear-gradient(135deg, #f59e0b, #ec4899);
+  color: white;
+}
+
+/* ============================================
+   SELECTOR DE DIFICULTAD
+   ============================================ */
+.dificultad-selector {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.dificultad-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dificultad-btn:hover {
+  transform: translateY(-2px);
+}
+
+.dificultad-basico {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.dificultad-basico.activo {
+  background: #22c55e;
+  color: white;
+}
+
+.dificultad-intermedio {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.dificultad-intermedio.activo {
+  background: #3b82f6;
+  color: white;
+}
+
+.dificultad-error {
+  background: rgba(249, 115, 22, 0.2);
+  color: #f97316;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.dificultad-error.activo {
+  background: #f97316;
+  color: white;
+}
+
+.dificultad-avanzado {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.dificultad-avanzado.activo {
+  background: #a855f7;
+  color: white;
+}
+
+.dificultad-industria {
+  background: rgba(236, 72, 153, 0.2);
+  color: #ec4899;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.dificultad-industria.activo {
+  background: #ec4899;
+  color: white;
+}
+
+/* ============================================
+   PREGUNTA DE CÓDIGO
+   ============================================ */
+.pregunta-codigo {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pregunta-codigo-enunciado {
+  color: #e5e7eb;
+  font-size: 1.1rem;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.pregunta-codigo-contexto {
+  color: #9ca3af;
+  font-size: 0.9rem;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  border-radius: 0 8px 8px 0;
+}
+
+/* ============================================
+   OPCIONES DE MCQ CON CÓDIGO
+   ============================================ */
+.opciones-codigo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.opcion-codigo {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.opcion-codigo:hover {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.opcion-codigo.seleccionada {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+}
+
+.opcion-codigo.correcta {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: #22c55e;
+}
+
+.opcion-codigo.incorrecta {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: #ef4444;
+}
+
+.opcion-codigo-letra {
+  font-weight: 700;
+  font-size: 1rem;
+  min-width: 24px;
+  color: #9ca3af;
+}
+
+.opcion-codigo.seleccionada .opcion-codigo-letra {
+  color: #3b82f6;
+}
+
+.opcion-codigo.correcta .opcion-codigo-letra {
+  color: #22c55e;
+}
+
+.opcion-codigo.incorrecta .opcion-codigo-letra {
+  color: #ef4444;
+}
+
+.opcion-codigo-contenido {
+  flex: 1;
+  font-family: 'Fira Code', monospace;
+}
+
+/* ============================================
+   ÁREA DE CÓDIGO EDITABLE (para desarrollo)
+   ============================================ */
+.editor-codigo-respuesta {
+  position: relative;
+  margin-top: 16px;
+}
+
+.editor-codigo-respuesta textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 16px;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  border: 2px solid #3c3c3c;
+  border-radius: 8px;
+  resize: vertical;
+  tab-size: 4;
+}
+
+.editor-codigo-respuesta textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.editor-codigo-respuesta textarea::placeholder {
+  color: #6b7280;
+}
+
+/* ============================================
+   FEEDBACK DE CÓDIGO
+   ============================================ */
+.feedback-codigo {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 10px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.feedback-codigo.correcto {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.feedback-codigo.incorrecto {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.feedback-codigo.parcial {
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.feedback-codigo-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.feedback-codigo.correcto .feedback-codigo-header {
+  color: #22c55e;
+}
+
+.feedback-codigo.incorrecto .feedback-codigo-header {
+  color: #ef4444;
+}
+
+.feedback-codigo.parcial .feedback-codigo-header {
+  color: #f97316;
+}
+
+.feedback-codigo-explicacion {
+  color: #d4d4d4;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.feedback-codigo-solucion {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.feedback-codigo-solucion-label {
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+/* ============================================
+   LÍNEAS DE CÓDIGO CON ERROR
+   ============================================ */
+.linea-error {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+.linea-error::before {
+  content: '⚠️';
+  margin-right: 8px;
+}
+
+.linea-correcta {
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-left: 3px solid #22c55e !important;
+}
+
+.linea-resaltada {
+  background: rgba(59, 130, 246, 0.2) !important;
+}
+
+/* ============================================
+   COMPARACIÓN DE CÓDIGO (ANTES/DESPUÉS)
+   ============================================ */
+.comparacion-codigo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .comparacion-codigo {
+    grid-template-columns: 1fr;
+  }
+}
+
+.comparacion-codigo-panel {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.comparacion-codigo-panel-header {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.comparacion-codigo-panel.antes .comparacion-codigo-panel-header {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.comparacion-codigo-panel.despues .comparacion-codigo-panel-header {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+/* ============================================
+   PUNTUACIÓN Y PROGRESO
+   ============================================ */
+.codigo-puntuacion {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  margin-top: 20px;
+}
+
+.codigo-puntuacion-valor {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.codigo-puntuacion-detalles {
+  flex: 1;
+}
+
+.codigo-puntuacion-barra {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.codigo-puntuacion-progreso {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #3b82f6);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* ============================================
+   CATEGORÍAS DE PRÁCTICA DE CÓDIGO
+   ============================================ */
+.categorias-codigo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.categoria-codigo-card {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.categoria-codigo-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.categoria-codigo-card.activa {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+}
+
+.categoria-codigo-icon {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.categoria-codigo-nombre {
+  font-weight: 600;
+  color: #e5e7eb;
+  margin-bottom: 4px;
+}
+
+.categoria-codigo-descripcion {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+
+/* ============================================
+   CONTADOR DE PREGUNTAS POR TIPO
+   ============================================ */
+.contador-tipo-codigo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.contador-tipo-codigo-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.contador-tipo-codigo-icon {
+  font-size: 1.2rem;
+}
+
+.contador-tipo-codigo-nombre {
+  color: #e5e7eb;
+  font-size: 0.95rem;
+}
+
+.contador-tipo-codigo-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contador-tipo-codigo-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.contador-tipo-codigo-btn:hover {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+.contador-tipo-codigo-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.contador-tipo-codigo-valor {
+  min-width: 32px;
+  text-align: center;
+  font-weight: 600;
+  color: #3b82f6;
+  font-size: 1.1rem;
+}
+
+/* ============================================
+   SELECTOR DE LENGUAJE
+   ============================================ */
+.selector-lenguaje {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.selector-lenguaje-btn {
+  padding: 6px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #9ca3af;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selector-lenguaje-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e5e7eb;
+}
+
+.selector-lenguaje-btn.activo {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+/* ============================================
+   ANIMACIONES
+   ============================================ */
+@keyframes pulse-code {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.codigo-loading {
+  animation: pulse-code 1.5s ease-in-out infinite;
+}
+
+@keyframes slide-in-code {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.pregunta-codigo-enter {
+  animation: slide-in-code 0.3s ease;
+}
