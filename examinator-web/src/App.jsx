@@ -890,6 +890,13 @@ function App() {
   const [rutaCarpetasChat, setRutaCarpetasChat] = useState("");
   const [practicas, setPracticas] = useState([]);
 
+  // ========== ESTADO PARA MODAL DE REPETICIÓN ESPACIADA ==========
+  const [modalRepeticionEspaciada, setModalRepeticionEspaciada] = useState({
+    abierto: false,
+    tipo: null, // 'aciertos', 'errores', 'notas', 'flashcards'
+    item: null, // Item individual seleccionado
+  });
+
   // ========== ESTADOS PARA SISTEMA DE JERARQUÍAS ==========
   const [modalJerarquiaAbierto, setModalJerarquiaAbierto] = useState(false);
   const [jerarquiaActual, setJerarquiaActual] = useState([]); // Array de nodos de la jerarquía
@@ -1423,17 +1430,7 @@ function App() {
     setJsonCalificacionWritingAcierto(null);
   }, [indiceAciertoActual]);
 
-  // 🔥 CARGAR RENDIMIENTO cuando se entra a "cursos" para mostrar badges
-  useEffect(() => {
-    if (selectedMenu === "cursos") {
-      // Calcular rendimiento para mostrar badges de flashcards, notas, errores
-      setTimeout(() => {
-        if (typeof calcularRendimientoJerarquias === "function") {
-          calcularRendimientoJerarquias();
-        }
-      }, 100);
-    }
-  }, [selectedMenu]);
+
 
   // Helper: Verificar si algo fue revisado hoy (control de spaced repetition)
   const fueRevisadoHoy = (fechaUltimaRevision) => {
@@ -1559,6 +1556,8 @@ function App() {
             proximaRevision: p.proximaRevision || p.proxima_revision,
             ultimaRevision: p.ultimaRevision || p.ultima_revision,
             fechaCreacion: p.fechaCreacion || p.fecha_creacion || p.fecha,
+            resultados: p.resultados || p.resultado?.resultados || [],
+            preguntas: p.preguntas || [],
           }));
 
           console.log(
@@ -12847,10 +12846,6 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       }
 
       console.log(`✅ Total de items actualizados: ${totalActualizados}`);
-
-      // Esperar a que el servidor procese los cambios y luego recalcular
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await calcularRendimientoJerarquias();
     } catch (error) {
       console.error("❌ Error actualizando rutas en datos:", error);
     }
@@ -15656,8 +15651,37 @@ JSON:`;
                 resultado.historial_respuestas ||
                 [];
 
-              // Calcular días para próxima revisión según si fue correcta o no
-              const diasRevision = resultado.correcto ? 7 : 1;
+              // 🔄 Repetición espaciada mejorada:
+              // - Acierto primera vez → +2-3 días
+              // - Fallo hoy + acierto hoy → +1 día (mañana)
+              // - Aciertos consecutivos → progresa: 2-3 → 7 → 14 → 30...
+              const hoyStr = ahora.toISOString().split('T')[0];
+              const falloPrevioHoy = historialPrevio.some(h => {
+                const fechaH = h.fecha?.split('T')[0];
+                return fechaH === hoyStr && !h.correcta;
+              });
+              const aciertosConsecutivos = historialPrevio.filter(h => h.correcta).length;
+              
+              let diasRevision;
+              if (resultado.correcto) {
+                if (falloPrevioHoy) {
+                  // Fallé hoy pero ahora acerté → mañana
+                  diasRevision = 1;
+                } else if (aciertosConsecutivos === 0) {
+                  // Primera vez acierto → 2-3 días
+                  diasRevision = Math.floor(Math.random() * 2) + 2; // 2 o 3
+                } else if (aciertosConsecutivos === 1) {
+                  diasRevision = 7;
+                } else if (aciertosConsecutivos === 2) {
+                  diasRevision = 14;
+                } else {
+                  diasRevision = 30;
+                }
+              } else {
+                // Fallo → mañana (puede reintentar hoy en la UI)
+                diasRevision = 1;
+              }
+              
               const fechaProximaRevision = new Date(ahora);
               fechaProximaRevision.setDate(
                 fechaProximaRevision.getDate() + diasRevision,
@@ -15679,16 +15703,88 @@ JSON:`;
 
               return {
                 ...resultado,
+                // 🔥 CAMPOS PARA REPETICIÓN ESPACIADA (calendario)
+                esCorrecta: resultado.correcto,
+                proximaRevision: fechaProximaRevision.toISOString(),
+                intervalo: diasRevision,
+                repeticiones: 0,
                 historial_respuestas: [...historialPrevio, entradaHistorial],
               };
             },
           );
 
+          // 🧩 EXPANDIR resultados de sentence_builder_libre en sub-resultados individuales
+          const resultadosExpandidos = [];
+          resultadosConHistorial.forEach((resultado, idx) => {
+            const preguntaOriginal = practicas[practicaIndex].preguntas?.[idx] || {};
+            
+            // Si es sentence_builder_libre con múltiples items, expandir
+            if (preguntaOriginal.tipo === "sentence_builder_libre") {
+              const items = preguntaOriginal.metadata?.items || preguntaOriginal.items || [];
+              const respuestasUsuario = (resultado.respuesta_usuario || "").split("|||").map(r => r.trim()).filter(r => r);
+              
+              console.log(`🧩 Expandiendo sentence_builder_libre: ${items.length} items, ${respuestasUsuario.length} respuestas`);
+              
+              if (items.length > 0) {
+                // Calcular puntos por item
+                const puntosMaxPorItem = (resultado.puntos_maximos || 5) / items.length;
+                const puntosPromedioPorItem = respuestasUsuario.length > 0 
+                  ? (resultado.puntos || 0) / respuestasUsuario.length 
+                  : 0;
+                
+                items.forEach((item, itemIdx) => {
+                  const respuestaItem = respuestasUsuario[itemIdx] || "";
+                  const tieneRespuesta = respuestaItem.length > 0;
+                  
+                  // Si la respuesta existe y los puntos son >= 50%, marcar como correcto
+                  const porcentajeGeneral = (resultado.puntos || 0) / (resultado.puntos_maximos || 1);
+                  const itemCorrecto = tieneRespuesta && porcentajeGeneral >= 0.5;
+                  
+                  // 🔄 Primera vez: acierto = +2-3 días, fallo = +1 día
+                  const diasRevisionItem = itemCorrecto ? (Math.floor(Math.random() * 2) + 2) : 1;
+                  const fechaProximaItem = new Date(ahora);
+                  fechaProximaItem.setDate(fechaProximaItem.getDate() + diasRevisionItem);
+                  
+                  resultadosExpandidos.push({
+                    ...resultado,
+                    // Datos del sub-item
+                    pregunta_texto: `${preguntaOriginal.pregunta || "Construye oración"} - Item ${itemIdx + 1}`,
+                    palabras_clave: item.palabras_clave || [],
+                    oracion_esperada: item.oracion_esperada || "",
+                    contexto_pista: item.contexto_pista || "",
+                    respuesta_usuario: respuestaItem,
+                    // Campos de repetición espaciada
+                    esCorrecta: itemCorrecto,
+                    correcto: itemCorrecto,
+                    proximaRevision: fechaProximaItem.toISOString(),
+                    intervalo: diasRevisionItem,
+                    repeticiones: 0,
+                    // Identificadores
+                    tipo: "sentence_builder_libre_item",
+                    tipo_padre: "sentence_builder_libre",
+                    indice_pregunta: idx,
+                    indice_item: itemIdx,
+                    es_subitem: true,
+                    puntos: tieneRespuesta ? puntosPromedioPorItem : 0,
+                    puntos_maximos: puntosMaxPorItem,
+                    feedback: tieneRespuesta 
+                      ? (itemCorrecto ? `✅ Oración correcta: "${respuestaItem}"` : `⚠️ Revisar: "${respuestaItem}"`)
+                      : `❌ Faltó responder (esperado: "${item.oracion_esperada || ""}")`,
+                  });
+                });
+                return; // No agregar el resultado original
+              }
+            }
+            
+            // Para otros tipos, agregar como está
+            resultadosExpandidos.push(resultado);
+          });
+
           practicas[practicaIndex].resultado = {
             puntos_obtenidos: data.puntos_obtenidos,
             puntos_totales: data.puntos_totales,
             porcentaje: data.porcentaje,
-            resultados: resultadosConHistorial,
+            resultados: resultadosExpandidos,
           };
 
           // 📜 También actualizar historial en las preguntas originales
@@ -15820,8 +15916,37 @@ JSON:`;
                 resultado.historial_respuestas ||
                 [];
 
-              // Calcular días para próxima revisión según si fue correcta o no
-              const diasRevision = resultado.correcto ? 7 : 1;
+              // 🔄 Repetición espaciada mejorada:
+              // - Acierto primera vez → +2-3 días
+              // - Fallo hoy + acierto hoy → +1 día (mañana)
+              // - Aciertos consecutivos → progresa: 2-3 → 7 → 14 → 30...
+              const hoyStr = ahora.toISOString().split('T')[0];
+              const falloPrevioHoy = historialPrevio.some(h => {
+                const fechaH = h.fecha?.split('T')[0];
+                return fechaH === hoyStr && !h.correcta;
+              });
+              const aciertosConsecutivos = historialPrevio.filter(h => h.correcta).length;
+              
+              let diasRevision;
+              if (resultado.correcto) {
+                if (falloPrevioHoy) {
+                  // Fallé hoy pero ahora acerté → mañana
+                  diasRevision = 1;
+                } else if (aciertosConsecutivos === 0) {
+                  // Primera vez acierto → 2-3 días
+                  diasRevision = Math.floor(Math.random() * 2) + 2;
+                } else if (aciertosConsecutivos === 1) {
+                  diasRevision = 7;
+                } else if (aciertosConsecutivos === 2) {
+                  diasRevision = 14;
+                } else {
+                  diasRevision = 30;
+                }
+              } else {
+                // Fallo → mañana
+                diasRevision = 1;
+              }
+              
               const fechaProximaRevision = new Date(ahora);
               fechaProximaRevision.setDate(
                 fechaProximaRevision.getDate() + diasRevision,
@@ -15842,10 +15967,82 @@ JSON:`;
 
               return {
                 ...resultado,
+                // 🔥 CAMPOS PARA REPETICIÓN ESPACIADA (calendario)
+                esCorrecta: resultado.correcto,
+                proximaRevision: fechaProximaRevision.toISOString(),
+                intervalo: diasRevision,
+                repeticiones: 0,
                 historial_respuestas: [...historialPrevio, entradaHistorial],
               };
             },
           );
+
+          // 🧩 EXPANDIR resultados de sentence_builder_libre en sub-resultados individuales (EXAMENES)
+          const resultadosExamenExpandidos = [];
+          resultadosExamenConHistorial.forEach((resultado, idx) => {
+            const preguntaOriginal = preguntasExamen[idx] || {};
+            
+            // Si es sentence_builder_libre con múltiples items, expandir
+            if (preguntaOriginal.tipo === "sentence_builder_libre") {
+              const items = preguntaOriginal.metadata?.items || preguntaOriginal.items || [];
+              const respuestasUsuarioItems = (resultado.respuesta_usuario || "").split("|||").map(r => r.trim()).filter(r => r);
+              
+              console.log(`🧩 Expandiendo sentence_builder_libre (EXAMEN): ${items.length} items, ${respuestasUsuarioItems.length} respuestas`);
+              
+              if (items.length > 0) {
+                // Calcular puntos por item
+                const puntosMaxPorItem = (resultado.puntos_maximos || 5) / items.length;
+                const puntosPromedioPorItem = respuestasUsuarioItems.length > 0 
+                  ? (resultado.puntos || 0) / respuestasUsuarioItems.length 
+                  : 0;
+                
+                items.forEach((item, itemIdx) => {
+                  const respuestaItem = respuestasUsuarioItems[itemIdx] || "";
+                  const tieneRespuesta = respuestaItem.length > 0;
+                  
+                  // Si la respuesta existe y los puntos son >= 50%, marcar como correcto
+                  const porcentajeGeneral = (resultado.puntos || 0) / (resultado.puntos_maximos || 1);
+                  const itemCorrecto = tieneRespuesta && porcentajeGeneral >= 0.5;
+                  
+                  // 🔄 Primera vez: acierto = +2-3 días, fallo = +1 día
+                  const diasRevisionItem = itemCorrecto ? (Math.floor(Math.random() * 2) + 2) : 1;
+                  const fechaProximaItem = new Date(ahora);
+                  fechaProximaItem.setDate(fechaProximaItem.getDate() + diasRevisionItem);
+                  
+                  resultadosExamenExpandidos.push({
+                    ...resultado,
+                    // Datos del sub-item
+                    pregunta_texto: `${preguntaOriginal.pregunta || "Construye oración"} - Item ${itemIdx + 1}`,
+                    palabras_clave: item.palabras_clave || [],
+                    oracion_esperada: item.oracion_esperada || "",
+                    contexto_pista: item.contexto_pista || "",
+                    respuesta_usuario: respuestaItem,
+                    // Campos de repetición espaciada
+                    esCorrecta: itemCorrecto,
+                    correcto: itemCorrecto,
+                    proximaRevision: fechaProximaItem.toISOString(),
+                    intervalo: diasRevisionItem,
+                    repeticiones: 0,
+                    // Identificadores
+                    tipo: "sentence_builder_libre_item",
+                    tipo_padre: "sentence_builder_libre",
+                    indice_pregunta: idx,
+                    indice_item: itemIdx,
+                    es_subitem: true,
+                    puntos: tieneRespuesta ? puntosPromedioPorItem : 0,
+                    puntos_maximos: puntosMaxPorItem,
+                    feedback: tieneRespuesta 
+                      ? (itemCorrecto ? `✅ Oración correcta: "${respuestaItem}"` : `⚠️ Revisar: "${respuestaItem}"`)
+                      : `❌ Faltó responder (esperado: "${item.oracion_esperada || ""}")`,
+                  });
+                });
+                return; // No agregar el resultado original
+              }
+            }
+            
+            // Para otros tipos, agregar como está
+            resultadosExamenExpandidos.push(resultado);
+          });
 
           const nuevoExamen = {
             id: Date.now(),
@@ -15871,7 +16068,7 @@ JSON:`;
               puntos_obtenidos: data.puntos_obtenidos,
               puntos_totales: data.puntos_totales,
               porcentaje: data.porcentaje,
-              resultados: resultadosExamenConHistorial,
+              resultados: resultadosExamenExpandidos,
             },
           };
 
@@ -20614,6 +20811,46 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
           numeroGlobal++;
         });
       }
+      // 🧩 Si es sentence_builder_libre con items múltiples, desglosar cada item
+      else if (
+        pregunta.tipo === "sentence_builder_libre" &&
+        (pregunta.items?.length > 0 ||
+          pregunta.metadata?.items?.length > 0)
+      ) {
+        const itemsArray =
+          pregunta.items || pregunta.metadata?.items || [];
+        const respuestasArray = respuestaUsuario.split("|||");
+        const puntosBase = pregunta.puntos || 5;
+        const puntosPorItem =
+          Math.round((puntosBase / itemsArray.length) * 10) / 10;
+
+        // Agregar contexto del ejercicio
+        preguntasConRespuestas.push({
+          tipo: "contexto_lectura",
+          nota: `⚠️ CONTEXTO: Las siguientes ${itemsArray.length} oraciones (números ${numeroGlobal} a ${numeroGlobal + itemsArray.length - 1}) son ejercicios de construcción de oraciones libres. NO incluir esto en resultados.`,
+          idioma: pregunta.metadata?.idioma || pregunta.idioma || "inglés",
+          instrucciones_especificas: pregunta.metadata?.instrucciones_especificas || "Construye oraciones usando las palabras clave dadas.",
+          criterios_evaluacion: pregunta.metadata?.criterios_evaluacion || {},
+        });
+
+        // Desglosar cada item
+        itemsArray.forEach((item, iIdx) => {
+          preguntasConRespuestas.push({
+            numero: numeroGlobal,
+            tipo: "sentence_builder_libre_item",
+            palabras_clave: item.palabras_clave || [],
+            contexto_pista: item.contexto_pista || "",
+            respuesta_usuario:
+              respuestasArray[iIdx]?.trim() || "(sin respuesta)",
+            respuesta_correcta:
+              item.oracion_esperada || "",
+            puntos_maximos: puntosPorItem,
+            indice_original: index,
+            subindice: iIdx,
+          });
+          numeroGlobal++;
+        });
+      }
       // Si es writing_transformation con transformaciones múltiples, desglosar cada transformación
       else if (
         (pregunta.tipo === "writing_transformation" ||
@@ -20644,11 +20881,11 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
           preguntasConRespuestas.push({
             numero: numeroGlobal,
             tipo: "transformation_item",
-            oracion_base: transform.oracion_base || "",
-            instruccion: transform.instruccion || "",
+            oracion_base: transform.oracion_base || transform.frase_original || "",
+            instruccion: transform.instruccion || transform.instruccion_transformacion || "",
             respuesta_usuario:
               respuestasArray[tIdx]?.trim() || "(sin respuesta)",
-            respuesta_correcta: transform.resultado_esperado || "",
+            respuesta_correcta: transform.resultado_esperado || transform.transformacion_esperada || "",
             puntos_maximos: puntosPorTransformacion,
             indice_original: index,
             subindice: tIdx,
@@ -20661,11 +20898,15 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
         (pregunta.tipo === "writing_correction" ||
           pregunta.tipo === "writing_correction_libre") &&
         (pregunta.frases_con_errores?.length > 0 ||
-          pregunta.metadata?.frases_con_errores?.length > 0)
+          pregunta.metadata?.frases_con_errores?.length > 0 ||
+          pregunta.frases_con_error?.length > 0 ||
+          pregunta.metadata?.frases_con_error?.length > 0)
       ) {
         const frasesArray =
           pregunta.frases_con_errores ||
           pregunta.metadata?.frases_con_errores ||
+          pregunta.frases_con_error ||
+          pregunta.metadata?.frases_con_error ||
           [];
         const respuestasArray = respuestaUsuario.split("|||");
         const puntosBase = pregunta.puntos || 3;
@@ -20686,11 +20927,11 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
           preguntasConRespuestas.push({
             numero: numeroGlobal,
             tipo: "correction_item",
-            frase_con_error: frase.frase_con_error || "",
+            frase_con_error: frase.frase_con_error || frase.frase_incorrecta || "",
             tipo_error: frase.tipo_error || "",
             respuesta_usuario:
               respuestasArray[fIdx]?.trim() || "(sin respuesta)",
-            respuesta_correcta: frase.correccion || "",
+            respuesta_correcta: frase.correccion || frase.frase_corregida || "",
             puntos_maximos: puntosPorFrase,
             indice_original: index,
             subindice: fIdx,
@@ -20860,6 +21101,7 @@ Para cada pregunta numerada, evalúa la respuesta del usuario:
 - matching_item: 100% si la letra del párrafo coincide con respuesta_correcta, 0% si no
 - sequence_item: 100% si el número de posición coincide con respuesta_correcta, 0% si no (1°, 2°, 3°, 4°...)
 - sentence_builder_item: Compara respuesta_usuario con respuesta_correcta (debe ser idéntica o muy similar, orden correcto de palabras)
+- sentence_builder_libre_item: Evalúa si respuesta_usuario forma una oración correcta usando las palabras_clave. CALIFICAR INDIVIDUALMENTE: 100% si usa las palabras clave y es gramaticalmente correcta, 80% si usa palabras clave pero tiene errores menores, 50% si usa algunas palabras clave, 0% si no responde o es incorrecta
 - transformation_item: Compara respuesta_usuario con respuesta_correcta (la transformación gramatical debe aplicar la instrucción correctamente manteniendo el significado, tolerar errores menores de puntuación)
 - correction_item: Compara respuesta_usuario con respuesta_correcta (la corrección debe ser gramaticalmente correcta y arreglar el error indicado)
 - short_answer_item: Evalúa si respuesta_usuario contiene las palabras_clave o transmite el mismo significado que respuesta_correcta (tolerar variaciones gramaticales menores)
@@ -21521,8 +21763,35 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
             return pIdx === idx;
           });
 
-          // Calcular días para próxima revisión
-          const diasRevision = resultado.correcto ? 7 : 1;
+          // 🔄 Repetición espaciada mejorada:
+          // - Acierto primera vez → +2-3 días
+          // - Fallo hoy + acierto hoy → +1 día (mañana)
+          // - Aciertos consecutivos → progresa: 2-3 → 7 → 14 → 30...
+          const historialPrevio = preguntaConHistorial?.historial_respuestas || [];
+          const hoyStr = ahora.toISOString().split('T')[0];
+          const falloPrevioHoy = historialPrevio.some(h => {
+            const fechaH = h.fecha?.split('T')[0];
+            return fechaH === hoyStr && !h.correcta;
+          });
+          const aciertosConsecutivos = historialPrevio.filter(h => h.correcta).length;
+          
+          let diasRevision;
+          if (resultado.correcto) {
+            if (falloPrevioHoy) {
+              diasRevision = 1;
+            } else if (aciertosConsecutivos === 0) {
+              diasRevision = Math.floor(Math.random() * 2) + 2;
+            } else if (aciertosConsecutivos === 1) {
+              diasRevision = 7;
+            } else if (aciertosConsecutivos === 2) {
+              diasRevision = 14;
+            } else {
+              diasRevision = 30;
+            }
+          } else {
+            diasRevision = 1;
+          }
+          
           const fechaProximaRevision = new Date(ahora);
           fechaProximaRevision.setDate(
             fechaProximaRevision.getDate() + diasRevision,
@@ -21542,10 +21811,6 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
             proximaRevision: fechaProximaRevision.toISOString(),
             diasParaRepaso: diasRevision,
           };
-
-          // Obtener historial previo si existe
-          const historialPrevio =
-            preguntaConHistorial?.historial_respuestas?.slice(0, -1) || [];
 
           return {
             ...resultado,
@@ -25987,17 +26252,6 @@ Generate an educational reading passage about this topic that would be suitable 
           >
             <span className="icon">📅</span>
             <span>Calendario</span>
-          </button>
-          <button
-            className={`nav-item ${selectedMenu === "rendimiento" ? "active" : ""}`}
-            onClick={() => {
-              setSelectedMenu("rendimiento");
-              calcularRendimientoJerarquias();
-              setMenuMovilAbierto(false);
-            }}
-          >
-            <span className="icon">📊</span>
-            <span>Rendimiento</span>
           </button>
           <button
             className={`nav-item ${selectedMenu === "chat" ? "active" : ""}`}
@@ -60856,69 +61110,6 @@ IDIOMA: ${idiomaSBL}
                   })}
             </div>
 
-            {/* Toggle de Rendimiento Jerárquico */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.75rem",
-                marginBottom: "1rem",
-                padding: "0.75rem 1rem",
-                background: "rgba(30, 41, 59, 0.5)",
-                borderRadius: "12px",
-                border: "1px solid rgba(99, 102, 241, 0.2)",
-              }}
-            >
-              <button
-                onClick={() => {
-                  setSumarHijosEnRendimiento(!sumarHijosEnRendimiento);
-                  setTimeout(() => calcularRendimientoJerarquias(), 100);
-                }}
-                style={{
-                  background: sumarHijosEnRendimiento
-                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                    : "rgba(100, 116, 139, 0.3)",
-                  color: sumarHijosEnRendimiento ? "#fff" : "#94a3b8",
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "0.5rem 0.75rem",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  fontWeight: "600",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                {sumarHijosEnRendimiento ? "📊" : "📁"}
-                {sumarHijosEnRendimiento
-                  ? "Progreso Acumulado"
-                  : "Progreso Individual"}
-              </button>
-              <span style={{ fontSize: "0.8rem", color: "#64748b" }}>
-                {sumarHijosEnRendimiento
-                  ? "Las subcarpetas suman al progreso total"
-                  : "Solo contenido directo de cada carpeta"}
-              </span>
-              <button
-                onClick={calcularRendimientoJerarquias}
-                style={{
-                  background: "rgba(99, 102, 241, 0.2)",
-                  color: "#818cf8",
-                  border: "1px solid rgba(99, 102, 241, 0.3)",
-                  borderRadius: "8px",
-                  padding: "0.4rem 0.6rem",
-                  fontSize: "0.8rem",
-                  cursor: "pointer",
-                  marginLeft: "auto",
-                }}
-                title="Actualizar datos de rendimiento"
-              >
-                🔄
-              </button>
-            </div>
-
             {/* Botones de navegación cruzada */}
             {rutaActual && (
               <div
@@ -61091,33 +61282,12 @@ IDIOMA: ${idiomaSBL}
                     <h3>📂 Carpetas (Generar Examen disponible)</h3>
                     <div className="items-grid">
                       {carpetas.map((carpeta) => {
-                        // Buscar rendimiento de esta carpeta
-                        const rutaNormalizada = (carpeta.ruta || "")
-                          .replace(/\//g, "\\")
-                          .replace(/\\\\/g, "\\");
-                        const rendCarpeta =
-                          rendimientoJerarquias[rutaNormalizada];
-                        const tieneRendimiento =
-                          rendCarpeta && rendCarpeta.totalItems > 0;
-                        const porcentaje = rendCarpeta?.porcentajeGeneral || 0;
-                        const colorPorcentaje =
-                          porcentaje >= 80
-                            ? "#10b981"
-                            : porcentaje >= 50
-                              ? "#eab308"
-                              : "#ef4444";
-
                         return (
                           <div
                             key={carpeta.ruta}
                             className="item-card carpeta-item"
                             onClick={() => cargarCarpeta(carpeta.ruta)}
-                            style={{
-                              cursor: "pointer",
-                              borderLeft: tieneRendimiento
-                                ? `4px solid ${colorPorcentaje}`
-                                : undefined,
-                            }}
+                            style={{ cursor: "pointer" }}
                           >
                             <div className="item-icon">📁</div>
                             <div className="item-info">
@@ -61126,115 +61296,6 @@ IDIOMA: ${idiomaSBL}
                                 {carpeta.num_documentos} docs ·{" "}
                                 {carpeta.num_subcarpetas} carpetas
                               </p>
-                              {/* Barra de rendimiento */}
-                              {tieneRendimiento && (
-                                <div
-                                  style={{
-                                    marginTop: "0.5rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      flex: 1,
-                                      height: "6px",
-                                      background: "rgba(51, 65, 85, 0.5)",
-                                      borderRadius: "3px",
-                                      overflow: "hidden",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        width: `${porcentaje}%`,
-                                        height: "100%",
-                                        background: colorPorcentaje,
-                                        borderRadius: "3px",
-                                        transition: "width 0.3s ease",
-                                      }}
-                                    />
-                                  </div>
-                                  <span
-                                    style={{
-                                      fontSize: "0.75rem",
-                                      fontWeight: "700",
-                                      color: colorPorcentaje,
-                                      minWidth: "36px",
-                                    }}
-                                  >
-                                    {porcentaje}%
-                                  </span>
-                                </div>
-                              )}
-                              {/* Mini stats si tiene rendimiento */}
-                              {tieneRendimiento && (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: "0.3rem",
-                                    marginTop: "0.4rem",
-                                  }}
-                                >
-                                  {rendCarpeta.errores?.total > 0 && (
-                                    <span
-                                      style={{
-                                        fontSize: "0.65rem",
-                                        background: "rgba(239, 68, 68, 0.15)",
-                                        color: "#f87171",
-                                        padding: "0.15rem 0.4rem",
-                                        borderRadius: "4px",
-                                      }}
-                                    >
-                                      ❌ {rendCarpeta.errores.corregidos}/
-                                      {rendCarpeta.errores.total}
-                                    </span>
-                                  )}
-                                  {rendCarpeta.flashcards?.total > 0 && (
-                                    <span
-                                      style={{
-                                        fontSize: "0.65rem",
-                                        background: "rgba(139, 92, 246, 0.15)",
-                                        color: "#a78bfa",
-                                        padding: "0.15rem 0.4rem",
-                                        borderRadius: "4px",
-                                      }}
-                                    >
-                                      🃏 {rendCarpeta.flashcards.dominadas}/
-                                      {rendCarpeta.flashcards.total}
-                                    </span>
-                                  )}
-                                  {rendCarpeta.examenes?.total > 0 && (
-                                    <span
-                                      style={{
-                                        fontSize: "0.65rem",
-                                        background: "rgba(59, 130, 246, 0.15)",
-                                        color: "#60a5fa",
-                                        padding: "0.15rem 0.4rem",
-                                        borderRadius: "4px",
-                                      }}
-                                    >
-                                      📝 {rendCarpeta.examenes.aprobados}/
-                                      {rendCarpeta.examenes.total}
-                                    </span>
-                                  )}
-                                  {rendCarpeta.practicas?.total > 0 && (
-                                    <span
-                                      style={{
-                                        fontSize: "0.65rem",
-                                        background: "rgba(236, 72, 153, 0.15)",
-                                        color: "#f472b6",
-                                        padding: "0.15rem 0.4rem",
-                                        borderRadius: "4px",
-                                      }}
-                                    >
-                                      🧑‍💻 {rendCarpeta.practicas.completadas}/
-                                      {rendCarpeta.practicas.total}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
                             </div>
                             <div className="item-actions">
                               <button
@@ -62040,362 +62101,236 @@ IDIOMA: ${idiomaSBL}
               </button>
             </div>
 
-            {/* Calendario de Repasos */}
+            {/* Calendario de Repasos - Nueva versión simplificada */}
             <div className="calendario-repasos">
-              <h2>🔔 Próximos Repasos Programados</h2>
-
               {(() => {
                 // Usar datos del estado cargados por useEffect
                 const { flashcards, notas, practicas, examenes } =
                   datosCalendarioRepasos;
 
-                // IMPORTANTE: Mostrar estadísticas de TODOS los items
-                const totalFlashcards = flashcards.length;
-                const totalNotas = notas.length;
-                const totalPracticas = practicas.length;
-                const totalExamenes = examenes.length;
-
-                // 🔥 Contar preguntas individuales con proximaRevision
-                let totalPreguntas = 0;
-                practicas.forEach((p) => {
-                  const resultados =
-                    p.resultados || p.resultado?.resultados || [];
-                  totalPreguntas += resultados.filter(
-                    (r) => r.proximaRevision,
-                  ).length;
-                });
-                examenes.forEach((e) => {
-                  const resultados =
-                    e.resultados || e.resultado?.resultados || [];
-                  totalPreguntas += resultados.filter(
-                    (r) => r.proximaRevision,
-                  ).length;
+                // 🔍 DEBUG: Ver qué datos hay
+                console.log("📅 DEBUG Calendario:", {
+                  flashcards: flashcards.length,
+                  notas: notas.length,
+                  practicas: practicas.length,
+                  examenes: examenes.length,
                 });
 
-                const totalItems =
-                  totalFlashcards +
-                  totalNotas +
-                  totalPracticas +
-                  totalExamenes +
-                  totalPreguntas;
-
-                // Separar items CON próxima revisión de los NUEVOS (sin revisión programada)
-                const flashcardsConRevision = flashcards.filter(
-                  (f) => f.proximaRevision,
-                );
-                const notasConRevision = notas.filter((n) => n.proximaRevision);
-                const practicasConRevision = practicas.filter(
-                  (p) => p.proximaRevision,
-                );
-                const examenesConRevision = examenes.filter(
-                  (e) => e.proximaRevision,
-                );
-
-                const flashcardsNuevas = flashcards.filter(
-                  (f) => !f.proximaRevision,
-                );
-                const notasNuevas = notas.filter((n) => !n.proximaRevision);
-                const practicasNuevas = practicas.filter(
-                  (p) => !p.proximaRevision,
-                );
-                const examenesNuevos = examenes.filter(
-                  (e) => !e.proximaRevision,
-                );
-
-                // Combinar y mapear a formato común - INCLUIR TODOS
-                let todosLosItems = [
-                  ...flashcards.map((f) => ({
-                    ...f,
-                    tipo: "🎴 Flashcard",
-                    tipoInterno: "flashcard",
-                    titulo: f.titulo || f.pregunta || "Flashcard sin título",
-                  })),
-                  ...notas.map((n) => ({
-                    ...n,
-                    tipo: "📝 Nota",
-                    tipoInterno: "nota",
-                    titulo: n.titulo || "Nota sin título",
-                  })),
-                  ...practicas.map((p) => ({
-                    ...p,
-                    tipo: "🎯 Práctica",
-                    tipoInterno: "practica",
-                    titulo: p.titulo || p.nombre || "Práctica sin título",
-                    preguntas: p.preguntas || [],
-                  })),
-                  ...examenes.map((e) => ({
-                    ...e,
-                    tipo: "📋 Examen",
-                    tipoInterno: "examen",
-                    titulo: e.titulo || e.nombre || "Examen sin título",
-                    preguntas: e.preguntas || [],
-                    resultados: e.resultados || e.resultado?.resultados || [],
-                    respuestas: e.respuestas || {},
-                  })),
-                ];
-
-                // 🔥 NUEVO: Extraer preguntas correctas de prácticas y exámenes para mostrar en calendario
-                const preguntasIndividuales = [];
-
-                // Extraer de prácticas
-                practicas.forEach((p) => {
-                  const resultados =
-                    p.resultados || p.resultado?.resultados || [];
-                  resultados.forEach((r, idx) => {
-                    if (r.proximaRevision) {
-                      preguntasIndividuales.push({
-                        ...r,
-                        tipo: "✅ Pregunta",
-                        tipoInterno: "pregunta",
-                        titulo:
-                          r.pregunta?.substring(0, 50) +
-                            (r.pregunta?.length > 50 ? "..." : "") ||
-                          `Pregunta ${idx + 1}`,
-                        practicaOrigen: p.titulo || p.nombre || "Práctica",
-                        carpeta: p.carpeta,
-                        esPreguntaIndividual: true,
-                      });
-                    }
-                  });
-                });
-
-                // Extraer de exámenes
-                examenes.forEach((e) => {
-                  const resultados =
-                    e.resultados || e.resultado?.resultados || [];
-                  resultados.forEach((r, idx) => {
-                    if (r.proximaRevision) {
-                      preguntasIndividuales.push({
-                        ...r,
-                        tipo: "✅ Pregunta",
-                        tipoInterno: "pregunta",
-                        titulo:
-                          r.pregunta?.substring(0, 50) +
-                            (r.pregunta?.length > 50 ? "..." : "") ||
-                          `Pregunta ${idx + 1}`,
-                        examenOrigen: e.titulo || e.nombre || "Examen",
-                        carpeta: e.carpeta,
-                        esPreguntaIndividual: true,
-                      });
-                    }
-                  });
-                });
-
-                // 🔥 NUEVO: Extraer preguntas FALLIDAS (errores) de prácticas y exámenes
-                const preguntasFallidas = [];
-
-                // Extraer errores de prácticas
-                practicas.forEach((p) => {
-                  const resultados =
-                    p.resultados || p.resultado?.resultados || [];
-                  resultados.forEach((r, idx) => {
-                    // Verificar si es un error (porcentaje < 60 o tiene estado de error)
-                    const esError =
-                      r.porcentaje !== undefined
-                        ? r.porcentaje < 60
-                        : r.estado &&
-                          ["nuevo", "fallo", "critical"].includes(r.estado);
-                    // 🔥 Los errores usan proximaRevisionError, no proximaRevision
-                    const fechaRevision =
-                      r.proximaRevisionError || r.proximaRevision;
-                    if (esError && fechaRevision) {
-                      preguntasFallidas.push({
-                        ...r,
-                        tipo: "❌ Error",
-                        tipoInterno: "error",
-                        titulo:
-                          r.pregunta?.substring(0, 50) +
-                            (r.pregunta?.length > 50 ? "..." : "") ||
-                          `Error ${idx + 1}`,
-                        practicaOrigen: p.titulo || p.nombre || "Práctica",
-                        carpeta: p.carpeta,
-                        esError: true,
-                        estado: r.estado || "nuevo",
-                        proximaRevision: fechaRevision, // 🔥 Mapear para el calendario
-                      });
-                    }
-                  });
-                });
-
-                // Extraer errores de exámenes
-                examenes.forEach((e) => {
-                  const resultados =
-                    e.resultados || e.resultado?.resultados || [];
-                  resultados.forEach((r, idx) => {
-                    const esError =
-                      r.porcentaje !== undefined
-                        ? r.porcentaje < 60
-                        : r.estado &&
-                          ["nuevo", "fallo", "critical"].includes(r.estado);
-                    // 🔥 Los errores usan proximaRevisionError, no proximaRevision
-                    const fechaRevision =
-                      r.proximaRevisionError || r.proximaRevision;
-                    if (esError && fechaRevision) {
-                      preguntasFallidas.push({
-                        ...r,
-                        tipo: "❌ Error",
-                        tipoInterno: "error",
-                        titulo:
-                          r.pregunta?.substring(0, 50) +
-                            (r.pregunta?.length > 50 ? "..." : "") ||
-                          `Error ${idx + 1}`,
-                        examenOrigen: e.titulo || e.nombre || "Examen",
-                        carpeta: e.carpeta,
-                        esError: true,
-                        estado: r.estado || "nuevo",
-                        proximaRevision: fechaRevision, // 🔥 Mapear para el calendario
-                      });
-                    }
-                  });
-                });
-
-                // Agregar preguntas individuales y fallidas al listado
-                todosLosItems = [
-                  ...todosLosItems,
-                  ...preguntasIndividuales,
-                  ...preguntasFallidas,
-                ];
-
-                // Aplicar filtro por tipo
-                if (filtroTipoHistorial !== "todos") {
-                  todosLosItems = todosLosItems.filter(
-                    (item) => item.tipoInterno === filtroTipoHistorial,
-                  );
-                }
-
-                // Separar items con revisión programada vs items nuevos
-                const itemsConRevision = todosLosItems.filter(
-                  (item) => item.proximaRevision,
-                );
-                const itemsNuevos = todosLosItems.filter(
-                  (item) => !item.proximaRevision,
-                );
-
-                // Agrupar items CON REVISIÓN por fecha
-                const itemsPorFecha = itemsConRevision.reduce((acc, item) => {
-                  const fecha = new Date(item.proximaRevision);
-                  const fechaKey = fecha.toLocaleDateString("es-ES", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  });
-
-                  if (!acc[fechaKey]) {
-                    acc[fechaKey] = {
-                      fecha: fecha,
-                      fechaTexto: fechaKey,
-                      items: [],
-                    };
+                // 🔍 DEBUG: Ver resultados de prácticas/exámenes
+                [...practicas, ...examenes].forEach((item, idx) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  if (resultados.length > 0) {
+                    console.log(`📊 Item ${idx} (${item.titulo || item.nombre}):`, {
+                      totalResultados: resultados.length,
+                      primerosResultados: resultados.slice(0, 3).map(r => ({
+                        tipo: r.tipo,
+                        esCorrecta: r.esCorrecta,
+                        correcto: r.correcto,
+                        proximaRevision: r.proximaRevision,
+                        proxima_revision: r.proxima_revision,
+                      }))
+                    });
                   }
-                  acc[fechaKey].items.push(item);
-                  return acc;
-                }, {});
+                });
 
-                // Ordenar por fecha según el rango seleccionado
-                const ahora = new Date();
-                const fechaLimite = new Date(
-                  ahora.getTime() + rangoVistaHistorial * 24 * 60 * 60 * 1000,
-                );
+                // Fecha seleccionada (hoy por defecto)
+                const fechaBase = fechaSeleccionada 
+                  ? new Date(fechaSeleccionada) 
+                  : new Date();
+                fechaBase.setHours(0, 0, 0, 0);
 
-                const diasOrdenados = Object.values(itemsPorFecha)
-                  .filter(
-                    (dia) => dia.fecha >= ahora && dia.fecha <= fechaLimite,
-                  )
-                  .sort((a, b) => a.fecha - b.fecha);
+                console.log("📆 Fecha seleccionada:", fechaBase.toISOString());
 
-                // Estadísticas generales (solo items con revisión programada)
-                const estadisticas = {
-                  hoy: itemsConRevision.filter((i) => {
-                    const fecha = new Date(i.proximaRevision);
-                    return fecha.toDateString() === ahora.toDateString();
-                  }).length,
-                  estaSemana: itemsConRevision.filter((i) => {
-                    const fecha = new Date(i.proximaRevision);
-                    const diff = Math.ceil(
-                      (fecha - ahora) / (1000 * 60 * 60 * 24),
-                    );
-                    return diff >= 0 && diff <= 7;
-                  }).length,
-                  esteMes: itemsConRevision.filter((i) => {
-                    const fecha = new Date(i.proximaRevision);
-                    const diff = Math.ceil(
-                      (fecha - ahora) / (1000 * 60 * 60 * 24),
-                    );
-                    return diff >= 0 && diff <= 30;
-                  }).length,
-                  proximos90Dias: itemsConRevision.filter((i) => {
-                    const fecha = new Date(i.proximaRevision);
-                    const diff = Math.ceil(
-                      (fecha - ahora) / (1000 * 60 * 60 * 24),
-                    );
-                    return diff >= 0 && diff <= 90;
-                  }).length,
-                  nuevos: itemsNuevos.length,
-                  conRevision: itemsConRevision.length,
+                // Función para verificar si un item es del día seleccionado
+                const esDelDia = (proximaRevision) => {
+                  if (!proximaRevision) return false;
+                  const fechaItem = new Date(proximaRevision);
+                  fechaItem.setHours(0, 0, 0, 0);
+                  return fechaItem.getTime() === fechaBase.getTime();
                 };
 
-                // Calcular distribución por semana (para gráfico)
-                const distribucionSemanal = [];
-                for (
-                  let semana = 0;
-                  semana < Math.ceil(rangoVistaHistorial / 7);
-                  semana++
-                ) {
-                  const inicioSemana = new Date(
-                    ahora.getTime() + semana * 7 * 24 * 60 * 60 * 1000,
-                  );
-                  const finSemana = new Date(
-                    inicioSemana.getTime() + 7 * 24 * 60 * 60 * 1000,
-                  );
+                // Función para verificar si un item está atrasado (fecha anterior a hoy)
+                const hoyRef = new Date();
+                hoyRef.setHours(0, 0, 0, 0);
+                const esAtrasado = (proximaRevision) => {
+                  if (!proximaRevision) return false;
+                  const fechaItem = new Date(proximaRevision);
+                  fechaItem.setHours(0, 0, 0, 0);
+                  return fechaItem.getTime() < hoyRef.getTime();
+                };
 
-                  const itemsEnSemana = itemsConRevision.filter((i) => {
-                    const fecha = new Date(i.proximaRevision);
-                    return fecha >= inicioSemana && fecha < finSemana;
-                  }).length;
-
-                  distribucionSemanal.push({
-                    semana: semana + 1,
-                    items: itemsEnSemana,
-                    inicio: inicioSemana,
-                    fin: finSemana,
+                // Filtrar ACIERTOS del día (preguntas correctas de exámenes/prácticas)
+                const aciertosDelDia = [];
+                const todosAciertos = []; // 🔍 DEBUG: Ver todos los aciertos
+                [...practicas, ...examenes].forEach((item) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    const fechaRevision = r.proximaRevision || r.proxima_revision;
+                    // 🔥 Aceptar tanto esCorrecta como correcto (compatibilidad)
+                    const esAcierto = r.esCorrecta === true || r.correcto === true;
+                    
+                    if (esAcierto) {
+                      // DEBUG: Agregar todos los aciertos para ver
+                      todosAciertos.push({
+                        tipo: r.tipo,
+                        fechaRevision,
+                        esDelDiaResult: esDelDia(fechaRevision),
+                        origen: item.titulo || item.nombre
+                      });
+                      
+                      if (esDelDia(fechaRevision)) {
+                        aciertosDelDia.push({
+                          ...r,
+                          proximaRevision: fechaRevision,
+                          origen: item.titulo || item.nombre || (item.es_practica ? "Práctica" : "Examen"),
+                          carpeta: item.carpeta,
+                          esPractica: item.es_practica,
+                          indice: idx,
+                        });
+                      }
+                    }
                   });
+                });
+                
+                // 🔍 DEBUG: Ver todos los aciertos y sus fechas
+                if (todosAciertos.length > 0) {
+                  console.log("🎯 TODOS los aciertos encontrados:", todosAciertos);
+                  console.log("📆 Fecha base (seleccionada):", fechaBase.toISOString());
+                  console.log("✅ Aciertos del día:", aciertosDelDia.length);
                 }
+
+                // Filtrar ERRORES del día (preguntas incorrectas de exámenes/prácticas)
+                const erroresDelDia = [];
+                [...practicas, ...examenes].forEach((item) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    const fechaRevision = r.proximaRevision || r.proxima_revision;
+                    // 🔥 Aceptar tanto esCorrecta como correcto (compatibilidad)
+                    const esAcierto = r.esCorrecta === true || r.correcto === true;
+                    if (!esAcierto && esDelDia(fechaRevision)) {
+                      erroresDelDia.push({
+                        ...r,
+                        proximaRevision: fechaRevision,
+                        origen: item.titulo || item.nombre || (item.es_practica ? "Práctica" : "Examen"),
+                        carpeta: item.carpeta,
+                        esPractica: item.es_practica,
+                        indice: idx,
+                      });
+                    }
+                  });
+                });
+
+                // Filtrar NOTAS del día
+                const notasDelDia = notas.filter((n) => esDelDia(n.proximaRevision || n.proxima_revision));
+
+                // Filtrar FLASHCARDS del día
+                const flashcardsDelDia = flashcards.filter((f) => esDelDia(f.proximaRevision || f.proxima_revision));
+
+                // ========== ITEMS ATRASADOS ==========
+                // Filtrar ACIERTOS atrasados
+                const aciertosAtrasados = [];
+                [...practicas, ...examenes].forEach((item) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    const fechaRevision = r.proximaRevision || r.proxima_revision;
+                    // 🔥 Aceptar tanto esCorrecta como correcto (compatibilidad)
+                    const esAcierto = r.esCorrecta === true || r.correcto === true;
+                    if (esAcierto && esAtrasado(fechaRevision)) {
+                      aciertosAtrasados.push({
+                        ...r,
+                        proximaRevision: fechaRevision,
+                        origen: item.titulo || item.nombre || (item.es_practica ? "Práctica" : "Examen"),
+                        carpeta: item.carpeta,
+                        esPractica: item.es_practica,
+                        indice: idx,
+                      });
+                    }
+                  });
+                });
+
+                // Filtrar ERRORES atrasados
+                const erroresAtrasados = [];
+                [...practicas, ...examenes].forEach((item) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  resultados.forEach((r, idx) => {
+                    const fechaRevision = r.proximaRevision || r.proxima_revision;
+                    // 🔥 Aceptar tanto esCorrecta como correcto (compatibilidad)
+                    const esAcierto = r.esCorrecta === true || r.correcto === true;
+                    if (!esAcierto && esAtrasado(fechaRevision)) {
+                      erroresAtrasados.push({
+                        ...r,
+                        proximaRevision: fechaRevision,
+                        origen: item.titulo || item.nombre || (item.es_practica ? "Práctica" : "Examen"),
+                        carpeta: item.carpeta,
+                        esPractica: item.es_practica,
+                        indice: idx,
+                      });
+                    }
+                  });
+                });
+
+                // Filtrar NOTAS atrasadas
+                const notasAtrasadas = notas.filter((n) => esAtrasado(n.proximaRevision || n.proxima_revision));
+
+                // Filtrar FLASHCARDS atrasadas
+                const flashcardsAtrasadas = flashcards.filter((f) => esAtrasado(f.proximaRevision || f.proxima_revision));
+
+                const totalAtrasados = aciertosAtrasados.length + erroresAtrasados.length + notasAtrasadas.length + flashcardsAtrasadas.length;
+
+                console.log("⚠️ Items atrasados:", { aciertos: aciertosAtrasados.length, errores: erroresAtrasados.length, notas: notasAtrasadas.length, flashcards: flashcardsAtrasadas.length });
+
+                // 🔍 DEBUG: Ver resultados del filtrado
+                console.log("📊 Resultados filtrados para", fechaBase.toLocaleDateString(), ":", {
+                  aciertos: aciertosDelDia.length,
+                  errores: erroresDelDia.length,
+                  notas: notasDelDia.length,
+                  flashcards: flashcardsDelDia.length,
+                });
+
+                // 🔍 DEBUG: Ver todas las proximaRevision disponibles
+                const todasLasFechas = [];
+                [...practicas, ...examenes].forEach((item) => {
+                  const resultados = item.resultados || item.resultado?.resultados || [];
+                  resultados.forEach((r) => {
+                    if (r.proximaRevision || r.proxima_revision) {
+                      todasLasFechas.push({
+                        fecha: r.proximaRevision || r.proxima_revision,
+                        esCorrecta: r.esCorrecta,
+                        origen: item.titulo || item.nombre,
+                      });
+                    }
+                  });
+                });
+                notas.forEach((n) => {
+                  if (n.proximaRevision || n.proxima_revision) {
+                    todasLasFechas.push({ fecha: n.proximaRevision || n.proxima_revision, tipo: "nota", titulo: n.titulo });
+                  }
+                });
+                flashcards.forEach((f) => {
+                  if (f.proximaRevision || f.proxima_revision) {
+                    todasLasFechas.push({ fecha: f.proximaRevision || f.proxima_revision, tipo: "flashcard", titulo: f.titulo || f.frente });
+                  }
+                });
+                console.log("📅 Todas las fechas de revisión disponibles:", todasLasFechas.slice(0, 10));
+
+                // Fecha formateada
+                const fechaTexto = fechaBase.toLocaleDateString("es-ES", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric",
+                });
+
+                const hoy = new Date();
+                hoy.setHours(0, 0, 0, 0);
+                const esHoySeleccionado = fechaBase.getTime() === hoy.getTime();
 
                 return (
                   <>
-                    {/* Información sobre el sistema */}
-                    <div className="info-calendario">
-                      <div className="info-icono">📚</div>
-                      <div className="info-contenido">
-                        <h3>Total de Items en el Sistema</h3>
-                        <p>
-                          <strong>🎴 Flashcards:</strong> {totalFlashcards}{" "}
-                          total ({flashcardsConRevision.length} con revisión
-                          programada, {flashcardsNuevas.length} nuevas) •
-                          <strong>📝 Notas:</strong> {totalNotas} total (
-                          {notasConRevision.length} con revisión,{" "}
-                          {notasNuevas.length} nuevas) •
-                          <strong>🎯 Prácticas:</strong> {totalPracticas} total
-                          ({practicasConRevision.length} con revisión,{" "}
-                          {practicasNuevas.length} nuevas) •
-                          <strong>📋 Exámenes:</strong> {totalExamenes} total (
-                          {examenesConRevision.length} con revisión,{" "}
-                          {examenesNuevos.length} nuevos)
-                        </p>
-                        <p className="info-nota">
-                          💡 Los items nuevos (sin revisión programada)
-                          aparecerán en el calendario después de su primera
-                          evaluación. Los exámenes se guardan automáticamente al
-                          completarlos y se programan para revisión mañana.
-                        </p>
-                      </div>
-                    </div>
-
                     {/* Mini Calendario Visual */}
                     <div className="mini-calendario-wrapper">
                       <h3 className="mini-calendario-titulo">
-                        📅 Vista de Calendario
+                        📅 Selecciona un día
                       </h3>
 
                       <div className="mini-calendario-compacto">
@@ -62413,7 +62348,7 @@ IDIOMA: ${idiomaSBL}
                           >
                             ‹
                           </button>
-                          <span className="mes-actual">
+                          <span className="mes-anio">
                             {new Date(
                               anioCalendario,
                               mesCalendario,
@@ -62463,8 +62398,6 @@ IDIOMA: ${idiomaSBL}
                               primerDiaSemana === 0 ? 6 : primerDiaSemana - 1;
 
                             const dias = [];
-                            const hoy = new Date();
-                            hoy.setHours(0, 0, 0, 0);
 
                             // Días vacíos
                             for (let i = 0; i < primerDiaSemana; i++) {
@@ -62485,53 +62418,59 @@ IDIOMA: ${idiomaSBL}
                               );
                               fechaDia.setHours(0, 0, 0, 0);
 
-                              // Contar items para este día (CON Y SIN proximaRevision)
-                              const itemsEnDia = todosLosItems.filter(
-                                (item) => {
-                                  if (item.proximaRevision) {
-                                    const fechaItem = new Date(
-                                      item.proximaRevision,
-                                    );
+                              // Contar items para este día
+                              let itemsCount = 0;
+                              [...practicas, ...examenes].forEach((item) => {
+                                const resultados = item.resultados || item.resultado?.resultados || [];
+                                resultados.forEach((r) => {
+                                  const fechaRevision = r.proximaRevision || r.proxima_revision;
+                                  if (fechaRevision) {
+                                    const fechaItem = new Date(fechaRevision);
                                     fechaItem.setHours(0, 0, 0, 0);
-                                    return (
-                                      fechaItem.getTime() === fechaDia.getTime()
-                                    );
+                                    if (fechaItem.getTime() === fechaDia.getTime()) {
+                                      itemsCount++;
+                                    }
                                   }
-                                  // Si no tiene proximaRevision, mostrar en "hoy" como pendiente
-                                  if (
-                                    !item.proximaRevision &&
-                                    fechaDia.getTime() === hoy.getTime()
-                                  ) {
-                                    return true;
+                                });
+                              });
+                              notas.forEach((n) => {
+                                const fechaRevision = n.proximaRevision || n.proxima_revision;
+                                if (fechaRevision) {
+                                  const fechaItem = new Date(fechaRevision);
+                                  fechaItem.setHours(0, 0, 0, 0);
+                                  if (fechaItem.getTime() === fechaDia.getTime()) {
+                                    itemsCount++;
                                   }
-                                  return false;
-                                },
-                              );
+                                }
+                              });
+                              flashcards.forEach((f) => {
+                                const fechaRevision = f.proximaRevision || f.proxima_revision;
+                                if (fechaRevision) {
+                                  const fechaItem = new Date(fechaRevision);
+                                  fechaItem.setHours(0, 0, 0, 0);
+                                  if (fechaItem.getTime() === fechaDia.getTime()) {
+                                    itemsCount++;
+                                  }
+                                }
+                              });
 
-                              const esHoy =
-                                fechaDia.getTime() === hoy.getTime();
-                              const esFechaSeleccionada =
-                                fechaSeleccionada &&
-                                fechaDia.getTime() ===
-                                  new Date(fechaSeleccionada).getTime();
-                              const tieneItems = itemsEnDia.length > 0;
+                              const esHoy = fechaDia.getTime() === hoy.getTime();
+                              const esFechaSeleccionada = fechaBase.getTime() === fechaDia.getTime();
+                              const tieneItems = itemsCount > 0;
 
                               dias.push(
                                 <div
                                   key={dia}
                                   className={`cal-dia ${esHoy ? "es-hoy" : ""} ${esFechaSeleccionada ? "seleccionado" : ""} ${tieneItems ? "tiene-items" : ""}`}
                                   onClick={() => {
-                                    if (tieneItems) {
-                                      setFechaSeleccionada(
-                                        fechaDia.toISOString(),
-                                      );
-                                    }
+                                    setFechaSeleccionada(fechaDia.toISOString());
                                   }}
+                                  style={{ cursor: "pointer" }}
                                 >
                                   <span>{dia}</span>
                                   {tieneItems && (
                                     <span className="cal-dot">
-                                      {itemsEnDia.length}
+                                      {itemsCount}
                                     </span>
                                   )}
                                 </div>,
@@ -62542,488 +62481,613 @@ IDIOMA: ${idiomaSBL}
                           })()}
                         </div>
                       </div>
-
-                      {/* Detalles de fecha seleccionada */}
-                      {fechaSeleccionada &&
-                        (() => {
-                          const fechaSel = new Date(fechaSeleccionada);
-                          fechaSel.setHours(0, 0, 0, 0);
-                          const hoy = new Date();
-                          hoy.setHours(0, 0, 0, 0);
-
-                          const itemsDelDia = todosLosItems.filter((item) => {
-                            if (item.proximaRevision) {
-                              const fechaItem = new Date(item.proximaRevision);
-                              fechaItem.setHours(0, 0, 0, 0);
-                              return fechaItem.getTime() === fechaSel.getTime();
-                            }
-                            // Items sin proximaRevision en "hoy"
-                            if (
-                              !item.proximaRevision &&
-                              fechaSel.getTime() === hoy.getTime()
-                            ) {
-                              return true;
-                            }
-                            return false;
-                          });
-
-                          if (itemsDelDia.length === 0) return null;
-
-                          return (
-                            <div className="detalle-fecha">
-                              <div className="detalle-header">
-                                <span>
-                                  {new Date(
-                                    fechaSeleccionada,
-                                  ).toLocaleDateString("es-ES", {
-                                    weekday: "long",
-                                    day: "numeric",
-                                    month: "long",
-                                  })}
-                                </span>
-                                <button
-                                  onClick={() => setFechaSeleccionada(null)}
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                              <div className="detalle-lista">
-                                {itemsDelDia.map((item, idx) => (
-                                  <div
-                                    key={idx}
-                                    className="detalle-item"
-                                    onClick={() => {
-                                      console.log(
-                                        "🔍 Abriendo modal para item:",
-                                        item,
-                                      );
-                                      console.log("   - Tipo:", item.tipo);
-                                      console.log(
-                                        "   - Tiene preguntas:",
-                                        !!item.preguntas,
-                                        "- Num:",
-                                        item.preguntas?.length,
-                                      );
-                                      console.log(
-                                        "   - Tiene resultados:",
-                                        !!item.resultados,
-                                        "- Num:",
-                                        item.resultados?.length,
-                                      );
-                                      if (item.resultados?.length > 0) {
-                                        console.log(
-                                          "   - Primer resultado:",
-                                          item.resultados[0],
-                                        );
-                                        console.log(
-                                          "   - Campos del resultado:",
-                                          Object.keys(item.resultados[0]),
-                                        );
-                                      }
-                                      if (item.preguntas?.length > 0) {
-                                        console.log(
-                                          "   - Primera pregunta:",
-                                          item.preguntas[0],
-                                        );
-                                        console.log(
-                                          "   - Campos de pregunta:",
-                                          Object.keys(item.preguntas[0]),
-                                        );
-                                      }
-                                      setItemMapaRepeticion(item);
-                                    }}
-                                  >
-                                    <span className="item-icono">
-                                      {item.tipo.split(" ")[0]}
-                                    </span>
-                                    <div className="item-texto">
-                                      <div className="item-nombre">
-                                        {item.titulo}
-                                      </div>
-                                      <div className="item-stats">
-                                        {item.proximaRevision ? (
-                                          <>
-                                            <span>
-                                              📅 {item.intervalo || 0}d
-                                            </span>
-                                            <span>
-                                              ⚡{" "}
-                                              {(item.facilidad || 2.5).toFixed(
-                                                1,
-                                              )}
-                                            </span>
-                                            <span>
-                                              👁️ {item.repeticiones || 0}×
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <span className="pendiente-badge">
-                                            🆕 Pendiente de evaluar
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })()}
                     </div>
 
-                    {/* Controles de Filtro */}
-                    <div className="controles-calendario">
-                      <div className="filtro-tipo">
-                        <label>📋 Tipo de Contenido:</label>
-                        <div className="botones-filtro">
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "todos" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("todos")}
-                          >
-                            Todos ({totalItems})
-                          </button>
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "flashcard" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("flashcard")}
-                          >
-                            🎴 Flashcards ({totalFlashcards})
-                          </button>
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "nota" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("nota")}
-                          >
-                            📝 Notas ({totalNotas})
-                          </button>
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "practica" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("practica")}
-                          >
-                            🎯 Prácticas ({totalPracticas})
-                          </button>
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "examen" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("examen")}
-                          >
-                            📋 Exámenes ({totalExamenes})
-                          </button>
-                          <button
-                            className={`btn-filtro ${filtroTipoHistorial === "pregunta" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("pregunta")}
-                          >
-                            ✅ Preguntas ({totalPreguntas})
-                          </button>
-                          <button
-                            className={`btn-filtro error ${filtroTipoHistorial === "error" ? "activo" : ""}`}
-                            onClick={() => setFiltroTipoHistorial("error")}
-                          >
-                            ❌ Errores (
-                            {
-                              todosLosItems.filter(
-                                (i) => i.tipoInterno === "error",
-                              ).length
-                            }
-                            )
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="filtro-rango">
-                        <label>📆 Rango de Tiempo:</label>
-                        <div className="botones-filtro">
-                          <button
-                            className={`btn-filtro ${rangoVistaHistorial === 30 ? "activo" : ""}`}
-                            onClick={() => setRangoVistaHistorial(30)}
-                          >
-                            30 días
-                          </button>
-                          <button
-                            className={`btn-filtro ${rangoVistaHistorial === 60 ? "activo" : ""}`}
-                            onClick={() => setRangoVistaHistorial(60)}
-                          >
-                            60 días
-                          </button>
-                          <button
-                            className={`btn-filtro ${rangoVistaHistorial === 90 ? "activo" : ""}`}
-                            onClick={() => setRangoVistaHistorial(90)}
-                          >
-                            90 días
-                          </button>
-                        </div>
-                      </div>
+                    {/* Fecha seleccionada */}
+                    <div style={{
+                      textAlign: "center",
+                      margin: "1.5rem 0",
+                      padding: "1rem",
+                      background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%)",
+                      borderRadius: "12px",
+                      border: "1px solid rgba(99, 102, 241, 0.3)",
+                    }}>
+                      <h3 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.1rem" }}>
+                        {esHoySeleccionado ? "📅 Hoy - " : "📆 "}{fechaTexto}
+                      </h3>
+                      {!esHoySeleccionado && (
+                        <button
+                          onClick={() => setFechaSeleccionada(null)}
+                          style={{
+                            marginTop: "0.5rem",
+                            padding: "0.4rem 0.8rem",
+                            background: "rgba(100, 116, 139, 0.3)",
+                            border: "1px solid rgba(100, 116, 139, 0.4)",
+                            borderRadius: "6px",
+                            color: "#94a3b8",
+                            cursor: "pointer",
+                            fontSize: "0.85rem",
+                          }}
+                        >
+                          ← Volver a Hoy
+                        </button>
+                      )}
                     </div>
 
-                    {/* Resumen de Estadísticas */}
-                    <div className="resumen-repasos">
-                      <div className="stat-repaso">
-                        <div className="stat-repaso-icon">🆕</div>
-                        <div className="stat-repaso-content">
-                          <div className="stat-repaso-value">
-                            {estadisticas.nuevos}
-                          </div>
-                          <div className="stat-repaso-label">Sin Programar</div>
-                        </div>
-                      </div>
-                      <div className="stat-repaso">
-                        <div className="stat-repaso-icon">⏰</div>
-                        <div className="stat-repaso-content">
-                          <div className="stat-repaso-value">
-                            {estadisticas.hoy}
-                          </div>
-                          <div className="stat-repaso-label">Para Hoy</div>
-                        </div>
-                      </div>
-                      <div className="stat-repaso">
-                        <div className="stat-repaso-icon">📅</div>
-                        <div className="stat-repaso-content">
-                          <div className="stat-repaso-value">
-                            {estadisticas.estaSemana}
-                          </div>
-                          <div className="stat-repaso-label">Esta Semana</div>
-                        </div>
-                      </div>
-                      <div className="stat-repaso">
-                        <div className="stat-repaso-icon">📆</div>
-                        <div className="stat-repaso-content">
-                          <div className="stat-repaso-value">
-                            {estadisticas.esteMes}
-                          </div>
-                          <div className="stat-repaso-label">Este Mes</div>
-                        </div>
-                      </div>
-                      <div className="stat-repaso">
-                        <div className="stat-repaso-icon">🎯</div>
-                        <div className="stat-repaso-content">
-                          <div className="stat-repaso-value">
-                            {estadisticas.proximos90Dias}
-                          </div>
-                          <div className="stat-repaso-label">
-                            Próximos 90 Días
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Grid de 4 divs: Aciertos, Errores, Notas, Flashcards */}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                      gap: "1.5rem",
+                      marginTop: "1rem",
+                    }}>
 
-                    {/* Gráfico de Distribución Semanal */}
-                    <div className="distribucion-semanal">
-                      <h3>📊 Distribución de Repasos por Semana</h3>
-                      <div className="grafico-barras">
-                        {distribucionSemanal.map((sem, idx) => {
-                          const maxItems = Math.max(
-                            ...distribucionSemanal.map((s) => s.items),
-                            1,
-                          );
-                          const alturaPorcentaje = (sem.items / maxItems) * 100;
-
-                          return (
-                            <div key={idx} className="barra-semana">
-                              <div className="barra-contenido">
-                                <div
-                                  className="barra-fill"
-                                  style={{ height: `${alturaPorcentaje}%` }}
-                                  title={`Semana ${sem.semana}: ${sem.items} items`}
-                                >
-                                  {sem.items > 0 && (
-                                    <span className="barra-valor">
-                                      {sem.items}
-                                    </span>
-                                  )}
+                      {/* DIV ACIERTOS */}
+                      <div 
+                        style={{
+                        background: "linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%)",
+                        border: "1px solid rgba(16, 185, 129, 0.3)",
+                        borderRadius: "16px",
+                        padding: "1.25rem",
+                        minHeight: "200px",
+                      }}
+                      >
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          marginBottom: "1rem",
+                          paddingBottom: "0.75rem",
+                          borderBottom: "1px solid rgba(16, 185, 129, 0.2)",
+                        }}>
+                          <span style={{ fontSize: "1.5rem" }}>✅</span>
+                          <div>
+                            <h3 style={{ margin: 0, color: "#10b981", fontSize: "1.1rem" }}>
+                              Aciertos
+                            </h3>
+                            <span style={{ fontSize: "0.8rem", color: "#6ee7b7" }}>
+                              {aciertosDelDia.length} para repasar
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                          {aciertosDelDia.length > 0 ? (
+                            aciertosDelDia.map((item, idx) => (
+                              <div 
+                                key={idx} 
+                                onClick={() => setModalRepeticionEspaciada({
+                                  abierto: true,
+                                  tipo: 'aciertos',
+                                  item: item,
+                                })}
+                                style={{
+                                padding: "0.6rem 0.8rem",
+                                marginBottom: "0.5rem",
+                                background: "rgba(16, 185, 129, 0.1)",
+                                borderRadius: "8px",
+                                borderLeft: "3px solid #10b981",
+                                cursor: "pointer",
+                                transition: "background 0.2s",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(16, 185, 129, 0.25)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(16, 185, 129, 0.1)"}
+                              >
+                                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                  {item.pregunta?.substring(0, 60) || "Pregunta"}...
+                                </div>
+                                <div style={{ fontSize: "0.75rem", color: "#6ee7b7" }}>
+                                  {item.esPractica ? "🎯" : "📋"} {item.origen}
                                 </div>
                               </div>
-                              <div className="barra-label">S{sem.semana}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Lista de Días con Repasos */}
-                    {diasOrdenados.length > 0 ? (
-                      <div className="lista-dias-repaso">
-                        {diasOrdenados.map((dia, idx) => {
-                          const esHoy =
-                            dia.fecha.toDateString() === ahora.toDateString();
-                          const diasHasta = Math.ceil(
-                            (dia.fecha - ahora) / (1000 * 60 * 60 * 24),
-                          );
-
-                          return (
-                            <div
-                              key={idx}
-                              className={`dia-repaso ${esHoy ? "dia-repaso-hoy" : ""}`}
-                            >
-                              <div className="dia-repaso-header">
-                                <h3>{esHoy ? "⏰ HOY" : dia.fechaTexto}</h3>
-                                {!esHoy && (
-                                  <span className="dias-hasta">
-                                    En {diasHasta} día
-                                    {diasHasta !== 1 ? "s" : ""}
-                                  </span>
-                                )}
-                                <span className="total-items">
-                                  {dia.items.length} item
-                                  {dia.items.length !== 1 ? "s" : ""}
-                                </span>
-                              </div>
-
-                              <div className="items-repaso-lista">
-                                {dia.items.slice(0, 10).map((item, itemIdx) => {
-                                  // Calcular intervalo de repetición
-                                  const intervaloTexto = item.intervalo
-                                    ? item.intervalo === 1
-                                      ? "1 día"
-                                      : item.intervalo < 7
-                                        ? `${item.intervalo} días`
-                                        : item.intervalo < 30
-                                          ? `${Math.round(item.intervalo / 7)} semanas`
-                                          : `${Math.round(item.intervalo / 30)} meses`
-                                    : "Primera vez";
-
-                                  return (
-                                    <div
-                                      key={itemIdx}
-                                      className="item-repaso item-repaso-clickable"
-                                      onClick={() => {
-                                        console.log(
-                                          "🔍 Abriendo modal (lista hoy):",
-                                          item,
-                                        );
-                                        console.log(
-                                          "   - Tiene preguntas:",
-                                          !!item.preguntas,
-                                          "- Num:",
-                                          item.preguntas?.length,
-                                        );
-                                        setItemMapaRepeticion(item);
-                                      }}
-                                      title="Clic para ver mapa de repeticiones"
-                                    >
-                                      <span className="item-repaso-tipo">
-                                        {item.tipo}
-                                      </span>
-                                      <span className="item-repaso-titulo">
-                                        {item.titulo || "Sin título"}
-                                      </span>
-                                      <div className="item-repaso-info">
-                                        <span
-                                          className="item-repaso-intervalo"
-                                          title="Intervalo de repetición"
-                                        >
-                                          🔁 {intervaloTexto}
-                                        </span>
-                                        <span
-                                          className={`item-repaso-estado estado-${item.estadoRevision || "nueva"}`}
-                                        >
-                                          {item.estadoRevision === "nueva" &&
-                                            "🆕"}
-                                          {item.estadoRevision ===
-                                            "en_progreso" && "📖"}
-                                          {item.estadoRevision === "dominada" &&
-                                            "✅"}{" "}
-                                          {item.repeticiones || 0}× visto
-                                        </span>
-                                        <span
-                                          className="item-repaso-facilidad"
-                                          title="Factor de facilidad"
-                                        >
-                                          ⚡{" "}
-                                          {(item.facilidad || 2.5).toFixed(1)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                                {dia.items.length > 10 && (
-                                  <div className="items-mas">
-                                    + {dia.items.length - 10} más...
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="empty-state">
-                        <div className="empty-icon">📅</div>
-                        <h3>Sin Repasos Programados</h3>
-                        <p>
-                          No hay items con revisión programada para los próximos{" "}
-                          {rangoVistaHistorial} días
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Sección de Items Nuevos (sin revisión programada) */}
-                    {itemsNuevos.length > 0 && (
-                      <div className="items-nuevos-seccion">
-                        <h3>
-                          🆕 Items Pendientes de Primera Evaluación (
-                          {itemsNuevos.length})
-                        </h3>
-                        <p className="items-nuevos-descripcion">
-                          Estos items aún no han sido evaluados. Ve a la pestaña
-                          correspondiente para revisarlos y programar su
-                          repetición espaciada.
-                        </p>
-                        <div className="lista-items-nuevos">
-                          {itemsNuevos.slice(0, 20).map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="item-nuevo-card"
-                              onClick={() => {
-                                console.log(
-                                  "🔍 Abriendo modal (items nuevos):",
-                                  item,
-                                );
-                                console.log(
-                                  "   - Tiene preguntas:",
-                                  !!item.preguntas,
-                                  "- Num:",
-                                  item.preguntas?.length,
-                                );
-                                setItemMapaRepeticion(item);
-                              }}
-                              title="Clic para ver proyección de repeticiones"
-                            >
-                              <span className="item-nuevo-tipo">
-                                {item.tipo}
-                              </span>
-                              <span className="item-nuevo-titulo">
-                                {item.titulo ||
-                                  item.contenido?.substring(0, 50) ||
-                                  "Sin título"}
-                                ...
-                              </span>
-                              <span className="item-nuevo-badge">Nuevo</span>
-                            </div>
-                          ))}
-                          {itemsNuevos.length > 20 && (
-                            <div className="items-nuevos-mas">
-                              + {itemsNuevos.length - 20} items más sin evaluar
+                            ))
+                          ) : (
+                            <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                              <span style={{ fontSize: "2rem", opacity: 0.5 }}>✅</span>
+                              <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin aciertos para este día</p>
                             </div>
                           )}
                         </div>
                       </div>
-                    )}
+
+                      {/* DIV ERRORES */}
+                      <div 
+                        style={{
+                        background: "linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%)",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        borderRadius: "16px",
+                        padding: "1.25rem",
+                        minHeight: "200px",
+                      }}
+                      >
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          marginBottom: "1rem",
+                          paddingBottom: "0.75rem",
+                          borderBottom: "1px solid rgba(239, 68, 68, 0.2)",
+                        }}>
+                          <span style={{ fontSize: "1.5rem" }}>❌</span>
+                          <div>
+                            <h3 style={{ margin: 0, color: "#ef4444", fontSize: "1.1rem" }}>
+                              Errores
+                            </h3>
+                            <span style={{ fontSize: "0.8rem", color: "#fca5a5" }}>
+                              {erroresDelDia.length} para corregir
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                          {erroresDelDia.length > 0 ? (
+                            erroresDelDia.map((item, idx) => (
+                              <div 
+                                key={idx} 
+                                onClick={() => setModalRepeticionEspaciada({
+                                  abierto: true,
+                                  tipo: 'errores',
+                                  item: item,
+                                })}
+                                style={{
+                                padding: "0.6rem 0.8rem",
+                                marginBottom: "0.5rem",
+                                background: "rgba(239, 68, 68, 0.1)",
+                                borderRadius: "8px",
+                                borderLeft: "3px solid #ef4444",
+                                cursor: "pointer",
+                                transition: "background 0.2s",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.25)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
+                              >
+                                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                  {item.pregunta?.substring(0, 60) || "Pregunta"}...
+                                </div>
+                                <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>
+                                  {item.esPractica ? "🎯" : "📋"} {item.origen}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                              <span style={{ fontSize: "2rem", opacity: 0.5 }}>❌</span>
+                              <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin errores para este día</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* DIV NOTAS */}
+                      <div 
+                        style={{
+                        background: "linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.1) 100%)",
+                        border: "1px solid rgba(34, 197, 94, 0.3)",
+                        borderRadius: "16px",
+                        padding: "1.25rem",
+                        minHeight: "200px",
+                      }}
+                      >
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          marginBottom: "1rem",
+                          paddingBottom: "0.75rem",
+                          borderBottom: "1px solid rgba(34, 197, 94, 0.2)",
+                        }}>
+                          <span style={{ fontSize: "1.5rem" }}>📝</span>
+                          <div>
+                            <h3 style={{ margin: 0, color: "#22c55e", fontSize: "1.1rem" }}>
+                              Notas
+                            </h3>
+                            <span style={{ fontSize: "0.8rem", color: "#86efac" }}>
+                              {notasDelDia.length} para revisar
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                          {notasDelDia.length > 0 ? (
+                            notasDelDia.map((nota, idx) => (
+                              <div 
+                                key={idx} 
+                                onClick={() => setModalRepeticionEspaciada({
+                                  abierto: true,
+                                  tipo: 'notas',
+                                  item: nota,
+                                })}
+                                style={{
+                                padding: "0.6rem 0.8rem",
+                                marginBottom: "0.5rem",
+                                background: "rgba(34, 197, 94, 0.1)",
+                                borderRadius: "8px",
+                                borderLeft: "3px solid #22c55e",
+                                cursor: "pointer",
+                                transition: "background 0.2s",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(34, 197, 94, 0.25)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(34, 197, 94, 0.1)"}
+                              >
+                                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                  {nota.titulo || "Nota sin título"}
+                                </div>
+                                <div style={{ fontSize: "0.75rem", color: "#86efac" }}>
+                                  📁 {nota.carpeta || "Sin carpeta"}
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                              <span style={{ fontSize: "2rem", opacity: 0.5 }}>📝</span>
+                              <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin notas para este día</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* DIV FLASHCARDS */}
+                      <div 
+                        style={{
+                        background: "linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%)",
+                        border: "1px solid rgba(139, 92, 246, 0.3)",
+                        borderRadius: "16px",
+                        padding: "1.25rem",
+                        minHeight: "200px",
+                      }}
+                      >
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.75rem",
+                          marginBottom: "1rem",
+                          paddingBottom: "0.75rem",
+                          borderBottom: "1px solid rgba(139, 92, 246, 0.2)",
+                        }}>
+                          <span style={{ fontSize: "1.5rem" }}>🃏</span>
+                          <div>
+                            <h3 style={{ margin: 0, color: "#a78bfa", fontSize: "1.1rem" }}>
+                              Flashcards
+                            </h3>
+                            <span style={{ fontSize: "0.8rem", color: "#c4b5fd" }}>
+                              {flashcardsDelDia.length} para estudiar
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                          {flashcardsDelDia.length > 0 ? (
+                            flashcardsDelDia.map((fc, idx) => (
+                              <div 
+                                key={idx} 
+                                onClick={() => setModalRepeticionEspaciada({
+                                  abierto: true,
+                                  tipo: 'flashcards',
+                                  item: fc,
+                                })}
+                                style={{
+                                padding: "0.6rem 0.8rem",
+                                marginBottom: "0.5rem",
+                                background: "rgba(139, 92, 246, 0.1)",
+                                borderRadius: "8px",
+                                borderLeft: "3px solid #a78bfa",
+                                cursor: "pointer",
+                                transition: "background 0.2s",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = "rgba(139, 92, 246, 0.25)"}
+                              onMouseLeave={(e) => e.currentTarget.style.background = "rgba(139, 92, 246, 0.1)"}
+                              >
+                                <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                  {fc.titulo || fc.pregunta?.substring(0, 50) || "Flashcard"}
+                                </div>
+                                <div style={{ fontSize: "0.75rem", color: "#c4b5fd" }}>
+                                  📁 {fc.carpeta || "Sin carpeta"} • 🔄 {fc.repeticiones || 0}×
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                              <span style={{ fontSize: "2rem", opacity: 0.5 }}>🃏</span>
+                              <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin flashcards para este día</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* ========== SECCIÓN ITEMS ATRASADOS ========== */}
+                    <div style={{ marginTop: "2rem" }}>
+                      <div style={{
+                        textAlign: "center",
+                        margin: "1rem 0",
+                        padding: "1rem",
+                        background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(220, 38, 38, 0.15) 100%)",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                      }}>
+                        <h3 style={{ margin: 0, color: "#fca5a5", fontSize: "1.1rem" }}>
+                          ⏰ Items Atrasados {totalAtrasados > 0 ? `(${totalAtrasados} pendientes)` : ""}
+                        </h3>
+                        <p style={{ margin: "0.5rem 0 0 0", color: "#94a3b8", fontSize: "0.85rem" }}>
+                          {totalAtrasados > 0 
+                            ? "Estos items tenían revisión programada pero no se completaron"
+                            : "¡Todo al día! No tienes items atrasados"}
+                        </p>
+                      </div>
+
+                      {/* Grid de 4 divs ATRASADOS */}
+                      <div style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                        gap: "1.5rem",
+                        marginTop: "1rem",
+                      }}>
+
+                        {/* DIV ACIERTOS ATRASADOS */}
+                        <div style={{
+                          background: "linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, rgba(5, 150, 105, 0.05) 100%)",
+                          border: "1px dashed rgba(16, 185, 129, 0.4)",
+                          borderRadius: "16px",
+                          padding: "1.25rem",
+                          minHeight: "200px",
+                        }}>
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            marginBottom: "1rem",
+                            paddingBottom: "0.75rem",
+                            borderBottom: "1px solid rgba(16, 185, 129, 0.2)",
+                          }}>
+                            <span style={{ fontSize: "1.5rem" }}>⏰✅</span>
+                            <div>
+                              <h3 style={{ margin: 0, color: "#10b981", fontSize: "1.1rem" }}>
+                                Aciertos Atrasados
+                              </h3>
+                              <span style={{ fontSize: "0.8rem", color: aciertosAtrasados.length > 0 ? "#fca5a5" : "#6ee7b7" }}>
+                                {aciertosAtrasados.length} pendientes
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                            {aciertosAtrasados.length > 0 ? (
+                              aciertosAtrasados.map((item, idx) => (
+                                <div 
+                                  key={idx} 
+                                  onClick={() => setModalRepeticionEspaciada({
+                                    abierto: true,
+                                    tipo: 'aciertos',
+                                    item: item,
+                                  })}
+                                  style={{
+                                    padding: "0.6rem 0.8rem",
+                                    marginBottom: "0.5rem",
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    borderRadius: "8px",
+                                    borderLeft: "3px solid #fca5a5",
+                                    cursor: "pointer",
+                                    transition: "background 0.2s",
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)"}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
+                                >
+                                  <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                    {item.pregunta?.substring(0, 50) || "Pregunta"}...
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>
+                                    📅 {new Date(item.proximaRevision).toLocaleDateString('es-ES')} • 📁 {item.origen}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                                <span style={{ fontSize: "2rem", opacity: 0.5 }}>✅</span>
+                                <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin aciertos atrasados</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* DIV ERRORES ATRASADOS */}
+                        <div style={{
+                          background: "linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(220, 38, 38, 0.05) 100%)",
+                          border: "1px dashed rgba(239, 68, 68, 0.4)",
+                          borderRadius: "16px",
+                          padding: "1.25rem",
+                          minHeight: "200px",
+                        }}>
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            marginBottom: "1rem",
+                            paddingBottom: "0.75rem",
+                            borderBottom: "1px solid rgba(239, 68, 68, 0.2)",
+                          }}>
+                            <span style={{ fontSize: "1.5rem" }}>⏰❌</span>
+                            <div>
+                              <h3 style={{ margin: 0, color: "#ef4444", fontSize: "1.1rem" }}>
+                                Errores Atrasados
+                              </h3>
+                              <span style={{ fontSize: "0.8rem", color: erroresAtrasados.length > 0 ? "#fca5a5" : "#fca5a5" }}>
+                                {erroresAtrasados.length} pendientes
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                            {erroresAtrasados.length > 0 ? (
+                              erroresAtrasados.map((item, idx) => (
+                                <div 
+                                  key={idx} 
+                                  onClick={() => setModalRepeticionEspaciada({
+                                    abierto: true,
+                                    tipo: 'errores',
+                                    item: item,
+                                  })}
+                                  style={{
+                                    padding: "0.6rem 0.8rem",
+                                    marginBottom: "0.5rem",
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    borderRadius: "8px",
+                                    borderLeft: "3px solid #ef4444",
+                                    cursor: "pointer",
+                                    transition: "background 0.2s",
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)"}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
+                                >
+                                  <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                    {item.pregunta?.substring(0, 50) || "Pregunta"}...
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>
+                                    📅 {new Date(item.proximaRevision).toLocaleDateString('es-ES')} • 📁 {item.origen}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                                <span style={{ fontSize: "2rem", opacity: 0.5 }}>❌</span>
+                                <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin errores atrasados</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* DIV NOTAS ATRASADAS */}
+                        <div style={{
+                          background: "linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, rgba(22, 163, 74, 0.05) 100%)",
+                          border: "1px dashed rgba(34, 197, 94, 0.4)",
+                          borderRadius: "16px",
+                          padding: "1.25rem",
+                          minHeight: "200px",
+                        }}>
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            marginBottom: "1rem",
+                            paddingBottom: "0.75rem",
+                            borderBottom: "1px solid rgba(34, 197, 94, 0.2)",
+                          }}>
+                            <span style={{ fontSize: "1.5rem" }}>⏰📝</span>
+                            <div>
+                              <h3 style={{ margin: 0, color: "#22c55e", fontSize: "1.1rem" }}>
+                                Notas Atrasadas
+                              </h3>
+                              <span style={{ fontSize: "0.8rem", color: notasAtrasadas.length > 0 ? "#fca5a5" : "#86efac" }}>
+                                {notasAtrasadas.length} pendientes
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                            {notasAtrasadas.length > 0 ? (
+                              notasAtrasadas.map((nota, idx) => (
+                                <div 
+                                  key={idx} 
+                                  onClick={() => setModalRepeticionEspaciada({
+                                    abierto: true,
+                                    tipo: 'notas',
+                                    item: nota,
+                                  })}
+                                  style={{
+                                    padding: "0.6rem 0.8rem",
+                                    marginBottom: "0.5rem",
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    borderRadius: "8px",
+                                    borderLeft: "3px solid #fca5a5",
+                                    cursor: "pointer",
+                                    transition: "background 0.2s",
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)"}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
+                                >
+                                  <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                    {nota.titulo || "Nota sin título"}
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>
+                                    📅 {new Date(nota.proximaRevision || nota.proxima_revision).toLocaleDateString('es-ES')} • 📁 {nota.carpeta || "Sin carpeta"}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                                <span style={{ fontSize: "2rem", opacity: 0.5 }}>📝</span>
+                                <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin notas atrasadas</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* DIV FLASHCARDS ATRASADAS */}
+                        <div style={{
+                          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(124, 58, 237, 0.05) 100%)",
+                          border: "1px dashed rgba(139, 92, 246, 0.4)",
+                          borderRadius: "16px",
+                          padding: "1.25rem",
+                          minHeight: "200px",
+                        }}>
+                          <div style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.75rem",
+                            marginBottom: "1rem",
+                            paddingBottom: "0.75rem",
+                            borderBottom: "1px solid rgba(139, 92, 246, 0.2)",
+                          }}>
+                            <span style={{ fontSize: "1.5rem" }}>⏰🃏</span>
+                            <div>
+                              <h3 style={{ margin: 0, color: "#a78bfa", fontSize: "1.1rem" }}>
+                                Flashcards Atrasadas
+                              </h3>
+                              <span style={{ fontSize: "0.8rem", color: flashcardsAtrasadas.length > 0 ? "#fca5a5" : "#c4b5fd" }}>
+                                {flashcardsAtrasadas.length} pendientes
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ maxHeight: "250px", overflowY: "auto" }}>
+                            {flashcardsAtrasadas.length > 0 ? (
+                              flashcardsAtrasadas.map((fc, idx) => (
+                                <div 
+                                  key={idx} 
+                                  onClick={() => setModalRepeticionEspaciada({
+                                    abierto: true,
+                                    tipo: 'flashcards',
+                                    item: fc,
+                                  })}
+                                  style={{
+                                    padding: "0.6rem 0.8rem",
+                                    marginBottom: "0.5rem",
+                                    background: "rgba(239, 68, 68, 0.1)",
+                                    borderRadius: "8px",
+                                    borderLeft: "3px solid #fca5a5",
+                                    cursor: "pointer",
+                                    transition: "background 0.2s",
+                                  }}
+                                  onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.2)"}
+                                  onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
+                                >
+                                  <div style={{ fontSize: "0.85rem", color: "#e2e8f0", marginBottom: "0.25rem" }}>
+                                    {fc.titulo || fc.frente?.substring(0, 50) || "Flashcard"}
+                                  </div>
+                                  <div style={{ fontSize: "0.75rem", color: "#fca5a5" }}>
+                                    📅 {new Date(fc.proximaRevision || fc.proxima_revision).toLocaleDateString('es-ES')} • 📁 {fc.carpeta || "Sin carpeta"}
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div style={{ textAlign: "center", color: "#64748b", padding: "2rem 0" }}>
+                                <span style={{ fontSize: "2rem", opacity: 0.5 }}>🃏</span>
+                                <p style={{ marginTop: "0.5rem", fontSize: "0.9rem" }}>Sin flashcards atrasadas</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
                   </>
                 );
               })()}
             </div>
-
-            <div style={{ height: "2rem" }}></div>
-            <hr
-              style={{
-                border: "none",
-                borderTop: "1px solid rgba(100, 108, 255, 0.2)",
-                margin: "2rem 0",
-              }}
-            />
-
-            <h2>📚 Historial de Exámenes</h2>
-            <p>Revisa los exámenes generados anteriormente...</p>
           </div>
         )}
-
         {selectedMenu === "buscar" && (
           <div className="content-section buscador-container">
             <h1>🔍 Búsqueda Inteligente con IA</h1>
@@ -67094,812 +67158,6 @@ IDIOMA: ${idiomaSBL}
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ========== SECCIÓN DE RENDIMIENTO ========== */}
-        {selectedMenu === "rendimiento" && (
-          <div className="content-section rendimiento-section">
-            <div className="section-header">
-              <h1>📊 Rendimiento por Carpetas</h1>
-              <p className="section-subtitle">
-                Analiza tu progreso de estudio: errores corregidos, flashcards
-                dominadas, exámenes aprobados y más.
-              </p>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "1rem",
-                  alignItems: "center",
-                  marginTop: "1rem",
-                  flexWrap: "wrap",
-                }}
-              >
-                <button
-                  onClick={calcularRendimientoJerarquias}
-                  className="btn-secondary"
-                >
-                  🔄 Actualizar Datos
-                </button>
-
-                {/* Toggle para sumar hijos */}
-                <button
-                  onClick={() => {
-                    setSumarHijosEnRendimiento(!sumarHijosEnRendimiento);
-                    // Recalcular automáticamente
-                    setTimeout(() => calcularRendimientoJerarquias(), 100);
-                  }}
-                  style={{
-                    background: sumarHijosEnRendimiento
-                      ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                      : "rgba(100, 116, 139, 0.3)",
-                    color: sumarHijosEnRendimiento ? "#fff" : "#94a3b8",
-                    border: sumarHijosEnRendimiento
-                      ? "1px solid rgba(16, 185, 129, 0.5)"
-                      : "1px solid rgba(100, 116, 139, 0.3)",
-                    borderRadius: "12px",
-                    padding: "0.6rem 1rem",
-                    fontSize: "0.9rem",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    transition: "all 0.2s ease",
-                    fontWeight: "600",
-                  }}
-                  title={
-                    sumarHijosEnRendimiento
-                      ? "Las subcarpetas se suman al progreso de la carpeta padre"
-                      : "Cada carpeta muestra solo su contenido directo"
-                  }
-                >
-                  {sumarHijosEnRendimiento ? "📊" : "📁"}
-                  {sumarHijosEnRendimiento
-                    ? "Suma Jerárquica: ON"
-                    : "Suma Jerárquica: OFF"}
-                </button>
-
-                <span
-                  style={{
-                    fontSize: "0.8rem",
-                    color: "#64748b",
-                    fontStyle: "italic",
-                  }}
-                >
-                  {sumarHijosEnRendimiento
-                    ? "✓ El progreso de subcarpetas se suma a las carpetas padre"
-                    : "○ Cada carpeta muestra solo su contenido directo"}
-                </span>
-              </div>
-            </div>
-
-            {/* Resumen General */}
-            <div
-              className="rendimiento-resumen-general"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: "1rem",
-                marginBottom: "2rem",
-                padding: "1.5rem",
-                background:
-                  "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)",
-                borderRadius: "16px",
-                border: "1px solid rgba(99, 102, 241, 0.2)",
-              }}
-            >
-              {(() => {
-                // Calcular totales globales
-                let totalErrores = 0,
-                  erroresCorregidos = 0;
-                let totalFlashcards = 0,
-                  flashcardsDominadas = 0;
-                let totalExamenes = 0,
-                  examenesAprobados = 0,
-                  sumaNotas = 0;
-                let totalPracticas = 0,
-                  practicasCompletadas = 0;
-                let totalNotas = 0,
-                  notasRevisadas = 0;
-
-                // Si suma jerárquica está activa, solo sumar carpetas raíz (evitar duplicados)
-                // Si está desactivada, sumar todas las carpetas
-                const carpetasParaSumar = sumarHijosEnRendimiento
-                  ? Object.entries(rendimientoJerarquias).filter(
-                      ([_, d]) => d.nivel === 1,
-                    )
-                  : Object.entries(rendimientoJerarquias);
-
-                carpetasParaSumar.forEach(([_, datos]) => {
-                  if (datos.errores) {
-                    totalErrores += datos.errores.total || 0;
-                    erroresCorregidos += datos.errores.corregidos || 0;
-                  }
-                  if (datos.flashcards) {
-                    totalFlashcards += datos.flashcards.total || 0;
-                    flashcardsDominadas += datos.flashcards.dominadas || 0;
-                  }
-                  if (datos.examenes) {
-                    totalExamenes += datos.examenes.total || 0;
-                    examenesAprobados += datos.examenes.aprobados || 0;
-                    sumaNotas += datos.examenes.puntosTotal || 0;
-                  }
-                  if (datos.practicas) {
-                    totalPracticas += datos.practicas.total || 0;
-                    practicasCompletadas += datos.practicas.completadas || 0;
-                  }
-                  if (datos.notas) {
-                    totalNotas += datos.notas.total || 0;
-                    notasRevisadas += datos.notas.revisadas || 0;
-                  }
-                });
-
-                const notaPromedio =
-                  totalExamenes > 0 ? Math.round(sumaNotas / totalExamenes) : 0;
-
-                return (
-                  <>
-                    <div
-                      className="resumen-stat"
-                      style={{
-                        background: "rgba(239, 68, 68, 0.1)",
-                        padding: "1.25rem",
-                        borderRadius: "12px",
-                        textAlign: "center",
-                        border: "1px solid rgba(239, 68, 68, 0.2)",
-                      }}
-                    >
-                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                        ❌
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "1.5rem",
-                          fontWeight: "700",
-                          color: "#ef4444",
-                        }}
-                      >
-                        {erroresCorregidos}/{totalErrores}
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        Errores Corregidos
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        {totalErrores > 0
-                          ? Math.round((erroresCorregidos / totalErrores) * 100)
-                          : 0}
-                        % completado
-                      </div>
-                    </div>
-
-                    <div
-                      className="resumen-stat"
-                      style={{
-                        background: "rgba(139, 92, 246, 0.1)",
-                        padding: "1.25rem",
-                        borderRadius: "12px",
-                        textAlign: "center",
-                        border: "1px solid rgba(139, 92, 246, 0.2)",
-                      }}
-                    >
-                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                        🃏
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "1.5rem",
-                          fontWeight: "700",
-                          color: "#a78bfa",
-                        }}
-                      >
-                        {flashcardsDominadas}/{totalFlashcards}
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        Flashcards Dominadas
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        {totalFlashcards > 0
-                          ? Math.round(
-                              (flashcardsDominadas / totalFlashcards) * 100,
-                            )
-                          : 0}
-                        % dominado
-                      </div>
-                    </div>
-
-                    <div
-                      className="resumen-stat"
-                      style={{
-                        background: "rgba(59, 130, 246, 0.1)",
-                        padding: "1.25rem",
-                        borderRadius: "12px",
-                        textAlign: "center",
-                        border: "1px solid rgba(59, 130, 246, 0.2)",
-                      }}
-                    >
-                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                        📝
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "1.5rem",
-                          fontWeight: "700",
-                          color: "#60a5fa",
-                        }}
-                      >
-                        {examenesAprobados}/{totalExamenes}
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        Exámenes Aprobados
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        Promedio: {notaPromedio}%
-                      </div>
-                    </div>
-
-                    <div
-                      className="resumen-stat"
-                      style={{
-                        background: "rgba(236, 72, 153, 0.1)",
-                        padding: "1.25rem",
-                        borderRadius: "12px",
-                        textAlign: "center",
-                        border: "1px solid rgba(236, 72, 153, 0.2)",
-                      }}
-                    >
-                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                        🧑‍💻
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "1.5rem",
-                          fontWeight: "700",
-                          color: "#f472b6",
-                        }}
-                      >
-                        {practicasCompletadas}/{totalPracticas}
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        Prácticas Completadas
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        {totalPracticas > 0
-                          ? Math.round(
-                              (practicasCompletadas / totalPracticas) * 100,
-                            )
-                          : 0}
-                        % completado
-                      </div>
-                    </div>
-
-                    <div
-                      className="resumen-stat"
-                      style={{
-                        background: "rgba(34, 197, 94, 0.1)",
-                        padding: "1.25rem",
-                        borderRadius: "12px",
-                        textAlign: "center",
-                        border: "1px solid rgba(34, 197, 94, 0.2)",
-                      }}
-                    >
-                      <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>
-                        📒
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "1.5rem",
-                          fontWeight: "700",
-                          color: "#4ade80",
-                        }}
-                      >
-                        {notasRevisadas}/{totalNotas}
-                      </div>
-                      <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        Notas Revisadas
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#64748b",
-                          marginTop: "0.25rem",
-                        }}
-                      >
-                        {totalNotas > 0
-                          ? Math.round((notasRevisadas / totalNotas) * 100)
-                          : 0}
-                        % repasado
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </div>
-
-            {/* Lista Jerárquica de Carpetas */}
-            <div className="rendimiento-por-carpetas">
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: "1rem",
-                }}
-              >
-                <h2
-                  style={{
-                    fontSize: "1.25rem",
-                    color: "#e2e8f0",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    margin: 0,
-                  }}
-                >
-                  📁 Desglose por Carpetas
-                </h2>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <button
-                    onClick={() => expandirTodasCarpetas(true)}
-                    style={{
-                      background: "rgba(99, 102, 241, 0.2)",
-                      color: "#818cf8",
-                      border: "1px solid rgba(99, 102, 241, 0.3)",
-                      borderRadius: "8px",
-                      padding: "0.4rem 0.75rem",
-                      fontSize: "0.8rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                    }}
-                  >
-                    ⬇️ Expandir Todo
-                  </button>
-                  <button
-                    onClick={() => expandirTodasCarpetas(false)}
-                    style={{
-                      background: "rgba(100, 116, 139, 0.2)",
-                      color: "#94a3b8",
-                      border: "1px solid rgba(100, 116, 139, 0.3)",
-                      borderRadius: "8px",
-                      padding: "0.4rem 0.75rem",
-                      fontSize: "0.8rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.3rem",
-                    }}
-                  >
-                    ⬆️ Colapsar Todo
-                  </button>
-                </div>
-              </div>
-
-              <div
-                className="rendimiento-lista rendimiento-jerarquico"
-                style={{
-                  maxHeight: "calc(100vh - 500px)",
-                  overflowY: "auto",
-                  padding: "0.5rem",
-                }}
-              >
-                {Object.keys(rendimientoJerarquias).length > 0 ? (
-                  (() => {
-                    // Obtener solo carpetas raíz (nivel 1)
-                    const carpetasRaiz = Object.entries(rendimientoJerarquias)
-                      .filter(([_, datos]) => datos.nivel === 1)
-                      .sort((a, b) => b[1].totalItems - a[1].totalItems);
-
-                    // Función recursiva para renderizar árbol con dropdowns
-                    const renderizarNodo = (carpeta, datos, nivel = 0) => {
-                      const colorPorcentaje =
-                        datos.porcentajeGeneral >= 80
-                          ? "#10b981"
-                          : datos.porcentajeGeneral >= 50
-                            ? "#eab308"
-                            : "#ef4444";
-                      const bgPorcentaje =
-                        datos.porcentajeGeneral >= 80
-                          ? "rgba(16, 185, 129, 0.15)"
-                          : datos.porcentajeGeneral >= 50
-                            ? "rgba(234, 179, 8, 0.15)"
-                            : "rgba(239, 68, 68, 0.15)";
-
-                      const tieneHijos = datos.hijos && datos.hijos.length > 0;
-                      const estaExpandido =
-                        carpetasExpandidas[carpeta] ?? nivel === 0; // Nivel 0 expandido por defecto
-
-                      return (
-                        <div
-                          key={carpeta}
-                          className="rendimiento-nodo"
-                          style={{ marginLeft: `${nivel * 24}px` }}
-                        >
-                          <div
-                            className="rendimiento-item rendimiento-dropdown"
-                            style={{
-                              borderLeft: `4px solid ${colorPorcentaje}`,
-                              background: "rgba(30, 41, 59, 0.5)",
-                              borderRadius: "12px",
-                              marginBottom: "0.5rem",
-                              overflow: "hidden",
-                              transition: "all 0.2s ease",
-                            }}
-                          >
-                            {/* Header del dropdown - siempre visible */}
-                            <div
-                              onClick={() =>
-                                tieneHijos && toggleCarpetaExpandida(carpeta)
-                              }
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                padding: "1rem 1.25rem",
-                                cursor: tieneHijos ? "pointer" : "default",
-                                borderBottom: estaExpandido
-                                  ? "1px solid rgba(148, 163, 184, 0.1)"
-                                  : "none",
-                                transition: "background 0.2s ease",
-                              }}
-                              onMouseEnter={(e) =>
-                                tieneHijos &&
-                                (e.currentTarget.style.background =
-                                  "rgba(51, 65, 85, 0.3)")
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.background =
-                                  "transparent")
-                              }
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "0.75rem",
-                                  flex: 1,
-                                }}
-                              >
-                                {/* Flecha de dropdown */}
-                                {tieneHijos && (
-                                  <span
-                                    style={{
-                                      fontSize: "0.9rem",
-                                      color: "#64748b",
-                                      transition: "transform 0.2s ease",
-                                      transform: estaExpandido
-                                        ? "rotate(90deg)"
-                                        : "rotate(0deg)",
-                                      width: "20px",
-                                      textAlign: "center",
-                                    }}
-                                  >
-                                    ▶
-                                  </span>
-                                )}
-                                {!tieneHijos && (
-                                  <span style={{ width: "20px" }}></span>
-                                )}
-
-                                <span style={{ fontSize: "1.5rem" }}>
-                                  {nivel === 0
-                                    ? "🌐"
-                                    : nivel === 1
-                                      ? "🏫"
-                                      : nivel === 2
-                                        ? "📚"
-                                        : "📁"}
-                                </span>
-                                <div style={{ flex: 1 }}>
-                                  <span
-                                    style={{
-                                      fontWeight: nivel === 0 ? "700" : "600",
-                                      color: "#e2e8f0",
-                                      fontSize: "1rem",
-                                    }}
-                                  >
-                                    {datos.nombre || carpeta}
-                                  </span>
-                                  <span
-                                    style={{
-                                      color: "#64748b",
-                                      fontSize: "0.8rem",
-                                      marginLeft: "0.75rem",
-                                    }}
-                                  >
-                                    {datos.totalItems} items
-                                    {tieneHijos &&
-                                      ` · ${datos.hijos.length} subcarpetas`}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Barra mini de progreso y porcentaje */}
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "1rem",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: "100px",
-                                    height: "6px",
-                                    background: "rgba(51, 65, 85, 0.5)",
-                                    borderRadius: "3px",
-                                    overflow: "hidden",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      width: `${datos.porcentajeGeneral}%`,
-                                      backgroundColor: colorPorcentaje,
-                                      height: "100%",
-                                      borderRadius: "3px",
-                                      transition: "width 0.5s ease",
-                                    }}
-                                  />
-                                </div>
-                                <div
-                                  style={{
-                                    backgroundColor: bgPorcentaje,
-                                    color: colorPorcentaje,
-                                    fontWeight: "700",
-                                    padding: "0.4rem 0.8rem",
-                                    borderRadius: "16px",
-                                    fontSize: "0.9rem",
-                                    minWidth: "50px",
-                                    textAlign: "center",
-                                  }}
-                                >
-                                  {datos.porcentajeGeneral}%
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Contenido expandible */}
-                            <div
-                              style={{
-                                maxHeight: estaExpandido ? "1000px" : "0",
-                                overflow: "hidden",
-                                transition: "max-height 0.3s ease",
-                                padding: estaExpandido
-                                  ? "1rem 1.25rem"
-                                  : "0 1.25rem",
-                                background: "rgba(15, 23, 42, 0.3)",
-                              }}
-                            >
-                              {/* Badges de estadísticas */}
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: "0.5rem",
-                                  marginBottom: tieneHijos ? "1rem" : 0,
-                                }}
-                              >
-                                {datos.errores?.total > 0 && (
-                                  <span
-                                    style={{
-                                      background:
-                                        datos.errores.corregidos ===
-                                        datos.errores.total
-                                          ? "rgba(16, 185, 129, 0.2)"
-                                          : "rgba(239, 68, 68, 0.2)",
-                                      color:
-                                        datos.errores.corregidos ===
-                                        datos.errores.total
-                                          ? "#10b981"
-                                          : "#ef4444",
-                                      padding: "0.35rem 0.75rem",
-                                      borderRadius: "16px",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    ❌ Errores: {datos.errores.corregidos}/
-                                    {datos.errores.total}
-                                  </span>
-                                )}
-
-                                {datos.flashcards?.total > 0 && (
-                                  <span
-                                    style={{
-                                      background: "rgba(139, 92, 246, 0.2)",
-                                      color: "#a78bfa",
-                                      padding: "0.35rem 0.75rem",
-                                      borderRadius: "16px",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    🃏 Flashcards: {datos.flashcards.dominadas}/
-                                    {datos.flashcards.total}
-                                    {datos.flashcards.enProgreso > 0 &&
-                                      ` (${datos.flashcards.enProgreso} 🔄)`}
-                                  </span>
-                                )}
-
-                                {datos.examenes?.total > 0 && (
-                                  <span
-                                    style={{
-                                      background: "rgba(59, 130, 246, 0.2)",
-                                      color: "#60a5fa",
-                                      padding: "0.35rem 0.75rem",
-                                      borderRadius: "16px",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    📝 Exámenes: {datos.examenes.aprobados}/
-                                    {datos.examenes.total} (Prom:{" "}
-                                    {datos.examenes.notaPromedio}%)
-                                  </span>
-                                )}
-
-                                {datos.practicas?.total > 0 && (
-                                  <span
-                                    style={{
-                                      background: "rgba(236, 72, 153, 0.2)",
-                                      color: "#f472b6",
-                                      padding: "0.35rem 0.75rem",
-                                      borderRadius: "16px",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    🧑‍💻 Prácticas: {datos.practicas.completadas}/
-                                    {datos.practicas.total}
-                                  </span>
-                                )}
-
-                                {datos.notas?.total > 0 && (
-                                  <span
-                                    style={{
-                                      background: "rgba(34, 197, 94, 0.2)",
-                                      color: "#4ade80",
-                                      padding: "0.35rem 0.75rem",
-                                      borderRadius: "16px",
-                                      fontSize: "0.8rem",
-                                      fontWeight: "600",
-                                    }}
-                                  >
-                                    📒 Notas: {datos.notas.revisadas}/
-                                    {datos.notas.total}
-                                  </span>
-                                )}
-
-                                {datos.totalItems === 0 && (
-                                  <span
-                                    style={{
-                                      color: "#64748b",
-                                      fontSize: "0.85rem",
-                                      fontStyle: "italic",
-                                    }}
-                                  >
-                                    Sin datos de estudio aún
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Renderizar hijos recursivamente - solo si está expandido */}
-                          {tieneHijos && estaExpandido && (
-                            <div
-                              className="rendimiento-hijos"
-                              style={{
-                                borderLeft:
-                                  "2px dashed rgba(148, 163, 184, 0.2)",
-                                marginLeft: "1rem",
-                                paddingLeft: "0.5rem",
-                                animation: "fadeIn 0.3s ease",
-                              }}
-                            >
-                              {datos.hijos
-                                .filter((hijo) => rendimientoJerarquias[hijo])
-                                .sort(
-                                  (a, b) =>
-                                    (rendimientoJerarquias[b]?.totalItems ||
-                                      0) -
-                                    (rendimientoJerarquias[a]?.totalItems || 0),
-                                )
-                                .map((hijo) =>
-                                  renderizarNodo(
-                                    hijo,
-                                    rendimientoJerarquias[hijo],
-                                    nivel + 1,
-                                  ),
-                                )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    };
-
-                    return carpetasRaiz.length > 0 ? (
-                      carpetasRaiz.map(([carpeta, datos]) =>
-                        renderizarNodo(carpeta, datos, 0),
-                      )
-                    ) : (
-                      <div
-                        style={{
-                          textAlign: "center",
-                          padding: "3rem",
-                          color: "#64748b",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "3rem",
-                            marginBottom: "1rem",
-                            opacity: 0.5,
-                          }}
-                        >
-                          📊
-                        </div>
-                        <p>No hay datos de rendimiento aún</p>
-                        <p style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
-                          Completa exámenes, prácticas o flashcards para ver tu
-                          progreso
-                        </p>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div
-                    style={{
-                      textAlign: "center",
-                      padding: "3rem",
-                      color: "#64748b",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "3rem",
-                        marginBottom: "1rem",
-                        opacity: 0.5,
-                      }}
-                    >
-                      📊
-                    </div>
-                    <p>Cargando datos de rendimiento...</p>
-                    <button
-                      onClick={calcularRendimientoJerarquias}
-                      className="btn-primary"
-                      style={{ marginTop: "1rem" }}
-                    >
-                      🔄 Cargar Rendimiento
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 
@@ -97469,7 +96727,7 @@ Ejemplo:
               onClick={(e) => e.stopPropagation()}
             >
               <div className="modal-header">
-                <h2>🗂️ Gestión de Carpetas y Rendimiento</h2>
+                <h2>🗂️ Gestión de Carpetas</h2>
                 <button
                   onClick={() => setModalJerarquiaAbierto(false)}
                   className="btn-close"
@@ -97478,27 +96736,7 @@ Ejemplo:
                 </button>
               </div>
 
-              {/* Pestañas */}
-              <div className="jerarquia-tabs">
-                <button
-                  className={`tab-btn ${tabJerarquia === "crear" ? "activo" : ""}`}
-                  onClick={() => setTabJerarquia("crear")}
-                >
-                  ➕ Crear Estructura
-                </button>
-                <button
-                  className={`tab-btn ${tabJerarquia === "rendimiento" ? "activo" : ""}`}
-                  onClick={() => {
-                    setTabJerarquia("rendimiento");
-                    calcularRendimientoJerarquias();
-                  }}
-                >
-                  📊 Rendimiento
-                </button>
-              </div>
-
-              {tabJerarquia === "crear" ? (
-                <div className="modal-body jerarquia-modal-body">
+              <div className="modal-body jerarquia-modal-body">
                   {/* Panel izquierdo: Formulario */}
                   <div className="jerarquia-panel-form">
                     {/* Recorrido visual de la ubicación */}
@@ -97803,273 +97041,6 @@ Ejemplo:
                     </div>
                   </div>
                 </div>
-              ) : (
-                /* ===== PESTAÑA DE RENDIMIENTO JERÁRQUICO ===== */
-                <div className="modal-body rendimiento-modal-body">
-                  <div className="rendimiento-header">
-                    <h3>📊 Rendimiento por Carpetas</h3>
-                    <p className="rendimiento-descripcion">
-                      Vista jerárquica de tu progreso: errores, flashcards,
-                      exámenes, prácticas y notas.
-                    </p>
-                    <button
-                      onClick={calcularRendimientoJerarquias}
-                      className="btn-secondary"
-                    >
-                      🔄 Actualizar Datos
-                    </button>
-                  </div>
-
-                  <div className="rendimiento-lista rendimiento-jerarquico">
-                    {Object.keys(rendimientoJerarquias).length > 0 ? (
-                      (() => {
-                        // Obtener solo carpetas raíz (nivel 1)
-                        const carpetasRaiz = Object.entries(
-                          rendimientoJerarquias,
-                        )
-                          .filter(([_, datos]) => datos.nivel === 1)
-                          .sort((a, b) => b[1].totalItems - a[1].totalItems);
-
-                        // Función recursiva para renderizar árbol
-                        const renderizarNodo = (carpeta, datos, nivel = 0) => {
-                          const colorPorcentaje =
-                            datos.porcentajeGeneral >= 80
-                              ? "#10b981"
-                              : datos.porcentajeGeneral >= 50
-                                ? "#eab308"
-                                : "#ef4444";
-                          const bgPorcentaje =
-                            datos.porcentajeGeneral >= 80
-                              ? "rgba(16, 185, 129, 0.15)"
-                              : datos.porcentajeGeneral >= 50
-                                ? "rgba(234, 179, 8, 0.15)"
-                                : "rgba(239, 68, 68, 0.15)";
-
-                          return (
-                            <div
-                              key={carpeta}
-                              className="rendimiento-nodo"
-                              style={{ marginLeft: `${nivel * 20}px` }}
-                            >
-                              <div
-                                className="rendimiento-item"
-                                style={{
-                                  borderLeft:
-                                    nivel > 0
-                                      ? `3px solid ${colorPorcentaje}`
-                                      : "none",
-                                }}
-                              >
-                                <div className="rendimiento-item-header">
-                                  <div className="rendimiento-carpeta">
-                                    <span className="carpeta-icono">
-                                      {nivel === 0
-                                        ? "🌐"
-                                        : nivel === 1
-                                          ? "🏫"
-                                          : "📁"}
-                                    </span>
-                                    <span
-                                      className="carpeta-nombre"
-                                      style={{
-                                        fontWeight: nivel === 0 ? "700" : "500",
-                                      }}
-                                    >
-                                      {datos.nombre || carpeta}
-                                    </span>
-                                    <span
-                                      className="carpeta-items"
-                                      style={{
-                                        color: "#64748b",
-                                        fontSize: "0.8rem",
-                                        marginLeft: "0.5rem",
-                                      }}
-                                    >
-                                      ({datos.totalItems} items)
-                                    </span>
-                                  </div>
-                                  <div
-                                    className="rendimiento-porcentaje"
-                                    style={{
-                                      backgroundColor: bgPorcentaje,
-                                      color: colorPorcentaje,
-                                      fontWeight: "700",
-                                      padding: "0.4rem 0.8rem",
-                                      borderRadius: "20px",
-                                      fontSize: "0.9rem",
-                                    }}
-                                  >
-                                    {datos.porcentajeGeneral}%
-                                  </div>
-                                </div>
-
-                                <div
-                                  className="rendimiento-barra-container"
-                                  style={{ height: "6px", borderRadius: "3px" }}
-                                >
-                                  <div
-                                    className="rendimiento-barra"
-                                    style={{
-                                      width: `${datos.porcentajeGeneral}%`,
-                                      backgroundColor: colorPorcentaje,
-                                      height: "100%",
-                                      borderRadius: "3px",
-                                      transition: "width 0.5s ease",
-                                    }}
-                                  />
-                                </div>
-
-                                <div
-                                  className="rendimiento-detalles"
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: "0.5rem",
-                                    marginTop: "0.5rem",
-                                  }}
-                                >
-                                  {datos.errores?.total > 0 && (
-                                    <div
-                                      className="rendimiento-badge"
-                                      style={{
-                                        background:
-                                          datos.errores.corregidos ===
-                                          datos.errores.total
-                                            ? "rgba(16, 185, 129, 0.2)"
-                                            : "rgba(239, 68, 68, 0.2)",
-                                        color:
-                                          datos.errores.corregidos ===
-                                          datos.errores.total
-                                            ? "#10b981"
-                                            : "#ef4444",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "12px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      ❌ {datos.errores.corregidos}/
-                                      {datos.errores.total}
-                                    </div>
-                                  )}
-
-                                  {datos.flashcards?.total > 0 && (
-                                    <div
-                                      className="rendimiento-badge"
-                                      style={{
-                                        background: "rgba(139, 92, 246, 0.2)",
-                                        color: "#a78bfa",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "12px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      🃏 {datos.flashcards.dominadas}/
-                                      {datos.flashcards.total}
-                                      {datos.flashcards.enProgreso > 0 &&
-                                        ` (${datos.flashcards.enProgreso} 🔄)`}
-                                    </div>
-                                  )}
-
-                                  {datos.examenes?.total > 0 && (
-                                    <div
-                                      className="rendimiento-badge"
-                                      style={{
-                                        background: "rgba(59, 130, 246, 0.2)",
-                                        color: "#60a5fa",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "12px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      📝 {datos.examenes.aprobados}/
-                                      {datos.examenes.total} (
-                                      {datos.examenes.notaPromedio}% prom)
-                                    </div>
-                                  )}
-
-                                  {datos.practicas?.total > 0 && (
-                                    <div
-                                      className="rendimiento-badge"
-                                      style={{
-                                        background: "rgba(236, 72, 153, 0.2)",
-                                        color: "#f472b6",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "12px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      🧑‍💻 {datos.practicas.completadas}/
-                                      {datos.practicas.total}
-                                    </div>
-                                  )}
-
-                                  {datos.notas?.total > 0 && (
-                                    <div
-                                      className="rendimiento-badge"
-                                      style={{
-                                        background: "rgba(34, 197, 94, 0.2)",
-                                        color: "#4ade80",
-                                        padding: "0.25rem 0.5rem",
-                                        borderRadius: "12px",
-                                        fontSize: "0.75rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      📝 {datos.notas.revisadas}/
-                                      {datos.notas.total} notas
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Renderizar hijos recursivamente */}
-                              {datos.hijos && datos.hijos.length > 0 && (
-                                <div className="rendimiento-hijos">
-                                  {datos.hijos
-                                    .filter(
-                                      (hijo) => rendimientoJerarquias[hijo],
-                                    )
-                                    .sort(
-                                      (a, b) =>
-                                        (rendimientoJerarquias[b]?.totalItems ||
-                                          0) -
-                                        (rendimientoJerarquias[a]?.totalItems ||
-                                          0),
-                                    )
-                                    .map((hijo) =>
-                                      renderizarNodo(
-                                        hijo,
-                                        rendimientoJerarquias[hijo],
-                                        nivel + 1,
-                                      ),
-                                    )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        };
-
-                        return carpetasRaiz.map(([carpeta, datos]) =>
-                          renderizarNodo(carpeta, datos, 0),
-                        );
-                      })()
-                    ) : (
-                      <div className="rendimiento-vacio">
-                        <div className="vacio-icono">📊</div>
-                        <p>No hay datos de rendimiento aún</p>
-                        <p className="vacio-hint">
-                          Completa exámenes, prácticas o flashcards para ver tu
-                          progreso
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -108364,6 +107335,370 @@ Ejemplo:
                   Cerrar
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ====== MODAL REPETICIÓN ESPACIADA ====== */}
+      {modalRepeticionEspaciada.abierto && modalRepeticionEspaciada.item && (
+        <div
+          className="modal-overlay"
+          onClick={() => setModalRepeticionEspaciada({ abierto: false, tipo: null, item: null })}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.8)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "linear-gradient(145deg, #1e293b 0%, #0f172a 100%)",
+              borderRadius: "20px",
+              padding: "2rem",
+              maxWidth: "700px",
+              width: "95%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              border: "1px solid rgba(99, 102, 241, 0.3)",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            {/* Header del modal */}
+            <div style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "1.5rem",
+              paddingBottom: "1rem",
+              borderBottom: "1px solid rgba(99, 102, 241, 0.2)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                <span style={{ fontSize: "2rem" }}>
+                  {modalRepeticionEspaciada.tipo === 'aciertos' && '✅'}
+                  {modalRepeticionEspaciada.tipo === 'errores' && '❌'}
+                  {modalRepeticionEspaciada.tipo === 'notas' && '📝'}
+                  {modalRepeticionEspaciada.tipo === 'flashcards' && '🃏'}
+                </span>
+                <div>
+                  <h2 style={{ margin: 0, color: "#e2e8f0", fontSize: "1.3rem" }}>
+                    Simulación de Repetición Espaciada
+                  </h2>
+                  <p style={{ margin: 0, color: "#94a3b8", fontSize: "0.85rem" }}>
+                    {modalRepeticionEspaciada.tipo === 'aciertos' ? 'Acierto' :
+                     modalRepeticionEspaciada.tipo === 'errores' ? 'Error' :
+                     modalRepeticionEspaciada.tipo === 'notas' ? 'Nota' : 'Flashcard'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModalRepeticionEspaciada({ abierto: false, tipo: null, item: null })}
+                style={{
+                  background: "rgba(100, 116, 139, 0.3)",
+                  border: "none",
+                  borderRadius: "8px",
+                  padding: "0.5rem 1rem",
+                  color: "#e2e8f0",
+                  cursor: "pointer",
+                  fontSize: "1.2rem",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Info del item seleccionado */}
+            <div style={{
+              background: `rgba(${
+                modalRepeticionEspaciada.tipo === 'aciertos' ? '16, 185, 129' :
+                modalRepeticionEspaciada.tipo === 'errores' ? '239, 68, 68' :
+                modalRepeticionEspaciada.tipo === 'notas' ? '34, 197, 94' : '139, 92, 246'
+              }, 0.15)`,
+              borderRadius: "12px",
+              padding: "1rem",
+              marginBottom: "1.5rem",
+              border: `1px solid rgba(${
+                modalRepeticionEspaciada.tipo === 'aciertos' ? '16, 185, 129' :
+                modalRepeticionEspaciada.tipo === 'errores' ? '239, 68, 68' :
+                modalRepeticionEspaciada.tipo === 'notas' ? '34, 197, 94' : '139, 92, 246'
+              }, 0.3)`,
+            }}>
+              <h4 style={{ margin: "0 0 0.5rem 0", color: "#e2e8f0", fontSize: "1rem" }}>
+                📌 Item seleccionado:
+              </h4>
+              <p style={{ margin: 0, color: "#cbd5e1", fontSize: "0.95rem" }}>
+                {modalRepeticionEspaciada.item.pregunta?.substring(0, 100) || 
+                 modalRepeticionEspaciada.item.titulo || 
+                 modalRepeticionEspaciada.item.frente || 
+                 "Sin título"}
+                {(modalRepeticionEspaciada.item.pregunta?.length > 100) && "..."}
+              </p>
+              <div style={{ marginTop: "0.75rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", fontSize: "0.8rem", color: "#94a3b8" }}>
+                {modalRepeticionEspaciada.item.origen && (
+                  <span>📁 {modalRepeticionEspaciada.item.origen}</span>
+                )}
+                {modalRepeticionEspaciada.item.carpeta && !modalRepeticionEspaciada.item.origen && (
+                  <span>📁 {modalRepeticionEspaciada.item.carpeta}</span>
+                )}
+                <span>🔄 Repeticiones: {modalRepeticionEspaciada.item.repeticiones || modalRepeticionEspaciada.item.repeticiones_error || 0}</span>
+                <span>📅 Intervalo actual: {modalRepeticionEspaciada.item.intervalo || modalRepeticionEspaciada.item.intervalo_error || 1}d</span>
+              </div>
+            </div>
+
+            {/* Historial de revisiones pasadas */}
+            {modalRepeticionEspaciada.item.historialRevisiones && modalRepeticionEspaciada.item.historialRevisiones.length > 0 && (
+              <div style={{
+                background: "rgba(30, 41, 59, 0.5)",
+                borderRadius: "12px",
+                padding: "1rem",
+                marginBottom: "1.5rem",
+              }}>
+                <h4 style={{ margin: "0 0 0.75rem 0", color: "#e2e8f0", fontSize: "0.95rem" }}>
+                  📜 Historial de revisiones:
+                </h4>
+                <div style={{ maxHeight: "120px", overflowY: "auto" }}>
+                  {modalRepeticionEspaciada.item.historialRevisiones.slice(-5).map((rev, idx) => (
+                    <div key={idx} style={{
+                      display: "flex",
+                      gap: "0.5rem",
+                      padding: "0.4rem 0",
+                      borderBottom: idx < 4 ? "1px solid rgba(71, 85, 105, 0.3)" : "none",
+                      fontSize: "0.8rem",
+                      color: "#94a3b8",
+                    }}>
+                      <span>{rev.correcta ? "✅" : "❌"}</span>
+                      <span>{new Date(rev.fecha).toLocaleDateString('es-ES')}</span>
+                      {rev.intervaloSiguiente && <span>→ +{rev.intervaloSiguiente}d</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Explicación del sistema */}
+            <div style={{
+              background: "rgba(99, 102, 241, 0.1)",
+              borderRadius: "12px",
+              padding: "1rem",
+              marginBottom: "1.5rem",
+              border: "1px solid rgba(99, 102, 241, 0.2)",
+            }}>
+              <h3 style={{ margin: "0 0 0.5rem 0", color: "#818cf8", fontSize: "0.95rem" }}>
+                🧠 Sistema de Repetición Espaciada
+              </h3>
+              <p style={{ margin: 0, color: "#cbd5e1", fontSize: "0.85rem", lineHeight: "1.5" }}>
+                {modalRepeticionEspaciada.tipo === 'aciertos' && (
+                  <>Progresión fija: <span style={{ color: "#10b981" }}>3 → 7 → 14 → 30 días</span>. Si fallas, vuelves a 1 día.</>
+                )}
+                {modalRepeticionEspaciada.tipo === 'errores' && (
+                  <>Al corregir: <span style={{ color: "#ef4444" }}>3 → 7 → luego ×factor</span>. Si fallas, reinicio a 1 día.</>
+                )}
+                {modalRepeticionEspaciada.tipo === 'notas' && (
+                  <><span style={{ color: "#22c55e" }}>Fácil: 3→7→14d | Medio: ×1.3 | Difícil: 1d</span></>
+                )}
+                {modalRepeticionEspaciada.tipo === 'flashcards' && (
+                  <><span style={{ color: "#a78bfa" }}>Fácil: 3→7→14d | Me costó: ×1.3 | Olvidé: 1d</span></>
+                )}
+              </p>
+            </div>
+
+            {/* Simulación Visual */}
+            <div style={{
+              background: "rgba(30, 41, 59, 0.5)",
+              borderRadius: "12px",
+              padding: "1.25rem",
+              marginBottom: "1.5rem",
+            }}>
+              <h3 style={{ margin: "0 0 1rem 0", color: "#e2e8f0", fontSize: "1rem" }}>
+                📊 ¿Qué pasará según tu respuesta?
+              </h3>
+
+              {/* Escenario: Si Aciertas */}
+              <div style={{
+                background: "rgba(16, 185, 129, 0.1)",
+                borderRadius: "10px",
+                padding: "1rem",
+                marginBottom: "1rem",
+                border: "1px solid rgba(16, 185, 129, 0.3)",
+              }}>
+                <h4 style={{ margin: "0 0 0.75rem 0", color: "#10b981", fontSize: "0.95rem" }}>
+                  ✅ Si ACIERTAS hoy:
+                </h4>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                  {(() => {
+                    const hoy = new Date();
+                    const tipo = modalRepeticionEspaciada.tipo;
+                    const item = modalRepeticionEspaciada.item;
+                    const repeticionesActuales = item.repeticiones || item.repeticiones_error || 0;
+                    
+                    let intervalos = [];
+                    if (tipo === 'aciertos') {
+                      // Progresión fija: 3, 7, 14, 30
+                      const progresion = [3, 7, 14, 30];
+                      const inicio = Math.min(repeticionesActuales, progresion.length - 1);
+                      intervalos = progresion.slice(inicio, inicio + 4);
+                      if (intervalos.length < 4) intervalos.push(30); // Continuar con 30
+                    } else if (tipo === 'errores') {
+                      intervalos = [3, 7, 14, 28, 56];
+                    } else {
+                      intervalos = [3, 7, 14, 35, 87];
+                    }
+                    
+                    let fechaAcumulada = new Date(hoy);
+                    return intervalos.slice(0, 5).map((dias, idx) => {
+                      fechaAcumulada = new Date(fechaAcumulada);
+                      fechaAcumulada.setDate(fechaAcumulada.getDate() + dias);
+                      const fechaStr = fechaAcumulada.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                      return (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                          <span style={{
+                            background: "rgba(16, 185, 129, 0.2)",
+                            padding: "0.25rem 0.5rem",
+                            borderRadius: "6px",
+                            color: "#6ee7b7",
+                            fontSize: "0.8rem",
+                          }}>
+                            +{dias}d → {fechaStr}
+                          </span>
+                          {idx < intervalos.length - 1 && idx < 4 && (
+                            <span style={{ color: "#475569" }}>→</span>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+                <p style={{ margin: "0.75rem 0 0 0", color: "#6ee7b7", fontSize: "0.8rem" }}>
+                  Si sigues acertando, los intervalos crecen 🎯
+                </p>
+              </div>
+
+              {/* Escenario: Si Fallas */}
+              <div style={{
+                background: "rgba(239, 68, 68, 0.1)",
+                borderRadius: "10px",
+                padding: "1rem",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+              }}>
+                <h4 style={{ margin: "0 0 0.75rem 0", color: "#ef4444", fontSize: "0.95rem" }}>
+                  ❌ Si FALLAS hoy:
+                </h4>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+                  {(() => {
+                    const hoy = new Date();
+                    const manana = new Date(hoy);
+                    manana.setDate(manana.getDate() + 1);
+                    const fechaStr = manana.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+                    
+                    return (
+                      <>
+                        <span style={{
+                          background: "rgba(239, 68, 68, 0.2)",
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "6px",
+                          color: "#fca5a5",
+                          fontSize: "0.8rem",
+                        }}>
+                          🔄 Reinicio → +1d → {fechaStr}
+                        </span>
+                        <span style={{ color: "#475569" }}>→</span>
+                        <span style={{
+                          background: "rgba(251, 191, 36, 0.2)",
+                          padding: "0.25rem 0.5rem",
+                          borderRadius: "6px",
+                          color: "#fcd34d",
+                          fontSize: "0.8rem",
+                        }}>
+                          Vuelves a empezar la progresión
+                        </span>
+                      </>
+                    );
+                  })()}
+                </div>
+                <p style={{ margin: "0.75rem 0 0 0", color: "#fca5a5", fontSize: "0.8rem" }}>
+                  El sistema te da otra oportunidad mañana 💪
+                </p>
+              </div>
+            </div>
+
+            {/* Botón cerrar */}
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap" }}>
+              {/* Botón Ir al archivo */}
+              <button
+                onClick={() => {
+                  const item = modalRepeticionEspaciada.item;
+                  const tipo = modalRepeticionEspaciada.tipo;
+                  const carpeta = item.carpeta || "";
+                  
+                  // Cerrar el modal
+                  setModalRepeticionEspaciada({ abierto: false, tipo: null, item: null });
+                  
+                  // Navegar según el tipo
+                  if (tipo === 'aciertos' || tipo === 'errores') {
+                    // Ir a Prácticas o Exámenes según esPractica
+                    if (item.esPractica) {
+                      setSelectedMenu("practicas");
+                      setRutaPracticasActual(carpeta);
+                      cargarCarpetasPracticas(carpeta);
+                    } else {
+                      setSelectedMenu("examenes");
+                      setRutaActualExamenes(carpeta);
+                      cargarCarpetasExamenes(carpeta);
+                    }
+                  } else if (tipo === 'notas') {
+                    // Ir a Notas con la carpeta de la nota
+                    setSelectedMenu("notas");
+                    setRutaNotasActual(carpeta);
+                    cargarCarpetasNotas(carpeta);
+                  } else if (tipo === 'flashcards') {
+                    // Ir a Flashcards con la carpeta de la flashcard
+                    setSelectedMenu("flashcards");
+                    setRutaFlashcardsActual(carpeta);
+                    cargarCarpetasFlashcards(carpeta);
+                  }
+                }}
+                style={{
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "0.75rem 1.5rem",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: "0.95rem",
+                  fontWeight: "500",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                📂 Ir al archivo
+              </button>
+              
+              <button
+                onClick={() => setModalRepeticionEspaciada({ abierto: false, tipo: null, item: null })}
+                style={{
+                  background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                  border: "none",
+                  borderRadius: "10px",
+                  padding: "0.75rem 2rem",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: "1rem",
+                  fontWeight: "500",
+                }}
+              >
+                Entendido ✓
+              </button>
             </div>
           </div>
         </div>
