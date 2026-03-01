@@ -933,24 +933,7 @@ const ChemEditor = ({
         </div>
       )}
 
-      {/* Input solo lectura cuando readOnly */}
-      {readOnly && inputSmiles && (
-        <div
-          style={{
-            padding: "0.5rem 0.75rem",
-            background: "rgba(16, 185, 129, 0.05)",
-            borderRadius: "6px",
-            border: "1px solid rgba(16, 185, 129, 0.2)",
-            fontFamily: "monospace",
-            fontSize: "0.85rem",
-            color: "#6ee7b7",
-          }}
-        >
-          {inputSmiles}
-        </div>
-      )}
-
-      {/* Vista de estructuras */}
+      {/* Vista de estructuras - En readOnly solo muestra las moléculas visuales, no el texto SMILES */}
       {estructuras.length > 0 ? (
         <div
           style={{

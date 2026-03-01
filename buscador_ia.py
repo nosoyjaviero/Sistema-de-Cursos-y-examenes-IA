@@ -79,9 +79,12 @@ except ImportError:
 class ConfigBuscador:
     """Configuración centralizada del buscador"""
     
-    # Rutas a indexar (MODIFICA ESTAS RUTAS)
+    # Rutas a indexar (incluye todas las carpetas con contenido relevante)
     CARPETAS_RAIZ = [
         r"C:\Users\Fela\Documents\Proyectos\Examinator\extracciones",
+        r"C:\Users\Fela\Documents\Proyectos\Examinator\md",
+        r"C:\Users\Fela\Documents\Proyectos\Examinator\datos_persistentes",
+        r"C:\Users\Fela\Documents\Proyectos\Examinator\chats",
     ]
     
     # Modelo de embeddings (MODIFICA SI QUIERES OTRO MODELO)
@@ -142,6 +145,155 @@ def detectar_tipo_documento(ruta: str) -> str:
         return 'curso'
     else:
         return 'documento'
+
+
+def extraer_texto_practica_json(data: dict) -> str:
+    """
+    Extrae texto relevante de un JSON de práctica/examen para indexación.
+    
+    Campos importantes que extrae:
+    - pregunta: El enunciado de la pregunta
+    - respuesta_correcta: La respuesta esperada
+    - explicacion: Explicación del ejercicio
+    - opciones: Opciones de respuesta (para MCQ)
+    - metadata.texto_lectura: Texto de lectura (idiomas)
+    - metadata.oraciones_originales: Para parafraseo
+    - metadata.items: Items con palabras clave y oraciones
+    - feedback: Retroalimentación
+    """
+    textos = []
+    
+    # Nombre de la práctica
+    if data.get('nombre'):
+        textos.append(f"📝 Práctica: {data['nombre']}")
+    
+    # Procesar preguntas
+    preguntas = data.get('preguntas', [])
+    if not isinstance(preguntas, list):
+        preguntas = []
+    
+    for idx, pregunta in enumerate(preguntas):
+        if not isinstance(pregunta, dict):
+            continue
+        
+        tipo = pregunta.get('tipo', 'desconocido')
+        textos.append(f"\n--- Ejercicio {idx+1} ({tipo}) ---")
+        
+        # Pregunta principal
+        if pregunta.get('pregunta'):
+            textos.append(f"Pregunta: {pregunta['pregunta']}")
+        
+        # Respuesta correcta
+        if pregunta.get('respuesta_correcta'):
+            textos.append(f"Respuesta: {pregunta['respuesta_correcta']}")
+        
+        # Explicación
+        if pregunta.get('explicacion'):
+            textos.append(f"Explicación: {pregunta['explicacion']}")
+        
+        # Opciones (MCQ)
+        opciones = pregunta.get('opciones', [])
+        if opciones and isinstance(opciones, list):
+            textos.append("Opciones: " + " | ".join(str(o) for o in opciones))
+        
+        # Metadata específica de cada tipo
+        metadata = pregunta.get('metadata', {})
+        if isinstance(metadata, dict):
+            # Texto de lectura (reading comprehension)
+            if metadata.get('texto_lectura'):
+                textos.append(f"Texto: {metadata['texto_lectura']}")
+            
+            # Oraciones originales (parafraseo)
+            oraciones_orig = metadata.get('oraciones_originales', [])
+            if oraciones_orig:
+                for orac in oraciones_orig:
+                    if isinstance(orac, dict):
+                        if orac.get('original'):
+                            textos.append(f"Original: {orac['original']}")
+                        if orac.get('parafraseo_esperado'):
+                            textos.append(f"Parafraseo: {orac['parafraseo_esperado']}")
+            
+            # Items (sentence builder, etc.)
+            items = metadata.get('items', [])
+            if items:
+                for item in items:
+                    if isinstance(item, dict):
+                        if item.get('palabras_clave'):
+                            palabras = item['palabras_clave']
+                            if isinstance(palabras, list):
+                                textos.append(f"Palabras clave: {', '.join(palabras)}")
+                        if item.get('oracion_esperada'):
+                            textos.append(f"Oración esperada: {item['oracion_esperada']}")
+                        if item.get('contexto_pista'):
+                            textos.append(f"Contexto: {item['contexto_pista']}")
+            
+            # Preguntas MCQ internas (reading comprehension)
+            preguntas_mcq = metadata.get('preguntas', metadata.get('preguntas_mcq', []))
+            if preguntas_mcq:
+                for pmcq in preguntas_mcq:
+                    if isinstance(pmcq, dict):
+                        if pmcq.get('pregunta'):
+                            textos.append(f"Sub-pregunta: {pmcq['pregunta']}")
+            
+            # Afirmaciones (V/F)
+            afirmaciones = metadata.get('afirmaciones', [])
+            if afirmaciones:
+                for afirm in afirmaciones:
+                    if isinstance(afirm, dict):
+                        if afirm.get('texto'):
+                            textos.append(f"Afirmación: {afirm['texto']}")
+                        if afirm.get('justificacion'):
+                            textos.append(f"Justificación: {afirm['justificacion']}")
+            
+            # Frases con errores (corrección)
+            frases_errores = metadata.get('frases_con_errores', [])
+            if frases_errores:
+                for frase in frases_errores:
+                    if isinstance(frase, dict):
+                        if frase.get('frase_con_error'):
+                            textos.append(f"Frase con error: {frase['frase_con_error']}")
+                        if frase.get('correccion'):
+                            textos.append(f"Corrección: {frase['correccion']}")
+            
+            # Transformaciones
+            transformaciones = metadata.get('transformaciones', [])
+            if transformaciones:
+                for transf in transformaciones:
+                    if isinstance(transf, dict):
+                        if transf.get('original'):
+                            textos.append(f"Original: {transf['original']}")
+                        if transf.get('transformacion_esperada'):
+                            textos.append(f"Transformación: {transf['transformacion_esperada']}")
+            
+            # Código (programación)
+            if metadata.get('codigo'):
+                textos.append(f"Código: {metadata['codigo']}")
+            if metadata.get('codigo_corregido'):
+                textos.append(f"Código corregido: {metadata['codigo_corregido']}")
+        
+        # Items a nivel de pregunta (alternativa)
+        items_pregunta = pregunta.get('items', [])
+        if items_pregunta and isinstance(items_pregunta, list):
+            for item in items_pregunta:
+                if isinstance(item, dict):
+                    if item.get('palabras_clave'):
+                        palabras = item['palabras_clave']
+                        if isinstance(palabras, list):
+                            textos.append(f"Palabras: {', '.join(palabras)}")
+                    if item.get('oracion_esperada'):
+                        textos.append(f"Oración: {item['oracion_esperada']}")
+    
+    # Resultados (si hay)
+    resultado = data.get('resultado', {})
+    if isinstance(resultado, dict):
+        resultados_items = resultado.get('resultados', [])
+        if resultados_items:
+            for res_item in resultados_items:
+                if isinstance(res_item, dict):
+                    if res_item.get('feedback'):
+                        textos.append(f"Feedback: {res_item['feedback']}")
+    
+    return '\n'.join(textos)
 
 
 def leer_archivo_texto(ruta: str) -> str:
@@ -327,10 +479,28 @@ class IndexadorLocal:
         """Procesa un archivo y retorna lista de chunks con metadata"""
         ruta = info_archivo['ruta']
         ext = info_archivo['extension']
+        tipo_doc = info_archivo['tipo']
         
         # Leer contenido
         if ext in self.config.EXTENSIONES_PDF:
             contenido = leer_pdf(ruta)
+        elif ext == '.json':
+            # Para archivos JSON de prácticas/exámenes, extraer texto relevante
+            contenido_raw = leer_archivo_texto(ruta)
+            if contenido_raw.strip():
+                try:
+                    data = json.loads(contenido_raw)
+                    # Si es un JSON de práctica o examen, extraer texto relevante
+                    if isinstance(data, dict) and ('preguntas' in data or tipo_doc in ['practica', 'examen']):
+                        contenido = extraer_texto_practica_json(data)
+                        if not contenido.strip():
+                            contenido = contenido_raw  # Fallback al JSON raw
+                    else:
+                        contenido = contenido_raw
+                except json.JSONDecodeError:
+                    contenido = contenido_raw  # Si no es JSON válido, usar raw
+            else:
+                contenido = ""
         else:
             contenido = leer_archivo_texto(ruta)
         

@@ -12,6 +12,9 @@ from datetime import datetime, timedelta
 import asyncio
 import uuid
 import requests
+import subprocess
+import sys
+import os
 
 from examinator import obtener_texto
 from generador_dos_pasos import GeneradorDosPasos, PreguntaExamen
@@ -2692,6 +2695,244 @@ async def buscar_documentos(q: str):
         return {"query": q, "resultados": resultados, "total": len(resultados)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# 🔍 CONTROL DEL BUSCADOR IA (Lazy Load)
+# =============================================================================
+
+# Variable global para rastrear el proceso del buscador
+_buscador_proceso = None
+
+def _detectar_gpu_sistema():
+    """Detecta si hay GPU NVIDIA disponible en el sistema"""
+    try:
+        resultado = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if resultado.returncode == 0 and resultado.stdout.strip():
+            return {"gpu_disponible": True, "nombre": resultado.stdout.strip()}
+    except:
+        pass
+    return {"gpu_disponible": False, "nombre": None}
+
+def _verificar_buscador_corriendo():
+    """Verifica si el buscador está corriendo haciendo ping al endpoint de estado"""
+    try:
+        resp = requests.get("http://localhost:5001/api/estado", timeout=2)
+        if resp.status_code == 200:
+            return resp.json()
+    except:
+        pass
+    return None
+
+def _verificar_dependencias_buscador():
+    """Verifica si las dependencias del buscador están instaladas"""
+    try:
+        import sentence_transformers
+        import faiss
+        import rank_bm25
+        return True
+    except ImportError:
+        return False
+
+def _instalar_dependencias_buscador(con_gpu: bool = False):
+    """Instala las dependencias necesarias para el buscador"""
+    base_dir = Path(__file__).parent
+    venv_python = base_dir / "venv" / "Scripts" / "python.exe"
+    
+    if not venv_python.exists():
+        venv_python = sys.executable
+    
+    # Dependencias base (CPU)
+    deps_base = ["sentence-transformers", "faiss-cpu", "rank-bm25", "PyPDF2"]
+    
+    try:
+        for dep in deps_base:
+            subprocess.run(
+                [str(venv_python), "-m", "pip", "install", dep, "-q"],
+                capture_output=True,
+                timeout=300
+            )
+        
+        # Si con GPU y hay GPU disponible, instalar faiss-gpu y torch con CUDA
+        if con_gpu:
+            gpu_info = _detectar_gpu_sistema()
+            if gpu_info["gpu_disponible"]:
+                subprocess.run(
+                    [str(venv_python), "-m", "pip", "install", "torch", "--index-url", 
+                     "https://download.pytorch.org/whl/cu121", "-q"],
+                    capture_output=True,
+                    timeout=600
+                )
+        
+        return True
+    except Exception as e:
+        print(f"❌ Error instalando dependencias: {e}")
+        return False
+
+
+@app.get("/api/buscador/estado")
+async def estado_buscador():
+    """
+    Verifica el estado del buscador IA.
+    Retorna si está corriendo, si hay GPU, y si las dependencias están instaladas.
+    """
+    estado_servidor = _verificar_buscador_corriendo()
+    deps_instaladas = _verificar_dependencias_buscador()
+    gpu_info = _detectar_gpu_sistema()
+    
+    if estado_servidor:
+        return {
+            "corriendo": True,
+            "dependencias_instaladas": deps_instaladas,
+            "gpu_disponible": gpu_info["gpu_disponible"],
+            "gpu_nombre": gpu_info.get("nombre"),
+            "servidor": estado_servidor
+        }
+    else:
+        return {
+            "corriendo": False,
+            "dependencias_instaladas": deps_instaladas,
+            "gpu_disponible": gpu_info["gpu_disponible"],
+            "gpu_nombre": gpu_info.get("nombre"),
+            "servidor": None
+        }
+
+
+@app.post("/api/buscador/iniciar")
+async def iniciar_buscador(datos: dict = None):
+    """
+    Inicia el buscador IA si no está corriendo.
+    
+    Parámetros opcionales:
+    - instalar_deps: bool - si True, instala dependencias si faltan
+    - con_gpu: bool - si True, intenta instalar con soporte GPU
+    """
+    global _buscador_proceso
+    
+    datos = datos or {}
+    instalar_deps = datos.get("instalar_deps", True)
+    con_gpu = datos.get("con_gpu", False)
+    
+    # Verificar si ya está corriendo
+    estado = _verificar_buscador_corriendo()
+    if estado:
+        return {
+            "success": True,
+            "mensaje": "El buscador ya estaba corriendo",
+            "servidor": estado
+        }
+    
+    # Verificar dependencias
+    if not _verificar_dependencias_buscador():
+        if instalar_deps:
+            print("📦 Instalando dependencias del buscador...")
+            if not _instalar_dependencias_buscador(con_gpu=con_gpu):
+                raise HTTPException(
+                    status_code=500, 
+                    detail="No se pudieron instalar las dependencias. Instala manualmente: pip install sentence-transformers faiss-cpu rank-bm25"
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Las dependencias del buscador no están instaladas. Usa instalar_deps=True para instalarlas automáticamente."
+            )
+    
+    # Iniciar el buscador como subproceso
+    base_dir = Path(__file__).parent
+    venv_python = base_dir / "venv" / "Scripts" / "python.exe"
+    buscador_script = base_dir / "api_buscador.py"
+    
+    if not venv_python.exists():
+        venv_python = sys.executable
+    
+    if not buscador_script.exists():
+        raise HTTPException(status_code=500, detail="No se encontró api_buscador.py")
+    
+    try:
+        # Iniciar en segundo plano (sin ventana en Windows)
+        startupinfo = None
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+        
+        _buscador_proceso = subprocess.Popen(
+            [str(venv_python), str(buscador_script)],
+            cwd=str(base_dir),
+            startupinfo=startupinfo,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        # Esperar un poco para que inicie
+        await asyncio.sleep(3)
+        
+        # Verificar que inició correctamente
+        estado_nuevo = _verificar_buscador_corriendo()
+        if estado_nuevo:
+            return {
+                "success": True,
+                "mensaje": "Buscador iniciado correctamente",
+                "servidor": estado_nuevo
+            }
+        else:
+            # Esperar un poco más
+            await asyncio.sleep(5)
+            estado_nuevo = _verificar_buscador_corriendo()
+            if estado_nuevo:
+                return {
+                    "success": True,
+                    "mensaje": "Buscador iniciado (tardó un poco más)",
+                    "servidor": estado_nuevo
+                }
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail="El buscador se inició pero no responde. Puede que esté cargando el modelo."
+                )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al iniciar buscador: {str(e)}")
+
+
+@app.post("/api/buscador/detener")
+async def detener_buscador():
+    """Detiene el buscador IA si está corriendo"""
+    global _buscador_proceso
+    
+    # Verificar si está corriendo
+    if not _verificar_buscador_corriendo():
+        return {"success": True, "mensaje": "El buscador no estaba corriendo"}
+    
+    try:
+        # Intentar matar el proceso si lo tenemos
+        if _buscador_proceso:
+            _buscador_proceso.terminate()
+            _buscador_proceso = None
+        
+        # También intentar matar cualquier proceso en el puerto 5001 (Windows)
+        if sys.platform == "win32":
+            subprocess.run(
+                'for /f "tokens=5" %p in (\'netstat -ano ^| findstr ":5001.*LISTENING"\') do taskkill /F /PID %p',
+                shell=True,
+                capture_output=True
+            )
+        
+        await asyncio.sleep(1)
+        
+        # Verificar que se detuvo
+        if not _verificar_buscador_corriendo():
+            return {"success": True, "mensaje": "Buscador detenido correctamente"}
+        else:
+            return {"success": False, "mensaje": "El buscador sigue corriendo"}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al detener buscador: {str(e)}")
 
 
 @app.get("/api/documentos/contenido")

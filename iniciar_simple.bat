@@ -8,18 +8,57 @@ echo    📚 EXAMINATOR - INICIO LOCAL
 echo ════════════════════════════════════════════════════════════════
 echo.
 
-echo 🔄 Liberando puertos 5001, 8000 y 5173...
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5001.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
+:: ============================================================================
+:: VERIFICACIÓN DE PRIMERA EJECUCIÓN
+:: ============================================================================
+
+:: Verificar si el entorno virtual existe
+if not exist "venv\Scripts\activate.bat" (
+    echo ⚠️ Primera ejecución detectada - Iniciando instalación...
+    echo.
+    call instalar_primera_vez.bat
+    if %errorlevel% neq 0 (
+        echo ❌ Error en la instalación. Revisa los mensajes anteriores.
+        pause
+        exit /b 1
+    )
+    echo.
+    echo 🔄 Continuando con el inicio del sistema...
+    echo.
+)
+
+:: Verificar si las dependencias de Node están instaladas
+if not exist "examinator-web\node_modules" (
+    echo ⚠️ Dependencias de frontend no encontradas - Instalando...
+    cd examinator-web
+    call npm install
+    cd ..
+    echo.
+)
+
+:: ============================================================================
+:: CREAR CARPETAS SI NO EXISTEN
+:: ============================================================================
+
+if not exist "extracciones" mkdir extracciones
+if not exist "datos_persistentes" mkdir datos_persistentes
+if not exist "chats" mkdir chats
+if not exist "indice_busqueda" mkdir indice_busqueda
+
+:: ============================================================================
+:: INICIAR SERVIDORES
+:: ============================================================================
+
+echo 🔄 Liberando puertos 8000 y 5173...
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
 timeout /t 1 /nobreak >nul
 echo ✓ Puertos liberados
 echo.
 
-:: Iniciar Buscador IA
-echo 🔍 Iniciando Buscador IA (puerto 5001)...
-start /min "Buscador IA" cmd /c "cd /d %~dp0 && venv\Scripts\activate.bat && python api_buscador.py"
-timeout /t 2 >nul
+:: NOTA: El buscador IA ya NO se inicia automáticamente
+:: Se iniciará bajo demanda cuando abras la pestaña de búsqueda en la app
+:: Esto ahorra recursos del sistema al inicio
 
 :: Iniciar Backend
 echo 🔥 Iniciando Backend API (puerto 8000)...
