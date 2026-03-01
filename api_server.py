@@ -213,9 +213,12 @@ def guardar_config(config: dict):
         json.dump(config, f, ensure_ascii=False, indent=2)
 
 
+# Variable global para saber si Ollama está disponible
+OLLAMA_DISPONIBLE = False
+
 def inicializar_modelo():
     """Carga automáticamente el modelo configurado al iniciar el servidor"""
-    global generador_actual
+    global generador_actual, OLLAMA_DISPONIBLE
     try:
         config = cargar_config()
         modelo_path = config.get("modelo_path")
@@ -223,11 +226,11 @@ def inicializar_modelo():
         usar_ollama = config.get("usar_ollama", True)
         
         print(f"\n{'='*60}")
-        print(f"🚀 Iniciando Examinator API con Ollama + GPU...")
+        print(f"🚀 Iniciando Examinator API...")
         print(f"{'='*60}\n")
         
-        # Intentar usar Ollama primero (GPU automática)
-        if usar_ollama:
+        # Intentar usar Ollama primero (GPU automática) - SOLO si está disponible
+        if usar_ollama and OLLAMA_DISPONIBLE:
             try:
                 generador_actual = GeneradorUnificado(
                     usar_ollama=True,
@@ -239,8 +242,8 @@ def inicializar_modelo():
                 print(f"🎮 Modelo activo: {modelo_ollama}")
                 print(f"{'='*60}\n")
             except Exception as e:
-                print(f"⚠️  Ollama no disponible: {e}")
-                print(f"💡 Intentando con modelo GGUF...\n")
+                print(f"⚠️  Error con Ollama: {e}")
+                OLLAMA_DISPONIBLE = False
                 
                 # Fallback a GeneradorDosPasos si Ollama falla
                 if modelo_path and Path(modelo_path).exists():
@@ -250,10 +253,22 @@ def inicializar_modelo():
                     print(f"✅ Modelo GGUF cargado: {modelo_path}")
                     print(f"{'='*60}\n")
                 else:
-                    print("\n⚠️ No hay modelo configurado o no existe el archivo")
-                    print("💡 Ve a Configuración para seleccionar un modelo\n")
+                    print("⚠️ No hay modelo configurado")
+                    print("💡 El servidor funcionará sin IA generativa")
+                    print("   Instala Ollama o configura un modelo GGUF\n")
+        elif usar_ollama and not OLLAMA_DISPONIBLE:
+            print("⚠️ Ollama no está disponible")
+            # Intentar GGUF como fallback
+            if modelo_path and Path(modelo_path).exists():
+                ajustes = config.get("ajustes_avanzados", {})
+                gpu_layers = ajustes.get('n_gpu_layers', 35)
+                generador_actual = GeneradorDosPasos(modelo_path=modelo_path, n_gpu_layers=gpu_layers)
+                print(f"✅ Usando modelo GGUF alternativo: {modelo_path}")
+            else:
+                print("💡 El servidor funcionará sin IA generativa")
+                print("   Para generar exámenes, instala Ollama desde: https://ollama.com/download\n")
         else:
-            # Usar modelo GGUF
+            # Usar modelo GGUF explícitamente
             if modelo_path and Path(modelo_path).exists():
                 ajustes = config.get("ajustes_avanzados", {})
                 gpu_layers = ajustes.get('n_gpu_layers', 0)
@@ -265,40 +280,73 @@ def inicializar_modelo():
                 print(f"✅ Modelo GGUF cargado: {modelo_path}")
                 print(f"{'='*60}\n")
             else:
-                print("\n⚠️ No hay modelo configurado o no existe el archivo")
-                print("💡 Ve a Configuración para seleccionar un modelo\n")
+                print("\n⚠️ No hay modelo configurado")
+                print("💡 El servidor funcionará sin IA generativa\n")
     except Exception as e:
         print(f"\n❌ Error al cargar modelo inicial: {e}")
-        print("💡 Puedes configurar el modelo desde la interfaz web\n")
+        print("💡 El servidor funcionará sin IA generativa\n")
 
 
 # Función para verificar y arrancar Ollama
 def verificar_y_arrancar_ollama():
     """Verifica si Ollama está corriendo y lo arranca si no lo está"""
+    global OLLAMA_DISPONIBLE
     import subprocess
     import platform
+    import os
+    import shutil
     
     try:
         # Verificar si Ollama responde
         response = requests.get("http://localhost:11434/api/tags", timeout=2)
         if response.status_code == 200:
             print("✅ Ollama ya está corriendo")
+            OLLAMA_DISPONIBLE = True
             return True
     except:
-        print("⚠️ Ollama no está corriendo, iniciando...")
+        print("⚠️ Ollama no está corriendo, intentando iniciar...")
+    
+    # Buscar el ejecutable de Ollama
+    ollama_exe = None
+    
+    # 1. Verificar si está en PATH
+    ollama_in_path = shutil.which("ollama")
+    if ollama_in_path:
+        ollama_exe = ollama_in_path
+    else:
+        # 2. Buscar en ubicaciones comunes de Windows
+        possible_paths = [
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama", "ollama.exe"),
+            os.path.join(os.environ.get("PROGRAMFILES", ""), "Ollama", "ollama.exe"),
+            os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "Local", "Programs", "Ollama", "ollama.exe"),
+            r"C:\Program Files\Ollama\ollama.exe",
+            r"C:\Ollama\ollama.exe",
+        ]
+        
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                ollama_exe = path
+                break
+    
+    if not ollama_exe:
+        print("⚠️ Ollama no encontrado. El servidor funcionará sin IA generativa.")
+        print("   Para usar IA, instala Ollama desde: https://ollama.com/download")
+        OLLAMA_DISPONIBLE = False
+        return False
         
     try:
+        print(f"   Usando: {ollama_exe}")
         # Arrancar Ollama en segundo plano
         if platform.system() == "Windows":
             subprocess.Popen(
-                ["ollama", "serve"],
+                [ollama_exe, "serve"],
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
         else:
             subprocess.Popen(
-                ["ollama", "serve"],
+                [ollama_exe, "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
@@ -311,14 +359,17 @@ def verificar_y_arrancar_ollama():
                 response = requests.get("http://localhost:11434/api/tags", timeout=1)
                 if response.status_code == 200:
                     print("✅ Ollama iniciado correctamente")
+                    OLLAMA_DISPONIBLE = True
                     return True
             except:
                 continue
         
         print("⚠️ Ollama no pudo iniciarse automáticamente")
+        OLLAMA_DISPONIBLE = False
         return False
     except Exception as e:
         print(f"❌ Error al iniciar Ollama: {e}")
+        OLLAMA_DISPONIBLE = False
         return False
 
 

@@ -59,23 +59,16 @@ echo.
 :: VERIFICACIÓN DE PRIMERA EJECUCIÓN / VENV CORRUPTO
 :: ============================================================================
 
-:: Verificar si el entorno virtual existe
+set NECESITA_INSTALACION=0
+
+:: Caso 1: No existe el venv
 if not exist "venv\Scripts\activate.bat" (
-    echo ⚠️ Primera ejecución detectada - Iniciando instalación...
-    echo.
-    call instalar_primera_vez.bat
-    if %errorlevel% neq 0 (
-        echo ❌ Error en la instalación. Revisa los mensajes anteriores.
-        pause
-        exit /b 1
-    )
-    echo.
-    echo 🔄 Continuando con el inicio del sistema...
-    echo.
-    goto :venv_ok
+    echo ⚠️ Entorno virtual no encontrado
+    set NECESITA_INSTALACION=1
+    goto :check_instalacion
 )
 
-:: Verificar si el venv fue creado en OTRA máquina (no portable)
+:: Caso 2: El venv es de otra PC
 echo 🔍 Verificando entorno virtual...
 findstr /C:"%USERNAME%" "venv\pyvenv.cfg" >nul 2>&1
 if %errorlevel% neq 0 (
@@ -85,21 +78,143 @@ if %errorlevel% neq 0 (
     echo ════════════════════════════════════════════════════════════════
     echo.
     echo    El entorno virtual fue creado en otra computadora.
-    echo    Necesita recrearse para funcionar aquí.
+    echo    Eliminando y recreando...
     echo.
-    echo    Eliminando venv antiguo y recreando...
-    echo.
-    rmdir /s /q venv
-    call instalar_primera_vez.bat
-    if %errorlevel% neq 0 (
-        echo ❌ Error recreando el entorno. Revisa los mensajes anteriores.
-        pause
-        exit /b 1
-    )
-    echo.
-    echo ✅ Entorno virtual recreado correctamente.
-    echo.
+    rmdir /s /q venv 2>nul
+    set NECESITA_INSTALACION=1
+) else (
+    echo ✓ Entorno virtual válido
 )
+
+:check_instalacion
+if %NECESITA_INSTALACION%==0 goto :venv_ok
+
+:: ============================================================================
+:: INSTALACIÓN AUTOMÁTICA (independiente de instalar_primera_vez.bat)
+:: ============================================================================
+
+echo.
+echo ════════════════════════════════════════════════════════════════
+echo    📦 INSTALACIÓN AUTOMÁTICA - Primera ejecución en esta PC
+echo ════════════════════════════════════════════════════════════════
+echo.
+echo    ⏱️ Esto puede tardar 5-15 minutos. NO CIERRES ESTA VENTANA.
+echo.
+
+:: Verificar Python
+echo [1/6] 🐍 Verificando Python...
+where python >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo ❌ ERROR: Python no está instalado o no está en PATH
+    echo.
+    echo    Descarga Python desde: https://www.python.org/downloads/
+    echo    ⚠️ IMPORTANTE: Marca "Add Python to PATH" durante la instalación
+    echo.
+    pause
+    exit /b 1
+)
+python --version
+echo    ✓ Python encontrado
+
+:: Verificar Node.js
+echo.
+echo [2/6] 📦 Verificando Node.js...
+where node >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo ❌ ERROR: Node.js no está instalado
+    echo.
+    echo    Descarga Node.js desde: https://nodejs.org/
+    echo    Instala la versión LTS (recomendada)
+    echo.
+    pause
+    exit /b 1
+)
+node --version
+echo    ✓ Node.js encontrado
+
+:: Crear entorno virtual
+echo.
+echo [3/6] 🔧 Creando entorno virtual Python...
+python -m venv venv
+if %errorlevel% neq 0 (
+    echo ❌ Error creando entorno virtual
+    pause
+    exit /b 1
+)
+echo    ✓ Entorno virtual creado
+
+:: Activar e instalar dependencias
+echo.
+echo [4/6] 📥 Instalando dependencias Python (esto tarda varios minutos)...
+echo       Por favor espera, no cierres la ventana...
+echo.
+
+call venv\Scripts\activate.bat
+
+echo    [4.1] Instalando servidor FastAPI...
+pip install fastapi uvicorn python-multipart requests beautifulsoup4 --quiet
+echo       ✓ FastAPI instalado
+
+echo    [4.2] Instalando Flask...
+pip install Flask Flask-Cors waitress --quiet
+echo       ✓ Flask instalado
+
+echo    [4.3] Instalando utilidades PDF/DOC...
+pip install pypdf PyPDF2 python-docx numpy tqdm --quiet
+echo       ✓ Utilidades instaladas
+
+echo    [4.4] Instalando buscador IA (puede tardar)...
+pip install sentence-transformers faiss-cpu rank-bm25 --quiet
+echo       ✓ Buscador IA instalado
+
+echo    [4.5] Instalando PyTorch CPU...
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --quiet
+echo       ✓ PyTorch instalado
+
+echo    [4.6] Instalando llama-cpp (para modelos locales)...
+pip install llama-cpp-python --quiet
+echo       ✓ llama-cpp instalado
+
+echo    [4.7] Instalando búsqueda web...
+pip install ddgs --quiet
+echo       ✓ Búsqueda web instalada
+
+echo.
+echo    ✅ Todas las dependencias Python instaladas
+
+:: Verificar/instalar dependencias Node
+echo.
+echo [5/6] ⚛️ Verificando dependencias del frontend...
+if not exist "examinator-web\node_modules" (
+    echo    Instalando dependencias de React/Vite...
+    cd examinator-web
+    call npm install
+    cd ..
+)
+echo    ✓ Frontend listo
+
+:: Crear carpetas necesarias
+echo.
+echo [6/6] 📁 Creando carpetas del proyecto...
+if not exist "extracciones" mkdir extracciones
+if not exist "datos_persistentes" mkdir datos_persistentes
+if not exist "chats" mkdir chats
+if not exist "chats_historial" mkdir chats_historial
+if not exist "indice_busqueda" mkdir indice_busqueda
+if not exist "examenes_de_archivos" mkdir examenes_de_archivos
+if not exist "logs_practicas_detallado" mkdir logs_practicas_detallado
+if not exist "temp" mkdir temp
+if not exist "modelos" mkdir modelos
+if not exist "md" mkdir md
+echo    ✓ Carpetas creadas
+
+echo.
+echo ════════════════════════════════════════════════════════════════
+echo    ✅ INSTALACIÓN COMPLETADA - Continuando con el inicio...
+echo ════════════════════════════════════════════════════════════════
+echo.
 
 :venv_ok
 
