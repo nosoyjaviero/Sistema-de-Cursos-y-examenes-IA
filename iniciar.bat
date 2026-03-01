@@ -197,43 +197,72 @@ echo.
 
 REM Usar ruta absoluta para pip (mas robusto que activate con espacios en ruta)
 set "VENV_PIP=%CD%\venv\Scripts\pip.exe"
+set "VENV_PYTHON=%CD%\venv\Scripts\python.exe"
 
-echo    [4.1] Instalando servidor FastAPI...
-"%VENV_PIP%" install fastapi uvicorn python-multipart requests beautifulsoup4 --quiet
+echo    [4.0] Actualizando pip...
+"%VENV_PYTHON%" -m pip install --upgrade pip --quiet
+echo       ✓ pip actualizado
+
+echo    [4.1] Instalando dependencias base...
+"%VENV_PIP%" install wheel setuptools filelock fsspec huggingface-hub
+echo       ✓ Dependencias base instaladas
+
+echo    [4.2] Instalando servidor FastAPI...
+"%VENV_PIP%" install fastapi uvicorn python-multipart requests beautifulsoup4
+if !errorlevel! neq 0 (
+    echo       ⚠️ Reintentando FastAPI...
+    "%VENV_PIP%" install fastapi uvicorn python-multipart requests beautifulsoup4 --force-reinstall
+)
+REM Verificar que FastAPI se instaló
+"%VENV_PYTHON%" -c "import fastapi" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo       ❌ ERROR: FastAPI no se instaló correctamente
+    echo       Intentando instalación forzada...
+    "%VENV_PIP%" install fastapi --force-reinstall --no-cache-dir
+)
 echo       ✓ FastAPI instalado
 
-echo    [4.2] Instalando Flask...
-"%VENV_PIP%" install Flask Flask-Cors waitress --quiet
+echo    [4.3] Instalando Flask...
+"%VENV_PIP%" install Flask Flask-Cors waitress
 echo       ✓ Flask instalado
 
-echo    [4.3] Instalando utilidades PDF/DOC...
-"%VENV_PIP%" install pypdf PyPDF2 python-docx numpy tqdm --quiet
+echo    [4.4] Instalando utilidades PDF/DOC...
+"%VENV_PIP%" install pypdf PyPDF2 python-docx numpy tqdm
 echo       ✓ Utilidades instaladas
 
-echo    [4.4] Instalando buscador IA (puede tardar)...
-"%VENV_PIP%" install sentence-transformers faiss-cpu rank-bm25 --quiet
+echo    [4.5] Instalando buscador IA (puede tardar)...
+"%VENV_PIP%" install sentence-transformers faiss-cpu rank-bm25
 echo       ✓ Buscador IA instalado
 
-echo    [4.5] Instalando PyTorch CPU...
-"%VENV_PIP%" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --quiet
+echo    [4.6] Instalando PyTorch CPU...
+"%VENV_PIP%" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 echo       ✓ PyTorch instalado
 
-echo    [4.6] Instalando llama-cpp (para modelos locales)...
-"%VENV_PIP%" install llama-cpp-python --quiet 2>nul
+echo    [4.7] Instalando llama-cpp (para modelos locales)...
+"%VENV_PIP%" install llama-cpp-python 2>nul
 if !errorlevel! neq 0 (
     echo       ⚠️ llama-cpp-python no se pudo instalar automaticamente
     echo       Intentando instalacion alternativa...
-    "%VENV_PIP%" install llama-cpp-python --prefer-binary --quiet 2>nul
+    "%VENV_PIP%" install llama-cpp-python --prefer-binary 2>nul
     if !errorlevel! neq 0 (
         echo       ⚠️ Usando version pre-compilada...
-        "%VENV_PIP%" install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --quiet 2>nul
+        "%VENV_PIP%" install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu 2>nul
     )
 )
 echo       ✓ llama-cpp instalado
 
-echo    [4.7] Instalando búsqueda web...
-"%VENV_PIP%" install ddgs --quiet
+echo    [4.8] Instalando búsqueda web...
+"%VENV_PIP%" install ddgs
 echo       ✓ Búsqueda web instalada
+
+echo.
+echo    [4.9] Verificando instalación...
+"%VENV_PYTHON%" -c "import fastapi; import torch; print('OK')" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo       ⚠️ Reparando dependencias faltantes...
+    "%VENV_PIP%" install --upgrade fastapi uvicorn torch --no-cache-dir
+)
+echo       ✓ Verificación completada
 
 echo.
 echo    ✅ Todas las dependencias Python instaladas
