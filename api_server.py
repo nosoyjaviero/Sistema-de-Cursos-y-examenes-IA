@@ -24,6 +24,16 @@ from cursos_db import CursosDatabase
 from busqueda_web import buscar_y_resumir
 from fastapi.staticfiles import StaticFiles
 
+# ============================================================
+# CONFIGURACIÓN DE TIMEOUTS PARA GENERACIÓN CON IA
+# ============================================================
+# Aumenta estos valores si tu PC es lenta o no tiene GPU
+# Para PCs sin GPU, la generación puede tomar 10-20 minutos
+TIMEOUT_GENERACION_OLLAMA = 3600  # 15 minutos - generación de exámenes/preguntas
+TIMEOUT_GENERACION_RAPIDA = 3600  # 10 minutos - generación de flashcards simples
+TIMEOUT_EVALUACION = 3600         # 5 minutos - evaluación de respuestas
+# ============================================================
+
 app = FastAPI(title="Examinator API", docs_url="/api/docs", openapi_url="/api/openapi.json")
 
 # Inicializar gestor de carpetas
@@ -3874,7 +3884,7 @@ RESPONDE ÚNICAMENTE EL JSON (un array que empieza con [ y termina con ]):"""
                     "stop": ["```", "Explicación:", "Nota:"]
                 }
             },
-            timeout=300
+            timeout=TIMEOUT_GENERACION_OLLAMA  # 15 min para PCs lentas
         )
         
         if response.status_code != 200:
@@ -4112,7 +4122,7 @@ IMPORTANTE: Tu respuesta debe ser SOLO el array JSON, sin texto adicional."""
                     "num_predict": 4096
                 }
             },
-            timeout=180
+            timeout=TIMEOUT_GENERACION_RAPIDA  # 10 min para PCs lentas
         )
         
         if response.status_code != 200:
@@ -4519,7 +4529,7 @@ NO incluyas texto adicional fuera del JSON. NO uses markdown. Solo el JSON puro.
         # Llamar a Ollama con el modelo especificado
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=float(TIMEOUT_EVALUACION)) as client:  # Timeout configurable
                 response = await client.post(
                     'http://localhost:11434/api/generate',
                     json={
@@ -4688,7 +4698,7 @@ Respond ONLY with the JSON, no additional text."""
 
         # Llamar a Ollama
         import httpx
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=float(TIMEOUT_GENERACION_RAPIDA)) as client:  # Timeout configurable para PCs lentas
             response = await client.post(
                 'http://localhost:11434/api/generate',
                 json={
@@ -4910,7 +4920,7 @@ Respond ONLY with valid JSON:
 
         # Llamar a Ollama para análisis
         import httpx
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=float(TIMEOUT_EVALUACION)) as client:  # Timeout configurable
             response = await client.post(
                 'http://localhost:11434/api/generate',
                 json={

@@ -1,0 +1,17 @@
+{
+  "id": "bab2d771-e483-4e06-812d-911939bac475",
+  "nombre": "Chat 1/3/2026",
+  "fecha": "2026-03-01T00:01:33.891327",
+  "mensajes": [
+    {
+      "tipo": "usuario",
+      "texto": "hola",
+      "hora": "23:57"
+    },
+    {
+      "tipo": "asistente",
+      "texto": "¡Hola! ¿En qué puedo ayudarte hoy? 😊",
+      "hora": "00:01"
+    }
+  ]
+}
