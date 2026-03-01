@@ -82,13 +82,16 @@ const MathEditor = forwardRef(
 
       // 3. Mantener \textbf como está - KaTeX lo soporta
 
-      // 4. Extraer contenidode bloques matemáticos \[...\] 
+      // 4. Extraer contenidode bloques matemáticos \[...\]
       // Reemplazar con marcadores temporales para preservar estructura
       const bloquesMath = [];
-      resultado = resultado.replace(/\\\[([\s\S]*?)\\\]/g, (match, contenido) => {
-        bloquesMath.push(contenido.trim());
-        return `__MATH_BLOCK_${bloquesMath.length - 1}__`;
-      });
+      resultado = resultado.replace(
+        /\\\[([\s\S]*?)\\\]/g,
+        (match, contenido) => {
+          bloquesMath.push(contenido.trim());
+          return `__MATH_BLOCK_${bloquesMath.length - 1}__`;
+        },
+      );
 
       // 5. Eliminar $$ y $ delimitadores
       resultado = resultado.replace(/\$\$/g, "");
@@ -105,7 +108,7 @@ const MathEditor = forwardRef(
 
       // 8. NO envolver automáticamente en gathered - dejar que el usuario decida
       // Si el contenido tiene múltiples expresiones, dejarlas separadas
-      
+
       return resultado;
     };
 
