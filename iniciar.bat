@@ -205,7 +205,16 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 echo       ✓ PyTorch instalado
 
 echo    [4.6] Instalando llama-cpp (para modelos locales)...
-pip install llama-cpp-python --quiet
+pip install llama-cpp-python --quiet 2>nul
+if !errorlevel! neq 0 (
+    echo       ⚠️ llama-cpp-python no se pudo instalar automaticamente
+    echo       Intentando instalacion alternativa...
+    pip install llama-cpp-python --prefer-binary --quiet 2>nul
+    if !errorlevel! neq 0 (
+        echo       ⚠️ Usando version pre-compilada...
+        pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu --quiet 2>nul
+    )
+)
 echo       ✓ llama-cpp instalado
 
 echo    [4.7] Instalando búsqueda web...
@@ -223,9 +232,9 @@ if !TIENE_NODE!==0 (
 ) else (
     if not exist "examinator-web\node_modules" (
         echo    Instalando dependencias de React/Vite...
-        cd examinator-web
+        pushd "%CD%\examinator-web"
         call npm install
-        cd ..
+        popd
     )
     echo    ✓ Frontend listo
 )
@@ -263,9 +272,9 @@ if not defined TIENE_NODE (
 if !TIENE_NODE!==1 (
     if not exist "examinator-web\node_modules" (
         echo ⚠️ Dependencias frontend no encontradas - Instalando...
-        cd examinator-web
+        pushd "%CD%\examinator-web"
         call npm install
-        cd ..
+        popd
         echo.
     )
 )
