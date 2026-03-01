@@ -82,9 +82,26 @@ if %errorlevel% neq 0 (
     echo.
     rmdir /s /q venv 2>nul
     set NECESITA_INSTALACION=1
-) else (
-    echo ✓ Entorno virtual válido
+    goto :check_instalacion
 )
+
+:: Caso 3: El venv existe pero las dependencias no están instaladas
+echo 🔍 Verificando dependencias instaladas...
+"venv\Scripts\python.exe" -c "import fastapi" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo ════════════════════════════════════════════════════════════════
+    echo    ⚠️  DEPENDENCIAS NO INSTALADAS
+    echo ════════════════════════════════════════════════════════════════
+    echo.
+    echo    El entorno virtual existe pero faltan las dependencias.
+    echo    Instalando dependencias...
+    echo.
+    set NECESITA_INSTALACION=1
+    goto :check_instalacion
+)
+
+echo ✓ Entorno virtual y dependencias válidos
 
 :check_instalacion
 if %NECESITA_INSTALACION%==0 goto :venv_ok
@@ -134,16 +151,21 @@ if %errorlevel% neq 0 (
 node --version
 echo    ✓ Node.js encontrado
 
-:: Crear entorno virtual
+:: Crear entorno virtual (solo si no existe)
 echo.
-echo [3/6] 🔧 Creando entorno virtual Python...
-python -m venv venv
-if %errorlevel% neq 0 (
-    echo ❌ Error creando entorno virtual
-    pause
-    exit /b 1
+echo [3/6] 🔧 Verificando entorno virtual Python...
+if exist "venv\Scripts\python.exe" (
+    echo    ✓ Entorno virtual ya existe - solo faltan dependencias
+) else (
+    echo    Creando entorno virtual...
+    python -m venv venv
+    if %errorlevel% neq 0 (
+        echo ❌ Error creando entorno virtual
+        pause
+        exit /b 1
+    )
+    echo    ✓ Entorno virtual creado
 )
-echo    ✓ Entorno virtual creado
 
 :: Activar e instalar dependencias
 echo.
