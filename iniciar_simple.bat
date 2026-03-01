@@ -1,11 +1,58 @@
 @echo off
 chcp 65001 > nul
 title 📚 Examinator - Inicio Local
+cd /d "%~dp0"
 
 echo.
 echo ════════════════════════════════════════════════════════════════
 echo    📚 EXAMINATOR - INICIO LOCAL
 echo ════════════════════════════════════════════════════════════════
+echo.
+
+:: ============================================================================
+:: ACTUALIZACIÓN AUTOMÁTICA DESDE GITHUB
+:: ============================================================================
+
+echo 🔄 Verificando actualizaciones en GitHub...
+
+:: Verificar si git está instalado
+where git >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ⚠️ Git no está instalado. Saltando actualización.
+    goto :skip_update
+)
+
+:: Verificar conexión a GitHub
+ping -n 1 github.com >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ⚠️ Sin conexión a internet. Saltando actualización.
+    goto :skip_update
+)
+
+:: Obtener cambios remotos
+git fetch origin Flashcards >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ⚠️ Error al conectar con GitHub. Saltando actualización.
+    goto :skip_update
+)
+
+:: Verificar si hay cambios
+for /f %%i in ('git rev-list HEAD...origin/Flashcards --count 2^>nul') do set COMMITS_BEHIND=%%i
+
+if "%COMMITS_BEHIND%"=="" set COMMITS_BEHIND=0
+if "%COMMITS_BEHIND%"=="0" (
+    echo ✅ Ya tienes la última versión.
+) else (
+    echo 📥 Hay %COMMITS_BEHIND% actualizaciones disponibles. Descargando...
+    git pull origin Flashcards
+    if %errorlevel% equ 0 (
+        echo ✅ Actualización completada!
+    ) else (
+        echo ⚠️ Error al actualizar. Puede haber conflictos locales.
+    )
+)
+
+:skip_update
 echo.
 
 :: ============================================================================

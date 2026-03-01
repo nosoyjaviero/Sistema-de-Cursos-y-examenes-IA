@@ -25832,7 +25832,7 @@ Generate an educational reading passage about this topic that would be suitable 
       categoriaArte: "basico",
       estiloArtistico: "ninguno",
       paletaColor: "ninguna",
-      // 🖼️ Campo para flashcards visuales  
+      // 🖼️ Campo para flashcards visuales
       imagenPrimero: false,
     });
     setModalNuevaFlashcard(true);
@@ -50431,6 +50431,19 @@ IDIOMA: ${idiomaSBL}
                               title="Ver todas las flashcards de esta carpeta"
                             >
                               🎴 Ver Flashcards
+                            </button>
+                            <button
+                              className="btn-acceso-rapido btn-editar-flashcard"
+                              onClick={() => {
+                                const flashcardActual =
+                                  flashcardsSesion[indiceFlashcardActual];
+                                if (flashcardActual) {
+                                  setFlashcardVistaCompleta(flashcardActual);
+                                }
+                              }}
+                              title="Ver y editar esta flashcard"
+                            >
+                              👁️ Ver/Editar Flashcard
                             </button>
                           </div>
                         </div>

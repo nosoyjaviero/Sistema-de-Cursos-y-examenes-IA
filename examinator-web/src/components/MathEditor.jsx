@@ -70,41 +70,42 @@ const MathEditor = forwardRef(
       resultado = resultado.replace(/\\date\s*\{[^}]*\}/gi, "");
       resultado = resultado.replace(/\\maketitle/gi, "");
 
-      // 2. Convertir secciones y subsecciones a texto matemático
+      // 2. Convertir secciones y subsecciones a texto simple (sin \text{})
       resultado = resultado.replace(
         /\\section\*?\s*\{([^}]*)\}/gi,
-        "\\text{\\textbf{$1}}",
+        "\\textbf{$1:}",
       );
       resultado = resultado.replace(
         /\\subsection\*?\s*\{([^}]*)\}/gi,
-        "\\text{\\textbf{$1}}",
+        "\\textbf{$1:}",
       );
 
-      // 3. Convertir \textbf{} a \text{\textbf{}} para math mode
-      resultado = resultado.replace(/\\textbf\s*\{([^}]*)\}/gi, "\\text{$1}");
+      // 3. Mantener \textbf como está - KaTeX lo soporta
 
-      // 4. Extraer contenido de bloques matemáticos \[...\]
-      resultado = resultado.replace(/\\\[/g, "\n");
-      resultado = resultado.replace(/\\\]/g, "\n");
+      // 4. Extraer contenidode bloques matemáticos \[...\] 
+      // Reemplazar con marcadores temporales para preservar estructura
+      const bloquesMath = [];
+      resultado = resultado.replace(/\\\[([\s\S]*?)\\\]/g, (match, contenido) => {
+        bloquesMath.push(contenido.trim());
+        return `__MATH_BLOCK_${bloquesMath.length - 1}__`;
+      });
 
-      // 5. Eliminar $$ delimitadores si existen
+      // 5. Eliminar $$ y $ delimitadores
       resultado = resultado.replace(/\$\$/g, "");
       resultado = resultado.replace(/\$/g, "");
 
-      // 6. Procesar líneas y construir contenido multilínea
-      const lineas = resultado
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
+      // 6. Reconstruir con los bloques matemáticos
+      bloquesMath.forEach((bloque, idx) => {
+        resultado = resultado.replace(`__MATH_BLOCK_${idx}__`, bloque);
+      });
 
-      // 7. Envolver en gathered para visualización vertical
-      if (lineas.length > 1) {
-        const contenidoFormateado = lineas.join(" \\\\\n");
-        resultado = `\\begin{gathered}\n${contenidoFormateado}\n\\end{gathered}`;
-      } else {
-        resultado = lineas.join("");
-      }
+      // 7. Limpiar espacios y líneas vacías excesivos
+      resultado = resultado.replace(/\n{3,}/g, "\n\n");
+      resultado = resultado.trim();
 
+      // 8. NO envolver automáticamente en gathered - dejar que el usuario decida
+      // Si el contenido tiene múltiples expresiones, dejarlas separadas
+      
       return resultado;
     };
 

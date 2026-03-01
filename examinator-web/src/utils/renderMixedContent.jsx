@@ -322,6 +322,167 @@ export const renderMixedContent = (text) => {
     return renderLatexDocument(text);
   }
 
+  // 🔥 DETECTAR CONTENIDO LaTeX PURO SIN DELIMITADORES
+  // Si el texto tiene muchos comandos LaTeX pero no tiene delimitadores $$ o $
+  const tieneComandosLatex = (
+    text.includes("\\frac") ||
+    text.includes("\\begin{") ||
+    text.includes("\\left") ||
+    text.includes("\\right") ||
+    text.includes("\\text{") ||
+    text.includes("\\quad") ||
+    text.includes("\\leftarrow") ||
+    text.includes("\\rightarrow")
+  );
+  
+  const tieneDelimitadores = (
+    text.includes("$$") ||
+    /(?<!\$)\$(?!\$)/.test(text) // $ pero no $$
+  );
+
+  // Si tiene comandos LaTeX pero NO tiene delimitadores, es LaTeX puro
+  if (tieneComandosLatex && !tieneDelimitadores) {
+    // Limpiar LaTeX para evitar errores comunes
+    let latexLimpio = text;
+    
+    // Si tiene \begin{gathered}, extraer solo ese contenido
+    const gatheredMatch = latexLimpio.match(/\\begin\{gathered\}([\s\S]*?)\\end\{gathered\}/);
+    if (gatheredMatch) {
+      latexLimpio = `\\begin{gathered}${gatheredMatch[1]}\\end{gathered}`;
+    }
+    
+    // Quitar \\ sueltos al inicio y final
+    latexLimpio = latexLimpio
+      .replace(/^\s*\\\\+\s*/gm, '') // Quitar \\ al inicio de líneas
+      .replace(/\s*\\\\+\s*$/gm, '') // Quitar \\ al final de líneas (pero no dentro del contenido)
+      .replace(/\\\\{3,}/g, '\\\\') // Reducir 3+ \\ a uno
+      .trim();
+    
+    // Si empieza con \right o termina con \left, hay un problema de balance
+    if (latexLimpio.startsWith('\\right')) {
+      latexLimpio = latexLimpio.replace(/^\\right[^\s]*\s*\\\\?\s*/, '');
+    }
+    
+    // Quitar texto suelto antes de \begin{gathered}
+    if (latexLimpio.includes('\\begin{gathered}')) {
+      const idxGathered = latexLimpio.indexOf('\\begin{gathered}');
+      // Solo quitar si hay menos de 50 caracteres antes (probablemente basura)
+      if (idxGathered > 0 && idxGathered < 50) {
+        latexLimpio = latexLimpio.substring(idxGathered);
+      }
+    }
+    
+    // Quitar texto suelto después de \end{gathered}
+    if (latexLimpio.includes('\\end{gathered}')) {
+      const idxEndGathered = latexLimpio.indexOf('\\end{gathered}') + '\\end{gathered}'.length;
+      // Solo quitar si hay menos de 50 caracteres después (probablemente duplicado)
+      if (idxEndGathered < latexLimpio.length && latexLimpio.length - idxEndGathered < 200) {
+        latexLimpio = latexLimpio.substring(0, idxEndGathered);
+      }
+    }
+    
+    // 🔥 Si tiene ambientes internos (cases, array, matrix) pero NO está envuelto en gathered,
+    // envolver todo para que se vea vertical
+    const tieneAmbientesInternos = latexLimpio.includes('\\begin{cases}') ||
+                                   latexLimpio.includes('\\begin{array}') ||
+                                   latexLimpio.includes('\\begin{matrix}') ||
+                                   latexLimpio.includes('\\begin{pmatrix}') ||
+                                   latexLimpio.includes('\\begin{bmatrix}') ||
+                                   latexLimpio.includes('\\left[');
+    
+    const yaEnvuelto = latexLimpio.includes('\\begin{gathered}') || 
+                       latexLimpio.includes('\\begin{aligned}');
+    
+    // Si tiene ambientes internos pero NO está envuelto, usar gathered
+    if (tieneAmbientesInternos && !yaEnvuelto) {
+      latexLimpio = `\\begin{gathered}\n${latexLimpio}\n\\end{gathered}`;
+    }
+    
+    // Si NO tiene ambientes multilínea y tiene múltiples expresiones con \\, 
+    // dividir y renderizar cada parte verticalmente
+    const noTieneAmbienteMultilinea = !latexLimpio.includes('\\begin{gathered}') && 
+                                       !latexLimpio.includes('\\begin{aligned}') &&
+                                       !latexLimpio.includes('\\begin{array}') &&
+                                       !latexLimpio.includes('\\begin{cases}') &&
+                                       !latexLimpio.includes('\\begin{matrix}') &&
+                                       !latexLimpio.includes('\\begin{pmatrix}') &&
+                                       !latexLimpio.includes('\\begin{bmatrix}');
+    
+    if (noTieneAmbienteMultilinea && latexLimpio.includes('\\\\')) {
+      // Dividir por \\ y renderizar cada expresión como bloque separado
+      const expresiones = latexLimpio.split(/\\\\/).map(e => e.trim()).filter(e => e.length > 0);
+      
+      if (expresiones.length > 1) {
+        return (
+          <div style={{ 
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "1rem",
+            background: "rgba(147, 51, 234, 0.05)",
+            borderRadius: "8px",
+            overflowX: "auto",
+          }}>
+            {expresiones.map((expr, idx) => {
+              try {
+                return (
+                  <div key={idx} style={{ textAlign: "center" }}>
+                    <BlockMath math={expr} />
+                  </div>
+                );
+              } catch (e) {
+                return (
+                  <div key={idx} style={{ color: "#fca5a5", fontFamily: "monospace", fontSize: "0.85rem" }}>
+                    {expr}
+                  </div>
+                );
+              }
+            })}
+          </div>
+        );
+      }
+    }
+    
+    try {
+      // Intentar renderizar como bloque matemático
+      return (
+        <div style={{ 
+          overflowX: "auto", 
+          padding: "1rem",
+          background: "rgba(147, 51, 234, 0.05)",
+          borderRadius: "8px",
+        }}>
+          <BlockMath math={latexLimpio} />
+        </div>
+      );
+    } catch (e) {
+      console.error("Error renderizando LaTeX puro:", e.message);
+      // Fallback: mostrar el LaTeX como código formateado
+      return (
+        <div style={{ 
+          overflowX: "auto", 
+          padding: "1rem",
+          background: "rgba(239, 68, 68, 0.1)",
+          borderRadius: "8px",
+          border: "1px solid rgba(239, 68, 68, 0.3)",
+        }}>
+          <div style={{ color: "#fca5a5", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+            ⚠️ Error renderizando LaTeX: {e.message}
+          </div>
+          <pre style={{ 
+            color: "#e2e8f0", 
+            fontFamily: "monospace",
+            fontSize: "0.85rem",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}>
+            {latexLimpio}
+          </pre>
+        </div>
+      );
+    }
+  }
+
   const parts = [];
   let currentIndex = 0;
 

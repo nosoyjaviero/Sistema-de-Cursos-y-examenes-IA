@@ -11,8 +11,54 @@ echo.
 REM Verificar que estamos en el directorio correcto
 cd /d "%~dp0"
 
-echo [1/6] 📍 Verificando directorio...
+echo [1/7] 📍 Verificando directorio...
 echo Ubicación: %CD%
+echo.
+
+REM ============================================================================
+REM ACTUALIZACIÓN AUTOMÁTICA DESDE GITHUB
+REM ============================================================================
+
+echo [2/7] 🔄 Verificando actualizaciones en GitHub...
+
+REM Verificar si git está instalado
+where git >nul 2>&1
+if %errorlevel% neq 0 (
+    echo    ⚠️ Git no está instalado. Saltando actualización.
+    goto :skip_update
+)
+
+REM Verificar conexión a GitHub
+ping -n 1 github.com >nul 2>&1
+if %errorlevel% neq 0 (
+    echo    ⚠️ Sin conexión a internet. Saltando actualización.
+    goto :skip_update
+)
+
+REM Obtener cambios remotos
+git fetch origin Flashcards >nul 2>&1
+if %errorlevel% neq 0 (
+    echo    ⚠️ Error al conectar con GitHub. Saltando actualización.
+    goto :skip_update
+)
+
+REM Verificar si hay cambios
+for /f %%i in ('git rev-list HEAD...origin/Flashcards --count 2^>nul') do set COMMITS_BEHIND=%%i
+
+if "%COMMITS_BEHIND%"=="" set COMMITS_BEHIND=0
+if "%COMMITS_BEHIND%"=="0" (
+    echo    ✅ Ya tienes la última versión.
+) else (
+    echo    📥 Hay %COMMITS_BEHIND% actualizaciones disponibles. Descargando...
+    git pull origin Flashcards
+    if %errorlevel% equ 0 (
+        echo    ✅ Actualización completada!
+    ) else (
+        echo    ⚠️ Error al actualizar. Puede haber conflictos locales.
+    )
+)
+
+:skip_update
 echo.
 
 REM ============================================================================
@@ -48,7 +94,7 @@ if not exist "chats" mkdir chats
 if not exist "indice_busqueda" mkdir indice_busqueda
 
 REM Matar procesos en puertos si existen
-echo [2/6] 🔄 Liberando puertos 8000 y 5173...
+echo [3/7] 🔄 Liberando puertos 8000 y 5173...
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8000.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173.*LISTENING"') do taskkill /F /PID %%p >nul 2>&1
 timeout /t 1 /nobreak > nul
@@ -60,14 +106,14 @@ REM Se iniciará bajo demanda cuando abras la pestaña de búsqueda en la app
 REM Esto ahorra recursos del sistema al inicio
 
 REM Iniciar servidor backend
-echo [3/6] 🐍 Iniciando servidor Backend (Python/FastAPI)...
+echo [4/7] 🐍 Iniciando servidor Backend (Python/FastAPI)...
 start "Examinator Backend" cmd /k "echo 🚀 SERVIDOR BACKEND - No cierres esta ventana && echo. && venv\Scripts\python.exe api_server.py"
 timeout /t 3 /nobreak > nul
 echo    ✓ Backend iniciado en http://localhost:8000
 echo.
 
 REM Iniciar servidor frontend
-echo [4/6] ⚛️ Iniciando servidor Frontend (React/Vite)...
+echo [5/7] ⚛️ Iniciando servidor Frontend (React/Vite)...
 cd examinator-web
 start "Examinator Frontend" cmd /k "echo 🎨 SERVIDOR FRONTEND - No cierres esta ventana && echo. && npm run dev"
 cd ..
