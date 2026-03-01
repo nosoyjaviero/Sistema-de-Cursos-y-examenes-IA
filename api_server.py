@@ -215,53 +215,145 @@ def guardar_config(config: dict):
 
 # Variable global para saber si Ollama está disponible
 OLLAMA_DISPONIBLE = False
+MODELOS_OLLAMA_DISPONIBLES = []  # Lista de modelos instalados en Ollama
+GPU_DISPONIBLE = False  # Si hay GPU NVIDIA disponible
+
+def detectar_gpu():
+    """Detecta si hay GPU NVIDIA disponible"""
+    global GPU_DISPONIBLE
+    try:
+        # Intentar con nvidia-smi
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            GPU_DISPONIBLE = True
+            print(f"✅ GPU detectada: {result.stdout.strip()}")
+            return True
+    except:
+        pass
+    
+    # Intentar con PyTorch
+    try:
+        import torch
+        if torch.cuda.is_available():
+            GPU_DISPONIBLE = True
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"✅ GPU detectada (PyTorch): {gpu_name}")
+            return True
+    except:
+        pass
+    
+    GPU_DISPONIBLE = False
+    print("ℹ️ No se detectó GPU - usando CPU")
+    return False
+
+def obtener_modelos_ollama():
+    """Obtiene la lista de modelos instalados en Ollama"""
+    global MODELOS_OLLAMA_DISPONIBLES
+    try:
+        response = requests.get("http://localhost:11434/api/tags", timeout=3)
+        if response.status_code == 200:
+            data = response.json()
+            modelos = [m.get("name", "") for m in data.get("models", [])]
+            MODELOS_OLLAMA_DISPONIBLES = modelos
+            return modelos
+    except:
+        pass
+    MODELOS_OLLAMA_DISPONIBLES = []
+    return []
+
+def obtener_modelo_ollama_activo():
+    """
+    Obtiene el modelo de Ollama a usar:
+    1. Si el modelo configurado existe, usarlo
+    2. Si no, usar el primer modelo disponible
+    3. Si no hay modelos, retornar None
+    """
+    config = cargar_config()
+    modelo_configurado = config.get("modelo_ollama_activo", "")
+    
+    # Obtener modelos disponibles
+    modelos = obtener_modelos_ollama()
+    
+    if not modelos:
+        print("⚠️ No hay modelos instalados en Ollama")
+        return None
+    
+    # Verificar si el modelo configurado existe
+    if modelo_configurado:
+        # Buscar match exacto o parcial
+        for m in modelos:
+            if m == modelo_configurado or m.startswith(modelo_configurado) or modelo_configurado in m:
+                return m
+        print(f"⚠️ Modelo '{modelo_configurado}' no encontrado")
+        print(f"   Modelos disponibles: {', '.join(modelos)}")
+    
+    # Usar el primer modelo disponible
+    primer_modelo = modelos[0]
+    print(f"✅ Usando modelo disponible: {primer_modelo}")
+    
+    # Actualizar config con el modelo real
+    config["modelo_ollama_activo"] = primer_modelo
+    guardar_config(config)
+    
+    return primer_modelo
 
 def inicializar_modelo():
     """Carga automáticamente el modelo configurado al iniciar el servidor"""
-    global generador_actual, OLLAMA_DISPONIBLE
+    global generador_actual, OLLAMA_DISPONIBLE, GPU_DISPONIBLE
     try:
         config = cargar_config()
         modelo_path = config.get("modelo_path")
-        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
         usar_ollama = config.get("usar_ollama", True)
         
         print(f"\n{'='*60}")
         print(f"🚀 Iniciando Examinator API...")
         print(f"{'='*60}\n")
         
-        # Intentar usar Ollama primero (GPU automática) - SOLO si está disponible
+        # Detectar GPU
+        detectar_gpu()
+        
+        # Determinar GPU layers según disponibilidad
+        ajustes = config.get("ajustes_avanzados", {})
+        gpu_layers = ajustes.get('n_gpu_layers', 35) if GPU_DISPONIBLE else 0
+        
+        # Intentar usar Ollama primero - SOLO si está disponible
         if usar_ollama and OLLAMA_DISPONIBLE:
-            try:
-                generador_actual = GeneradorUnificado(
-                    usar_ollama=True,
-                    modelo_ollama=modelo_ollama,
-                    modelo_path_gguf=modelo_path,
-                    n_gpu_layers=35
-                )
-                print(f"✅ Ollama cargado - Usando GPU automáticamente")
-                print(f"🎮 Modelo activo: {modelo_ollama}")
-                print(f"{'='*60}\n")
-            except Exception as e:
-                print(f"⚠️  Error con Ollama: {e}")
-                OLLAMA_DISPONIBLE = False
-                
-                # Fallback a GeneradorDosPasos si Ollama falla
-                if modelo_path and Path(modelo_path).exists():
-                    ajustes = config.get("ajustes_avanzados", {})
-                    gpu_layers = ajustes.get('n_gpu_layers', 35)
-                    generador_actual = GeneradorDosPasos(modelo_path=modelo_path, n_gpu_layers=gpu_layers)
-                    print(f"✅ Modelo GGUF cargado: {modelo_path}")
+            # Obtener modelo dinámicamente (el configurado o el primer disponible)
+            modelo_ollama = obtener_modelo_ollama_activo()
+            
+            if modelo_ollama:
+                try:
+                    generador_actual = GeneradorUnificado(
+                        usar_ollama=True,
+                        modelo_ollama=modelo_ollama,
+                        modelo_path_gguf=modelo_path,
+                        n_gpu_layers=gpu_layers
+                    )
+                    print(f"✅ Ollama cargado" + (" (GPU)" if GPU_DISPONIBLE else " (CPU)"))
+                    print(f"🎮 Modelo activo: {modelo_ollama}")
                     print(f"{'='*60}\n")
-                else:
-                    print("⚠️ No hay modelo configurado")
-                    print("💡 El servidor funcionará sin IA generativa")
-                    print("   Instala Ollama o configura un modelo GGUF\n")
+                    
+                    # Guardar el modelo activo en config.json para que el frontend lo reconozca
+                    config["modelo_ollama_activo"] = modelo_ollama
+                    config["modelo_path"] = modelo_ollama  # Para compatibilidad con frontend
+                    config["usar_ollama"] = True
+                    config["gpu_activa"] = GPU_DISPONIBLE
+                    config["n_gpu_layers"] = gpu_layers
+                    guardar_config(config)
+                    
+                except Exception as e:
+                    print(f"⚠️  Error con Ollama: {e}")
+                    OLLAMA_DISPONIBLE = False
+            else:
+                print("⚠️ No hay modelos en Ollama - funcionando sin IA")
+                
         elif usar_ollama and not OLLAMA_DISPONIBLE:
             print("⚠️ Ollama no está disponible")
             # Intentar GGUF como fallback
             if modelo_path and Path(modelo_path).exists():
-                ajustes = config.get("ajustes_avanzados", {})
-                gpu_layers = ajustes.get('n_gpu_layers', 35)
                 generador_actual = GeneradorDosPasos(modelo_path=modelo_path, n_gpu_layers=gpu_layers)
                 print(f"✅ Usando modelo GGUF alternativo: {modelo_path}")
             else:
@@ -270,8 +362,6 @@ def inicializar_modelo():
         else:
             # Usar modelo GGUF explícitamente
             if modelo_path and Path(modelo_path).exists():
-                ajustes = config.get("ajustes_avanzados", {})
-                gpu_layers = ajustes.get('n_gpu_layers', 0)
                 generador_actual = GeneradorUnificado(
                     usar_ollama=False,
                     modelo_path_gguf=modelo_path,
@@ -279,6 +369,11 @@ def inicializar_modelo():
                 )
                 print(f"✅ Modelo GGUF cargado: {modelo_path}")
                 print(f"{'='*60}\n")
+                
+                # Guardar en config
+                config["modelo_path"] = modelo_path
+                config["usar_ollama"] = False
+                guardar_config(config)
             else:
                 print("\n⚠️ No hay modelo configurado")
                 print("💡 El servidor funcionará sin IA generativa\n")
@@ -648,16 +743,20 @@ async def obtener_config():
             config["modelo_activo"] = True
             config["tipo_motor"] = "ollama"
             config["usar_ollama"] = True
+            # Para Ollama, modelo_path debe ser el modelo de Ollama (para que el frontend lo reconozca)
+            config["modelo_path"] = generador_actual.modelo_ollama
             # Para Ollama, gpu_activa depende de n_gpu_layers
             gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 35
             config["gpu_activa"] = gpu_layers > 0
             print(f"📊 GET /api/config - Ollama detectado:")
             print(f"   usar_ollama={config['usar_ollama']}, gpu_activa={config['gpu_activa']}, n_gpu_layers={gpu_layers}")
+            print(f"   modelo_path={config['modelo_path']}, modelo_activo={config['modelo_activo']}")
         elif hasattr(generador_actual, 'modelo_path_gguf') and generador_actual.modelo_path_gguf:
             config["modelo_cargado"] = generador_actual.modelo_path_gguf
             config["modelo_activo"] = True
             config["tipo_motor"] = "gguf"
             config["usar_ollama"] = False
+            config["modelo_path"] = generador_actual.modelo_path_gguf
             gpu_layers = generador_actual.n_gpu_layers if hasattr(generador_actual, 'n_gpu_layers') else 0
             config["gpu_activa"] = gpu_layers > 0
         else:
@@ -667,11 +766,23 @@ async def obtener_config():
             config["usar_ollama"] = False
             config["gpu_activa"] = False
     else:
-        config["modelo_cargado"] = None
-        config["modelo_activo"] = False
-        config["tipo_motor"] = None
-        config["usar_ollama"] = False
-        config["gpu_activa"] = False
+        # No hay generador cargado, pero puede que haya modelo configurado
+        # Intentar detectar modelo disponible para primera instalación
+        if OLLAMA_DISPONIBLE and MODELOS_OLLAMA_DISPONIBLES:
+            # Hay Ollama con modelos disponibles
+            modelo_ollama = config.get("modelo_ollama_activo") or MODELOS_OLLAMA_DISPONIBLES[0]
+            config["modelo_path"] = modelo_ollama
+            config["modelo_activo"] = False  # Aún no cargado pero hay modelo disponible
+            config["tipo_motor"] = "ollama"
+            config["usar_ollama"] = True
+            config["modelo_pendiente"] = modelo_ollama  # Indica que hay modelo por cargar
+            print(f"📊 GET /api/config - Modelo Ollama disponible pero no cargado: {modelo_ollama}")
+        else:
+            config["modelo_cargado"] = None
+            config["modelo_activo"] = False
+            config["tipo_motor"] = None
+            config["usar_ollama"] = False
+            config["gpu_activa"] = False
     
     return config
 
@@ -2920,32 +3031,30 @@ async def iniciar_buscador(datos: dict = None):
             stderr=subprocess.DEVNULL
         )
         
-        # Esperar un poco para que inicie
-        await asyncio.sleep(3)
+        # Esperar con reintentos progresivos - el modelo puede tardar en cargar
+        intentos_maximos = 10
+        segundos_entre_intentos = 2
         
-        # Verificar que inició correctamente
-        estado_nuevo = _verificar_buscador_corriendo()
-        if estado_nuevo:
-            return {
-                "success": True,
-                "mensaje": "Buscador iniciado correctamente",
-                "servidor": estado_nuevo
-            }
-        else:
-            # Esperar un poco más
-            await asyncio.sleep(5)
+        for intento in range(intentos_maximos):
+            await asyncio.sleep(segundos_entre_intentos)
             estado_nuevo = _verificar_buscador_corriendo()
             if estado_nuevo:
                 return {
                     "success": True,
-                    "mensaje": "Buscador iniciado (tardó un poco más)",
+                    "mensaje": f"Buscador iniciado correctamente (tardó ~{(intento+1)*segundos_entre_intentos}s)",
                     "servidor": estado_nuevo
                 }
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail="El buscador se inició pero no responde. Puede que esté cargando el modelo."
-                )
+            # Aumentar tiempo de espera progresivamente
+            if intento > 3:
+                segundos_entre_intentos = 3
+        
+        # Si llegamos aquí, el buscador no respondió pero puede estar cargando
+        return {
+            "success": True,
+            "mensaje": "⏳ Buscador iniciándose... El modelo puede tardar 30-60 segundos en cargar. Intenta buscar en unos segundos.",
+            "servidor": {"status": "starting", "url": "http://localhost:5001"},
+            "warning": "El buscador está cargando el modelo de embeddings. Esto puede tardar la primera vez."
+        }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al iniciar buscador: {str(e)}")
@@ -3119,10 +3228,10 @@ async def generar_examen(datos: dict):
         # Recargar generador con la configuración actual
         callback_progreso(5, "Cargando modelo de IA...")
         config = cargar_config()
-        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
+        modelo_ollama = obtener_modelo_ollama_activo()  # Dinámico
         usar_ollama = config.get("usar_ollama", True)
         modelo_path = config.get("modelo_path")
-        gpu_layers = ajustes.get('n_gpu_layers', 35)
+        gpu_layers = ajustes.get('n_gpu_layers', 35) if GPU_DISPONIBLE else 0
         
         print(f"📦 Configuración actual:")
         print(f"   • Usar Ollama: {usar_ollama}")
@@ -3536,10 +3645,10 @@ async def generar_practica(datos: dict):
     try:
         # Recargar generador con la configuración actual
         callback_progreso(5, "Cargando modelo de IA...")
-        modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
+        modelo_ollama = obtener_modelo_ollama_activo()  # Dinámico
         usar_ollama = config.get("usar_ollama", True)
         modelo_path = config.get("modelo_path")
-        gpu_layers = ajustes.get('n_gpu_layers', 35)
+        gpu_layers = ajustes.get('n_gpu_layers', 35) if GPU_DISPONIBLE else 0
         
         # Crear generador con la configuración actual
         if usar_ollama:
@@ -3713,9 +3822,12 @@ async def generar_con_prompt_chatgpt(datos: dict):
         
         # Configuración
         config = cargar_config()
-        modelo_ollama = config.get("modelo_ollama_activo", "llama3.2:3b")
+        modelo_ollama = obtener_modelo_ollama_activo()  # Dinámico
         ajustes = config.get("ajustes_avanzados", {})
         temperature = ajustes.get("temperature", 0.5)  # Más bajo para JSON más estable
+        
+        if not modelo_ollama:
+            raise HTTPException(status_code=500, detail="No hay modelos de Ollama disponibles")
         
         print(f"🎯 Modelo: {modelo_ollama}")
         
@@ -4079,10 +4191,10 @@ async def evaluar_examen(datos: dict):
         if generador_unificado is None:
             config = cargar_config()
             usar_ollama = config.get("usar_ollama", True)
-            modelo_ollama = config.get("modelo_ollama_activo", "Meta-Llama-3.1-8B-Instruct-Q4-K-L")
+            modelo_ollama = obtener_modelo_ollama_activo()  # Dinámico
             modelo_path_gguf = config.get("modelo_path")
             ajustes = config.get("ajustes_avanzados", {})
-            n_gpu_layers = ajustes.get("n_gpu_layers", 35)
+            n_gpu_layers = ajustes.get("n_gpu_layers", 35) if GPU_DISPONIBLE else 0
             
             generador_unificado = GeneradorUnificado(
                 usar_ollama=usar_ollama,

@@ -76,15 +76,19 @@ except ImportError:
 # CONFIGURACIÓN
 # ===================================
 
+# Directorio base del proyecto (donde está este script)
+_DIRECTORIO_BASE = os.path.dirname(os.path.abspath(__file__))
+
 class ConfigBuscador:
     """Configuración centralizada del buscador"""
     
     # Rutas a indexar (incluye todas las carpetas con contenido relevante)
+    # Se calculan dinámicamente relativas al directorio del script
     CARPETAS_RAIZ = [
-        r"C:\Users\Fela\Documents\Proyectos\Examinator\extracciones",
-        r"C:\Users\Fela\Documents\Proyectos\Examinator\md",
-        r"C:\Users\Fela\Documents\Proyectos\Examinator\datos_persistentes",
-        r"C:\Users\Fela\Documents\Proyectos\Examinator\chats",
+        os.path.join(_DIRECTORIO_BASE, "extracciones"),
+        os.path.join(_DIRECTORIO_BASE, "md"),
+        os.path.join(_DIRECTORIO_BASE, "datos_persistentes"),
+        os.path.join(_DIRECTORIO_BASE, "chats"),
     ]
     
     # Modelo de embeddings (MODIFICA SI QUIERES OTRO MODELO)
@@ -96,7 +100,7 @@ class ConfigBuscador:
     CHUNK_OVERLAP = 200  # solapamiento entre chunks
     
     # Índice
-    RUTA_INDICE = r"C:\Users\Fela\Documents\Proyectos\Examinator\indice_busqueda"
+    RUTA_INDICE = os.path.join(_DIRECTORIO_BASE, "indice_busqueda")
     ARCHIVO_FAISS = "vectores.index"
     ARCHIVO_METADATA = "metadata.pkl"
     ARCHIVO_BM25 = "bm25.pkl"
