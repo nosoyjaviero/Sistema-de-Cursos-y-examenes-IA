@@ -83,3 +83,4 @@ lerna-debug.log*
 config.json
 ajustes.json
 
+*.gguf
