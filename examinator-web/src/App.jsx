@@ -801,11 +801,11 @@ function App() {
   const [filtroBusquedaTipo, setFiltroBusquedaTipo] = useState("todos");
   const [estadoIndice, setEstadoIndice] = useState(null);
   const [actualizandoIndice, setActualizandoIndice] = useState(false);
-  
+
   // Estados para configuración GPU del buscador
   const [instalandoGPU, setInstalandoGPU] = useState(false);
   const [cambiandoModo, setCambiandoModo] = useState(false);
-  
+
   // Estados para lazy-loading del buscador IA
   const [buscadorCorriendo, setBuscadorCorriendo] = useState(null); // null = no verificado, true/false = estado real
   const [iniciandoBuscador, setIniciandoBuscador] = useState(false);
@@ -4608,7 +4608,10 @@ function App() {
     }
 
     // Filtrar fases excluidas y redistribuir tiempo (aplica en modo 'todo' y 'flashcards')
-    if (excluidas.length > 0 && (prioridad === "todo" || prioridad === "flashcards")) {
+    if (
+      excluidas.length > 0 &&
+      (prioridad === "todo" || prioridad === "flashcards")
+    ) {
       const fasesOriginales = [...fases];
       const tiempoExcluido = fasesOriginales
         .filter((f) => excluidas.includes(f.tipo))
@@ -9419,14 +9422,14 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
     const repeticionesActuales = item.repeticiones || 0;
 
     // Intervalos fijos del sistema de repetición espaciada
-    const INTERVALOS_ACIERTO = [3, 7, 14, 30];  // Primera vez: +3d, Segunda: +7d, Tercera: +14d, Cuarta+: +30d
-    const INTERVALO_FALLO = 1;  // Si fallas: revisar mañana
+    const INTERVALOS_ACIERTO = [3, 7, 14, 30]; // Primera vez: +3d, Segunda: +7d, Tercera: +14d, Cuarta+: +30d
+    const INTERVALO_FALLO = 1; // Si fallas: revisar mañana
 
     // Generar 3 escenarios: siempre acierta, mixto, siempre falla
     const escenarios = {
-      facil: [],      // Siempre acierta
-      medio: [],      // Acierta pero a veces falla (1 de cada 3)
-      dificil: [],    // Siempre falla
+      facil: [], // Siempre acierta
+      medio: [], // Acierta pero a veces falla (1 de cada 3)
+      dificil: [], // Siempre falla
     };
 
     // Simular cada escenario
@@ -9493,8 +9496,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       sistemaIntervalos: {
         acierto: INTERVALOS_ACIERTO,
         fallo: INTERVALO_FALLO,
-        descripcion: "Acierto: +3d → +7d → +14d → +30d | Fallo: +1d (mañana)"
-      }
+        descripcion: "Acierto: +3d → +7d → +14d → +30d | Fallo: +1d (mañana)",
+      },
     };
   };
 
@@ -11491,14 +11494,14 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       // Verificar si el buscador ya está corriendo
       const verificarYPrepararBuscador = async () => {
         const estado = await verificarEstadoBuscador();
-        
+
         if (estado && estado.corriendo) {
           // Buscador ya está corriendo, cargar estado del índice
           cargarEstadoIndice();
         }
         // Si no está corriendo, el usuario verá un botón para iniciarlo manualmente
       };
-      
+
       verificarYPrepararBuscador();
     }
   }, [selectedMenu]);
@@ -25299,39 +25302,42 @@ Generate an educational reading passage about this topic that would be suitable 
   // Función para instalar dependencias GPU
   const instalarDependenciasGPU = async () => {
     if (instalandoGPU) return;
-    
+
     setInstalandoGPU(true);
     setMensaje({
       tipo: "info",
-      texto: "📦 Instalando dependencias GPU... Esto puede tardar varios minutos."
+      texto:
+        "📦 Instalando dependencias GPU... Esto puede tardar varios minutos.",
     });
-    
+
     try {
       const response = await fetch("http://localhost:5001/api/gpu/instalar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setMensaje({
           tipo: "exito",
-          texto: "✅ Dependencias GPU instaladas. Reinicia el servidor del buscador para activar."
+          texto:
+            "✅ Dependencias GPU instaladas. Reinicia el servidor del buscador para activar.",
         });
         // Recargar estado
         cargarEstadoIndice();
       } else {
         setMensaje({
           tipo: "error",
-          texto: `❌ Error: ${data.error || data.mensaje || 'Error desconocido'}`
+          texto: `❌ Error: ${data.error || data.mensaje || "Error desconocido"}`,
         });
       }
     } catch (error) {
       console.error("Error instalando GPU:", error);
       setMensaje({
         tipo: "error",
-        texto: "❌ Error de conexión. Asegúrate de que el servidor esté corriendo."
+        texto:
+          "❌ Error de conexión. Asegúrate de que el servidor esté corriendo.",
       });
     } finally {
       setInstalandoGPU(false);
@@ -25341,40 +25347,40 @@ Generate an educational reading passage about this topic that would be suitable 
   // Función para cambiar modo CPU/GPU
   const cambiarModoGPU = async (nuevoModo) => {
     if (cambiandoModo) return;
-    
+
     setCambiandoModo(true);
     setMensaje({
       tipo: "info",
-      texto: `🔄 Cambiando a modo ${nuevoModo.toUpperCase()}...`
+      texto: `🔄 Cambiando a modo ${nuevoModo.toUpperCase()}...`,
     });
-    
+
     try {
       const response = await fetch("http://localhost:5001/api/gpu/activar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modo: nuevoModo })
+        body: JSON.stringify({ modo: nuevoModo }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setMensaje({
           tipo: "exito",
-          texto: `✅ ${data.mensaje}`
+          texto: `✅ ${data.mensaje}`,
         });
         // Recargar estado
         cargarEstadoIndice();
       } else {
         setMensaje({
           tipo: "error",
-          texto: `❌ ${data.error || 'No se pudo cambiar el modo'}`
+          texto: `❌ ${data.error || "No se pudo cambiar el modo"}`,
         });
       }
     } catch (error) {
       console.error("Error cambiando modo:", error);
       setMensaje({
         tipo: "error",
-        texto: "❌ Error de conexión con el servidor del buscador."
+        texto: "❌ Error de conexión con el servidor del buscador.",
       });
     } finally {
       setCambiandoModo(false);
@@ -25383,36 +25389,40 @@ Generate an educational reading passage about this topic that would be suitable 
 
   // Función para limpiar índice del buscador
   const limpiarIndiceBuscador = async () => {
-    if (!confirm("¿Estás seguro de que quieres limpiar el índice? Tendrás que reindexar todo.")) {
+    if (
+      !confirm(
+        "¿Estás seguro de que quieres limpiar el índice? Tendrás que reindexar todo.",
+      )
+    ) {
       return;
     }
-    
+
     try {
       const response = await fetch("http://localhost:5001/api/limpiar_indice", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         setMensaje({
           tipo: "exito",
-          texto: `✅ ${data.mensaje}`
+          texto: `✅ ${data.mensaje}`,
         });
         setResultadosBusqueda([]);
         cargarEstadoIndice();
       } else {
         setMensaje({
           tipo: "error",
-          texto: `❌ ${data.error || 'Error al limpiar índice'}`
+          texto: `❌ ${data.error || "Error al limpiar índice"}`,
         });
       }
     } catch (error) {
       console.error("Error limpiando índice:", error);
       setMensaje({
         tipo: "error",
-        texto: "❌ Error de conexión con el servidor del buscador."
+        texto: "❌ Error de conexión con el servidor del buscador.",
       });
     }
   };
@@ -25424,7 +25434,9 @@ Generate an educational reading passage about this topic that would be suitable 
   // Función para verificar si el buscador está corriendo
   const verificarEstadoBuscador = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/buscador/estado`, { timeout: 3000 });
+      const response = await fetch(`${API_URL}/api/buscador/estado`, {
+        timeout: 3000,
+      });
       if (response.ok) {
         const data = await response.json();
         setBuscadorCorriendo(data.corriendo);
@@ -25444,7 +25456,7 @@ Generate an educational reading passage about this topic that would be suitable 
     setErrorBuscador(null);
     setMensaje({
       tipo: "info",
-      texto: "🚀 Iniciando buscador IA... Esto puede tardar unos segundos."
+      texto: "🚀 Iniciando buscador IA... Esto puede tardar unos segundos.",
     });
 
     try {
@@ -25453,8 +25465,8 @@ Generate an educational reading passage about this topic that would be suitable 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           instalar_deps: true,
-          con_gpu: conGpu
-        })
+          con_gpu: conGpu,
+        }),
       });
 
       const data = await response.json();
@@ -25463,7 +25475,7 @@ Generate an educational reading passage about this topic that would be suitable 
         setBuscadorCorriendo(true);
         setMensaje({
           tipo: "exito",
-          texto: `✅ ${data.mensaje}`
+          texto: `✅ ${data.mensaje}`,
         });
         // Cargar estado del índice
         setTimeout(() => {
@@ -25479,7 +25491,7 @@ Generate an educational reading passage about this topic that would be suitable 
       setErrorBuscador(error.message || "No se pudo iniciar el buscador");
       setMensaje({
         tipo: "error",
-        texto: `❌ ${error.message || "Error al iniciar buscador"}`
+        texto: `❌ ${error.message || "Error al iniciar buscador"}`,
       });
       return false;
     } finally {
@@ -25820,6 +25832,8 @@ Generate an educational reading passage about this topic that would be suitable 
       categoriaArte: "basico",
       estiloArtistico: "ninguno",
       paletaColor: "ninguna",
+      // 🖼️ Campo para flashcards visuales  
+      imagenPrimero: false,
     });
     setModalNuevaFlashcard(true);
   };
@@ -25905,6 +25919,8 @@ Generate an educational reading passage about this topic that would be suitable 
       categoriaArte: flashcard.categoriaArte || "basico",
       estiloArtistico: flashcard.estiloArtistico || "ninguno",
       paletaColor: flashcard.paletaColor || "ninguna",
+      // 🖼️ Campo para flashcards visuales
+      imagenPrimero: flashcard.imagenPrimero || false,
     };
 
     // 🔥 GUARDAR EN ARCHIVO INDIVIDUAL DE LA CARPETA
@@ -25984,7 +26000,7 @@ Generate an educational reading passage about this topic that would be suitable 
               // No eliminar imágenes base64, solo las del servidor
               const deleteResponse = await fetch(
                 `${API_URL}/api/imagen/${encodeURIComponent(rutaImagen)}`,
-                { method: "DELETE" }
+                { method: "DELETE" },
               );
               if (deleteResponse.ok) {
                 console.log(`✅ Imagen eliminada: ${rutaImagen}`);
@@ -39711,14 +39727,17 @@ IDIOMA: ${idiomaSBL}
                               />
                             ))}
                           </div>
-                          
+
                           {/* Botones de navegación */}
-                          <div className="errores-nav-buttons" style={{
-                            display: "flex",
-                            gap: "1rem",
-                            justifyContent: "center",
-                            margin: "1rem 0"
-                          }}>
+                          <div
+                            className="errores-nav-buttons"
+                            style={{
+                              display: "flex",
+                              gap: "1rem",
+                              justifyContent: "center",
+                              margin: "1rem 0",
+                            }}
+                          >
                             <button
                               className="btn-nav btn-nav-anterior"
                               onClick={() => {
@@ -39740,17 +39759,23 @@ IDIOMA: ${idiomaSBL}
                               style={{
                                 padding: "0.5rem 1rem",
                                 borderRadius: "8px",
-                                background: indiceErrorActual === 0 
-                                  ? "rgba(100, 100, 100, 0.3)" 
-                                  : "rgba(239, 68, 68, 0.2)",
-                                border: indiceErrorActual === 0 
-                                  ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                  : "1px solid rgba(239, 68, 68, 0.5)",
-                                color: indiceErrorActual === 0 ? "#666" : "#fca5a5",
-                                cursor: indiceErrorActual === 0 ? "not-allowed" : "pointer",
+                                background:
+                                  indiceErrorActual === 0
+                                    ? "rgba(100, 100, 100, 0.3)"
+                                    : "rgba(239, 68, 68, 0.2)",
+                                border:
+                                  indiceErrorActual === 0
+                                    ? "1px solid rgba(100, 100, 100, 0.3)"
+                                    : "1px solid rgba(239, 68, 68, 0.5)",
+                                color:
+                                  indiceErrorActual === 0 ? "#666" : "#fca5a5",
+                                cursor:
+                                  indiceErrorActual === 0
+                                    ? "not-allowed"
+                                    : "pointer",
                                 fontSize: "0.9rem",
                                 fontWeight: "500",
-                                transition: "all 0.2s"
+                                transition: "all 0.2s",
                               }}
                             >
                               ← Anterior
@@ -39758,7 +39783,10 @@ IDIOMA: ${idiomaSBL}
                             <button
                               className="btn-nav btn-nav-siguiente"
                               onClick={() => {
-                                if (indiceErrorActual < erroresActuales.length - 1) {
+                                if (
+                                  indiceErrorActual <
+                                  erroresActuales.length - 1
+                                ) {
                                   setRespuestaErrorSeleccionada(null);
                                   setErrorYaRespondido(false);
                                   setRespuestaTextual("");
@@ -39772,27 +39800,41 @@ IDIOMA: ${idiomaSBL}
                                   setIndiceErrorActual(indiceErrorActual + 1);
                                 }
                               }}
-                              disabled={indiceErrorActual === erroresActuales.length - 1}
+                              disabled={
+                                indiceErrorActual === erroresActuales.length - 1
+                              }
                               style={{
                                 padding: "0.5rem 1rem",
                                 borderRadius: "8px",
-                                background: indiceErrorActual === erroresActuales.length - 1 
-                                  ? "rgba(100, 100, 100, 0.3)" 
-                                  : "rgba(239, 68, 68, 0.2)",
-                                border: indiceErrorActual === erroresActuales.length - 1 
-                                  ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                  : "1px solid rgba(239, 68, 68, 0.5)",
-                                color: indiceErrorActual === erroresActuales.length - 1 ? "#666" : "#fca5a5",
-                                cursor: indiceErrorActual === erroresActuales.length - 1 ? "not-allowed" : "pointer",
+                                background:
+                                  indiceErrorActual ===
+                                  erroresActuales.length - 1
+                                    ? "rgba(100, 100, 100, 0.3)"
+                                    : "rgba(239, 68, 68, 0.2)",
+                                border:
+                                  indiceErrorActual ===
+                                  erroresActuales.length - 1
+                                    ? "1px solid rgba(100, 100, 100, 0.3)"
+                                    : "1px solid rgba(239, 68, 68, 0.5)",
+                                color:
+                                  indiceErrorActual ===
+                                  erroresActuales.length - 1
+                                    ? "#666"
+                                    : "#fca5a5",
+                                cursor:
+                                  indiceErrorActual ===
+                                  erroresActuales.length - 1
+                                    ? "not-allowed"
+                                    : "pointer",
                                 fontSize: "0.9rem",
                                 fontWeight: "500",
-                                transition: "all 0.2s"
+                                transition: "all 0.2s",
                               }}
                             >
                               Siguiente →
                             </button>
                           </div>
-                          
+
                           <p className="errores-mensaje">
                             {indiceErrorActual === erroresActuales.length - 1
                               ? "¡Último error! 🎉"
@@ -50139,12 +50181,15 @@ IDIOMA: ${idiomaSBL}
                         </div>
 
                         {/* Botones de navegación */}
-                        <div className="repaso-nav-buttons" style={{
-                          display: "flex",
-                          gap: "1rem",
-                          justifyContent: "center",
-                          margin: "1rem 0"
-                        }}>
+                        <div
+                          className="repaso-nav-buttons"
+                          style={{
+                            display: "flex",
+                            gap: "1rem",
+                            justifyContent: "center",
+                            margin: "1rem 0",
+                          }}
+                        >
                           <button
                             className="btn-nav btn-nav-anterior"
                             onClick={() => {
@@ -50179,33 +50224,44 @@ IDIOMA: ${idiomaSBL}
                             style={{
                               padding: "0.5rem 1rem",
                               borderRadius: "8px",
-                              background: indiceAciertoActual === 0 
-                                ? "rgba(100, 100, 100, 0.3)" 
-                                : "rgba(34, 197, 94, 0.2)",
-                              border: indiceAciertoActual === 0 
-                                ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                : "1px solid rgba(34, 197, 94, 0.5)",
-                              color: indiceAciertoActual === 0 ? "#666" : "#86efac",
-                              cursor: indiceAciertoActual === 0 ? "not-allowed" : "pointer",
+                              background:
+                                indiceAciertoActual === 0
+                                  ? "rgba(100, 100, 100, 0.3)"
+                                  : "rgba(34, 197, 94, 0.2)",
+                              border:
+                                indiceAciertoActual === 0
+                                  ? "1px solid rgba(100, 100, 100, 0.3)"
+                                  : "1px solid rgba(34, 197, 94, 0.5)",
+                              color:
+                                indiceAciertoActual === 0 ? "#666" : "#86efac",
+                              cursor:
+                                indiceAciertoActual === 0
+                                  ? "not-allowed"
+                                  : "pointer",
                               fontSize: "0.9rem",
                               fontWeight: "500",
-                              transition: "all 0.2s"
+                              transition: "all 0.2s",
                             }}
                           >
                             ← Anterior
                           </button>
-                          <span style={{
-                            display: "flex",
-                            alignItems: "center",
-                            color: "#94a3b8",
-                            fontSize: "0.85rem"
-                          }}>
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              color: "#94a3b8",
+                              fontSize: "0.85rem",
+                            }}
+                          >
                             {indiceAciertoActual + 1} / {aciertosRepaso.length}
                           </span>
                           <button
                             className="btn-nav btn-nav-siguiente"
                             onClick={() => {
-                              if (indiceAciertoActual < aciertosRepaso.length - 1) {
+                              if (
+                                indiceAciertoActual <
+                                aciertosRepaso.length - 1
+                              ) {
                                 setRespuestaAciertoSeleccionada(null);
                                 setAciertoYaRespondido(false);
                                 setRespuestaTextualAcierto("");
@@ -50232,21 +50288,35 @@ IDIOMA: ${idiomaSBL}
                                 setIndiceAciertoActual(indiceAciertoActual + 1);
                               }
                             }}
-                            disabled={indiceAciertoActual === aciertosRepaso.length - 1}
+                            disabled={
+                              indiceAciertoActual === aciertosRepaso.length - 1
+                            }
                             style={{
                               padding: "0.5rem 1rem",
                               borderRadius: "8px",
-                              background: indiceAciertoActual === aciertosRepaso.length - 1 
-                                ? "rgba(100, 100, 100, 0.3)" 
-                                : "rgba(34, 197, 94, 0.2)",
-                              border: indiceAciertoActual === aciertosRepaso.length - 1 
-                                ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                : "1px solid rgba(34, 197, 94, 0.5)",
-                              color: indiceAciertoActual === aciertosRepaso.length - 1 ? "#666" : "#86efac",
-                              cursor: indiceAciertoActual === aciertosRepaso.length - 1 ? "not-allowed" : "pointer",
+                              background:
+                                indiceAciertoActual ===
+                                aciertosRepaso.length - 1
+                                  ? "rgba(100, 100, 100, 0.3)"
+                                  : "rgba(34, 197, 94, 0.2)",
+                              border:
+                                indiceAciertoActual ===
+                                aciertosRepaso.length - 1
+                                  ? "1px solid rgba(100, 100, 100, 0.3)"
+                                  : "1px solid rgba(34, 197, 94, 0.5)",
+                              color:
+                                indiceAciertoActual ===
+                                aciertosRepaso.length - 1
+                                  ? "#666"
+                                  : "#86efac",
+                              cursor:
+                                indiceAciertoActual ===
+                                aciertosRepaso.length - 1
+                                  ? "not-allowed"
+                                  : "pointer",
                               fontSize: "0.9rem",
                               fontWeight: "500",
-                              transition: "all 0.2s"
+                              transition: "all 0.2s",
                             }}
                           >
                             Siguiente →
@@ -50416,10 +50486,12 @@ IDIOMA: ${idiomaSBL}
                             }}
                           >
                             {/* Cara Frontal - Especial para tipo visual */}
-                            <div 
+                            <div
                               className="flashcard-face flashcard-front"
                               onClick={() => {
-                                if (!flashcardsVolteadas[indiceFlashcardActual]) {
+                                if (
+                                  !flashcardsVolteadas[indiceFlashcardActual]
+                                ) {
                                   setFlashcardsVolteadas({
                                     ...flashcardsVolteadas,
                                     [indiceFlashcardActual]: true,
@@ -50431,7 +50503,8 @@ IDIOMA: ${idiomaSBL}
                               "visual" ? (
                                 <>
                                   {/* Si imagenPrimero es true, mostrar imagen */}
-                                  {flashcardsSesion[indiceFlashcardActual]?.imagenPrimero ? (
+                                  {flashcardsSesion[indiceFlashcardActual]
+                                    ?.imagenPrimero ? (
                                     <>
                                       <div className="flashcard-label">
                                         🖼️ ¿Qué representa esta imagen?
@@ -50449,18 +50522,26 @@ IDIOMA: ${idiomaSBL}
                                         }}
                                       >
                                         {/* La imagen en el frente */}
-                                        {flashcardsSesion[indiceFlashcardActual]?.imagenes?.length > 0 && (
-                                          <div style={{
-                                            display: "flex",
-                                            flexWrap: "wrap",
-                                            gap: "0.75rem",
-                                            justifyContent: "center",
-                                            maxHeight: "280px",
-                                            overflow: "auto",
-                                            padding: "0.5rem",
-                                          }}>
-                                            {flashcardsSesion[indiceFlashcardActual].imagenes.map((img, idx) => {
-                                              const imgUrl = typeof img === "string" ? img : img?.url;
+                                        {flashcardsSesion[indiceFlashcardActual]
+                                          ?.imagenes?.length > 0 && (
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexWrap: "wrap",
+                                              gap: "0.75rem",
+                                              justifyContent: "center",
+                                              maxHeight: "280px",
+                                              overflow: "auto",
+                                              padding: "0.5rem",
+                                            }}
+                                          >
+                                            {flashcardsSesion[
+                                              indiceFlashcardActual
+                                            ].imagenes.map((img, idx) => {
+                                              const imgUrl =
+                                                typeof img === "string"
+                                                  ? img
+                                                  : img?.url;
                                               if (!imgUrl) return null;
                                               return (
                                                 <img
@@ -50472,11 +50553,14 @@ IDIOMA: ${idiomaSBL}
                                                     maxHeight: "250px",
                                                     borderRadius: "8px",
                                                     objectFit: "contain",
-                                                    border: "2px solid rgba(59, 130, 246, 0.3)",
-                                                    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+                                                    border:
+                                                      "2px solid rgba(59, 130, 246, 0.3)",
+                                                    boxShadow:
+                                                      "0 4px 12px rgba(0,0,0,0.3)",
                                                   }}
                                                   onError={(e) => {
-                                                    e.target.style.display = "none";
+                                                    e.target.style.display =
+                                                      "none";
                                                   }}
                                                 />
                                               );
@@ -50511,8 +50595,9 @@ IDIOMA: ${idiomaSBL}
                                             lineHeight: "1.4",
                                           }}
                                         >
-                                          {flashcardsSesion[indiceFlashcardActual]
-                                            ?.titulo || "Flashcard Visual"}
+                                          {flashcardsSesion[
+                                            indiceFlashcardActual
+                                          ]?.titulo || "Flashcard Visual"}
                                         </h2>
                                         {/* Indicador de que hay imagen */}
                                         {flashcardsSesion[indiceFlashcardActual]
@@ -50520,7 +50605,8 @@ IDIOMA: ${idiomaSBL}
                                           <div
                                             style={{
                                               padding: "0.5rem 1rem",
-                                              background: "rgba(59, 130, 246, 0.2)",
+                                              background:
+                                                "rgba(59, 130, 246, 0.2)",
                                               borderRadius: "8px",
                                               color: "#93c5fd",
                                               fontSize: "0.85rem",
@@ -50539,18 +50625,22 @@ IDIOMA: ${idiomaSBL}
                                     </>
                                   )}
                                 </>
-                              ) : flashcardsSesion[indiceFlashcardActual]?.tipo === "arte" ? (
+                              ) : flashcardsSesion[indiceFlashcardActual]
+                                  ?.tipo === "arte" ? (
                                 <>
                                   <div className="flashcard-label">
                                     🎨 Arte - ¿Qué representa?
                                   </div>
                                   <div className="flashcard-content-main">
-                                    <div style={{
-                                      background: "rgba(244, 114, 182, 0.05)",
-                                      padding: "1rem",
-                                      borderRadius: "8px",
-                                      border: "1px solid rgba(244, 114, 182, 0.2)",
-                                    }}>
+                                    <div
+                                      style={{
+                                        background: "rgba(244, 114, 182, 0.05)",
+                                        padding: "1rem",
+                                        borderRadius: "8px",
+                                        border:
+                                          "1px solid rgba(244, 114, 182, 0.2)",
+                                      }}
+                                    >
                                       {renderMixedContent(
                                         flashcardsSesion[indiceFlashcardActual]
                                           ?.titulo ||
@@ -50597,7 +50687,8 @@ IDIOMA: ${idiomaSBL}
                               "visual" ? (
                                 <>
                                   {/* Si imagenPrimero es true, mostrar título y contenido en el reverso */}
-                                  {flashcardsSesion[indiceFlashcardActual]?.imagenPrimero ? (
+                                  {flashcardsSesion[indiceFlashcardActual]
+                                    ?.imagenPrimero ? (
                                     <>
                                       <div className="flashcard-label">
                                         📝 Respuesta
@@ -50621,22 +50712,28 @@ IDIOMA: ${idiomaSBL}
                                             lineHeight: "1.4",
                                           }}
                                         >
-                                          {flashcardsSesion[indiceFlashcardActual]?.titulo || "Flashcard Visual"}
+                                          {flashcardsSesion[
+                                            indiceFlashcardActual
+                                          ]?.titulo || "Flashcard Visual"}
                                         </h2>
                                         {/* Contenido/descripción */}
-                                        {flashcardsSesion[indiceFlashcardActual]?.contenido && (
+                                        {flashcardsSesion[indiceFlashcardActual]
+                                          ?.contenido && (
                                           <div
                                             className="flashcard-answer"
                                             style={{
                                               marginTop: "0.5rem",
                                               padding: "0.75rem",
-                                              background: "rgba(59, 130, 246, 0.1)",
+                                              background:
+                                                "rgba(59, 130, 246, 0.1)",
                                               borderRadius: "8px",
                                               fontSize: "0.9rem",
                                             }}
                                           >
                                             {renderMixedContent(
-                                              flashcardsSesion[indiceFlashcardActual].contenido,
+                                              flashcardsSesion[
+                                                indiceFlashcardActual
+                                              ].contenido,
                                             )}
                                           </div>
                                         )}
@@ -50694,7 +50791,8 @@ IDIOMA: ${idiomaSBL}
                                                       "0 4px 12px rgba(0,0,0,0.3)",
                                                   }}
                                                   onError={(e) => {
-                                                    e.target.style.display = "none";
+                                                    e.target.style.display =
+                                                      "none";
                                                   }}
                                                 />
                                               );
@@ -50709,7 +50807,8 @@ IDIOMA: ${idiomaSBL}
                                             style={{
                                               marginTop: "0.5rem",
                                               padding: "0.75rem",
-                                              background: "rgba(59, 130, 246, 0.1)",
+                                              background:
+                                                "rgba(59, 130, 246, 0.1)",
                                               borderRadius: "8px",
                                               fontSize: "0.9rem",
                                             }}
@@ -50753,12 +50852,16 @@ IDIOMA: ${idiomaSBL}
                                     🎨 Arte y Diseño
                                   </div>
                                   <div className="flashcard-content-main">
-                                    <div className="flashcard-answer" style={{
-                                      background: "rgba(244, 114, 182, 0.05)",
-                                      padding: "1rem",
-                                      borderRadius: "8px",
-                                      border: "1px solid rgba(244, 114, 182, 0.2)",
-                                    }}>
+                                    <div
+                                      className="flashcard-answer"
+                                      style={{
+                                        background: "rgba(244, 114, 182, 0.05)",
+                                        padding: "1rem",
+                                        borderRadius: "8px",
+                                        border:
+                                          "1px solid rgba(244, 114, 182, 0.2)",
+                                      }}
+                                    >
                                       {renderMixedContent(
                                         flashcardsSesion[indiceFlashcardActual]
                                           ?.contenido ||
@@ -50789,7 +50892,12 @@ IDIOMA: ${idiomaSBL}
                                     >
                                       {/* Renderizar LaTeX directamente */}
                                       {renderMixedContent(
-                                        flashcardsSesion[indiceFlashcardActual]?.contenido || flashcardsSesion[indiceFlashcardActual]?.reverso || "",
+                                        flashcardsSesion[indiceFlashcardActual]
+                                          ?.contenido ||
+                                          flashcardsSesion[
+                                            indiceFlashcardActual
+                                          ]?.reverso ||
+                                          "",
                                       )}
                                     </div>
                                   </div>
@@ -50981,7 +51089,12 @@ IDIOMA: ${idiomaSBL}
                                       }}
                                     >
                                       {renderMixedContent(
-                                        flashcardsSesion[indiceFlashcardActual]?.contenido || flashcardsSesion[indiceFlashcardActual]?.reverso || "",
+                                        flashcardsSesion[indiceFlashcardActual]
+                                          ?.contenido ||
+                                          flashcardsSesion[
+                                            indiceFlashcardActual
+                                          ]?.reverso ||
+                                          "",
                                       )}
                                     </div>
                                   </div>
@@ -51025,7 +51138,12 @@ IDIOMA: ${idiomaSBL}
                                       }}
                                     >
                                       {renderMixedContent(
-                                        flashcardsSesion[indiceFlashcardActual]?.contenido || flashcardsSesion[indiceFlashcardActual]?.reverso || "",
+                                        flashcardsSesion[indiceFlashcardActual]
+                                          ?.contenido ||
+                                          flashcardsSesion[
+                                            indiceFlashcardActual
+                                          ]?.reverso ||
+                                          "",
                                       )}
                                     </div>
                                   </div>
@@ -51147,36 +51265,49 @@ IDIOMA: ${idiomaSBL}
                               />
                             ))}
                           </div>
-                          
+
                           {/* Botones de navegación */}
-                          <div className="flashcards-nav-buttons" style={{
-                            display: "flex",
-                            gap: "1rem",
-                            justifyContent: "center",
-                            margin: "1rem 0"
-                          }}>
+                          <div
+                            className="flashcards-nav-buttons"
+                            style={{
+                              display: "flex",
+                              gap: "1rem",
+                              justifyContent: "center",
+                              margin: "1rem 0",
+                            }}
+                          >
                             <button
                               className="btn-nav btn-nav-anterior"
                               onClick={() => {
                                 if (indiceFlashcardActual > 0) {
-                                  setIndiceFlashcardActual(indiceFlashcardActual - 1);
+                                  setIndiceFlashcardActual(
+                                    indiceFlashcardActual - 1,
+                                  );
                                 }
                               }}
                               disabled={indiceFlashcardActual === 0}
                               style={{
                                 padding: "0.5rem 1rem",
                                 borderRadius: "8px",
-                                background: indiceFlashcardActual === 0 
-                                  ? "rgba(100, 100, 100, 0.3)" 
-                                  : "rgba(59, 130, 246, 0.2)",
-                                border: indiceFlashcardActual === 0 
-                                  ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                  : "1px solid rgba(59, 130, 246, 0.5)",
-                                color: indiceFlashcardActual === 0 ? "#666" : "#93c5fd",
-                                cursor: indiceFlashcardActual === 0 ? "not-allowed" : "pointer",
+                                background:
+                                  indiceFlashcardActual === 0
+                                    ? "rgba(100, 100, 100, 0.3)"
+                                    : "rgba(59, 130, 246, 0.2)",
+                                border:
+                                  indiceFlashcardActual === 0
+                                    ? "1px solid rgba(100, 100, 100, 0.3)"
+                                    : "1px solid rgba(59, 130, 246, 0.5)",
+                                color:
+                                  indiceFlashcardActual === 0
+                                    ? "#666"
+                                    : "#93c5fd",
+                                cursor:
+                                  indiceFlashcardActual === 0
+                                    ? "not-allowed"
+                                    : "pointer",
                                 fontSize: "0.9rem",
                                 fontWeight: "500",
-                                transition: "all 0.2s"
+                                transition: "all 0.2s",
                               }}
                             >
                               ← Anterior
@@ -51184,31 +51315,51 @@ IDIOMA: ${idiomaSBL}
                             <button
                               className="btn-nav btn-nav-siguiente"
                               onClick={() => {
-                                if (indiceFlashcardActual < flashcardsSesion.length - 1) {
-                                  setIndiceFlashcardActual(indiceFlashcardActual + 1);
+                                if (
+                                  indiceFlashcardActual <
+                                  flashcardsSesion.length - 1
+                                ) {
+                                  setIndiceFlashcardActual(
+                                    indiceFlashcardActual + 1,
+                                  );
                                 }
                               }}
-                              disabled={indiceFlashcardActual === flashcardsSesion.length - 1}
+                              disabled={
+                                indiceFlashcardActual ===
+                                flashcardsSesion.length - 1
+                              }
                               style={{
                                 padding: "0.5rem 1rem",
                                 borderRadius: "8px",
-                                background: indiceFlashcardActual === flashcardsSesion.length - 1 
-                                  ? "rgba(100, 100, 100, 0.3)" 
-                                  : "rgba(59, 130, 246, 0.2)",
-                                border: indiceFlashcardActual === flashcardsSesion.length - 1 
-                                  ? "1px solid rgba(100, 100, 100, 0.3)" 
-                                  : "1px solid rgba(59, 130, 246, 0.5)",
-                                color: indiceFlashcardActual === flashcardsSesion.length - 1 ? "#666" : "#93c5fd",
-                                cursor: indiceFlashcardActual === flashcardsSesion.length - 1 ? "not-allowed" : "pointer",
+                                background:
+                                  indiceFlashcardActual ===
+                                  flashcardsSesion.length - 1
+                                    ? "rgba(100, 100, 100, 0.3)"
+                                    : "rgba(59, 130, 246, 0.2)",
+                                border:
+                                  indiceFlashcardActual ===
+                                  flashcardsSesion.length - 1
+                                    ? "1px solid rgba(100, 100, 100, 0.3)"
+                                    : "1px solid rgba(59, 130, 246, 0.5)",
+                                color:
+                                  indiceFlashcardActual ===
+                                  flashcardsSesion.length - 1
+                                    ? "#666"
+                                    : "#93c5fd",
+                                cursor:
+                                  indiceFlashcardActual ===
+                                  flashcardsSesion.length - 1
+                                    ? "not-allowed"
+                                    : "pointer",
                                 fontSize: "0.9rem",
                                 fontWeight: "500",
-                                transition: "all 0.2s"
+                                transition: "all 0.2s",
                               }}
                             >
                               Siguiente →
                             </button>
                           </div>
-                          
+
                           <p className="flashcards-mensaje">
                             {indiceFlashcardActual ===
                             flashcardsSesion.length - 1
@@ -63032,20 +63183,21 @@ IDIOMA: ${idiomaSBL}
                 const notasAtrasadas = notas.filter((n) => {
                   const proximaRev = n.proximaRevision || n.proxima_revision;
                   const ultimaRev = n.ultimaRevision || n.ultima_revision;
-                  
+
                   // Si está atrasada
                   if (esAtrasado(proximaRev)) return true;
-                  
+
                   // Si es nueva (sin revisión previa) - también pendiente
                   if (!proximaRev && !ultimaRev) return true;
-                  
+
                   // Si toca hoy
                   if (proximaRev) {
                     const fechaProxima = new Date(proximaRev);
                     fechaProxima.setHours(0, 0, 0, 0);
-                    if (fechaProxima.getTime() === hoyRef.getTime()) return true;
+                    if (fechaProxima.getTime() === hoyRef.getTime())
+                      return true;
                   }
-                  
+
                   return false;
                 });
 
@@ -63056,21 +63208,23 @@ IDIOMA: ${idiomaSBL}
                 // 3. Tiene proximaRevision igual a hoy (toca hoy)
                 const flashcardsAtrasadas = flashcards.filter((f) => {
                   const proximaRev = f.proximaRevision || f.proxima_revision;
-                  const ultimaRev = f.ultimaRevision || f.ultima_revision || f.fechaRevision;
-                  
+                  const ultimaRev =
+                    f.ultimaRevision || f.ultima_revision || f.fechaRevision;
+
                   // Si está atrasada (fecha pasada)
                   if (esAtrasado(proximaRev)) return true;
-                  
+
                   // Si es nueva (nunca revisada) - también es pendiente
                   if (!proximaRev && !ultimaRev) return true;
-                  
+
                   // Si toca hoy
                   if (proximaRev) {
                     const fechaProxima = new Date(proximaRev);
                     fechaProxima.setHours(0, 0, 0, 0);
-                    if (fechaProxima.getTime() === hoyRef.getTime()) return true;
+                    if (fechaProxima.getTime() === hoyRef.getTime())
+                      return true;
                   }
-                  
+
                   return false;
                 });
 
@@ -64403,38 +64557,64 @@ IDIOMA: ${idiomaSBL}
 
             {/* Panel de inicio del buscador cuando no está corriendo */}
             {buscadorCorriendo === false && !iniciandoBuscador && (
-              <div style={{
-                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
-                borderRadius: "16px",
-                padding: "2.5rem",
-                marginBottom: "1.5rem",
-                border: "1px solid rgba(148, 163, 184, 0.15)",
-                textAlign: "center"
-              }}>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
+                  borderRadius: "16px",
+                  padding: "2.5rem",
+                  marginBottom: "1.5rem",
+                  border: "1px solid rgba(148, 163, 184, 0.15)",
+                  textAlign: "center",
+                }}
+              >
                 <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>🔍</div>
-                <h2 style={{ color: "#e2e8f0", marginBottom: "0.75rem", fontWeight: "600" }}>
+                <h2
+                  style={{
+                    color: "#e2e8f0",
+                    marginBottom: "0.75rem",
+                    fontWeight: "600",
+                  }}
+                >
                   Buscador IA no está activo
                 </h2>
-                <p style={{ color: "#94a3b8", marginBottom: "1.5rem", fontSize: "0.95rem" }}>
-                  El buscador semántico se inicia bajo demanda para ahorrar recursos del sistema.
-                  <br />Haz clic en el botón para iniciarlo.
+                <p
+                  style={{
+                    color: "#94a3b8",
+                    marginBottom: "1.5rem",
+                    fontSize: "0.95rem",
+                  }}
+                >
+                  El buscador semántico se inicia bajo demanda para ahorrar
+                  recursos del sistema.
+                  <br />
+                  Haz clic en el botón para iniciarlo.
                 </p>
-                
+
                 {errorBuscador && (
-                  <div style={{
-                    background: "rgba(239, 68, 68, 0.1)",
-                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                    borderRadius: "8px",
-                    padding: "0.75rem 1rem",
-                    marginBottom: "1rem",
-                    color: "#fca5a5",
-                    fontSize: "0.85rem"
-                  }}>
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.1)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      borderRadius: "8px",
+                      padding: "0.75rem 1rem",
+                      marginBottom: "1rem",
+                      color: "#fca5a5",
+                      fontSize: "0.85rem",
+                    }}
+                  >
                     ⚠️ {errorBuscador}
                   </div>
                 )}
-                
-                <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "1rem",
+                    justifyContent: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <button
                     onClick={() => iniciarBuscadorIA(false)}
                     style={{
@@ -64449,11 +64629,12 @@ IDIOMA: ${idiomaSBL}
                       display: "flex",
                       alignItems: "center",
                       gap: "0.5rem",
-                      transition: "transform 0.2s, box-shadow 0.2s"
+                      transition: "transform 0.2s, box-shadow 0.2s",
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "scale(1.02)";
-                      e.currentTarget.style.boxShadow = "0 4px 20px rgba(59, 130, 246, 0.4)";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 20px rgba(59, 130, 246, 0.4)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = "scale(1)";
@@ -64462,7 +64643,7 @@ IDIOMA: ${idiomaSBL}
                   >
                     💻 Iniciar (CPU)
                   </button>
-                  
+
                   <button
                     onClick={() => iniciarBuscadorIA(true)}
                     style={{
@@ -64477,11 +64658,12 @@ IDIOMA: ${idiomaSBL}
                       display: "flex",
                       alignItems: "center",
                       gap: "0.5rem",
-                      transition: "transform 0.2s, box-shadow 0.2s"
+                      transition: "transform 0.2s, box-shadow 0.2s",
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.transform = "scale(1.02)";
-                      e.currentTarget.style.boxShadow = "0 4px 20px rgba(16, 185, 129, 0.4)";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 20px rgba(16, 185, 129, 0.4)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.transform = "scale(1)";
@@ -64491,50 +64673,76 @@ IDIOMA: ${idiomaSBL}
                     🎮 Iniciar con GPU
                   </button>
                 </div>
-                
-                <p style={{ color: "#64748b", fontSize: "0.8rem", marginTop: "1rem" }}>
-                  💡 El modo GPU requiere una GPU NVIDIA y es más rápido para búsquedas.
+
+                <p
+                  style={{
+                    color: "#64748b",
+                    fontSize: "0.8rem",
+                    marginTop: "1rem",
+                  }}
+                >
+                  💡 El modo GPU requiere una GPU NVIDIA y es más rápido para
+                  búsquedas.
                 </p>
               </div>
             )}
 
             {/* Panel de carga mientras se inicia el buscador */}
             {iniciandoBuscador && (
-              <div style={{
-                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
-                borderRadius: "16px",
-                padding: "2.5rem",
-                marginBottom: "1.5rem",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-                textAlign: "center"
-              }}>
-                <div className="loading-spinner" style={{ 
-                  fontSize: "3rem", 
-                  marginBottom: "1rem",
-                  animation: "spin 1s linear infinite"
-                }}>⚙️</div>
-                <h2 style={{ color: "#e2e8f0", marginBottom: "0.75rem", fontWeight: "600" }}>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
+                  borderRadius: "16px",
+                  padding: "2.5rem",
+                  marginBottom: "1.5rem",
+                  border: "1px solid rgba(59, 130, 246, 0.3)",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  className="loading-spinner"
+                  style={{
+                    fontSize: "3rem",
+                    marginBottom: "1rem",
+                    animation: "spin 1s linear infinite",
+                  }}
+                >
+                  ⚙️
+                </div>
+                <h2
+                  style={{
+                    color: "#e2e8f0",
+                    marginBottom: "0.75rem",
+                    fontWeight: "600",
+                  }}
+                >
                   Iniciando Buscador IA...
                 </h2>
                 <p style={{ color: "#94a3b8", fontSize: "0.95rem" }}>
                   Cargando modelo de embeddings y preparando índice.
-                  <br />Esto puede tardar unos segundos la primera vez.
+                  <br />
+                  Esto puede tardar unos segundos la primera vez.
                 </p>
-                <div style={{
-                  width: "200px",
-                  height: "4px",
-                  background: "rgba(148, 163, 184, 0.2)",
-                  borderRadius: "2px",
-                  margin: "1.5rem auto 0",
-                  overflow: "hidden"
-                }}>
-                  <div style={{
-                    width: "50%",
-                    height: "100%",
-                    background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+                <div
+                  style={{
+                    width: "200px",
+                    height: "4px",
+                    background: "rgba(148, 163, 184, 0.2)",
                     borderRadius: "2px",
-                    animation: "loading-bar 1.5s ease-in-out infinite"
-                  }}></div>
+                    margin: "1.5rem auto 0",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "50%",
+                      height: "100%",
+                      background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+                      borderRadius: "2px",
+                      animation: "loading-bar 1.5s ease-in-out infinite",
+                    }}
+                  ></div>
                 </div>
               </div>
             )}
@@ -64571,7 +64779,9 @@ IDIOMA: ${idiomaSBL}
                 <div className="estado-item">
                   <span className="estado-label">⚡ Procesamiento:</span>
                   <span className="estado-valor">
-                    {estadoIndice.gpu_activa ? `🎮 GPU (${estadoIndice.gpu_nombre || 'NVIDIA'})` : "💻 CPU"}
+                    {estadoIndice.gpu_activa
+                      ? `🎮 GPU (${estadoIndice.gpu_nombre || "NVIDIA"})`
+                      : "💻 CPU"}
                   </span>
                 </div>
               </div>
@@ -64579,24 +64789,43 @@ IDIOMA: ${idiomaSBL}
 
             {/* Panel de Control GPU - Solo mostrar si el buscador está corriendo */}
             {buscadorCorriendo && estadoIndice && (
-              <div style={{
-                background: "linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))",
-                borderRadius: "12px",
-                padding: "1rem 1.5rem",
-                marginBottom: "1.5rem",
-                border: "1px solid rgba(148, 163, 184, 0.1)"
-              }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+              <div
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95))",
+                  borderRadius: "12px",
+                  padding: "1rem 1.5rem",
+                  marginBottom: "1.5rem",
+                  border: "1px solid rgba(148, 163, 184, 0.1)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "1rem",
+                  }}
+                >
                   {/* Info de GPU */}
                   <div>
-                    <div style={{ fontWeight: "600", color: "#e2e8f0", marginBottom: "0.5rem" }}>
+                    <div
+                      style={{
+                        fontWeight: "600",
+                        color: "#e2e8f0",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
                       🎮 Aceleración por Hardware
                     </div>
                     {estadoIndice.gpu_detectada ? (
                       <div style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                        {estadoIndice.gpu_nombre} 
-                        {estadoIndice.gpu_vram_mb && ` • ${Math.round(estadoIndice.gpu_vram_mb / 1024)}GB VRAM`}
-                        {estadoIndice.cuda_version && ` • CUDA ${estadoIndice.cuda_version}`}
+                        {estadoIndice.gpu_nombre}
+                        {estadoIndice.gpu_vram_mb &&
+                          ` • ${Math.round(estadoIndice.gpu_vram_mb / 1024)}GB VRAM`}
+                        {estadoIndice.cuda_version &&
+                          ` • CUDA ${estadoIndice.cuda_version}`}
                       </div>
                     ) : (
                       <div style={{ fontSize: "0.85rem", color: "#64748b" }}>
@@ -64606,82 +64835,106 @@ IDIOMA: ${idiomaSBL}
                   </div>
 
                   {/* Controles GPU */}
-                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                    {estadoIndice.gpu_detectada && !estadoIndice.gpu_lista_para_usar && (
-                      <button
-                        onClick={instalarDependenciasGPU}
-                        disabled={instalandoGPU}
-                        style={{
-                          background: instalandoGPU ? "rgba(148, 163, 184, 0.2)" : "linear-gradient(135deg, #f59e0b, #d97706)",
-                          border: "none",
-                          borderRadius: "8px",
-                          padding: "0.5rem 1rem",
-                          color: "white",
-                          fontWeight: "500",
-                          fontSize: "0.85rem",
-                          cursor: instalandoGPU ? "wait" : "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "0.5rem"
-                        }}
-                      >
-                        {instalandoGPU ? "⏳ Instalando..." : "📦 Instalar GPU"}
-                      </button>
-                    )}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "0.75rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    {estadoIndice.gpu_detectada &&
+                      !estadoIndice.gpu_lista_para_usar && (
+                        <button
+                          onClick={instalarDependenciasGPU}
+                          disabled={instalandoGPU}
+                          style={{
+                            background: instalandoGPU
+                              ? "rgba(148, 163, 184, 0.2)"
+                              : "linear-gradient(135deg, #f59e0b, #d97706)",
+                            border: "none",
+                            borderRadius: "8px",
+                            padding: "0.5rem 1rem",
+                            color: "white",
+                            fontWeight: "500",
+                            fontSize: "0.85rem",
+                            cursor: instalandoGPU ? "wait" : "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          {instalandoGPU
+                            ? "⏳ Instalando..."
+                            : "📦 Instalar GPU"}
+                        </button>
+                      )}
 
-                    {estadoIndice.gpu_detectada && estadoIndice.gpu_lista_para_usar && (
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
-                        <button
-                          onClick={() => cambiarModoGPU("cpu")}
-                          disabled={cambiandoModo || estadoIndice.modo_actual === "cpu"}
-                          style={{
-                            background: estadoIndice.modo_actual === "cpu" 
-                              ? "linear-gradient(135deg, #3b82f6, #2563eb)" 
-                              : "rgba(148, 163, 184, 0.1)",
-                            border: estadoIndice.modo_actual === "cpu" 
-                              ? "none" 
-                              : "1px solid rgba(148, 163, 184, 0.3)",
-                            borderRadius: "8px",
-                            padding: "0.5rem 1rem",
-                            color: "white",
-                            fontWeight: "500",
-                            fontSize: "0.85rem",
-                            cursor: cambiandoModo ? "wait" : "pointer"
-                          }}
-                        >
-                          💻 CPU
-                        </button>
-                        <button
-                          onClick={() => cambiarModoGPU("gpu")}
-                          disabled={cambiandoModo || estadoIndice.modo_actual === "gpu"}
-                          style={{
-                            background: estadoIndice.modo_actual === "gpu" 
-                              ? "linear-gradient(135deg, #10b981, #059669)" 
-                              : "rgba(148, 163, 184, 0.1)",
-                            border: estadoIndice.modo_actual === "gpu" 
-                              ? "none" 
-                              : "1px solid rgba(148, 163, 184, 0.3)",
-                            borderRadius: "8px",
-                            padding: "0.5rem 1rem",
-                            color: "white",
-                            fontWeight: "500",
-                            fontSize: "0.85rem",
-                            cursor: cambiandoModo ? "wait" : "pointer"
-                          }}
-                        >
-                          🎮 GPU
-                        </button>
-                      </div>
-                    )}
+                    {estadoIndice.gpu_detectada &&
+                      estadoIndice.gpu_lista_para_usar && (
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button
+                            onClick={() => cambiarModoGPU("cpu")}
+                            disabled={
+                              cambiandoModo ||
+                              estadoIndice.modo_actual === "cpu"
+                            }
+                            style={{
+                              background:
+                                estadoIndice.modo_actual === "cpu"
+                                  ? "linear-gradient(135deg, #3b82f6, #2563eb)"
+                                  : "rgba(148, 163, 184, 0.1)",
+                              border:
+                                estadoIndice.modo_actual === "cpu"
+                                  ? "none"
+                                  : "1px solid rgba(148, 163, 184, 0.3)",
+                              borderRadius: "8px",
+                              padding: "0.5rem 1rem",
+                              color: "white",
+                              fontWeight: "500",
+                              fontSize: "0.85rem",
+                              cursor: cambiandoModo ? "wait" : "pointer",
+                            }}
+                          >
+                            💻 CPU
+                          </button>
+                          <button
+                            onClick={() => cambiarModoGPU("gpu")}
+                            disabled={
+                              cambiandoModo ||
+                              estadoIndice.modo_actual === "gpu"
+                            }
+                            style={{
+                              background:
+                                estadoIndice.modo_actual === "gpu"
+                                  ? "linear-gradient(135deg, #10b981, #059669)"
+                                  : "rgba(148, 163, 184, 0.1)",
+                              border:
+                                estadoIndice.modo_actual === "gpu"
+                                  ? "none"
+                                  : "1px solid rgba(148, 163, 184, 0.3)",
+                              borderRadius: "8px",
+                              padding: "0.5rem 1rem",
+                              color: "white",
+                              fontWeight: "500",
+                              fontSize: "0.85rem",
+                              cursor: cambiandoModo ? "wait" : "pointer",
+                            }}
+                          >
+                            🎮 GPU
+                          </button>
+                        </div>
+                      )}
 
                     {!estadoIndice.gpu_detectada && (
-                      <div style={{ 
-                        fontSize: "0.8rem", 
-                        color: "#64748b",
-                        background: "rgba(148, 163, 184, 0.1)",
-                        padding: "0.5rem 1rem",
-                        borderRadius: "8px"
-                      }}>
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "#64748b",
+                          background: "rgba(148, 163, 184, 0.1)",
+                          padding: "0.5rem 1rem",
+                          borderRadius: "8px",
+                        }}
+                      >
                         Solo CPU disponible
                       </div>
                     )}
@@ -64715,275 +64968,283 @@ IDIOMA: ${idiomaSBL}
 
                 {/* Filtros */}
                 <div className="buscador-filtros">
-              <label style={{ marginRight: "1rem", fontWeight: "bold" }}>
-                🏷️ Tipo de documento:
-              </label>
-              {[
-                "todos",
-                "nota",
-                "flashcard",
-                "examen",
-                "practica",
-                "curso",
-                "documento",
-              ].map((tipo) => (
-                <button
-                  key={tipo}
-                  onClick={() => setFiltroBusquedaTipo(tipo)}
-                  className={`filtro-tipo ${filtroBusquedaTipo === tipo ? "active" : ""}`}
-                >
-                  {tipo === "todos"
-                    ? "🌐 Todos"
-                    : tipo === "nota"
-                      ? "📝 Notas"
-                      : tipo === "flashcard"
-                        ? "🎴 Flashcards"
-                        : tipo === "examen"
-                          ? "📋 Exámenes"
-                          : tipo === "practica"
-                            ? "🎯 Prácticas"
-                            : tipo === "curso"
-                              ? "📚 Cursos"
-                              : "📄 Documentos"}
-                </button>
-              ))}
-            </div>
-
-            {/* Acciones del índice */}
-            <div className="buscador-acciones">
-              <button
-                onClick={() => actualizarIndice(false)}
-                className="btn-secondary"
-                disabled={actualizandoIndice}
-              >
-                {actualizandoIndice
-                  ? "⏳ Actualizando..."
-                  : "🔄 Actualizar Índice"}
-              </button>
-              <button
-                onClick={() => actualizarIndice(true)}
-                className="btn-secondary"
-                disabled={actualizandoIndice}
-              >
-                {actualizandoIndice ? "⏳ Reindexando..." : "♻️ Reindexar Todo"}
-              </button>
-              <button
-                onClick={limpiarIndiceBuscador}
-                className="btn-secondary"
-                style={{ 
-                  background: "rgba(239, 68, 68, 0.1)",
-                  borderColor: "rgba(239, 68, 68, 0.3)",
-                  color: "#fca5a5"
-                }}
-              >
-                🗑️ Limpiar Índice
-              </button>
-
-              <div style={{ flex: 1 }}></div>
-
-              <span style={{ fontSize: "0.9rem", color: "#888" }}>
-                💡 Búsqueda semántica + palabras clave (híbrida)
-              </span>
-            </div>
-
-            {/* Resultados */}
-            {resultadosBusqueda.length > 0 && (
-              <div className="resultados-buscador">
-                <h2>📋 Resultados ({resultadosBusqueda.length})</h2>
-
-                <div className="resultados-lista">
-                  {resultadosBusqueda.map((resultado, idx) => {
-                    // Determinar el tipo y emoji
-                    const tipoConfig = {
-                      nota: { emoji: "📝", color: "#22c55e", nombre: "Nota" },
-                      flashcard: {
-                        emoji: "🃏",
-                        color: "#667eea",
-                        nombre: "Flashcard",
-                      },
-                      examen: {
-                        emoji: "📋",
-                        color: "#f59e0b",
-                        nombre: "Examen",
-                      },
-                      practica: {
-                        emoji: "🎯",
-                        color: "#ec4899",
-                        nombre: "Práctica",
-                      },
-                      documento: {
-                        emoji: "📄",
-                        color: "#3b82f6",
-                        nombre: "Documento",
-                      },
-                    };
-                    const config =
-                      tipoConfig[resultado.tipo] || tipoConfig["documento"];
-
-                    // Título
-                    const titulo =
-                      resultado.titulo || resultado.nombre || "Sin título";
-
-                    // Contenido preview
-                    const contenidoLimpio =
-                      resultado.contenido?.substring(0, 200) || "";
-
-                    return (
-                      <div
-                        key={idx}
-                        className="resultado-busqueda-card"
-                        onClick={() => abrirResultadoBusqueda(resultado)}
-                        style={{
-                          cursor: "pointer",
-                          borderLeft: `4px solid ${config.color}`,
-                        }}
-                      >
-                        {/* Tipo y Título */}
-                        <div
-                          className="resultado-titulo-archivo"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.5rem",
-                          }}
-                        >
-                          <span style={{ fontSize: "1.5rem" }}>
-                            {config.emoji}
-                          </span>
-                          <span style={{ fontWeight: "600" }}>{titulo}</span>
-                          <span
-                            style={{
-                              background: config.color,
-                              color: "white",
-                              padding: "0.2rem 0.6rem",
-                              borderRadius: "12px",
-                              fontSize: "0.75rem",
-                              marginLeft: "auto",
-                            }}
-                          >
-                            {config.nombre}
-                          </span>
-                        </div>
-
-                        {/* Contenido con resaltado */}
-                        <div className="resultado-parrafo">
-                          {resaltarTexto(contenidoLimpio, queryBusqueda)}...
-                        </div>
-
-                        {/* Ruta con botón de navegación */}
-                        <div
-                          className="resultado-ruta-completa"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: "0.5rem",
-                          }}
-                        >
-                          <span>
-                            📁{" "}
-                            {resultado.ruta ||
-                              resultado.carpeta ||
-                              "Sin carpeta"}
-                          </span>
-                          <button
-                            className="btn-secondary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              irARutaResultado(resultado);
-                            }}
-                            style={{
-                              fontSize: "0.85rem",
-                              padding: "0.3rem 0.8rem",
-                            }}
-                          >
-                            📍 Ir a esta ruta
-                          </button>
-                        </div>
-
-                        {/* Relevancia */}
-                        {resultado.relevancia && (
-                          <div className="resultado-score-badge">
-                            Relevancia: {resultado.relevancia * 10}%
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  <label style={{ marginRight: "1rem", fontWeight: "bold" }}>
+                    🏷️ Tipo de documento:
+                  </label>
+                  {[
+                    "todos",
+                    "nota",
+                    "flashcard",
+                    "examen",
+                    "practica",
+                    "curso",
+                    "documento",
+                  ].map((tipo) => (
+                    <button
+                      key={tipo}
+                      onClick={() => setFiltroBusquedaTipo(tipo)}
+                      className={`filtro-tipo ${filtroBusquedaTipo === tipo ? "active" : ""}`}
+                    >
+                      {tipo === "todos"
+                        ? "🌐 Todos"
+                        : tipo === "nota"
+                          ? "📝 Notas"
+                          : tipo === "flashcard"
+                            ? "🎴 Flashcards"
+                            : tipo === "examen"
+                              ? "📋 Exámenes"
+                              : tipo === "practica"
+                                ? "🎯 Prácticas"
+                                : tipo === "curso"
+                                  ? "📚 Cursos"
+                                  : "📄 Documentos"}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            )}
 
-            {/* Estado vacío */}
-            {!buscando &&
-              resultadosBusqueda.length === 0 &&
-              queryBusqueda.trim() === "" && (
-                <div className="buscador-vacio">
-                  <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>
-                    🔍
-                  </div>
-                  <h3>Búsqueda Inteligente con IA</h3>
-                  <p>
-                    Encuentra cualquier contenido en tus documentos usando
-                    lenguaje natural.
-                  </p>
-
-                  <div className="ejemplos-busqueda">
-                    <h4>💡 Ejemplos de búsqueda:</h4>
-                    <ul>
-                      <li>"¿Qué es una función recursiva?"</li>
-                      <li>"Conceptos de machine learning"</li>
-                      <li>"Ejercicios de cálculo diferencial"</li>
-                      <li>"Notas sobre React hooks"</li>
-                      <li>"Flashcards de historia del arte"</li>
-                    </ul>
-                  </div>
-
-                  <div className="info-tecnica">
-                    <h4>🤖 Tecnología:</h4>
-                    <ul>
-                      <li>✅ Búsqueda semántica con embeddings locales</li>
-                      <li>✅ Búsqueda por palabras clave (BM25)</li>
-                      <li>✅ Híbrido: combina ambos métodos</li>
-                      <li>✅ GPU acelerada (RTX 4050)</li>
-                      <li>✅ 100% local, sin APIs de pago</li>
-                      <li>✅ Actualización incremental del índice</li>
-                    </ul>
-                  </div>
-
-                  {!estadoIndice?.indexado && (
-                    <div className="alerta-info">
-                      ⚠️ <strong>Primera vez:</strong> Debes crear el índice
-                      inicial.
-                      <br />
-                      Ejecuta en terminal:{" "}
-                      <code>python crear_indice_inicial.py</code>
-                    </div>
-                  )}
-                </div>
-              )}
-
-            {/* Sin resultados */}
-            {!buscando &&
-              resultadosBusqueda.length === 0 &&
-              queryBusqueda.trim() !== "" && (
-                <div className="buscador-sin-resultados">
-                  <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>
-                    😕
-                  </div>
-                  <h3>No se encontraron resultados</h3>
-                  <p>
-                    Intenta con otras palabras clave o asegúrate de que el
-                    contenido esté indexado.
-                  </p>
+                {/* Acciones del índice */}
+                <div className="buscador-acciones">
                   <button
                     onClick={() => actualizarIndice(false)}
-                    className="btn-primary"
+                    className="btn-secondary"
+                    disabled={actualizandoIndice}
                   >
-                    🔄 Actualizar Índice
+                    {actualizandoIndice
+                      ? "⏳ Actualizando..."
+                      : "🔄 Actualizar Índice"}
                   </button>
+                  <button
+                    onClick={() => actualizarIndice(true)}
+                    className="btn-secondary"
+                    disabled={actualizandoIndice}
+                  >
+                    {actualizandoIndice
+                      ? "⏳ Reindexando..."
+                      : "♻️ Reindexar Todo"}
+                  </button>
+                  <button
+                    onClick={limpiarIndiceBuscador}
+                    className="btn-secondary"
+                    style={{
+                      background: "rgba(239, 68, 68, 0.1)",
+                      borderColor: "rgba(239, 68, 68, 0.3)",
+                      color: "#fca5a5",
+                    }}
+                  >
+                    🗑️ Limpiar Índice
+                  </button>
+
+                  <div style={{ flex: 1 }}></div>
+
+                  <span style={{ fontSize: "0.9rem", color: "#888" }}>
+                    💡 Búsqueda semántica + palabras clave (híbrida)
+                  </span>
                 </div>
-              )}
+
+                {/* Resultados */}
+                {resultadosBusqueda.length > 0 && (
+                  <div className="resultados-buscador">
+                    <h2>📋 Resultados ({resultadosBusqueda.length})</h2>
+
+                    <div className="resultados-lista">
+                      {resultadosBusqueda.map((resultado, idx) => {
+                        // Determinar el tipo y emoji
+                        const tipoConfig = {
+                          nota: {
+                            emoji: "📝",
+                            color: "#22c55e",
+                            nombre: "Nota",
+                          },
+                          flashcard: {
+                            emoji: "🃏",
+                            color: "#667eea",
+                            nombre: "Flashcard",
+                          },
+                          examen: {
+                            emoji: "📋",
+                            color: "#f59e0b",
+                            nombre: "Examen",
+                          },
+                          practica: {
+                            emoji: "🎯",
+                            color: "#ec4899",
+                            nombre: "Práctica",
+                          },
+                          documento: {
+                            emoji: "📄",
+                            color: "#3b82f6",
+                            nombre: "Documento",
+                          },
+                        };
+                        const config =
+                          tipoConfig[resultado.tipo] || tipoConfig["documento"];
+
+                        // Título
+                        const titulo =
+                          resultado.titulo || resultado.nombre || "Sin título";
+
+                        // Contenido preview
+                        const contenidoLimpio =
+                          resultado.contenido?.substring(0, 200) || "";
+
+                        return (
+                          <div
+                            key={idx}
+                            className="resultado-busqueda-card"
+                            onClick={() => abrirResultadoBusqueda(resultado)}
+                            style={{
+                              cursor: "pointer",
+                              borderLeft: `4px solid ${config.color}`,
+                            }}
+                          >
+                            {/* Tipo y Título */}
+                            <div
+                              className="resultado-titulo-archivo"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              <span style={{ fontSize: "1.5rem" }}>
+                                {config.emoji}
+                              </span>
+                              <span style={{ fontWeight: "600" }}>
+                                {titulo}
+                              </span>
+                              <span
+                                style={{
+                                  background: config.color,
+                                  color: "white",
+                                  padding: "0.2rem 0.6rem",
+                                  borderRadius: "12px",
+                                  fontSize: "0.75rem",
+                                  marginLeft: "auto",
+                                }}
+                              >
+                                {config.nombre}
+                              </span>
+                            </div>
+
+                            {/* Contenido con resaltado */}
+                            <div className="resultado-parrafo">
+                              {resaltarTexto(contenidoLimpio, queryBusqueda)}...
+                            </div>
+
+                            {/* Ruta con botón de navegación */}
+                            <div
+                              className="resultado-ruta-completa"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: "0.5rem",
+                              }}
+                            >
+                              <span>
+                                📁{" "}
+                                {resultado.ruta ||
+                                  resultado.carpeta ||
+                                  "Sin carpeta"}
+                              </span>
+                              <button
+                                className="btn-secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  irARutaResultado(resultado);
+                                }}
+                                style={{
+                                  fontSize: "0.85rem",
+                                  padding: "0.3rem 0.8rem",
+                                }}
+                              >
+                                📍 Ir a esta ruta
+                              </button>
+                            </div>
+
+                            {/* Relevancia */}
+                            {resultado.relevancia && (
+                              <div className="resultado-score-badge">
+                                Relevancia: {resultado.relevancia * 10}%
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Estado vacío */}
+                {!buscando &&
+                  resultadosBusqueda.length === 0 &&
+                  queryBusqueda.trim() === "" && (
+                    <div className="buscador-vacio">
+                      <div style={{ fontSize: "4rem", marginBottom: "1rem" }}>
+                        🔍
+                      </div>
+                      <h3>Búsqueda Inteligente con IA</h3>
+                      <p>
+                        Encuentra cualquier contenido en tus documentos usando
+                        lenguaje natural.
+                      </p>
+
+                      <div className="ejemplos-busqueda">
+                        <h4>💡 Ejemplos de búsqueda:</h4>
+                        <ul>
+                          <li>"¿Qué es una función recursiva?"</li>
+                          <li>"Conceptos de machine learning"</li>
+                          <li>"Ejercicios de cálculo diferencial"</li>
+                          <li>"Notas sobre React hooks"</li>
+                          <li>"Flashcards de historia del arte"</li>
+                        </ul>
+                      </div>
+
+                      <div className="info-tecnica">
+                        <h4>🤖 Tecnología:</h4>
+                        <ul>
+                          <li>✅ Búsqueda semántica con embeddings locales</li>
+                          <li>✅ Búsqueda por palabras clave (BM25)</li>
+                          <li>✅ Híbrido: combina ambos métodos</li>
+                          <li>✅ GPU acelerada (RTX 4050)</li>
+                          <li>✅ 100% local, sin APIs de pago</li>
+                          <li>✅ Actualización incremental del índice</li>
+                        </ul>
+                      </div>
+
+                      {!estadoIndice?.indexado && (
+                        <div className="alerta-info">
+                          ⚠️ <strong>Primera vez:</strong> Debes crear el índice
+                          inicial.
+                          <br />
+                          Ejecuta en terminal:{" "}
+                          <code>python crear_indice_inicial.py</code>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                {/* Sin resultados */}
+                {!buscando &&
+                  resultadosBusqueda.length === 0 &&
+                  queryBusqueda.trim() !== "" && (
+                    <div className="buscador-sin-resultados">
+                      <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>
+                        😕
+                      </div>
+                      <h3>No se encontraron resultados</h3>
+                      <p>
+                        Intenta con otras palabras clave o asegúrate de que el
+                        contenido esté indexado.
+                      </p>
+                      <button
+                        onClick={() => actualizarIndice(false)}
+                        className="btn-primary"
+                      >
+                        🔄 Actualizar Índice
+                      </button>
+                    </div>
+                  )}
               </>
             )}
           </div>
@@ -66727,24 +66988,44 @@ IDIOMA: ${idiomaSBL}
                                 <h3 className="flashcard-titulo">
                                   {flashcard.titulo}
                                 </h3>
-                                <div className="flashcard-preview" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                <div
+                                  className="flashcard-preview"
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.5rem",
+                                    alignItems: "flex-start",
+                                  }}
+                                >
                                   {/* Thumbnail de imagen si existe */}
-                                  {flashcard.imagenes && flashcard.imagenes.length > 0 && (
-                                    <img 
-                                      src={typeof flashcard.imagenes[0] === 'string' ? flashcard.imagenes[0] : flashcard.imagenes[0]?.url || flashcard.imagenes[0]?.data}
-                                      alt="Preview"
-                                      style={{
-                                        width: '50px',
-                                        height: '50px',
-                                        objectFit: 'cover',
-                                        borderRadius: '6px',
-                                        border: '1px solid rgba(255,255,255,0.1)',
-                                        flexShrink: 0,
-                                      }}
-                                    />
-                                  )}
+                                  {flashcard.imagenes &&
+                                    flashcard.imagenes.length > 0 && (
+                                      <img
+                                        src={
+                                          typeof flashcard.imagenes[0] ===
+                                          "string"
+                                            ? flashcard.imagenes[0]
+                                            : flashcard.imagenes[0]?.url ||
+                                              flashcard.imagenes[0]?.data
+                                        }
+                                        alt="Preview"
+                                        style={{
+                                          width: "50px",
+                                          height: "50px",
+                                          objectFit: "cover",
+                                          borderRadius: "6px",
+                                          border:
+                                            "1px solid rgba(255,255,255,0.1)",
+                                          flexShrink: 0,
+                                        }}
+                                      />
+                                    )}
                                   <span style={{ flex: 1 }}>
-                                    {renderMixedContentPreview(flashcard.contenido.substring(0, 100) + (flashcard.contenido.length > 100 ? "..." : ""))}
+                                    {renderMixedContentPreview(
+                                      flashcard.contenido.substring(0, 100) +
+                                        (flashcard.contenido.length > 100
+                                          ? "..."
+                                          : ""),
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -67070,24 +67351,42 @@ IDIOMA: ${idiomaSBL}
                             <h3 className="flashcard-titulo">
                               {flashcard.titulo}
                             </h3>
-                            <div className="flashcard-preview" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                            <div
+                              className="flashcard-preview"
+                              style={{
+                                display: "flex",
+                                gap: "0.5rem",
+                                alignItems: "flex-start",
+                              }}
+                            >
                               {/* Thumbnail de imagen si existe */}
-                              {flashcard.imagenes && flashcard.imagenes.length > 0 && (
-                                <img 
-                                  src={typeof flashcard.imagenes[0] === 'string' ? flashcard.imagenes[0] : flashcard.imagenes[0]?.url || flashcard.imagenes[0]?.data}
-                                  alt="Preview"
-                                  style={{
-                                    width: '50px',
-                                    height: '50px',
-                                    objectFit: 'cover',
-                                    borderRadius: '6px',
-                                    border: '1px solid rgba(255,255,255,0.1)',
-                                    flexShrink: 0,
-                                  }}
-                                />
-                              )}
+                              {flashcard.imagenes &&
+                                flashcard.imagenes.length > 0 && (
+                                  <img
+                                    src={
+                                      typeof flashcard.imagenes[0] === "string"
+                                        ? flashcard.imagenes[0]
+                                        : flashcard.imagenes[0]?.url ||
+                                          flashcard.imagenes[0]?.data
+                                    }
+                                    alt="Preview"
+                                    style={{
+                                      width: "50px",
+                                      height: "50px",
+                                      objectFit: "cover",
+                                      borderRadius: "6px",
+                                      border: "1px solid rgba(255,255,255,0.1)",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
                               <span style={{ flex: 1 }}>
-                                {renderMixedContentPreview(flashcard.contenido.substring(0, 100) + (flashcard.contenido.length > 100 ? "..." : ""))}
+                                {renderMixedContentPreview(
+                                  flashcard.contenido.substring(0, 100) +
+                                    (flashcard.contenido.length > 100
+                                      ? "..."
+                                      : ""),
+                                )}
                               </span>
                             </div>
 
@@ -103223,51 +103522,65 @@ Ejemplo:
                   )}
 
                   {/* Toggle: Imagen primero (solo para tipo visual) */}
-                  {formDataFlashcard.tipo === "visual" && formDataFlashcard.imagenes?.length > 0 && (
-                    <div className="config-section">
-                      <label className="config-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span>
-                          <span className="label-icon">🖼️</span>
-                          Mostrar imagen primero en repaso
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setFormDataFlashcard({
-                            ...formDataFlashcard,
-                            imagenPrimero: !formDataFlashcard.imagenPrimero
-                          })}
+                  {formDataFlashcard.tipo === "visual" &&
+                    formDataFlashcard.imagenes?.length > 0 && (
+                      <div className="config-section">
+                        <label
+                          className="config-label"
                           style={{
-                            padding: '0.5rem 1rem',
-                            background: formDataFlashcard.imagenPrimero 
-                              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                              : 'rgba(100, 116, 139, 0.4)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '8px',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem',
-                            fontWeight: '500',
-                            transition: 'all 0.2s ease',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
                           }}
                         >
-                          {formDataFlashcard.imagenPrimero ? '✅ Activo' : '❌ Inactivo'}
-                        </button>
-                      </label>
-                      <p style={{ 
-                        fontSize: '0.75rem', 
-                        color: '#94a3b8', 
-                        margin: '0.5rem 0 0 0',
-                        lineHeight: '1.4',
-                      }}>
-                        {formDataFlashcard.imagenPrimero 
-                          ? '📸 La imagen se mostrará primero y al hacer click se revelará el título/contenido'
-                          : '📝 El título se mostrará primero y al hacer click se revelará la imagen'}
-                      </p>
-                    </div>
-                  )}
+                          <span>
+                            <span className="label-icon">🖼️</span>
+                            Mostrar imagen primero en repaso
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormDataFlashcard({
+                                ...formDataFlashcard,
+                                imagenPrimero: !formDataFlashcard.imagenPrimero,
+                              })
+                            }
+                            style={{
+                              padding: "0.5rem 1rem",
+                              background: formDataFlashcard.imagenPrimero
+                                ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                                : "rgba(100, 116, 139, 0.4)",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "8px",
+                              cursor: "pointer",
+                              fontSize: "0.85rem",
+                              fontWeight: "500",
+                              transition: "all 0.2s ease",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.5rem",
+                            }}
+                          >
+                            {formDataFlashcard.imagenPrimero
+                              ? "✅ Activo"
+                              : "❌ Inactivo"}
+                          </button>
+                        </label>
+                        <p
+                          style={{
+                            fontSize: "0.75rem",
+                            color: "#94a3b8",
+                            margin: "0.5rem 0 0 0",
+                            lineHeight: "1.4",
+                          }}
+                        >
+                          {formDataFlashcard.imagenPrimero
+                            ? "📸 La imagen se mostrará primero y al hacer click se revelará el título/contenido"
+                            : "📝 El título se mostrará primero y al hacer click se revelará la imagen"}
+                        </p>
+                      </div>
+                    )}
 
                   {/* Título */}
                   <div className="config-section">
@@ -103509,7 +103822,9 @@ Ejemplo:
                                       color: "#e9d5ff",
                                     }}
                                   >
-                                    {renderMixedContent(formDataFlashcard.contenido || "")}
+                                    {renderMixedContent(
+                                      formDataFlashcard.contenido || "",
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -107281,7 +107596,8 @@ Ejemplo:
                   <div className="fases-preview">
                     <div className="fases-preview-header">
                       <h3>📋 Plan de tu Sesión ({tiempoSesion} min)</h3>
-                      {(prioridadSesion === "todo" || prioridadSesion === "flashcards") &&
+                      {(prioridadSesion === "todo" ||
+                        prioridadSesion === "flashcards") &&
                         fasesExcluidas.length > 0 && (
                           <button
                             className="btn-reset-fases"
@@ -107300,7 +107616,7 @@ Ejemplo:
                       ).map((fase, index, arr) => (
                         <React.Fragment key={fase.tipo}>
                           <div
-                            className={`fase-preview-item ${(prioridadSesion === "todo" || prioridadSesion === "flashcards") ? "editable" : ""}`}
+                            className={`fase-preview-item ${prioridadSesion === "todo" || prioridadSesion === "flashcards" ? "editable" : ""}`}
                           >
                             <div className="fase-preview-emoji">
                               {fase.emoji}
@@ -107329,7 +107645,8 @@ Ejemplo:
                               </p>
                             </div>
                             {/* Botón eliminar en modo TODO y flashcards, no para calentamiento/cierre */}
-                            {(prioridadSesion === "todo" || prioridadSesion === "flashcards") &&
+                            {(prioridadSesion === "todo" ||
+                              prioridadSesion === "flashcards") &&
                               fase.tipo !== "calentamiento" &&
                               fase.tipo !== "cierre" && (
                                 <button
@@ -107350,7 +107667,8 @@ Ejemplo:
                         </React.Fragment>
                       ))}
                     </div>
-                    {(prioridadSesion === "todo" || prioridadSesion === "flashcards") &&
+                    {(prioridadSesion === "todo" ||
+                      prioridadSesion === "flashcards") &&
                       fasesExcluidas.length > 0 && (
                         <div className="fases-excluidas-info">
                           <span>Fases omitidas: </span>
@@ -107790,8 +108108,12 @@ Ejemplo:
 
                                 if (esCorrecta) {
                                   // Respuesta correcta - usar intervalos fijos progresivos
-                                  const repeticiones = itemMapaRepeticion.repeticiones || 0;
-                                  const indice = Math.min(repeticiones, INTERVALOS_ACIERTO.length - 1);
+                                  const repeticiones =
+                                    itemMapaRepeticion.repeticiones || 0;
+                                  const indice = Math.min(
+                                    repeticiones,
+                                    INTERVALOS_ACIERTO.length - 1,
+                                  );
                                   intervalo = INTERVALOS_ACIERTO[indice];
                                 } else {
                                   // Respuesta incorrecta - revisar mañana
@@ -108163,7 +108485,10 @@ Ejemplo:
 
                                   if (esCorrecta) {
                                     // Respuesta correcta - usar intervalos fijos progresivos
-                                    const indice = Math.min(repeticiones, INTERVALOS_PREG.length - 1);
+                                    const indice = Math.min(
+                                      repeticiones,
+                                      INTERVALOS_PREG.length - 1,
+                                    );
                                     intervalo = INTERVALOS_PREG[indice];
                                   } else {
                                     // Respuesta incorrecta - revisar mañana
@@ -108599,8 +108924,18 @@ Ejemplo:
                                         ? `~${Math.round(rep.intervalo / 7)} semanas`
                                         : `~${Math.round(rep.intervalo / 30)} meses`}
                                 </div>
-                                <div className="timeline-resultado" style={{ color: rep.resultado === "acierto" ? "#22c55e" : "#ef4444" }}>
-                                  {rep.resultado === "acierto" ? "✓ Acierto" : "✗ Fallo"}
+                                <div
+                                  className="timeline-resultado"
+                                  style={{
+                                    color:
+                                      rep.resultado === "acierto"
+                                        ? "#22c55e"
+                                        : "#ef4444",
+                                  }}
+                                >
+                                  {rep.resultado === "acierto"
+                                    ? "✓ Acierto"
+                                    : "✗ Fallo"}
                                 </div>
                               </div>
                             </div>
@@ -108643,8 +108978,18 @@ Ejemplo:
                                         ? `~${Math.round(rep.intervalo / 7)} semanas`
                                         : `~${Math.round(rep.intervalo / 30)} meses`}
                                 </div>
-                                <div className="timeline-resultado" style={{ color: rep.resultado === "acierto" ? "#22c55e" : "#ef4444" }}>
-                                  {rep.resultado === "acierto" ? "✓ Acierto" : "✗ Fallo"}
+                                <div
+                                  className="timeline-resultado"
+                                  style={{
+                                    color:
+                                      rep.resultado === "acierto"
+                                        ? "#22c55e"
+                                        : "#ef4444",
+                                  }}
+                                >
+                                  {rep.resultado === "acierto"
+                                    ? "✓ Acierto"
+                                    : "✗ Fallo"}
                                 </div>
                               </div>
                             </div>
@@ -108657,9 +109002,7 @@ Ejemplo:
                         <div className="escenario-header">
                           <span className="escenario-icono">❌</span>
                           <h4>Si SIEMPRE FALLAS</h4>
-                          <p>
-                            Siempre repites mañana (+1 día)
-                          </p>
+                          <p>Siempre repites mañana (+1 día)</p>
                         </div>
                         <div className="escenario-timeline">
                           {mapa.escenarios.dificil.map((rep, idx) => (
@@ -108689,8 +109032,18 @@ Ejemplo:
                                         ? `~${Math.round(rep.intervalo / 7)} semanas`
                                         : `~${Math.round(rep.intervalo / 30)} meses`}
                                 </div>
-                                <div className="timeline-resultado" style={{ color: rep.resultado === "acierto" ? "#22c55e" : "#ef4444" }}>
-                                  {rep.resultado === "acierto" ? "✓ Acierto" : "✗ Fallo"}
+                                <div
+                                  className="timeline-resultado"
+                                  style={{
+                                    color:
+                                      rep.resultado === "acierto"
+                                        ? "#22c55e"
+                                        : "#ef4444",
+                                  }}
+                                >
+                                  {rep.resultado === "acierto"
+                                    ? "✓ Acierto"
+                                    : "✗ Fallo"}
                                 </div>
                               </div>
                             </div>
@@ -108704,17 +109057,21 @@ Ejemplo:
                       <h4>💡 Sistema de Intervalos Fijos</h4>
                       <ul>
                         <li>
-                          <strong>✅ Si aciertas:</strong> +3 días → +7 días → +14 días → +30 días (máx)
+                          <strong>✅ Si aciertas:</strong> +3 días → +7 días →
+                          +14 días → +30 días (máx)
                         </li>
                         <li>
-                          <strong>❌ Si fallas:</strong> Repites mañana (+1 día) y reseteas la racha
+                          <strong>❌ Si fallas:</strong> Repites mañana (+1 día)
+                          y reseteas la racha
                         </li>
                         <li>
-                          <strong>🔄 Fallo + acierto mismo día:</strong> Repites mañana (+1 día)
+                          <strong>🔄 Fallo + acierto mismo día:</strong> Repites
+                          mañana (+1 día)
                         </li>
                       </ul>
                       <p className="mapa-nota">
-                        ✨ El sistema usa intervalos fijos para máxima consistencia en el aprendizaje.
+                        ✨ El sistema usa intervalos fijos para máxima
+                        consistencia en el aprendizaje.
                       </p>
                     </div>
                   </>

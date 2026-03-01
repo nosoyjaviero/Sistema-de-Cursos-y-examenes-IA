@@ -51,64 +51,76 @@ const MathEditor = forwardRef(
         /\\title\s*\{/i,
         /\\author\s*\{/i,
       ];
-      return patronesDocumento.some(patron => patron.test(texto));
+      return patronesDocumento.some((patron) => patron.test(texto));
     };
 
     // 🔥 CONVERTIR documento LaTeX a formato que MathLive puede renderizar
     const convertirDocumentoAMatematicas = (texto) => {
       if (!texto) return "";
-      
+
       let resultado = texto;
-      
+
       // 1. Eliminar preámbulo de documento completo
-      resultado = resultado.replace(/\\documentclass(\[.*?\])?\{.*?\}/gi, '');
-      resultado = resultado.replace(/\\usepackage(\[.*?\])?\{.*?\}/gi, '');
-      resultado = resultado.replace(/\\begin\s*\{document\}/gi, '');
-      resultado = resultado.replace(/\\end\s*\{document\}/gi, '');
-      resultado = resultado.replace(/\\title\s*\{[^}]*\}/gi, '');
-      resultado = resultado.replace(/\\author\s*\{[^}]*\}/gi, '');
-      resultado = resultado.replace(/\\date\s*\{[^}]*\}/gi, '');
-      resultado = resultado.replace(/\\maketitle/gi, '');
-      
+      resultado = resultado.replace(/\\documentclass(\[.*?\])?\{.*?\}/gi, "");
+      resultado = resultado.replace(/\\usepackage(\[.*?\])?\{.*?\}/gi, "");
+      resultado = resultado.replace(/\\begin\s*\{document\}/gi, "");
+      resultado = resultado.replace(/\\end\s*\{document\}/gi, "");
+      resultado = resultado.replace(/\\title\s*\{[^}]*\}/gi, "");
+      resultado = resultado.replace(/\\author\s*\{[^}]*\}/gi, "");
+      resultado = resultado.replace(/\\date\s*\{[^}]*\}/gi, "");
+      resultado = resultado.replace(/\\maketitle/gi, "");
+
       // 2. Convertir secciones y subsecciones a texto matemático
-      resultado = resultado.replace(/\\section\*?\s*\{([^}]*)\}/gi, '\\text{\\textbf{$1}}');
-      resultado = resultado.replace(/\\subsection\*?\s*\{([^}]*)\}/gi, '\\text{\\textbf{$1}}');
-      
+      resultado = resultado.replace(
+        /\\section\*?\s*\{([^}]*)\}/gi,
+        "\\text{\\textbf{$1}}",
+      );
+      resultado = resultado.replace(
+        /\\subsection\*?\s*\{([^}]*)\}/gi,
+        "\\text{\\textbf{$1}}",
+      );
+
       // 3. Convertir \textbf{} a \text{\textbf{}} para math mode
-      resultado = resultado.replace(/\\textbf\s*\{([^}]*)\}/gi, '\\text{$1}');
-      
-      // 4. Extraer contenido de bloques matemáticos \[...\] 
-      resultado = resultado.replace(/\\\[/g, '\n');
-      resultado = resultado.replace(/\\\]/g, '\n');
-      
+      resultado = resultado.replace(/\\textbf\s*\{([^}]*)\}/gi, "\\text{$1}");
+
+      // 4. Extraer contenido de bloques matemáticos \[...\]
+      resultado = resultado.replace(/\\\[/g, "\n");
+      resultado = resultado.replace(/\\\]/g, "\n");
+
       // 5. Eliminar $$ delimitadores si existen
-      resultado = resultado.replace(/\$\$/g, '');
-      resultado = resultado.replace(/\$/g, '');
-      
+      resultado = resultado.replace(/\$\$/g, "");
+      resultado = resultado.replace(/\$/g, "");
+
       // 6. Procesar líneas y construir contenido multilínea
-      const lineas = resultado.split('\n')
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
-      
+      const lineas = resultado
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
       // 7. Envolver en gathered para visualización vertical
       if (lineas.length > 1) {
-        const contenidoFormateado = lineas.join(' \\\\\n');
+        const contenidoFormateado = lineas.join(" \\\\\n");
         resultado = `\\begin{gathered}\n${contenidoFormateado}\n\\end{gathered}`;
       } else {
-        resultado = lineas.join('');
+        resultado = lineas.join("");
       }
-      
+
       return resultado;
     };
 
     // 🔥 Auto-detectar y cambiar modo si es documento LaTeX
     useEffect(() => {
-      if (value && esDocumentoLatexCompleto(value) && modoEdicion === "visual") {
-        console.log("🔍 Detectado documento LaTeX completo, cambiando a modo código");
+      if (
+        value &&
+        esDocumentoLatexCompleto(value) &&
+        modoEdicion === "visual"
+      ) {
+        console.log(
+          "🔍 Detectado documento LaTeX completo, cambiando a modo código",
+        );
         setModoEdicion("codigo");
       }
     }, [value]);
-
 
     // Exponer funciones al padre
     useImperativeHandle(ref, () => ({
@@ -210,7 +222,9 @@ const MathEditor = forwardRef(
               // Forzar la actualización del valor con un pequeño delay adicional
               setTimeout(() => {
                 if (mathFieldRef.current) {
-                  mathFieldRef.current.setValue(value, { suppressChangeNotifications: true });
+                  mathFieldRef.current.setValue(value, {
+                    suppressChangeNotifications: true,
+                  });
                 }
               }, 50);
             }
@@ -256,7 +270,7 @@ const MathEditor = forwardRef(
           if (mathFieldRef.current && value) {
             const mf = mathFieldRef.current;
             const currentValue = mf.getValue("latex");
-            
+
             // Solo actualizar si el valor es diferente
             if (value !== currentValue) {
               mf.setValue(value, { suppressChangeNotifications: true });
@@ -266,7 +280,7 @@ const MathEditor = forwardRef(
           console.error("Error syncing value:", e);
         }
       }, 150);
-      
+
       return () => clearTimeout(syncTimer);
     }, [value, isMounted, mathLiveAvailable, modoEdicion]);
 
@@ -278,43 +292,45 @@ const MathEditor = forwardRef(
       const renderContenidoMixto = (texto) => {
         // Limpiar preámbulo de documento
         let contenido = texto
-          .replace(/\\documentclass(\[.*?\])?\{.*?\}/gi, '')
-          .replace(/\\usepackage(\[.*?\])?\{.*?\}/gi, '')
-          .replace(/\\begin\s*\{document\}/gi, '')
-          .replace(/\\end\s*\{document\}/gi, '')
-          .replace(/\\title\s*\{[^}]*\}/gi, '')
-          .replace(/\\author\s*\{[^}]*\}/gi, '')
-          .replace(/\\date\s*\{[^}]*\}/gi, '')
-          .replace(/\\maketitle/gi, '')
+          .replace(/\\documentclass(\[.*?\])?\{.*?\}/gi, "")
+          .replace(/\\usepackage(\[.*?\])?\{.*?\}/gi, "")
+          .replace(/\\begin\s*\{document\}/gi, "")
+          .replace(/\\end\s*\{document\}/gi, "")
+          .replace(/\\title\s*\{[^}]*\}/gi, "")
+          .replace(/\\author\s*\{[^}]*\}/gi, "")
+          .replace(/\\date\s*\{[^}]*\}/gi, "")
+          .replace(/\\maketitle/gi, "")
           .trim();
 
         // Separar en bloques: texto normal vs bloques matemáticos
         const partes = [];
         let resto = contenido;
-        
+
         // Buscar bloques \[...\]
         const regexBloqueMath = /\\\[([\s\S]*?)\\\]/g;
         let match;
         let ultimoIndice = 0;
-        
+
         while ((match = regexBloqueMath.exec(contenido)) !== null) {
           // Texto antes del bloque matemático
           if (match.index > ultimoIndice) {
-            const textoAntes = contenido.slice(ultimoIndice, match.index).trim();
+            const textoAntes = contenido
+              .slice(ultimoIndice, match.index)
+              .trim();
             if (textoAntes) {
-              partes.push({ tipo: 'texto', contenido: textoAntes });
+              partes.push({ tipo: "texto", contenido: textoAntes });
             }
           }
           // Bloque matemático
-          partes.push({ tipo: 'math', contenido: match[1].trim() });
+          partes.push({ tipo: "math", contenido: match[1].trim() });
           ultimoIndice = match.index + match[0].length;
         }
-        
+
         // Texto después del último bloque
         if (ultimoIndice < contenido.length) {
           const textoFinal = contenido.slice(ultimoIndice).trim();
           if (textoFinal) {
-            partes.push({ tipo: 'texto', contenido: textoFinal });
+            partes.push({ tipo: "texto", contenido: textoFinal });
           }
         }
 
@@ -324,67 +340,80 @@ const MathEditor = forwardRef(
           ultimoIndice = 0;
           while ((match = regexDoubleDollar.exec(contenido)) !== null) {
             if (match.index > ultimoIndice) {
-              const textoAntes = contenido.slice(ultimoIndice, match.index).trim();
+              const textoAntes = contenido
+                .slice(ultimoIndice, match.index)
+                .trim();
               if (textoAntes) {
-                partes.push({ tipo: 'texto', contenido: textoAntes });
+                partes.push({ tipo: "texto", contenido: textoAntes });
               }
             }
-            partes.push({ tipo: 'math', contenido: match[1].trim() });
+            partes.push({ tipo: "math", contenido: match[1].trim() });
             ultimoIndice = match.index + match[0].length;
           }
           if (ultimoIndice < contenido.length) {
             const textoFinal = contenido.slice(ultimoIndice).trim();
             if (textoFinal) {
-              partes.push({ tipo: 'texto', contenido: textoFinal });
+              partes.push({ tipo: "texto", contenido: textoFinal });
             }
           }
         }
 
         // Si sigue vacío, es contenido sin delimitadores - intentar renderizar todo como math
         if (partes.length === 0) {
-          partes.push({ tipo: 'math', contenido: contenido });
+          partes.push({ tipo: "math", contenido: contenido });
         }
 
         return partes.map((parte, idx) => {
-          if (parte.tipo === 'math') {
+          if (parte.tipo === "math") {
             try {
               return (
-                <div key={idx} style={{ margin: '0.75rem 0' }}>
+                <div key={idx} style={{ margin: "0.75rem 0" }}>
                   <BlockMath math={parte.contenido} />
                 </div>
               );
             } catch (e) {
               return (
-                <div key={idx} style={{ 
-                  color: '#fca5a5', 
-                  fontFamily: 'monospace',
-                  fontSize: '0.85rem',
-                  padding: '0.5rem',
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  borderRadius: '4px',
-                  margin: '0.5rem 0',
-                }}>
+                <div
+                  key={idx}
+                  style={{
+                    color: "#fca5a5",
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem",
+                    padding: "0.5rem",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    borderRadius: "4px",
+                    margin: "0.5rem 0",
+                  }}
+                >
                   ⚠️ Error: {e.message}
-                  <pre style={{ marginTop: '0.25rem', opacity: 0.7 }}>{parte.contenido.slice(0, 100)}...</pre>
+                  <pre style={{ marginTop: "0.25rem", opacity: 0.7 }}>
+                    {parte.contenido.slice(0, 100)}...
+                  </pre>
                 </div>
               );
             }
           } else {
             // Procesar texto: convertir \textbf{} a negrita, etc.
             let textoHtml = parte.contenido
-              .replace(/\\textbf\s*\{([^}]*)\}/g, '<strong>$1</strong>')
-              .replace(/\\section\*?\s*\{([^}]*)\}/g, '<h3 style="color:#a78bfa;margin:0.5rem 0">$1</h3>')
-              .replace(/\\subsection\*?\s*\{([^}]*)\}/g, '<h4 style="color:#c4b5fd;margin:0.5rem 0">$1</h4>')
-              .replace(/\n/g, '<br/>');
-            
+              .replace(/\\textbf\s*\{([^}]*)\}/g, "<strong>$1</strong>")
+              .replace(
+                /\\section\*?\s*\{([^}]*)\}/g,
+                '<h3 style="color:#a78bfa;margin:0.5rem 0">$1</h3>',
+              )
+              .replace(
+                /\\subsection\*?\s*\{([^}]*)\}/g,
+                '<h4 style="color:#c4b5fd;margin:0.5rem 0">$1</h4>',
+              )
+              .replace(/\n/g, "<br/>");
+
             return (
-              <div 
-                key={idx} 
-                style={{ 
-                  color: '#e2e8f0', 
-                  fontSize: '1rem',
-                  margin: '0.5rem 0',
-                  lineHeight: '1.6',
+              <div
+                key={idx}
+                style={{
+                  color: "#e2e8f0",
+                  fontSize: "1rem",
+                  margin: "0.5rem 0",
+                  lineHeight: "1.6",
                 }}
                 dangerouslySetInnerHTML={{ __html: textoHtml }}
               />
@@ -395,9 +424,10 @@ const MathEditor = forwardRef(
 
       try {
         // Si es documento LaTeX completo, usar renderizado mixto
-        const usarRenderizadoMixto = esDocumentoLatexCompleto(value) || 
-          value.includes('\\[') || 
-          value.includes('\\textbf');
+        const usarRenderizadoMixto =
+          esDocumentoLatexCompleto(value) ||
+          value.includes("\\[") ||
+          value.includes("\\textbf");
 
         return (
           <div
@@ -447,7 +477,11 @@ const MathEditor = forwardRef(
                 overflowX: "auto",
               }}
             >
-              {usarRenderizadoMixto ? renderContenidoMixto(value) : <BlockMath math={value} />}
+              {usarRenderizadoMixto ? (
+                renderContenidoMixto(value)
+              ) : (
+                <BlockMath math={value} />
+              )}
             </div>
           </div>
         );
@@ -485,7 +519,9 @@ const MathEditor = forwardRef(
           onClick={() => {
             // 🔥 Advertir si es documento LaTeX completo
             if (esDocumentoLatexCompleto(value)) {
-              console.warn("⚠️ El contenido es un documento LaTeX completo. El modo visual sólo puede renderizar fórmulas matemáticas puras.");
+              console.warn(
+                "⚠️ El contenido es un documento LaTeX completo. El modo visual sólo puede renderizar fórmulas matemáticas puras.",
+              );
             }
             setModoEdicion("visual");
           }}
@@ -613,13 +649,17 @@ const MathEditor = forwardRef(
               flexWrap: "wrap",
             }}
           >
-            <span style={{
-              background: "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.1))",
-              padding: "4px 10px",
-              borderRadius: "6px",
-              border: "1px solid rgba(34, 197, 94, 0.3)",
-            }}>
-              ✨ Edita directamente en el recuadro - las fórmulas se ven renderizadas mientras escribes
+            <span
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(16, 185, 129, 0.1))",
+                padding: "4px 10px",
+                borderRadius: "6px",
+                border: "1px solid rgba(34, 197, 94, 0.3)",
+              }}
+            >
+              ✨ Edita directamente en el recuadro - las fórmulas se ven
+              renderizadas mientras escribes
             </span>
             <span
               style={{
@@ -632,7 +672,7 @@ const MathEditor = forwardRef(
             </span>
           </div>
           <math-field
-            key={`mathfield-${modoEdicion}-${value ? 'hasValue' : 'empty'}`}
+            key={`mathfield-${modoEdicion}-${value ? "hasValue" : "empty"}`}
             ref={mathFieldRef}
             default-mode="math"
             style={{
@@ -743,17 +783,20 @@ Puedes pegar LaTeX largo de ChatGPT:`}
 
         {/* Botón prominente para editar visualmente */}
         {value && mathLiveAvailable && (
-          <div style={{
-            marginTop: "0.75rem",
-            padding: "0.75rem",
-            background: "linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(168, 85, 247, 0.1))",
-            borderRadius: "8px",
-            border: "2px dashed rgba(147, 51, 234, 0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "1rem",
-          }}>
+          <div
+            style={{
+              marginTop: "0.75rem",
+              padding: "0.75rem",
+              background:
+                "linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(168, 85, 247, 0.1))",
+              borderRadius: "8px",
+              border: "2px dashed rgba(147, 51, 234, 0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "1rem",
+            }}
+          >
             <span style={{ color: "#c4b5fd", fontSize: "0.9rem" }}>
               ✨ ¿Quieres editar la fórmula directamente con formato visual?
             </span>
@@ -774,11 +817,13 @@ Puedes pegar LaTeX largo de ChatGPT:`}
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "scale(1.02)";
-                e.currentTarget.style.boxShadow = "0 4px 15px rgba(147, 51, 234, 0.5)";
+                e.currentTarget.style.boxShadow =
+                  "0 4px 15px rgba(147, 51, 234, 0.5)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.boxShadow = "0 2px 10px rgba(147, 51, 234, 0.4)";
+                e.currentTarget.style.boxShadow =
+                  "0 2px 10px rgba(147, 51, 234, 0.4)";
               }}
             >
               🎨 Editar Visualmente
@@ -892,32 +937,35 @@ Puedes pegar LaTeX largo de ChatGPT:`}
     // Parser de documento LaTeX completo
     const parseLatexDocument = (content) => {
       if (!content) return [];
-      
+
       const sections = [];
-      
+
       // Extraer contenido entre \begin{document} y \end{document}
-      const docMatch = content.match(/\\begin\{document\}([\s\S]*?)\\end\{document\}/);
+      const docMatch = content.match(
+        /\\begin\{document\}([\s\S]*?)\\end\{document\}/,
+      );
       const docContent = docMatch ? docMatch[1] : content;
-      
+
       // Regex para detectar secciones, subsecciones y fórmulas
       const patterns = [
-        { type: 'section', regex: /\\section\*?\{([^}]+)\}/g },
-        { type: 'subsection', regex: /\\subsection\*?\{([^}]+)\}/g },
-        { type: 'displaymath', regex: /\\\[([\s\S]*?)\\\]/g },
-        { type: 'cases', regex: /\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g },
-        { type: 'array', regex: /\\begin\{array\}([\s\S]*?)\\end\{array\}/g },
-        { type: 'matrix', regex: /\\left\[([\s\S]*?)\\right\]/g },
+        { type: "section", regex: /\\section\*?\{([^}]+)\}/g },
+        { type: "subsection", regex: /\\subsection\*?\{([^}]+)\}/g },
+        { type: "displaymath", regex: /\\\[([\s\S]*?)\\\]/g },
+        { type: "cases", regex: /\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g },
+        { type: "array", regex: /\\begin\{array\}([\s\S]*?)\\end\{array\}/g },
+        { type: "matrix", regex: /\\left\[([\s\S]*?)\\right\]/g },
       ];
-      
+
       // Dividir el contenido en bloques
       let remaining = docContent;
       let lastIndex = 0;
       let elements = [];
-      
+
       // Buscar todas las secciones
-      const sectionRegex = /\\section\*?\{([^}]+)\}|\\subsection\*?\{([^}]+)\}|\\\[([\s\S]*?)\\\]|\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g;
+      const sectionRegex =
+        /\\section\*?\{([^}]+)\}|\\subsection\*?\{([^}]+)\}|\\\[([\s\S]*?)\\\]|\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g;
       let match;
-      
+
       while ((match = sectionRegex.exec(docContent)) !== null) {
         // Agregar texto entre matches
         if (match.index > lastIndex) {
@@ -925,69 +973,82 @@ Puedes pegar LaTeX largo de ChatGPT:`}
           if (textBetween) {
             // Limpiar comandos LaTeX del texto
             const cleanText = textBetween
-              .replace(/\\textbf\{([^}]+)\}/g, '$1')
-              .replace(/\\textit\{([^}]+)\}/g, '$1')
-              .replace(/\\[a-z]+/gi, '')
-              .replace(/\{|\}/g, '')
+              .replace(/\\textbf\{([^}]+)\}/g, "$1")
+              .replace(/\\textit\{([^}]+)\}/g, "$1")
+              .replace(/\\[a-z]+/gi, "")
+              .replace(/\{|\}/g, "")
               .trim();
             if (cleanText) {
-              elements.push({ type: 'text', content: cleanText });
+              elements.push({ type: "text", content: cleanText });
             }
           }
         }
-        
+
         if (match[1]) {
-          elements.push({ type: 'section', content: match[1] });
+          elements.push({ type: "section", content: match[1] });
         } else if (match[2]) {
-          elements.push({ type: 'subsection', content: match[2] });
+          elements.push({ type: "subsection", content: match[2] });
         } else if (match[3]) {
-          elements.push({ type: 'math', content: match[3] });
+          elements.push({ type: "math", content: match[3] });
         } else if (match[4]) {
-          elements.push({ type: 'math', content: `\\begin{cases}${match[4]}\\end{cases}` });
+          elements.push({
+            type: "math",
+            content: `\\begin{cases}${match[4]}\\end{cases}`,
+          });
         }
-        
+
         lastIndex = match.index + match[0].length;
       }
-      
+
       // Agregar el resto del texto
       if (lastIndex < docContent.length) {
         const textRemaining = docContent.slice(lastIndex).trim();
         if (textRemaining) {
           const cleanText = textRemaining
-            .replace(/\\textbf\{([^}]+)\}/g, '$1')
-            .replace(/\\textit\{([^}]+)\}/g, '$1')
-            .replace(/\\quad|\\qquad|\\;|\\,/g, ' ')
-            .replace(/\\[a-z]+/gi, '')
-            .replace(/\{|\}/g, '')
+            .replace(/\\textbf\{([^}]+)\}/g, "$1")
+            .replace(/\\textit\{([^}]+)\}/g, "$1")
+            .replace(/\\quad|\\qquad|\\;|\\,/g, " ")
+            .replace(/\\[a-z]+/gi, "")
+            .replace(/\{|\}/g, "")
             .trim();
           if (cleanText) {
-            elements.push({ type: 'text', content: cleanText });
+            elements.push({ type: "text", content: cleanText });
           }
         }
       }
-      
+
       return elements;
     };
 
     // Renderizar documento LaTeX estructurado
     const renderDocumentEditor = () => {
       const elements = parseLatexDocument(value);
-      const isLatexDoc = value?.includes('\\documentclass') || value?.includes('\\begin{document}');
-      
+      const isLatexDoc =
+        value?.includes("\\documentclass") ||
+        value?.includes("\\begin{document}");
+
       return (
         <div>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1rem',
-          }}>
-            <div style={{
-              color: '#6ee7b7',
-              fontSize: '0.85rem',
-            }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "1rem",
+            }}
+          >
+            <div
+              style={{
+                color: "#6ee7b7",
+                fontSize: "0.85rem",
+              }}
+            >
               📄 Vista estructurada de documento LaTeX
-              {isLatexDoc && <span style={{ marginLeft: '0.5rem', color: '#86efac' }}>✓ Documento detectado</span>}
+              {isLatexDoc && (
+                <span style={{ marginLeft: "0.5rem", color: "#86efac" }}>
+                  ✓ Documento detectado
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -1000,13 +1061,13 @@ Puedes pegar LaTeX largo de ChatGPT:`}
                 }
               }}
               style={{
-                padding: '4px 12px',
-                background: 'rgba(16, 185, 129, 0.2)',
-                color: '#6ee7b7',
-                border: '1px solid rgba(16, 185, 129, 0.3)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '0.8rem',
+                padding: "4px 12px",
+                background: "rgba(16, 185, 129, 0.2)",
+                color: "#6ee7b7",
+                border: "1px solid rgba(16, 185, 129, 0.3)",
+                borderRadius: "6px",
+                cursor: "pointer",
+                fontSize: "0.8rem",
               }}
             >
               📋 Pegar documento de ChatGPT
@@ -1014,112 +1075,136 @@ Puedes pegar LaTeX largo de ChatGPT:`}
           </div>
 
           {/* Área de edición de código fuente (colapsable) */}
-          <details style={{ marginBottom: '1rem' }}>
-            <summary style={{
-              color: '#94a3b8',
-              fontSize: '0.85rem',
-              cursor: 'pointer',
-              padding: '0.5rem',
-              background: 'rgba(100, 116, 139, 0.1)',
-              borderRadius: '6px',
-              marginBottom: '0.5rem',
-            }}>
+          <details style={{ marginBottom: "1rem" }}>
+            <summary
+              style={{
+                color: "#94a3b8",
+                fontSize: "0.85rem",
+                cursor: "pointer",
+                padding: "0.5rem",
+                background: "rgba(100, 116, 139, 0.1)",
+                borderRadius: "6px",
+                marginBottom: "0.5rem",
+              }}
+            >
               📝 Ver/Editar código fuente LaTeX
             </summary>
             <textarea
-              value={value || ''}
+              value={value || ""}
               onChange={(e) => onChange?.(e.target.value)}
               placeholder="Pega aquí el documento LaTeX completo..."
               style={{
-                width: '100%',
-                minHeight: '150px',
-                padding: '1rem',
-                background: 'rgba(30, 41, 59, 0.8)',
-                border: '1px solid rgba(100, 116, 139, 0.3)',
-                borderRadius: '8px',
-                color: '#94a3b8',
+                width: "100%",
+                minHeight: "150px",
+                padding: "1rem",
+                background: "rgba(30, 41, 59, 0.8)",
+                border: "1px solid rgba(100, 116, 139, 0.3)",
+                borderRadius: "8px",
+                color: "#94a3b8",
                 fontFamily: '"Fira Code", "Consolas", monospace',
-                fontSize: '0.85rem',
-                resize: 'vertical',
-                outline: 'none',
+                fontSize: "0.85rem",
+                resize: "vertical",
+                outline: "none",
               }}
             />
           </details>
 
           {/* Vista estructurada */}
-          <div style={{
-            background: 'rgba(16, 185, 129, 0.05)',
-            border: '2px solid rgba(16, 185, 129, 0.2)',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            maxHeight: '500px',
-            overflowY: 'auto',
-          }}>
+          <div
+            style={{
+              background: "rgba(16, 185, 129, 0.05)",
+              border: "2px solid rgba(16, 185, 129, 0.2)",
+              borderRadius: "12px",
+              padding: "1.5rem",
+              maxHeight: "500px",
+              overflowY: "auto",
+            }}
+          >
             {elements.length === 0 ? (
-              <div style={{
-                textAlign: 'center',
-                color: '#94a3b8',
-                padding: '2rem',
-              }}>
+              <div
+                style={{
+                  textAlign: "center",
+                  color: "#94a3b8",
+                  padding: "2rem",
+                }}
+              >
                 📄 Pega un documento LaTeX para ver su estructura
               </div>
             ) : (
               elements.map((el, idx) => {
-                if (el.type === 'section') {
+                if (el.type === "section") {
                   return (
-                    <h2 key={idx} style={{
-                      color: '#6ee7b7',
-                      fontSize: '1.3rem',
-                      fontWeight: '700',
-                      borderBottom: '2px solid rgba(16, 185, 129, 0.3)',
-                      paddingBottom: '0.5rem',
-                      marginTop: idx > 0 ? '1.5rem' : 0,
-                      marginBottom: '1rem',
-                    }}>
+                    <h2
+                      key={idx}
+                      style={{
+                        color: "#6ee7b7",
+                        fontSize: "1.3rem",
+                        fontWeight: "700",
+                        borderBottom: "2px solid rgba(16, 185, 129, 0.3)",
+                        paddingBottom: "0.5rem",
+                        marginTop: idx > 0 ? "1.5rem" : 0,
+                        marginBottom: "1rem",
+                      }}
+                    >
                       📗 {el.content}
                     </h2>
                   );
-                } else if (el.type === 'subsection') {
+                } else if (el.type === "subsection") {
                   return (
-                    <h3 key={idx} style={{
-                      color: '#86efac',
-                      fontSize: '1.1rem',
-                      fontWeight: '600',
-                      marginTop: '1.25rem',
-                      marginBottom: '0.75rem',
-                      paddingLeft: '0.5rem',
-                      borderLeft: '3px solid rgba(16, 185, 129, 0.4)',
-                    }}>
+                    <h3
+                      key={idx}
+                      style={{
+                        color: "#86efac",
+                        fontSize: "1.1rem",
+                        fontWeight: "600",
+                        marginTop: "1.25rem",
+                        marginBottom: "0.75rem",
+                        paddingLeft: "0.5rem",
+                        borderLeft: "3px solid rgba(16, 185, 129, 0.4)",
+                      }}
+                    >
                       📎 {el.content}
                     </h3>
                   );
-                } else if (el.type === 'math') {
+                } else if (el.type === "math") {
                   try {
                     return (
-                      <div key={idx} style={{
-                        background: 'rgba(147, 51, 234, 0.1)',
-                        border: '1px solid rgba(147, 51, 234, 0.3)',
-                        borderRadius: '8px',
-                        padding: '1rem',
-                        margin: '0.75rem 0',
-                        overflowX: 'auto',
-                      }}>
+                      <div
+                        key={idx}
+                        style={{
+                          background: "rgba(147, 51, 234, 0.1)",
+                          border: "1px solid rgba(147, 51, 234, 0.3)",
+                          borderRadius: "8px",
+                          padding: "1rem",
+                          margin: "0.75rem 0",
+                          overflowX: "auto",
+                        }}
+                      >
                         <BlockMath math={el.content} />
                       </div>
                     );
                   } catch (e) {
                     return (
-                      <div key={idx} style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '8px',
-                        padding: '0.75rem',
-                        margin: '0.5rem 0',
-                        color: '#fca5a5',
-                        fontSize: '0.9rem',
-                      }}>
+                      <div
+                        key={idx}
+                        style={{
+                          background: "rgba(239, 68, 68, 0.1)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          borderRadius: "8px",
+                          padding: "0.75rem",
+                          margin: "0.5rem 0",
+                          color: "#fca5a5",
+                          fontSize: "0.9rem",
+                        }}
+                      >
                         ⚠️ Error al renderizar: {e.message}
-                        <code style={{ display: 'block', marginTop: '0.5rem', fontSize: '0.8rem' }}>
+                        <code
+                          style={{
+                            display: "block",
+                            marginTop: "0.5rem",
+                            fontSize: "0.8rem",
+                          }}
+                        >
                           {el.content.substring(0, 100)}...
                         </code>
                       </div>
@@ -1129,16 +1214,21 @@ Puedes pegar LaTeX largo de ChatGPT:`}
                   // Texto normal - buscar fórmulas inline $...$
                   const parts = el.content.split(/(\$[^\$]+\$)/g);
                   return (
-                    <p key={idx} style={{
-                      color: '#e2e8f0',
-                      fontSize: '1rem',
-                      lineHeight: '1.7',
-                      margin: '0.5rem 0',
-                    }}>
+                    <p
+                      key={idx}
+                      style={{
+                        color: "#e2e8f0",
+                        fontSize: "1rem",
+                        lineHeight: "1.7",
+                        margin: "0.5rem 0",
+                      }}
+                    >
                       {parts.map((part, i) => {
-                        if (part.startsWith('$') && part.endsWith('$')) {
+                        if (part.startsWith("$") && part.endsWith("$")) {
                           try {
-                            return <BlockMath key={i} math={part.slice(1, -1)} />;
+                            return (
+                              <BlockMath key={i} math={part.slice(1, -1)} />
+                            );
                           } catch {
                             return <code key={i}>{part}</code>;
                           }
@@ -1185,32 +1275,45 @@ Puedes pegar LaTeX largo de ChatGPT:`}
 
         {/* 🔥 Advertencia y conversión cuando es documento LaTeX completo */}
         {esDocumentoLatexCompleto(value) && (
-          <div style={{
-            background: "rgba(251, 191, 36, 0.15)",
-            border: "1px solid rgba(251, 191, 36, 0.4)",
-            borderRadius: "8px",
-            padding: "0.75rem 1rem",
-            marginBottom: "1rem",
-            color: "#fbbf24",
-            fontSize: "0.85rem",
-          }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", marginBottom: "0.75rem" }}>
+          <div
+            style={{
+              background: "rgba(251, 191, 36, 0.15)",
+              border: "1px solid rgba(251, 191, 36, 0.4)",
+              borderRadius: "8px",
+              padding: "0.75rem 1rem",
+              marginBottom: "1rem",
+              color: "#fbbf24",
+              fontSize: "0.85rem",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "0.75rem",
+                marginBottom: "0.75rem",
+              }}
+            >
               <span style={{ fontSize: "1.2rem" }}>⚠️</span>
               <div>
-                <strong>Documento LaTeX detectado:</strong> El contenido incluye comandos de documento que el editor visual no puede mostrar directamente.
+                <strong>Documento LaTeX detectado:</strong> El contenido incluye
+                comandos de documento que el editor visual no puede mostrar
+                directamente.
               </div>
             </div>
-            
+
             {/* Botón de conversión */}
-            <div style={{
-              display: "flex",
-              gap: "0.75rem",
-              flexWrap: "wrap",
-              alignItems: "center",
-              marginTop: "0.5rem",
-              paddingTop: "0.75rem",
-              borderTop: "1px solid rgba(251, 191, 36, 0.3)",
-            }}>
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginTop: "0.5rem",
+                paddingTop: "0.75rem",
+                borderTop: "1px solid rgba(251, 191, 36, 0.3)",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -1236,15 +1339,16 @@ Puedes pegar LaTeX largo de ChatGPT:`}
                 🔄 Convertir a formato visual
               </button>
               <span style={{ fontSize: "0.8rem", opacity: 0.9 }}>
-                Extrae las fórmulas y permite editarlas con la paleta de símbolos
+                Extrae las fórmulas y permite editarlas con la paleta de
+                símbolos
               </span>
             </div>
           </div>
         )}
 
-        {modoEdicion === "visual" 
-          ? renderVisualEditor() 
-          : modoEdicion === "codigo" 
+        {modoEdicion === "visual"
+          ? renderVisualEditor()
+          : modoEdicion === "codigo"
             ? renderCodeEditor()
             : renderDocumentEditor()}
 

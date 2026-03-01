@@ -318,7 +318,7 @@ export const renderMixedContent = (text) => {
   if (!text) return null;
 
   // Preprocesar documentos LaTeX completos (detectar \documentclass o \begin{document})
-  if (text.includes('\\documentclass') || text.includes('\\begin{document}')) {
+  if (text.includes("\\documentclass") || text.includes("\\begin{document}")) {
     return renderLatexDocument(text);
   }
 
@@ -390,13 +390,28 @@ export const renderMixedContent = (text) => {
       try {
         return <BlockMath key={idx} math={part.content} />;
       } catch (e) {
-        return <span key={idx} style={{color: '#fca5a5', fontFamily: 'monospace', fontSize: '0.85rem'}}>{part.content}</span>;
+        return (
+          <span
+            key={idx}
+            style={{
+              color: "#fca5a5",
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+            }}
+          >
+            {part.content}
+          </span>
+        );
       }
     } else if (part.type === "inline") {
       try {
         return <InlineMath key={idx} math={part.content} />;
       } catch (e) {
-        return <span key={idx} style={{color: '#fca5a5'}}>{part.content}</span>;
+        return (
+          <span key={idx} style={{ color: "#fca5a5" }}>
+            {part.content}
+          </span>
+        );
       }
     } else if (part.type === "color") {
       return <ColorSwatch key={idx} hex={part.content} />;
@@ -417,14 +432,16 @@ export const renderMixedContent = (text) => {
  */
 const GeometryShape = ({ content }) => {
   // Parsear: ⬤ Círculo (#3b82f6, pos: 250,191)
-  const shapeMatch = content.match(/([⬤●◯○▲△■□◆◇★☆▼▽◀◁▶▷])\s*(Círculo|Cuadrado|Triángulo|Rectángulo|Línea|Punto|Estrella|Flecha|Rombo)\s*\((#[a-fA-F0-9]{6})(?:,\s*pos:\s*(\d+),(\d+))?\)/i);
-  
+  const shapeMatch = content.match(
+    /([⬤●◯○▲△■□◆◇★☆▼▽◀◁▶▷])\s*(Círculo|Cuadrado|Triángulo|Rectángulo|Línea|Punto|Estrella|Flecha|Rombo)\s*\((#[a-fA-F0-9]{6})(?:,\s*pos:\s*(\d+),(\d+))?\)/i,
+  );
+
   if (!shapeMatch) {
     return <span>{content}</span>;
   }
 
   const [, symbol, shapeName, color, posX, posY] = shapeMatch;
-  
+
   // Determinar la forma SVG basada en el nombre
   const renderSvgShape = () => {
     const size = 40;
@@ -434,40 +451,43 @@ const GeometryShape = ({ content }) => {
     };
 
     switch (shapeName.toLowerCase()) {
-      case 'círculo':
+      case "círculo":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
             <circle cx="20" cy="20" r="18" style={commonStyle} />
           </svg>
         );
-      case 'cuadrado':
+      case "cuadrado":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
             <rect x="2" y="2" width="36" height="36" style={commonStyle} />
           </svg>
         );
-      case 'triángulo':
+      case "triángulo":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
             <polygon points="20,2 38,38 2,38" style={commonStyle} />
           </svg>
         );
-      case 'rectángulo':
+      case "rectángulo":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
             <rect x="2" y="8" width="36" height="24" style={commonStyle} />
           </svg>
         );
-      case 'rombo':
+      case "rombo":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
             <polygon points="20,2 38,20 20,38 2,20" style={commonStyle} />
           </svg>
         );
-      case 'estrella':
+      case "estrella":
         return (
           <svg width={size} height={size} viewBox="0 0 40 40">
-            <polygon points="20,2 24,15 38,15 27,24 31,38 20,30 9,38 13,24 2,15 16,15" style={commonStyle} />
+            <polygon
+              points="20,2 24,15 38,15 27,24 31,38 20,30 9,38 13,24 2,15 16,15"
+              style={commonStyle}
+            />
           </svg>
         );
       default:
@@ -480,32 +500,34 @@ const GeometryShape = ({ content }) => {
   };
 
   return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.5rem',
-      padding: '0.35rem 0.75rem',
-      background: `${color}15`,
-      borderRadius: '8px',
-      border: `1px solid ${color}40`,
-      margin: '0.25rem',
-    }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        padding: "0.35rem 0.75rem",
+        background: `${color}15`,
+        borderRadius: "8px",
+        border: `1px solid ${color}40`,
+        margin: "0.25rem",
+      }}
+    >
       {renderSvgShape()}
-      <span style={{ color: '#e2e8f0', fontSize: '0.85rem' }}>
-        {shapeName}
-      </span>
-      <code style={{
-        color: color,
-        fontSize: '0.75rem',
-        fontFamily: 'monospace',
-        background: 'rgba(30, 41, 59, 0.6)',
-        padding: '2px 6px',
-        borderRadius: '4px',
-      }}>
+      <span style={{ color: "#e2e8f0", fontSize: "0.85rem" }}>{shapeName}</span>
+      <code
+        style={{
+          color: color,
+          fontSize: "0.75rem",
+          fontFamily: "monospace",
+          background: "rgba(30, 41, 59, 0.6)",
+          padding: "2px 6px",
+          borderRadius: "4px",
+        }}
+      >
         {color}
       </code>
       {posX && posY && (
-        <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+        <span style={{ color: "#94a3b8", fontSize: "0.7rem" }}>
           ({posX}, {posY})
         </span>
       )}
@@ -520,11 +542,11 @@ const GeometryShape = ({ content }) => {
 const renderLatexDocument = (text) => {
   // Eliminar preámbulo del documento
   let content = text
-    .replace(/\\documentclass(\[[^\]]*\])?\{[^}]*\}/g, '')
-    .replace(/\\usepackage(\[[^\]]*\])?\{[^}]*\}/g, '')
-    .replace(/\\begin\{document\}/g, '')
-    .replace(/\\end\{document\}/g, '')
-    .replace(/\\maketitle/g, '');
+    .replace(/\\documentclass(\[[^\]]*\])?\{[^}]*\}/g, "")
+    .replace(/\\usepackage(\[[^\]]*\])?\{[^}]*\}/g, "")
+    .replace(/\\begin\{document\}/g, "")
+    .replace(/\\end\{document\}/g, "")
+    .replace(/\\maketitle/g, "");
 
   const elements = [];
   let key = 0;
@@ -534,52 +556,78 @@ const renderLatexDocument = (text) => {
   let lastIndex = 0;
   let match;
   const segments = [];
-  
+
   while ((match = displayMathRegex.exec(content)) !== null) {
     if (match.index > lastIndex) {
-      segments.push({ type: 'text', content: content.slice(lastIndex, match.index) });
+      segments.push({
+        type: "text",
+        content: content.slice(lastIndex, match.index),
+      });
     }
-    segments.push({ type: 'displaymath', content: match[1] });
+    segments.push({ type: "displaymath", content: match[1] });
     lastIndex = match.index + match[0].length;
   }
   if (lastIndex < content.length) {
-    segments.push({ type: 'text', content: content.slice(lastIndex) });
+    segments.push({ type: "text", content: content.slice(lastIndex) });
   }
 
   // Procesar cada segmento
   for (const segment of segments) {
-    if (segment.type === 'displaymath') {
+    if (segment.type === "displaymath") {
       try {
         elements.push(
-          <div key={key++} style={{
-            margin: '1rem 0',
-            padding: '1rem',
-            background: 'rgba(59, 130, 246, 0.08)',
-            borderRadius: '8px',
-            borderLeft: '3px solid #3b82f6',
-            overflow: 'auto'
-          }}>
+          <div
+            key={key++}
+            style={{
+              margin: "1rem 0",
+              padding: "1rem",
+              background: "rgba(59, 130, 246, 0.08)",
+              borderRadius: "8px",
+              borderLeft: "3px solid #3b82f6",
+              overflow: "auto",
+            }}
+          >
             <BlockMath math={segment.content.trim()} />
-          </div>
+          </div>,
         );
       } catch (e) {
         elements.push(
-          <pre key={key++} style={{color: '#fca5a5', fontFamily: 'monospace', fontSize: '0.85rem', margin: '0.5rem 0', whiteSpace: 'pre-wrap'}}>
+          <pre
+            key={key++}
+            style={{
+              color: "#fca5a5",
+              fontFamily: "monospace",
+              fontSize: "0.85rem",
+              margin: "0.5rem 0",
+              whiteSpace: "pre-wrap",
+            }}
+          >
             {segment.content}
-          </pre>
+          </pre>,
         );
       }
     } else {
       // Procesar texto con secciones, inline math, etc.
-      const textLines = segment.content.split('\n');
-      let currentText = '';
+      const textLines = segment.content.split("\n");
+      let currentText = "";
 
       for (const line of textLines) {
         const trimmed = line.trim();
         if (!trimmed) {
           if (currentText) {
-            elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0', lineHeight: '1.6'}}>{currentText}</p>);
-            currentText = '';
+            elements.push(
+              <p
+                key={key++}
+                style={{
+                  margin: "0.5rem 0",
+                  color: "#e2e8f0",
+                  lineHeight: "1.6",
+                }}
+              >
+                {currentText}
+              </p>,
+            );
+            currentText = "";
           }
           continue;
         }
@@ -588,21 +636,28 @@ const renderLatexDocument = (text) => {
         const sectionMatch = trimmed.match(/\\section\*?\{([^}]+)\}/);
         if (sectionMatch) {
           if (currentText) {
-            elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0'}}>{currentText}</p>);
-            currentText = '';
+            elements.push(
+              <p key={key++} style={{ margin: "0.5rem 0", color: "#e2e8f0" }}>
+                {currentText}
+              </p>,
+            );
+            currentText = "";
           }
           elements.push(
-            <h2 key={key++} style={{
-              color: '#60a5fa',
-              fontWeight: '700',
-              fontSize: '1.4rem',
-              marginTop: '1.5rem',
-              marginBottom: '0.75rem',
-              borderBottom: '2px solid rgba(96, 165, 250, 0.3)',
-              paddingBottom: '0.5rem'
-            }}>
+            <h2
+              key={key++}
+              style={{
+                color: "#60a5fa",
+                fontWeight: "700",
+                fontSize: "1.4rem",
+                marginTop: "1.5rem",
+                marginBottom: "0.75rem",
+                borderBottom: "2px solid rgba(96, 165, 250, 0.3)",
+                paddingBottom: "0.5rem",
+              }}
+            >
               {sectionMatch[1]}
-            </h2>
+            </h2>,
           );
           continue;
         }
@@ -611,19 +666,26 @@ const renderLatexDocument = (text) => {
         const subsectionMatch = trimmed.match(/\\subsection\*?\{([^}]+)\}/);
         if (subsectionMatch) {
           if (currentText) {
-            elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0'}}>{currentText}</p>);
-            currentText = '';
+            elements.push(
+              <p key={key++} style={{ margin: "0.5rem 0", color: "#e2e8f0" }}>
+                {currentText}
+              </p>,
+            );
+            currentText = "";
           }
           elements.push(
-            <h3 key={key++} style={{
-              color: '#a78bfa',
-              fontWeight: '600',
-              fontSize: '1.15rem',
-              marginTop: '1rem',
-              marginBottom: '0.5rem'
-            }}>
+            <h3
+              key={key++}
+              style={{
+                color: "#a78bfa",
+                fontWeight: "600",
+                fontSize: "1.15rem",
+                marginTop: "1rem",
+                marginBottom: "0.5rem",
+              }}
+            >
               {subsectionMatch[1]}
-            </h3>
+            </h3>,
           );
           continue;
         }
@@ -632,64 +694,105 @@ const renderLatexDocument = (text) => {
         let processedLine = trimmed
           .replace(/\\textbf\{([^}]+)\}/g, (_, text) => `**${text}**`)
           .replace(/\\textit\{([^}]+)\}/g, (_, text) => `*${text}*`)
-          .replace(/\\quad/g, '    ')
-          .replace(/\\\\/g, ' ')
-          .replace(/\\ /g, ' ');
+          .replace(/\\quad/g, "    ")
+          .replace(/\\\\/g, " ")
+          .replace(/\\ /g, " ");
 
         // Buscar math inline \(...\) y convertir a $...$
-        processedLine = processedLine.replace(/\\\(([^)]+)\\\)/g, '$$$$1$$');
+        processedLine = processedLine.replace(/\\\(([^)]+)\\\)/g, "$$$$1$$");
 
         // Si tiene math inline, renderizar
-        if (processedLine.includes('$')) {
+        if (processedLine.includes("$")) {
           if (currentText) {
-            elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0'}}>{currentText}</p>);
-            currentText = '';
+            elements.push(
+              <p key={key++} style={{ margin: "0.5rem 0", color: "#e2e8f0" }}>
+                {currentText}
+              </p>,
+            );
+            currentText = "";
           }
           elements.push(
-            <div key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0', lineHeight: '1.8'}}>
+            <div
+              key={key++}
+              style={{
+                margin: "0.5rem 0",
+                color: "#e2e8f0",
+                lineHeight: "1.8",
+              }}
+            >
               {renderMixedContentSimple(processedLine)}
-            </div>
+            </div>,
           );
-        } else if (processedLine.includes('**') || processedLine.includes('*')) {
+        } else if (
+          processedLine.includes("**") ||
+          processedLine.includes("*")
+        ) {
           // Procesar negritas y cursivas
           if (currentText) {
-            elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0'}}>{currentText}</p>);
-            currentText = '';
+            elements.push(
+              <p key={key++} style={{ margin: "0.5rem 0", color: "#e2e8f0" }}>
+                {currentText}
+              </p>,
+            );
+            currentText = "";
           }
-          const parts = processedLine.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+          const parts = processedLine
+            .split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+            .filter(Boolean);
           elements.push(
-            <div key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0', lineHeight: '1.8'}}>
+            <div
+              key={key++}
+              style={{
+                margin: "0.5rem 0",
+                color: "#e2e8f0",
+                lineHeight: "1.8",
+              }}
+            >
               {parts.map((part, i) => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                  return <strong key={i} style={{color: '#fbbf24'}}>{part.slice(2, -2)}</strong>;
-                } else if (part.startsWith('*') && part.endsWith('*')) {
+                if (part.startsWith("**") && part.endsWith("**")) {
+                  return (
+                    <strong key={i} style={{ color: "#fbbf24" }}>
+                      {part.slice(2, -2)}
+                    </strong>
+                  );
+                } else if (part.startsWith("*") && part.endsWith("*")) {
                   return <em key={i}>{part.slice(1, -1)}</em>;
                 }
                 return <span key={i}>{part}</span>;
               })}
-            </div>
+            </div>,
           );
         } else {
           // Solo texto normal
-          currentText += (currentText ? ' ' : '') + processedLine;
+          currentText += (currentText ? " " : "") + processedLine;
         }
       }
 
       // Texto restante
       if (currentText) {
-        elements.push(<p key={key++} style={{margin: '0.5rem 0', color: '#e2e8f0'}}>{currentText}</p>);
+        elements.push(
+          <p key={key++} style={{ margin: "0.5rem 0", color: "#e2e8f0" }}>
+            {currentText}
+          </p>,
+        );
       }
     }
   }
 
   return (
-    <div style={{
-      padding: '1rem',
-      background: 'rgba(30, 41, 59, 0.4)',
-      borderRadius: '12px',
-      border: '1px solid rgba(59, 130, 246, 0.2)'
-    }}>
-      {elements.length > 0 ? elements : <span style={{color: '#94a3b8'}}>Sin contenido</span>}
+    <div
+      style={{
+        padding: "1rem",
+        background: "rgba(30, 41, 59, 0.4)",
+        borderRadius: "12px",
+        border: "1px solid rgba(59, 130, 246, 0.2)",
+      }}
+    >
+      {elements.length > 0 ? (
+        elements
+      ) : (
+        <span style={{ color: "#94a3b8" }}>Sin contenido</span>
+      )}
     </div>
   );
 };
@@ -710,7 +813,10 @@ const renderMixedContentSimple = (text) => {
 
   while ((match = latexRegex.exec(text)) !== null) {
     if (match.index > currentIndex) {
-      parts.push({ type: "text", content: text.slice(currentIndex, match.index) });
+      parts.push({
+        type: "text",
+        content: text.slice(currentIndex, match.index),
+      });
     }
 
     if (match[1]) {
@@ -733,13 +839,21 @@ const renderMixedContentSimple = (text) => {
       try {
         return <BlockMath key={idx} math={part.content} />;
       } catch (e) {
-        return <code key={idx} style={{color: '#fca5a5'}}>{part.content}</code>;
+        return (
+          <code key={idx} style={{ color: "#fca5a5" }}>
+            {part.content}
+          </code>
+        );
       }
     } else if (part.type === "inline") {
       try {
         return <InlineMath key={idx} math={part.content} />;
       } catch (e) {
-        return <code key={idx} style={{color: '#fca5a5'}}>{part.content}</code>;
+        return (
+          <code key={idx} style={{ color: "#fca5a5" }}>
+            {part.content}
+          </code>
+        );
       }
     }
     return <span key={idx}>{part.content}</span>;
@@ -933,28 +1047,28 @@ const ColorSwatchMini = ({ hex }) => {
   return (
     <span
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.25rem',
-        padding: '0.15rem 0.4rem',
-        background: 'rgba(30, 41, 59, 0.6)',
-        borderRadius: '6px',
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.25rem",
+        padding: "0.15rem 0.4rem",
+        background: "rgba(30, 41, 59, 0.6)",
+        borderRadius: "6px",
         border: `1px solid ${hex}40`,
-        fontSize: '0.75rem',
+        fontSize: "0.75rem",
       }}
     >
       <span
         style={{
-          width: '14px',
-          height: '14px',
+          width: "14px",
+          height: "14px",
           background: hex,
-          borderRadius: '3px',
+          borderRadius: "3px",
           boxShadow: `0 1px 3px ${hex}50`,
-          border: '1px solid rgba(255, 255, 255, 0.2)',
+          border: "1px solid rgba(255, 255, 255, 0.2)",
           flexShrink: 0,
         }}
       />
-      <code style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{hex}</code>
+      <code style={{ color: "#94a3b8", fontSize: "0.7rem" }}>{hex}</code>
     </span>
   );
 };
@@ -963,37 +1077,41 @@ const ColorSwatchMini = ({ hex }) => {
  * Versión compacta de GeometryShape para vistas previas
  */
 const GeometryShapeMini = ({ content }) => {
-  const shapeMatch = content.match(/([⬤●◯○▲△■□◆◇★☆▼▽◀◁▶▷])\s*(Círculo|Cuadrado|Triángulo|Rectángulo|Línea|Punto|Estrella|Flecha|Rombo)\s*\((#[a-fA-F0-9]{6})(?:,\s*pos:\s*(\d+),(\d+))?\)/i);
-  
+  const shapeMatch = content.match(
+    /([⬤●◯○▲△■□◆◇★☆▼▽◀◁▶▷])\s*(Círculo|Cuadrado|Triángulo|Rectángulo|Línea|Punto|Estrella|Flecha|Rombo)\s*\((#[a-fA-F0-9]{6})(?:,\s*pos:\s*(\d+),(\d+))?\)/i,
+  );
+
   if (!shapeMatch) {
-    return <span style={{ fontSize: '0.75rem' }}>{content}</span>;
+    return <span style={{ fontSize: "0.75rem" }}>{content}</span>;
   }
 
   const [, , shapeName, color] = shapeMatch;
-  
+
   return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.25rem',
-      padding: '0.15rem 0.4rem',
-      background: `${color}15`,
-      borderRadius: '6px',
-      border: `1px solid ${color}40`,
-      fontSize: '0.75rem',
-    }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.25rem",
+        padding: "0.15rem 0.4rem",
+        background: `${color}15`,
+        borderRadius: "6px",
+        border: `1px solid ${color}40`,
+        fontSize: "0.75rem",
+      }}
+    >
       <svg width="14" height="14" viewBox="0 0 20 20" style={{ flexShrink: 0 }}>
-        {shapeName.toLowerCase() === 'círculo' ? (
+        {shapeName.toLowerCase() === "círculo" ? (
           <circle cx="10" cy="10" r="8" fill={color} />
-        ) : shapeName.toLowerCase() === 'cuadrado' ? (
+        ) : shapeName.toLowerCase() === "cuadrado" ? (
           <rect x="2" y="2" width="16" height="16" fill={color} />
-        ) : shapeName.toLowerCase() === 'triángulo' ? (
+        ) : shapeName.toLowerCase() === "triángulo" ? (
           <polygon points="10,2 18,18 2,18" fill={color} />
         ) : (
           <circle cx="10" cy="10" r="8" fill={color} />
         )}
       </svg>
-      <span style={{ color: '#94a3b8' }}>{shapeName}</span>
+      <span style={{ color: "#94a3b8" }}>{shapeName}</span>
     </span>
   );
 };
@@ -1002,19 +1120,29 @@ const GeometryShapeMini = ({ content }) => {
  * Mini indicador de código para preview
  */
 const CodeBlockMini = ({ lang, content }) => (
-  <span style={{
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    padding: '0.15rem 0.4rem',
-    background: 'rgba(20, 184, 166, 0.15)',
-    borderRadius: '6px',
-    border: '1px solid rgba(20, 184, 166, 0.3)',
-    fontSize: '0.7rem',
-  }}>
-    <span style={{ color: '#5eead4' }}>💻</span>
-    <code style={{ color: '#5eead4' }}>{lang || 'code'}</code>
-    <span style={{ color: '#94a3b8', maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.25rem",
+      padding: "0.15rem 0.4rem",
+      background: "rgba(20, 184, 166, 0.15)",
+      borderRadius: "6px",
+      border: "1px solid rgba(20, 184, 166, 0.3)",
+      fontSize: "0.7rem",
+    }}
+  >
+    <span style={{ color: "#5eead4" }}>💻</span>
+    <code style={{ color: "#5eead4" }}>{lang || "code"}</code>
+    <span
+      style={{
+        color: "#94a3b8",
+        maxWidth: "100px",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
       {content?.slice(0, 30)}...
     </span>
   </span>
@@ -1024,23 +1152,27 @@ const CodeBlockMini = ({ lang, content }) => (
  * Mini indicador de fórmula química para preview
  */
 const ChemicalFormulaMini = ({ formula }) => (
-  <span style={{
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    padding: '0.15rem 0.4rem',
-    background: 'rgba(16, 185, 129, 0.15)',
-    borderRadius: '6px',
-    border: '1px solid rgba(16, 185, 129, 0.3)',
-    fontSize: '0.75rem',
-  }}>
-    <span style={{ color: '#6ee7b7' }}>⚗️</span>
-    <span style={{ 
-      color: '#6ee7b7', 
-      fontFamily: 'monospace',
-      letterSpacing: '-0.5px',
-    }}>
-      {formula.replace(/(\d+)/g, '₍$1₎').replace(/₍/g, '').replace(/₎/g, '')}
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.25rem",
+      padding: "0.15rem 0.4rem",
+      background: "rgba(16, 185, 129, 0.15)",
+      borderRadius: "6px",
+      border: "1px solid rgba(16, 185, 129, 0.3)",
+      fontSize: "0.75rem",
+    }}
+  >
+    <span style={{ color: "#6ee7b7" }}>⚗️</span>
+    <span
+      style={{
+        color: "#6ee7b7",
+        fontFamily: "monospace",
+        letterSpacing: "-0.5px",
+      }}
+    >
+      {formula.replace(/(\d+)/g, "₍$1₎").replace(/₍/g, "").replace(/₎/g, "")}
     </span>
   </span>
 );
@@ -1049,19 +1181,30 @@ const ChemicalFormulaMini = ({ formula }) => (
  * Mini indicador de SMILES para preview
  */
 const SmilesMini = ({ smiles }) => (
-  <span style={{
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '0.25rem',
-    padding: '0.15rem 0.4rem',
-    background: 'rgba(236, 72, 153, 0.15)',
-    borderRadius: '6px',
-    border: '1px solid rgba(236, 72, 153, 0.3)',
-    fontSize: '0.7rem',
-  }}>
-    <span style={{ color: '#f472b6' }}>🧬</span>
-    <code style={{ color: '#f472b6', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-      {smiles.slice(0, 20)}{smiles.length > 20 ? '...' : ''}
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "0.25rem",
+      padding: "0.15rem 0.4rem",
+      background: "rgba(236, 72, 153, 0.15)",
+      borderRadius: "6px",
+      border: "1px solid rgba(236, 72, 153, 0.3)",
+      fontSize: "0.7rem",
+    }}
+  >
+    <span style={{ color: "#f472b6" }}>🧬</span>
+    <code
+      style={{
+        color: "#f472b6",
+        maxWidth: "80px",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {smiles.slice(0, 20)}
+      {smiles.length > 20 ? "..." : ""}
     </code>
   </span>
 );
@@ -1087,7 +1230,10 @@ export const renderMixedContentPreview = (text, options = {}) => {
 
     while ((match = combinedRegex.exec(text)) !== null) {
       if (match.index > currentIndex) {
-        parts.push({ type: "text", content: text.slice(currentIndex, match.index) });
+        parts.push({
+          type: "text",
+          content: text.slice(currentIndex, match.index),
+        });
       }
 
       if (match[1] && match[2]) {
@@ -1131,56 +1277,103 @@ export const renderMixedContentPreview = (text, options = {}) => {
     if (parts.length === 0) return <span>{text}</span>;
 
     return (
-      <span style={{ display: 'inline-flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.25rem' }}>
+      <span
+        style={{
+          display: "inline-flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "0.25rem",
+        }}
+      >
         {parts.map((part, idx) => {
           if (part.type === "math") {
             try {
               return <InlineMath key={idx} math={part.content} />;
             } catch (e) {
-              return <code key={idx} style={{ color: '#a78bfa', fontSize: '0.75rem' }}>LaTeX</code>;
+              return (
+                <code
+                  key={idx}
+                  style={{ color: "#a78bfa", fontSize: "0.75rem" }}
+                >
+                  LaTeX
+                </code>
+              );
             }
           } else if (part.type === "color") {
             return <ColorSwatchMini key={idx} hex={part.content} />;
           } else if (part.type === "colors") {
             return (
-              <span key={idx} style={{ display: 'inline-flex', gap: '0.15rem', alignItems: 'center' }}>
+              <span
+                key={idx}
+                style={{
+                  display: "inline-flex",
+                  gap: "0.15rem",
+                  alignItems: "center",
+                }}
+              >
                 {part.colors.slice(0, 3).map((c, i) => (
-                  <span key={i} style={{
-                    width: '12px',
-                    height: '12px',
-                    background: c,
-                    borderRadius: '3px',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                  }} title={c} />
+                  <span
+                    key={i}
+                    style={{
+                      width: "12px",
+                      height: "12px",
+                      background: c,
+                      borderRadius: "3px",
+                      border: "1px solid rgba(255,255,255,0.2)",
+                    }}
+                    title={c}
+                  />
                 ))}
-                {part.colors.length > 3 && <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>+{part.colors.length - 3}</span>}
+                {part.colors.length > 3 && (
+                  <span style={{ color: "#94a3b8", fontSize: "0.7rem" }}>
+                    +{part.colors.length - 3}
+                  </span>
+                )}
               </span>
             );
           } else if (part.type === "colormix") {
             return (
-              <span key={idx} style={{ display: 'inline-flex', gap: '0.15rem', alignItems: 'center' }}>
+              <span
+                key={idx}
+                style={{
+                  display: "inline-flex",
+                  gap: "0.15rem",
+                  alignItems: "center",
+                }}
+              >
                 {part.colors.map((c, i) => (
-                  <span key={i} style={{
-                    width: '10px',
-                    height: '10px',
-                    background: c,
-                    borderRadius: '2px',
-                  }} />
+                  <span
+                    key={i}
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      background: c,
+                      borderRadius: "2px",
+                    }}
+                  />
                 ))}
-                <span style={{ color: '#6ee7b7', fontSize: '0.7rem' }}>→</span>
-                <span style={{
-                  width: '14px',
-                  height: '14px',
-                  background: part.result,
-                  borderRadius: '3px',
-                  border: '1px solid rgba(255,255,255,0.2)',
-                }} />
+                <span style={{ color: "#6ee7b7", fontSize: "0.7rem" }}>→</span>
+                <span
+                  style={{
+                    width: "14px",
+                    height: "14px",
+                    background: part.result,
+                    borderRadius: "3px",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                  }}
+                />
               </span>
             );
           } else if (part.type === "geometry") {
             return <GeometryShapeMini key={idx} content={part.content} />;
           } else if (part.type === "code") {
-            return <CodeBlockMini key={idx} lang={part.lang} content={part.content} />;
+            return (
+              <CodeBlockMini
+                key={idx}
+                lang={part.lang}
+                content={part.content}
+              />
+            );
           } else if (part.type === "smiles") {
             return <SmilesMini key={idx} smiles={part.content} />;
           } else if (part.type === "chemical") {

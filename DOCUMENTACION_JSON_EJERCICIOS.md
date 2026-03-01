@@ -64,14 +64,14 @@ Preguntas con 4 opciones donde solo una es correcta.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"mcq"` |
-| `pregunta` | string | El enunciado de la pregunta |
-| `opciones` | array | 4 opciones con formato `"A) texto"`, `"B) texto"`, etc. |
-| `respuesta_correcta` | string | La letra correcta: `"A"`, `"B"`, `"C"` o `"D"` |
-| `explicacion` | string | Por qué la respuesta es correcta |
-| `puntos` | number | Puntos que vale (normalmente 1) |
+| Campo                | Tipo   | Descripción                                             |
+| -------------------- | ------ | ------------------------------------------------------- |
+| `tipo`               | string | Siempre `"mcq"`                                         |
+| `pregunta`           | string | El enunciado de la pregunta                             |
+| `opciones`           | array  | 4 opciones con formato `"A) texto"`, `"B) texto"`, etc. |
+| `respuesta_correcta` | string | La letra correcta: `"A"`, `"B"`, `"C"` o `"D"`          |
+| `explicacion`        | string | Por qué la respuesta es correcta                        |
+| `puntos`             | number | Puntos que vale (normalmente 1)                         |
 
 ---
 
@@ -93,13 +93,13 @@ Afirmaciones que el usuario debe evaluar como verdaderas o falsas.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"true_false"` |
-| `pregunta` | string | Una afirmación a evaluar |
-| `respuesta_correcta` | string | `"Verdadero"` o `"Falso"` |
-| `explicacion` | string | Justificación de la respuesta |
-| `puntos` | number | Puntos que vale |
+| Campo                | Tipo   | Descripción                   |
+| -------------------- | ------ | ----------------------------- |
+| `tipo`               | string | Siempre `"true_false"`        |
+| `pregunta`           | string | Una afirmación a evaluar      |
+| `respuesta_correcta` | string | `"Verdadero"` o `"Falso"`     |
+| `explicacion`        | string | Justificación de la respuesta |
+| `puntos`             | number | Puntos que vale               |
 
 ---
 
@@ -122,14 +122,14 @@ Texto con espacios en blanco que el usuario debe completar.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"cloze"` |
-| `pregunta` | string | Instrucción para el ejercicio |
-| `texto_con_huecos` | string | Texto con `___(N)___` para cada hueco |
-| `respuestas` | array | Lista ordenada de respuestas correctas |
-| `explicacion` | string | Explicación de las respuestas |
-| `puntos` | number | Puntos totales del ejercicio |
+| Campo              | Tipo   | Descripción                            |
+| ------------------ | ------ | -------------------------------------- |
+| `tipo`             | string | Siempre `"cloze"`                      |
+| `pregunta`         | string | Instrucción para el ejercicio          |
+| `texto_con_huecos` | string | Texto con `___(N)___` para cada hueco  |
+| `respuestas`       | array  | Lista ordenada de respuestas correctas |
+| `explicacion`      | string | Explicación de las respuestas          |
+| `puntos`           | number | Puntos totales del ejercicio           |
 
 ---
 
@@ -152,14 +152,14 @@ Preguntas que requieren una respuesta breve del usuario.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"short_answer"` |
-| `pregunta` | string | La pregunta a responder |
-| `respuesta_esperada` | string | La respuesta modelo completa |
-| `palabras_clave` | array | Palabras que deben aparecer en la respuesta |
-| `explicacion` | string | Explicación detallada |
-| `puntos` | number | Puntos que vale |
+| Campo                | Tipo   | Descripción                                 |
+| -------------------- | ------ | ------------------------------------------- |
+| `tipo`               | string | Siempre `"short_answer"`                    |
+| `pregunta`           | string | La pregunta a responder                     |
+| `respuesta_esperada` | string | La respuesta modelo completa                |
+| `palabras_clave`     | array  | Palabras que deben aparecer en la respuesta |
+| `explicacion`        | string | Explicación detallada                       |
+| `puntos`             | number | Puntos que vale                             |
 
 ---
 
@@ -186,13 +186,13 @@ Preguntas de desarrollo que requieren explicación detallada.
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"open_question"` |
-| `pregunta` | string | Pregunta que requiere desarrollo |
-| `puntos_clave` | array | Lista de puntos que debe mencionar |
-| `respuesta_modelo` | string | Respuesta completa esperada |
-| `puntos` | number | Puntos totales (normalmente 5+) |
+| Campo              | Tipo   | Descripción                        |
+| ------------------ | ------ | ---------------------------------- |
+| `tipo`             | string | Siempre `"open_question"`          |
+| `pregunta`         | string | Pregunta que requiere desarrollo   |
+| `puntos_clave`     | array  | Lista de puntos que debe mencionar |
+| `respuesta_modelo` | string | Respuesta completa esperada        |
+| `puntos`           | number | Puntos totales (normalmente 5+)    |
 
 ---
 
@@ -208,21 +208,26 @@ Análisis de un escenario o situación compleja.
       "pregunta": "Analiza el siguiente caso:",
       "descripcion_caso": "Una empresa de tecnología está considerando implementar teletrabajo permanente. El 60% de empleados lo prefiere, pero la productividad ha bajado un 10%...",
       "pregunta_principal": "¿Qué decisión tomarías y por qué?",
-      "puntos_evaluacion": ["análisis del problema", "solución propuesta", "justificación", "consideración de alternativas"],
+      "puntos_evaluacion": [
+        "análisis del problema",
+        "solución propuesta",
+        "justificación",
+        "consideración de alternativas"
+      ],
       "puntos": 10
     }
   ]
 }
 ```
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| `tipo` | string | Siempre `"caso_estudio"` |
-| `pregunta` | string | Introducción al caso |
-| `descripcion_caso` | string | Descripción detallada del escenario |
-| `pregunta_principal` | string | La pregunta central a responder |
-| `puntos_evaluacion` | array | Criterios de evaluación |
-| `puntos` | number | Puntos totales (normalmente 10) |
+| Campo                | Tipo   | Descripción                         |
+| -------------------- | ------ | ----------------------------------- |
+| `tipo`               | string | Siempre `"caso_estudio"`            |
+| `pregunta`           | string | Introducción al caso                |
+| `descripcion_caso`   | string | Descripción detallada del escenario |
+| `pregunta_principal` | string | La pregunta central a responder     |
+| `puntos_evaluacion`  | array  | Criterios de evaluación             |
+| `puntos`             | number | Puntos totales (normalmente 10)     |
 
 ---
 
@@ -244,7 +249,12 @@ Texto con preguntas de opción múltiple.
         "preguntas": [
           {
             "pregunta": "When does Tom prefer to hunt?",
-            "opciones": ["A. In the evening", "B. In the morning", "C. At night", "D. In the afternoon"],
+            "opciones": [
+              "A. In the evening",
+              "B. In the morning",
+              "C. At night",
+              "D. In the afternoon"
+            ],
             "respuesta_correcta": "B"
           },
           {
@@ -254,7 +264,12 @@ Texto con preguntas de opción múltiple.
           },
           {
             "pregunta": "Where does Tom go to hunt?",
-            "opciones": ["A. The mountains", "B. The river", "C. The forest", "D. The beach"],
+            "opciones": [
+              "A. The mountains",
+              "B. The river",
+              "C. The forest",
+              "D. The beach"
+            ],
             "respuesta_correcta": "C"
           }
         ]
@@ -281,9 +296,18 @@ Texto con preguntas de respuesta escrita.
         "idioma": "ingles",
         "texto_lectura": "Maria works as a software developer in a large company. She started programming when she was 15 years old...",
         "preguntas_comprension": [
-          {"pregunta": "What is Maria's job?", "respuesta": "She is a software developer."},
-          {"pregunta": "When did she start programming?", "respuesta": "When she was 15 years old."},
-          {"pregunta": "Where does she work?", "respuesta": "In a large company."}
+          {
+            "pregunta": "What is Maria's job?",
+            "respuesta": "She is a software developer."
+          },
+          {
+            "pregunta": "When did she start programming?",
+            "respuesta": "When she was 15 years old."
+          },
+          {
+            "pregunta": "Where does she work?",
+            "respuesta": "In a large company."
+          }
         ],
         "vocabulario_clave": ["software developer", "programming", "company"]
       },
@@ -344,7 +368,14 @@ Completar texto con palabras de un banco.
         "idioma": "ingles",
         "texto_con_huecos": "Tom is a young hunter. Every {}, he hunts in the {}. He does not hunt at {} because it is too dangerous.",
         "respuestas": ["morning", "forest", "night"],
-        "opciones_disponibles": ["morning", "forest", "night", "afternoon", "beach", "evening"]
+        "opciones_disponibles": [
+          "morning",
+          "forest",
+          "night",
+          "afternoon",
+          "beach",
+          "evening"
+        ]
       },
       "puntos": 3
     }
@@ -373,31 +404,56 @@ Evaluación de diferentes habilidades de lectura (idea principal, detalle, infer
           {
             "tipo_skill": "main_idea",
             "pregunta": "What is the main idea of the text?",
-            "opciones": ["A. Scientists are always wrong", "B. Climate change is urgent", "C. Temperatures are stable", "D. The weather is nice"],
+            "opciones": [
+              "A. Scientists are always wrong",
+              "B. Climate change is urgent",
+              "C. Temperatures are stable",
+              "D. The weather is nice"
+            ],
             "respuesta_correcta": "B"
           },
           {
             "tipo_skill": "detail",
             "pregunta": "According to the text, who has been warning about this issue?",
-            "opciones": ["A. Politicians", "B. Scientists", "C. Teachers", "D. Athletes"],
+            "opciones": [
+              "A. Politicians",
+              "B. Scientists",
+              "C. Teachers",
+              "D. Athletes"
+            ],
             "respuesta_correcta": "B"
           },
           {
             "tipo_skill": "inference",
             "pregunta": "What can we infer from the text?",
-            "opciones": ["A. Action is needed soon", "B. Nothing will change", "C. Scientists are uncertain", "D. The problem is solved"],
+            "opciones": [
+              "A. Action is needed soon",
+              "B. Nothing will change",
+              "C. Scientists are uncertain",
+              "D. The problem is solved"
+            ],
             "respuesta_correcta": "A"
           },
           {
             "tipo_skill": "purpose",
             "pregunta": "What is the author's main purpose?",
-            "opciones": ["A. To inform and warn", "B. To entertain", "C. To sell a product", "D. To confuse readers"],
+            "opciones": [
+              "A. To inform and warn",
+              "B. To entertain",
+              "C. To sell a product",
+              "D. To confuse readers"
+            ],
             "respuesta_correcta": "A"
           },
           {
             "tipo_skill": "tone",
             "pregunta": "What is the tone of the text?",
-            "opciones": ["A. Humorous", "B. Casual", "C. Serious and concerned", "D. Indifferent"],
+            "opciones": [
+              "A. Humorous",
+              "B. Casual",
+              "C. Serious and concerned",
+              "D. Indifferent"
+            ],
             "respuesta_correcta": "C"
           }
         ]
@@ -408,13 +464,13 @@ Evaluación de diferentes habilidades de lectura (idea principal, detalle, infer
 }
 ```
 
-| Tipos de Skill | Descripción |
-|----------------|-------------|
-| `main_idea` | Identificar la idea principal |
-| `detail` | Encontrar información específica |
-| `inference` | Deducir información no explícita |
-| `purpose` | Entender el propósito del autor |
-| `tone` | Identificar el tono del texto |
+| Tipos de Skill | Descripción                      |
+| -------------- | -------------------------------- |
+| `main_idea`    | Identificar la idea principal    |
+| `detail`       | Encontrar información específica |
+| `inference`    | Deducir información no explícita |
+| `purpose`      | Entender el propósito del autor  |
+| `tone`         | Identificar el tono del texto    |
 
 ---
 
@@ -431,16 +487,40 @@ Relacionar afirmaciones con párrafos.
       "metadata": {
         "idioma": "ingles",
         "parrafos": [
-          {"letra": "A", "texto": "Tom is a young hunter who lives in a small village near the forest. He learned to hunt from his father when he was just 12 years old."},
-          {"letra": "B", "texto": "Every morning, Tom wakes up before dawn. He prepares his equipment and walks to the forest. He usually spends 3-4 hours hunting."},
-          {"letra": "C", "texto": "Tom never hunts at night because it is too dangerous. Wild animals are more aggressive after sunset, and visibility is poor."},
-          {"letra": "D", "texto": "Despite the challenges, Tom loves his work. He feels connected to nature and proud of providing food for his family."}
+          {
+            "letra": "A",
+            "texto": "Tom is a young hunter who lives in a small village near the forest. He learned to hunt from his father when he was just 12 years old."
+          },
+          {
+            "letra": "B",
+            "texto": "Every morning, Tom wakes up before dawn. He prepares his equipment and walks to the forest. He usually spends 3-4 hours hunting."
+          },
+          {
+            "letra": "C",
+            "texto": "Tom never hunts at night because it is too dangerous. Wild animals are more aggressive after sunset, and visibility is poor."
+          },
+          {
+            "letra": "D",
+            "texto": "Despite the challenges, Tom loves his work. He feels connected to nature and proud of providing food for his family."
+          }
         ],
         "oraciones": [
-          {"texto": "This paragraph describes Tom's background and how he learned.", "parrafo_correcto": "A"},
-          {"texto": "This paragraph explains Tom's daily routine.", "parrafo_correcto": "B"},
-          {"texto": "This paragraph explains why Tom avoids hunting at certain times.", "parrafo_correcto": "C"},
-          {"texto": "This paragraph shows Tom's feelings about his work.", "parrafo_correcto": "D"}
+          {
+            "texto": "This paragraph describes Tom's background and how he learned.",
+            "parrafo_correcto": "A"
+          },
+          {
+            "texto": "This paragraph explains Tom's daily routine.",
+            "parrafo_correcto": "B"
+          },
+          {
+            "texto": "This paragraph explains why Tom avoids hunting at certain times.",
+            "parrafo_correcto": "C"
+          },
+          {
+            "texto": "This paragraph shows Tom's feelings about his work.",
+            "parrafo_correcto": "D"
+          }
         ]
       },
       "puntos": 4
@@ -465,12 +545,36 @@ Ordenar eventos cronológicamente según el texto.
         "idioma": "ingles",
         "texto_narrativo": "Yesterday was a busy day for Sarah. First, she woke up at 6 AM and had breakfast. Then, she went to the gym for an hour. After exercising, she drove to work. She had a meeting at noon and finished working at 5 PM. Finally, she met her friends for dinner.",
         "eventos": [
-          {"letra": "A", "texto": "Sarah met her friends for dinner.", "posicion_correcta": 6},
-          {"letra": "B", "texto": "Sarah woke up and had breakfast.", "posicion_correcta": 1},
-          {"letra": "C", "texto": "Sarah had a meeting.", "posicion_correcta": 4},
-          {"letra": "D", "texto": "Sarah went to the gym.", "posicion_correcta": 2},
-          {"letra": "E", "texto": "Sarah drove to work.", "posicion_correcta": 3},
-          {"letra": "F", "texto": "Sarah finished working.", "posicion_correcta": 5}
+          {
+            "letra": "A",
+            "texto": "Sarah met her friends for dinner.",
+            "posicion_correcta": 6
+          },
+          {
+            "letra": "B",
+            "texto": "Sarah woke up and had breakfast.",
+            "posicion_correcta": 1
+          },
+          {
+            "letra": "C",
+            "texto": "Sarah had a meeting.",
+            "posicion_correcta": 4
+          },
+          {
+            "letra": "D",
+            "texto": "Sarah went to the gym.",
+            "posicion_correcta": 2
+          },
+          {
+            "letra": "E",
+            "texto": "Sarah drove to work.",
+            "posicion_correcta": 3
+          },
+          {
+            "letra": "F",
+            "texto": "Sarah finished working.",
+            "posicion_correcta": 5
+          }
         ]
       },
       "puntos": 5
@@ -516,14 +620,14 @@ Respuestas cortas a preguntas sobre un texto (niveles CEFR: A1-C2).
 }
 ```
 
-| Nivel | Longitud Respuesta | Complejidad |
-|-------|-------------------|-------------|
-| A1 | 1-5 palabras | Información explícita |
-| A2 | 1-5 palabras | Presente/pasado simple |
-| B1 | 1-2 frases | Conectar ideas (because/so) |
-| B2 | 1-2 frases elaboradas | Inferencia y reformulación |
-| C1 | 2-3 frases precisas | Inferencias complejas |
-| C2 | 2-3 frases sofisticadas | Análisis de tono y matices |
+| Nivel | Longitud Respuesta      | Complejidad                 |
+| ----- | ----------------------- | --------------------------- |
+| A1    | 1-5 palabras            | Información explícita       |
+| A2    | 1-5 palabras            | Presente/pasado simple      |
+| B1    | 1-2 frases              | Conectar ideas (because/so) |
+| B2    | 1-2 frases elaboradas   | Inferencia y reformulación  |
+| C1    | 2-3 frases precisas     | Inferencias complejas       |
+| C2    | 2-3 frases sofisticadas | Análisis de tono y matices  |
 
 ---
 
@@ -661,7 +765,12 @@ Mini-ensayo sobre un tema dado.
         "instrucciones": "Write approximately 100-120 words. Include an introduction, body, and conclusion.",
         "palabras_minimas": 80,
         "palabras_maximas": 140,
-        "puntos_evaluacion": ["Estructura", "Coherencia", "Vocabulario", "Gramática"],
+        "puntos_evaluacion": [
+          "Estructura",
+          "Coherencia",
+          "Vocabulario",
+          "Gramática"
+        ],
         "modelo_respuesta": "Social media has become an essential part of modern life. On one hand, it allows people to connect with friends and family around the world..."
       },
       "puntos": 5
@@ -687,17 +796,39 @@ Ordenar palabras para formar oraciones correctas.
         "nivel": "B1",
         "oraciones": [
           {
-            "palabras_desordenadas": ["the", "cat", "is", "sleeping", "on", "sofa", "the"],
+            "palabras_desordenadas": [
+              "the",
+              "cat",
+              "is",
+              "sleeping",
+              "on",
+              "sofa",
+              "the"
+            ],
             "respuesta_correcta": "The cat is sleeping on the sofa.",
             "traduccion": "El gato está durmiendo en el sofá."
           },
           {
-            "palabras_desordenadas": ["I", "yesterday", "went", "shopping", "to", "mall", "the"],
+            "palabras_desordenadas": [
+              "I",
+              "yesterday",
+              "went",
+              "shopping",
+              "to",
+              "mall",
+              "the"
+            ],
             "respuesta_correcta": "I went shopping to the mall yesterday.",
             "traduccion": "Fui de compras al centro comercial ayer."
           },
           {
-            "palabras_desordenadas": ["she", "English", "speaks", "fluently", "very"],
+            "palabras_desordenadas": [
+              "she",
+              "English",
+              "speaks",
+              "fluently",
+              "very"
+            ],
             "respuesta_correcta": "She speaks English very fluently.",
             "traduccion": "Ella habla inglés muy fluidamente."
           }
@@ -734,8 +865,17 @@ Escribir un email formal según una situación.
         "proposito": "Quejarse por un producto defectuoso y solicitar reembolso",
         "contexto": "Compraste un teléfono hace 2 semanas que dejó de funcionar"
       },
-      "estructura_esperada": ["Greeting formal", "Opening purpose", "Explanation/details", "Polite closing"],
-      "formulas_utiles": ["I am writing to...", "I would appreciate...", "I look forward to hearing from you."],
+      "estructura_esperada": [
+        "Greeting formal",
+        "Opening purpose",
+        "Explanation/details",
+        "Polite closing"
+      ],
+      "formulas_utiles": [
+        "I am writing to...",
+        "I would appreciate...",
+        "I look forward to hearing from you."
+      ],
       "puntos": 5
     }
   ]
@@ -758,7 +898,13 @@ Describir una imagen en el idioma objetivo. Incluye prompt para generar la image
         "idioma": "ingles",
         "nivel": "B1",
         "prompt_generacion": "A modern office space with 4-5 people working at desks with computers. Natural light from large windows. Some people talking, one person drinking coffee. Clean, minimalist design with plants.",
-        "que_describir": ["¿Qué ves?", "¿Quiénes están?", "¿Qué están haciendo?", "¿Dónde están?", "¿Cómo es el ambiente?"],
+        "que_describir": [
+          "¿Qué ves?",
+          "¿Quiénes están?",
+          "¿Qué están haciendo?",
+          "¿Dónde están?",
+          "¿Cómo es el ambiente?"
+        ],
         "oraciones_minimas": 5,
         "descripcion_modelo": "The picture shows a modern office with several people working. There are about five employees sitting at their desks..."
       },
@@ -813,11 +959,11 @@ Construir oraciones a partir de palabras clave dadas (sin tema fijo).
 }
 ```
 
-| Campo | Descripción |
-|-------|-------------|
-| `palabras_clave` | Palabras que el estudiante debe usar |
-| `contexto_pista` | Orientación sobre qué tipo de oración crear |
-| `oracion_esperada` | Ejemplo de oración correcta |
+| Campo              | Descripción                                 |
+| ------------------ | ------------------------------------------- |
+| `palabras_clave`   | Palabras que el estudiante debe usar        |
+| `contexto_pista`   | Orientación sobre qué tipo de oración crear |
+| `oracion_esperada` | Ejemplo de oración correcta                 |
 
 ---
 
@@ -872,7 +1018,11 @@ Parafraseo con temas variados elegidos por ChatGPT.
         "es_libre": true,
         "titulo_tema": "Technology and Daily Life",
         "instrucciones_parafraseo": "Usa sinónimos y cambia la estructura sin cambiar el significado.",
-        "tecnicas_parafraseo": ["Usa sinónimos", "Cambia el orden", "Usa expresiones equivalentes"],
+        "tecnicas_parafraseo": [
+          "Usa sinónimos",
+          "Cambia el orden",
+          "Usa expresiones equivalentes"
+        ],
         "oraciones_originales": [
           {
             "original": "Smartphones have revolutionized how we communicate.",
@@ -980,7 +1130,13 @@ Descripción de una imagen real subida (sin prompt de generación).
         "idioma": "ingles",
         "es_libre": true,
         "imagen_url": "ruta/a/la/imagen.jpg",
-        "que_describir": ["Describe what you see", "Who is present", "What are they doing", "Describe the setting", "What mood/atmosphere"],
+        "que_describir": [
+          "Describe what you see",
+          "Who is present",
+          "What are they doing",
+          "Describe the setting",
+          "What mood/atmosphere"
+        ],
         "oraciones_minimas": 5
       },
       "puntos": 5
@@ -1008,12 +1164,7 @@ Pregunta de opción múltiple con código formateado.
       "concepto_teoria": "Suma de variables numéricas",
       "pregunta": "¿Qué valor tendrá 'resultado' después de ejecutar este código?",
       "codigo": "let numero1 = 10;\nlet numero2 = 5;\nlet resultado = numero1 + numero2;",
-      "opciones": [
-        "15",
-        "105",
-        "\"10 + 5\"",
-        "undefined"
-      ],
+      "opciones": ["15", "105", "\"10 + 5\"", "undefined"],
       "respuesta_correcta": 0,
       "explicacion": "La suma de dos números (10 + 5) da 15. Ambas variables son de tipo number.",
       "puntos": 2
@@ -1022,11 +1173,11 @@ Pregunta de opción múltiple con código formateado.
 }
 ```
 
-| Campo | Descripción |
-|-------|-------------|
-| `lenguaje` | `javascript`, `python`, `java`, `typescript`, `react`, etc. |
-| `respuesta_correcta` | Índice de la opción correcta (0-3) |
-| `codigo` | Código con `\n` para saltos de línea |
+| Campo                | Descripción                                                 |
+| -------------------- | ----------------------------------------------------------- |
+| `lenguaje`           | `javascript`, `python`, `java`, `typescript`, `react`, etc. |
+| `respuesta_correcta` | Índice de la opción correcta (0-3)                          |
+| `codigo`             | Código con `\n` para saltos de línea                        |
 
 ---
 
@@ -1132,7 +1283,11 @@ Implementar el concepto en contexto profesional/real.
       ],
       "solucion_profesional": "function calcularTotal(items) {\n  if (!items || items.length === 0) return 0;\n  return items.reduce((total, item) => {\n    return total + (item.precio || 0);\n  }, 0);\n}",
       "explicacion": "Esta solución aplica suma con validaciones y código limpio",
-      "buenas_practicas_aplicadas": ["Validación de entrada", "Valor por defecto", "Código legible"],
+      "buenas_practicas_aplicadas": [
+        "Validación de entrada",
+        "Valor por defecto",
+        "Código legible"
+      ],
       "puntos": 5
     }
   ]
@@ -1172,60 +1327,60 @@ Detectar bugs sutiles en código de producción.
 
 Los ejercicios de idiomas soportan:
 
-| Código | Idioma |
-|--------|--------|
-| `ingles` | Inglés |
-| `frances` | Francés |
-| `aleman` | Alemán |
-| `italiano` | Italiano |
-| `portugues` | Portugués |
-| `japones` | Japonés |
-| `chino` | Chino Mandarín |
-| `coreano` | Coreano |
-| `ruso` | Ruso |
-| `arabe` | Árabe |
+| Código      | Idioma         |
+| ----------- | -------------- |
+| `ingles`    | Inglés         |
+| `frances`   | Francés        |
+| `aleman`    | Alemán         |
+| `italiano`  | Italiano       |
+| `portugues` | Portugués      |
+| `japones`   | Japonés        |
+| `chino`     | Chino Mandarín |
+| `coreano`   | Coreano        |
+| `ruso`      | Ruso           |
+| `arabe`     | Árabe          |
 
 ---
 
 ## Lenguajes de Programación
 
-| Código | Lenguaje |
-|--------|----------|
-| `javascript` | JavaScript |
-| `typescript` | TypeScript |
-| `react` | React |
-| `angular` | Angular |
-| `vue` | Vue.js |
-| `nodejs` | Node.js |
-| `python` | Python |
-| `java` | Java |
-| `spring` | Spring Boot |
-| `csharp` | C# |
-| `dotnet` | .NET/ASP.NET |
-| `cpp` | C++ |
-| `c` | C |
-| `go` | Go |
-| `rust` | Rust |
-| `php` | PHP |
-| `ruby` | Ruby |
-| `swift` | Swift |
-| `kotlin` | Kotlin |
-| `sql` | SQL |
-| `html` | HTML/CSS |
-| `bash` | Bash/Shell |
+| Código       | Lenguaje     |
+| ------------ | ------------ |
+| `javascript` | JavaScript   |
+| `typescript` | TypeScript   |
+| `react`      | React        |
+| `angular`    | Angular      |
+| `vue`        | Vue.js       |
+| `nodejs`     | Node.js      |
+| `python`     | Python       |
+| `java`       | Java         |
+| `spring`     | Spring Boot  |
+| `csharp`     | C#           |
+| `dotnet`     | .NET/ASP.NET |
+| `cpp`        | C++          |
+| `c`          | C            |
+| `go`         | Go           |
+| `rust`       | Rust         |
+| `php`        | PHP          |
+| `ruby`       | Ruby         |
+| `swift`      | Swift        |
+| `kotlin`     | Kotlin       |
+| `sql`        | SQL          |
+| `html`       | HTML/CSS     |
+| `bash`       | Bash/Shell   |
 
 ---
 
 ## Niveles CEFR (Para Ejercicios de Idiomas)
 
-| Nivel | Descripción |
-|-------|-------------|
-| A1 | Principiante - Vocabulario básico, frases simples |
-| A2 | Elemental - Frases cortas, tiempos básicos |
-| B1 | Intermedio - Conectores, inferencia simple |
-| B2 | Intermedio Alto - Lenguaje matizado, hipótesis |
-| C1 | Avanzado - Precisión léxica, análisis |
-| C2 | Maestría - Matices, análisis crítico |
+| Nivel | Descripción                                       |
+| ----- | ------------------------------------------------- |
+| A1    | Principiante - Vocabulario básico, frases simples |
+| A2    | Elemental - Frases cortas, tiempos básicos        |
+| B1    | Intermedio - Conectores, inferencia simple        |
+| B2    | Intermedio Alto - Lenguaje matizado, hipótesis    |
+| C1    | Avanzado - Precisión léxica, análisis             |
+| C2    | Maestría - Matices, análisis crítico              |
 
 ---
 
@@ -1236,14 +1391,21 @@ Todos los ejercicios deben estar envueltos en esta estructura:
 ```json
 {
   "preguntas": [
-    { /* ejercicio 1 */ },
-    { /* ejercicio 2 */ },
-    { /* ejercicio 3 */ }
+    {
+      /* ejercicio 1 */
+    },
+    {
+      /* ejercicio 2 */
+    },
+    {
+      /* ejercicio 3 */
+    }
   ]
 }
 ```
 
 **Campos obligatorios en cada ejercicio:**
+
 - `tipo`: El tipo de ejercicio (obligatorio)
 - `pregunta`: El enunciado o instrucción (obligatorio)
 - `puntos`: Puntos que vale el ejercicio (recomendado)
@@ -1260,7 +1422,12 @@ Todos los ejercicios deben estar envueltos en esta estructura:
     {
       "tipo": "mcq",
       "pregunta": "¿Qué es HTML?",
-      "opciones": ["A) Un lenguaje de programación", "B) Un lenguaje de marcado", "C) Una base de datos", "D) Un sistema operativo"],
+      "opciones": [
+        "A) Un lenguaje de programación",
+        "B) Un lenguaje de marcado",
+        "C) Una base de datos",
+        "D) Un sistema operativo"
+      ],
       "respuesta_correcta": "B",
       "explicacion": "HTML significa HyperText Markup Language, es un lenguaje de marcado.",
       "puntos": 1
@@ -1286,4 +1453,4 @@ Todos los ejercicios deben estar envueltos en esta estructura:
 
 ---
 
-*Última actualización: Enero 2025*
+_Última actualización: Enero 2025_
