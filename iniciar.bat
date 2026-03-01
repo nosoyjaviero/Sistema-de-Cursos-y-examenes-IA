@@ -143,22 +143,22 @@ if %errorlevel% neq 0 (
 python --version
 echo    ✓ Python encontrado
 
-REM Verificar Node.js
+REM Verificar Node.js (opcional - el backend funciona sin él)
 echo.
 echo [2/6] 📦 Verificando Node.js...
+set TIENE_NODE=1
 where node >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
-    echo ❌ ERROR: Node.js no está instalado
+    echo    ⚠️ Node.js no está instalado
+    echo    El BACKEND funcionará, pero el FRONTEND web no estará disponible.
+    echo    Para instalar Node.js después: https://nodejs.org/
     echo.
-    echo    Descarga Node.js desde: https://nodejs.org/
-    echo    Instala la versión LTS (recomendada)
-    echo.
-    pause
-    exit /b 1
+    set TIENE_NODE=0
+) else (
+    node --version
+    echo    ✓ Node.js encontrado
 )
-node --version
-echo    ✓ Node.js encontrado
 
 REM Crear entorno virtual (solo si no existe)
 echo.
@@ -215,16 +215,20 @@ echo       ✓ Búsqueda web instalada
 echo.
 echo    ✅ Todas las dependencias Python instaladas
 
-REM Verificar/instalar dependencias Node
+REM Verificar/instalar dependencias Node (solo si Node.js está instalado)
 echo.
 echo [5/6] ⚛️ Verificando dependencias del frontend...
-if not exist "examinator-web\node_modules" (
-    echo    Instalando dependencias de React/Vite...
-    cd examinator-web
-    call npm install
-    cd ..
+if !TIENE_NODE!==0 (
+    echo    ⏭️ Saltando frontend - Node.js no instalado
+) else (
+    if not exist "examinator-web\node_modules" (
+        echo    Instalando dependencias de React/Vite...
+        cd examinator-web
+        call npm install
+        cd ..
+    )
+    echo    ✓ Frontend listo
 )
-echo    ✓ Frontend listo
 
 REM Crear carpetas necesarias
 echo.
@@ -249,12 +253,21 @@ echo.
 
 :venv_ok
 
-if not exist "examinator-web\node_modules" (
-    echo ⚠️ Dependencias frontend no encontradas - Instalando...
-    cd examinator-web
-    call npm install
-    cd ..
-    echo.
+REM Verificar Node.js si no se hizo antes
+if not defined TIENE_NODE (
+    set TIENE_NODE=1
+    where node >nul 2>&1
+    if !errorlevel! neq 0 set TIENE_NODE=0
+)
+
+if !TIENE_NODE!==1 (
+    if not exist "examinator-web\node_modules" (
+        echo ⚠️ Dependencias frontend no encontradas - Instalando...
+        cd examinator-web
+        call npm install
+        cd ..
+        echo.
+    )
 )
 
 REM Crear carpetas si no existen (por si acaso)
@@ -287,21 +300,34 @@ timeout /t 3 /nobreak > nul
 echo    ✓ Backend iniciado en http://localhost:8000
 echo.
 
-REM Iniciar servidor frontend
-echo [5/7] ⚛️ Iniciando servidor Frontend (React/Vite)...
-start "Examinator Frontend" cmd /k "cd /d "%FRONTEND_DIR%" && echo 🎨 SERVIDOR FRONTEND - No cierres esta ventana && echo. && npm run dev"
-timeout /t 3 /nobreak > nul
-echo    ✓ Frontend iniciando en http://localhost:5173
+REM Iniciar servidor frontend (solo si Node.js está disponible)
+if !TIENE_NODE!==1 (
+    echo [5/7] ⚛️ Iniciando servidor Frontend (React/Vite^)...
+    start "Examinator Frontend" cmd /k "cd /d "%FRONTEND_DIR%" && echo 🎨 SERVIDOR FRONTEND - No cierres esta ventana && echo. && npm run dev"
+    timeout /t 3 /nobreak > nul
+    echo    ✓ Frontend iniciando en http://localhost:5173
+) else (
+    echo [5/7] ⚛️ Frontend no disponible (Node.js no instalado^)
+    echo    ⚠️ Instala Node.js desde https://nodejs.org/ para usar la interfaz web
+)
 echo.
 
 echo ================================================================================
 echo                          ✅ EXAMINATOR INICIADO
 echo ================================================================================
 echo.
-echo 📍 URLs disponibles:
-echo    • Frontend: http://localhost:5173
-echo    • Backend:  http://localhost:8000
-echo    • API Docs: http://localhost:8000/docs
+if !TIENE_NODE!==1 (
+    echo 📍 URLs disponibles:
+    echo    • Frontend: http://localhost:5173
+    echo    • Backend:  http://localhost:8000
+    echo    • API Docs: http://localhost:8000/docs
+) else (
+    echo 📍 URLs disponibles:
+    echo    • Backend:  http://localhost:8000
+    echo    • API Docs: http://localhost:8000/docs
+    echo.
+    echo ⚠️ Frontend no disponible - Instala Node.js para la interfaz web
+)
 echo.
 echo 💡 Notas:
 echo    - El buscador IA se inicia automáticamente al abrir la pestaña de búsqueda
@@ -311,10 +337,15 @@ echo Esperando 5 segundos para abrir el navegador...
 timeout /t 5 /nobreak > nul
 
 REM Abrir navegador
-start http://localhost:5173
-
-echo.
-echo ✓ Navegador abierto
+if !TIENE_NODE!==1 (
+    start http://localhost:5173
+    echo.
+    echo ✓ Navegador abierto en Frontend
+) else (
+    start http://localhost:8000/docs
+    echo.
+    echo ✓ Navegador abierto en API Docs (Frontend no disponible^)
+)
 echo.
 echo Presiona cualquier tecla para cerrar esta ventana...
 echo (Los servidores seguirán corriendo en sus propias ventanas)
