@@ -251,18 +251,21 @@ REM NOTA: El buscador IA ya NO se inicia automáticamente
 REM Se iniciará bajo demanda cuando abras la pestaña de búsqueda en la app
 REM Esto ahorra recursos del sistema al inicio
 
+REM Guardar rutas absolutas con comillas para manejar espacios
+set "PYTHON_VENV=%CD%\venv\Scripts\python.exe"
+set "API_SERVER=%CD%\api_server.py"
+set "FRONTEND_DIR=%CD%\examinator-web"
+
 REM Iniciar servidor backend
 echo [4/7] 🐍 Iniciando servidor Backend (Python/FastAPI)...
-start "Examinator Backend" cmd /k "echo 🚀 SERVIDOR BACKEND - No cierres esta ventana && echo. && venv\Scripts\python.exe api_server.py"
+start "Examinator Backend" cmd /k "echo 🚀 SERVIDOR BACKEND - No cierres esta ventana && echo. && "%PYTHON_VENV%" "%API_SERVER%""
 timeout /t 3 /nobreak > nul
 echo    ✓ Backend iniciado en http://localhost:8000
 echo.
 
 REM Iniciar servidor frontend
 echo [5/7] ⚛️ Iniciando servidor Frontend (React/Vite)...
-cd examinator-web
-start "Examinator Frontend" cmd /k "echo 🎨 SERVIDOR FRONTEND - No cierres esta ventana && echo. && npm run dev"
-cd ..
+start "Examinator Frontend" cmd /k "cd /d "%FRONTEND_DIR%" && echo 🎨 SERVIDOR FRONTEND - No cierres esta ventana && echo. && npm run dev"
 timeout /t 3 /nobreak > nul
 echo    ✓ Frontend iniciando en http://localhost:5173
 echo.

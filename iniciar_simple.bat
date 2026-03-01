@@ -251,14 +251,19 @@ echo.
 :: Se iniciará bajo demanda cuando abras la pestaña de búsqueda en la app
 :: Esto ahorra recursos del sistema al inicio
 
+:: Guardar rutas absolutas con comillas para manejar espacios
+set "PYTHON_VENV=%CD%\venv\Scripts\python.exe"
+set "API_SERVER=%CD%\api_server.py"
+set "FRONTEND_DIR=%CD%\examinator-web"
+
 :: Iniciar Backend
 echo 🔥 Iniciando Backend API (puerto 8000)...
-start /min "Backend API" cmd /c "cd /d %~dp0 && venv\Scripts\activate.bat && python api_server.py"
+start /min "Backend API" cmd /c ""%PYTHON_VENV%" "%API_SERVER%""
 timeout /t 2 >nul
 
 :: Iniciar Frontend
 echo 🎨 Iniciando Frontend Web (puerto 5173)...
-start /min "Frontend" cmd /c "cd /d %~dp0\examinator-web && npm run dev"
+start /min "Frontend" cmd /c "cd /d "%FRONTEND_DIR%" && npm run dev"
 timeout /t 3 >nul
 
 echo.
