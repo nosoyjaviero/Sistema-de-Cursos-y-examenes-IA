@@ -1,10 +1,16 @@
 # Script de inicio rápido del Buscador IA
 
+# Obtener el directorio del script
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+Set-Location $scriptDir
+
 Write-Host "🔍 BUSCADOR IA - INICIO RÁPIDO" -ForegroundColor Cyan
 Write-Host "=" * 60
+Write-Host "Directorio: $scriptDir" -ForegroundColor Gray
 
-# Verificar si existe el índice
-$rutaIndice = "C:\Users\Fela\Documents\Proyectos\Examinator\indice_busqueda\vectores.index"
+# Verificar si existe el índice (dinámico)
+$rutaIndice = Join-Path $scriptDir "indice_busqueda\vectores.index"
 
 if (-not (Test-Path $rutaIndice)) {
     Write-Host "⚠️  No se encontró índice existente" -ForegroundColor Yellow

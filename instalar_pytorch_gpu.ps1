@@ -1,14 +1,25 @@
 # Script para instalar PyTorch con CUDA para RTX 4050
 Write-Host "🔧 Instalando PyTorch con soporte CUDA..." -ForegroundColor Green
 
+# Obtener el directorio del script
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+Set-Location $scriptDir
+Write-Host "Directorio: $scriptDir" -ForegroundColor Gray
+
 # Detener todos los procesos Python del proyecto
 Write-Host "`n🛑 Deteniendo procesos Python..." -ForegroundColor Yellow
 Get-Process python -ErrorAction SilentlyContinue | Where-Object {$_.Path -like "*Examinator*"} | Stop-Process -Force
 Start-Sleep -Seconds 2
 
-# Activar entorno virtual
+# Activar entorno virtual (dinámico)
 Write-Host "`n📦 Activando entorno virtual..." -ForegroundColor Yellow
-& "C:\Users\Fela\Documents\Proyectos\Examinator\venv\Scripts\Activate.ps1"
+$venvPath = Join-Path $scriptDir "venv\Scripts\Activate.ps1"
+if (Test-Path $venvPath) {
+    & $venvPath
+} else {
+    Write-Host "⚠️ Entorno virtual no encontrado. Usando Python del sistema." -ForegroundColor Yellow
+}
 
 # Desinstalar versión CPU
 Write-Host "`n❌ Desinstalando PyTorch CPU..." -ForegroundColor Yellow

@@ -3,7 +3,13 @@
 Write-Host "🚀 Iniciando servidor Vite de desarrollo..." -ForegroundColor Cyan
 Write-Host "Este es NECESARIO para que los cambios en src/App.jsx se actualicen en el navegador" -ForegroundColor Yellow
 
-cd 'c:\Users\Fela\Documents\Proyectos\Examinator\examinator-web'
+# Obtener el directorio del script y navegar al frontend
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$frontendDir = Join-Path $scriptDir "examinator-web"
+
+Set-Location $frontendDir
+Write-Host "Directorio: $frontendDir" -ForegroundColor Gray
 
 # Verificar si node_modules existe
 if (!(Test-Path 'node_modules')) {

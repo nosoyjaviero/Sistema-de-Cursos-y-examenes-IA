@@ -10,14 +10,31 @@ echo.
 echo    Este script instalará todo lo necesario para ejecutar Examinator
 echo    en tu computadora. Esto solo se ejecuta la primera vez.
 echo.
+echo    ⏱️ Tiempo estimado: 5-15 minutos (según tu conexión)
+echo.
+echo    ⚠️ NO CIERRES ESTA VENTANA - La instalación está en progreso
+echo.
 echo ══════════════════════════════════════════════════════════════════════
+echo.
+
+:: ============================================================================
+:: BARRA DE PROGRESO VISUAL
+:: ============================================================================
+
+echo.
+echo    PROGRESO DE INSTALACIÓN:
+echo    ┌──────────────────────────────────────────────────────────────┐
+echo    │                                                              │
+echo    └──────────────────────────────────────────────────────────────┘
 echo.
 
 :: ============================================================================
 :: VERIFICACIÓN DE REQUISITOS BASE
 :: ============================================================================
 
-echo [1/10] Verificando Python...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [1/10] ▶ Verificando Python...                                    │
+echo └─────────────────────────────────────────────────────────────────────┘
 where python >nul 2>&1
 if %errorlevel% neq 0 (
     echo ❌ Python no está instalado.
@@ -32,7 +49,9 @@ for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VER=%%i
 echo ✅ Python encontrado: %PYTHON_VER%
 
 echo.
-echo [2/10] Verificando Node.js...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [2/10] ▶ Verificando Node.js...                                   │
+echo └─────────────────────────────────────────────────────────────────────┘
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     echo ❌ Node.js no está instalado.
@@ -47,7 +66,9 @@ for /f "tokens=1" %%i in ('node --version 2^>^&1') do set NODE_VER=%%i
 echo ✅ Node.js encontrado: %NODE_VER%
 
 echo.
-echo [3/10] Verificando npm...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [3/10] ▶ Verificando npm...                                       │
+echo └─────────────────────────────────────────────────────────────────────┘
 where npm >nul 2>&1
 if %errorlevel% neq 0 (
     echo ❌ npm no está instalado (debería venir con Node.js)
@@ -62,7 +83,9 @@ echo ✅ npm encontrado: v%NPM_VER%
 :: ============================================================================
 
 echo.
-echo [4/10] Detectando GPU...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [4/10] ▶ Detectando GPU...                                        │
+echo └─────────────────────────────────────────────────────────────────────┘
 set GPU_DISPONIBLE=0
 set GPU_NOMBRE=CPU
 
@@ -83,7 +106,9 @@ del temp_gpu.txt 2>nul
 :: ============================================================================
 
 echo.
-echo [5/10] Verificando Ollama...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [5/10] ▶ Verificando Ollama...                                    │
+echo └─────────────────────────────────────────────────────────────────────┘
 where ollama >nul 2>&1
 if %errorlevel% neq 0 (
     echo ⚠️ Ollama no está instalado.
@@ -113,7 +138,9 @@ if %errorlevel% neq 0 (
 :: ============================================================================
 
 echo.
-echo [6/10] Creando estructura de carpetas...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [6/10] ▶ Creando estructura de carpetas...                        │
+echo └─────────────────────────────────────────────────────────────────────┘
 
 if not exist "extracciones" mkdir extracciones
 echo    ✓ extracciones/
@@ -155,7 +182,9 @@ echo ✅ Carpetas creadas
 :: ============================================================================
 
 echo.
-echo [7/10] Configurando entorno virtual Python...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [7/10] ▶ Configurando entorno virtual Python...                   │
+echo └─────────────────────────────────────────────────────────────────────┘
 
 if exist "venv" (
     echo    Entorno virtual ya existe
@@ -182,36 +211,46 @@ python -m pip install --upgrade pip -q
 :: ============================================================================
 
 echo.
-echo [8/10] Instalando dependencias Python...
-echo    Esto puede tardar varios minutos...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [8/10] ▶ Instalando dependencias Python...                        │
+echo │         ⚠️  ESTO PUEDE TARDAR 5-10 MINUTOS - NO CERRAR            │
+echo └─────────────────────────────────────────────────────────────────────┘
 echo.
 
 :: Instalar PyTorch (con o sin CUDA según GPU)
 if %GPU_DISPONIBLE% equ 1 (
-    echo    📦 Instalando PyTorch con soporte CUDA...
+    echo    📦 [1/5] Instalando PyTorch con soporte CUDA...
+    echo        Descargando ~2GB - por favor espera...
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 -q
+    echo        ✅ PyTorch CUDA instalado
 ) else (
-    echo    📦 Instalando PyTorch (modo CPU)...
+    echo    📦 [1/5] Instalando PyTorch (modo CPU)...
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu -q
+    echo        ✅ PyTorch CPU instalado
 )
 
 :: Dependencias del servidor FastAPI
-echo    📦 Instalando FastAPI y dependencias del servidor...
+echo    📦 [2/5] Instalando FastAPI y servidor...
 pip install fastapi uvicorn python-multipart requests beautifulsoup4 -q
+echo        ✅ FastAPI instalado
 
 :: Dependencias del buscador IA
-echo    📦 Instalando dependencias del buscador IA...
+echo    📦 [3/5] Instalando buscador IA (puede tardar)...
 pip install sentence-transformers faiss-cpu rank-bm25 -q
+echo        ✅ Buscador IA instalado
 
 :: Servidor Flask para buscador
-echo    📦 Instalando Flask y servidor...
+echo    📦 [4/5] Instalando Flask...
 pip install Flask Flask-Cors waitress -q
+echo        ✅ Flask instalado
 
 :: Utilidades
-echo    📦 Instalando utilidades...
+echo    📦 [5/5] Instalando utilidades...
 pip install pypdf PyPDF2 python-docx numpy tqdm ddgs -q
+echo        ✅ Utilidades instaladas
 
-echo ✅ Dependencias Python instaladas
+echo.
+echo ✅ Todas las dependencias Python instaladas
 
 :: Verificar CUDA si hay GPU
 if %GPU_DISPONIBLE% equ 1 (
@@ -225,7 +264,9 @@ if %GPU_DISPONIBLE% equ 1 (
 :: ============================================================================
 
 echo.
-echo [9/10] Instalando dependencias del frontend (React/Vite)...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [9/10] ▶ Instalando dependencias del frontend (React/Vite)...     │
+echo └─────────────────────────────────────────────────────────────────────┘
 
 if exist "examinator-web\package.json" (
     cd examinator-web
@@ -253,7 +294,9 @@ if exist "examinator-web\package.json" (
 :: ============================================================================
 
 echo.
-echo [10/10] Creando configuración inicial...
+echo ┌─────────────────────────────────────────────────────────────────────┐
+echo │  [10/10] ▶ Creando configuración inicial...                        │
+echo └─────────────────────────────────────────────────────────────────────┘
 
 if not exist "config.json" (
     echo {> config.json

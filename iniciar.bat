@@ -62,7 +62,7 @@ if "%COMMITS_BEHIND%"=="0" (
 echo.
 
 REM ============================================================================
-REM VERIFICACIÓN DE PRIMERA EJECUCIÓN
+REM VERIFICACIÓN DE PRIMERA EJECUCIÓN / VENV CORRUPTO
 REM ============================================================================
 
 if not exist "venv\Scripts\activate.bat" (
@@ -77,7 +77,38 @@ if not exist "venv\Scripts\activate.bat" (
     echo.
     echo 🔄 Continuando con el inicio del sistema...
     echo.
+    goto :venv_ok
 )
+
+REM Verificar si el venv fue creado en OTRA máquina (no portable)
+echo [2.5/7] 🔍 Verificando entorno virtual...
+findstr /C:"%USERNAME%" "venv\pyvenv.cfg" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo ================================================================================
+    echo    ⚠️  ENTORNO VIRTUAL DE OTRA PC DETECTADO
+    echo ================================================================================
+    echo.
+    echo    El entorno virtual fue creado en otra computadora.
+    echo    Los entornos virtuales de Python NO son portables entre máquinas.
+    echo.
+    echo    Eliminando venv antiguo y recreando automáticamente...
+    echo.
+    rmdir /s /q venv
+    call instalar_primera_vez.bat
+    if %errorlevel% neq 0 (
+        echo ❌ Error recreando el entorno. Revisa los mensajes anteriores.
+        pause
+        exit /b 1
+    )
+    echo.
+    echo ✅ Entorno virtual recreado correctamente para esta PC.
+    echo.
+) else (
+    echo    ✓ Entorno virtual válido
+)
+
+:venv_ok
 
 if not exist "examinator-web\node_modules" (
     echo ⚠️ Dependencias frontend no encontradas - Instalando...
