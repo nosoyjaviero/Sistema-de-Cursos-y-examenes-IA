@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 > nul
 color 0A
 cls
@@ -51,7 +52,7 @@ if "%COMMITS_BEHIND%"=="0" (
 ) else (
     echo    📥 Hay %COMMITS_BEHIND% actualizaciones disponibles. Descargando...
     git pull origin Flashcards
-    if %errorlevel% equ 0 (
+    if !errorlevel! equ 0 (
         echo    ✅ Actualización completada!
     ) else (
         echo    ⚠️ Error al actualizar. Puede haber conflictos locales.
@@ -77,7 +78,7 @@ if not exist "venv\Scripts\activate.bat" (
 REM Caso 2: El venv es de otra PC (verificar que contiene el usuario actual)
 echo [2.5/7] 🔍 Verificando entorno virtual...
 findstr /C:"%USERNAME%" "venv\pyvenv.cfg" >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo ================================================================================
     echo    ⚠️  ENTORNO VIRTUAL DE OTRA PC DETECTADO
@@ -94,8 +95,8 @@ if %errorlevel% neq 0 (
 
 REM Caso 3: El venv existe pero las dependencias no están instaladas
 echo [2.6/7] 🔍 Verificando dependencias instaladas...
-"venv\Scripts\python.exe" -c "import fastapi" >nul 2>&1
-if %errorlevel% neq 0 (
+call "venv\Scripts\python.exe" -c "import fastapi" >nul 2>&1
+if !errorlevel! neq 0 (
     echo.
     echo ================================================================================
     echo    ⚠️  DEPENDENCIAS NO INSTALADAS
@@ -106,14 +107,13 @@ if %errorlevel% neq 0 (
     echo.
     set NECESITA_INSTALACION=1
     goto :check_instalacion
-) else (
-    echo    ✓ Dependencias instaladas
 )
 
+echo    ✓ Dependencias instaladas
 echo    ✓ Entorno virtual válido
 
 :check_instalacion
-if %NECESITA_INSTALACION%==0 goto :venv_ok
+if !NECESITA_INSTALACION!==0 goto :venv_ok
 
 REM ============================================================================
 REM INSTALACIÓN AUTOMÁTICA DEL ENTORNO (independiente de instalar_primera_vez.bat)
@@ -168,7 +168,7 @@ if exist "venv\Scripts\python.exe" (
 ) else (
     echo    Creando entorno virtual...
     python -m venv venv
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo ❌ Error creando entorno virtual
         pause
         exit /b 1

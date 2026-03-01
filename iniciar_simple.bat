@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 > nul
 title 📚 Examinator - Inicio Local
 cd /d "%~dp0"
@@ -45,7 +46,7 @@ if "%COMMITS_BEHIND%"=="0" (
 ) else (
     echo 📥 Hay %COMMITS_BEHIND% actualizaciones disponibles. Descargando...
     git pull origin Flashcards
-    if %errorlevel% equ 0 (
+    if !errorlevel! equ 0 (
         echo ✅ Actualización completada!
     ) else (
         echo ⚠️ Error al actualizar. Puede haber conflictos locales.
@@ -71,7 +72,7 @@ if not exist "venv\Scripts\activate.bat" (
 :: Caso 2: El venv es de otra PC
 echo 🔍 Verificando entorno virtual...
 findstr /C:"%USERNAME%" "venv\pyvenv.cfg" >nul 2>&1
-if %errorlevel% neq 0 (
+if !errorlevel! neq 0 (
     echo.
     echo ════════════════════════════════════════════════════════════════
     echo    ⚠️  ENTORNO VIRTUAL DE OTRA PC DETECTADO
@@ -87,8 +88,8 @@ if %errorlevel% neq 0 (
 
 :: Caso 3: El venv existe pero las dependencias no están instaladas
 echo 🔍 Verificando dependencias instaladas...
-"venv\Scripts\python.exe" -c "import fastapi" >nul 2>&1
-if %errorlevel% neq 0 (
+call "venv\Scripts\python.exe" -c "import fastapi" >nul 2>&1
+if !errorlevel! neq 0 (
     echo.
     echo ════════════════════════════════════════════════════════════════
     echo    ⚠️  DEPENDENCIAS NO INSTALADAS
@@ -104,7 +105,7 @@ if %errorlevel% neq 0 (
 echo ✓ Entorno virtual y dependencias válidos
 
 :check_instalacion
-if %NECESITA_INSTALACION%==0 goto :venv_ok
+if !NECESITA_INSTALACION!==0 goto :venv_ok
 
 :: ============================================================================
 :: INSTALACIÓN AUTOMÁTICA (independiente de instalar_primera_vez.bat)
@@ -159,7 +160,7 @@ if exist "venv\Scripts\python.exe" (
 ) else (
     echo    Creando entorno virtual...
     python -m venv venv
-    if %errorlevel% neq 0 (
+    if !errorlevel! neq 0 (
         echo ❌ Error creando entorno virtual
         pause
         exit /b 1
