@@ -16400,6 +16400,14 @@ JSON:`;
     console.log("   carpetaExamen?.ruta:", carpetaExamen?.ruta);
     console.log("=".repeat(60));
 
+    // 🔥 Mostrar alerta de confirmación antes de eliminar práctica no completada
+    if (esPractica && !examenCompletado && !esPausa) {
+      const confirmar = window.confirm(
+        "⚠️ ¿Salir de la práctica?\n\nSi cierras ahora, la práctica se eliminará y perderás el progreso."
+      );
+      if (!confirmar) return;
+    }
+
     // 🔥 ELIMINAR práctica si es nueva, no está completada Y NO ES PAUSA
     // Usar carpetaExamen?.ruta O examenActivo?.carpeta_ruta O examenActivo?.carpeta
     const carpetaRutaEliminar =
@@ -30586,8 +30594,9 @@ Generate an educational reading passage about this topic that would be suitable 
                               errorActual?.tipo === "cloze" ||
                               errorActual?.tipo === "reading_cloze";
                             if (esCloze) {
-                              // 🔥 MEJORADO: Para reading_cloze, usar metadata.texto_con_huecos primero
+                              // 🔥 MEJORADO: Para cloze estándar, texto_con_huecos está en la raíz
                               const textoConHuecos =
+                                errorActual?.texto_con_huecos ||
                                 errorActual?.metadata?.texto_con_huecos ||
                                 errorActual?.metadata?.text_with_gaps ||
                                 errorActual?.pregunta ||
@@ -30660,7 +30669,7 @@ Generate an educational reading passage about this topic that would be suitable 
                                 }
                               }
 
-                              const partes = textoConHuecos.split(/\{[^}]*\}/);
+                              const partes = textoConHuecos.split(/___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/);
                               const numHuecos = partes.length - 1;
 
                               return (
@@ -41766,8 +41775,9 @@ IDIOMA: ${idiomaSBL}
                               aciertoActual?.tipo === "cloze" ||
                               aciertoActual?.tipo === "reading_cloze";
                             if (esCloze) {
-                              // 🔥 MEJORADO: Para reading_cloze, usar metadata.texto_con_huecos primero
+                              // 🔥 MEJORADO: Para cloze estándar, texto_con_huecos está en la raíz
                               const textoConHuecos =
+                                aciertoActual?.texto_con_huecos ||
                                 aciertoActual?.metadata?.texto_con_huecos ||
                                 aciertoActual?.metadata?.text_with_gaps ||
                                 aciertoActual?.pregunta ||
@@ -41837,7 +41847,7 @@ IDIOMA: ${idiomaSBL}
                                 }
                               }
 
-                              const partes = textoConHuecos.split(/\{[^}]*\}/);
+                              const partes = textoConHuecos.split(/___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/);
                               const numHuecos = partes.length - 1;
 
                               return (
@@ -76586,14 +76596,16 @@ IDIOMA: ${idiomaSBL}
                               <div className="respuesta-cloze">
                                 <div className="cloze-text-interactivo">
                                   {(() => {
-                                    // Obtener el texto con huecos
+                                    // Obtener el texto con huecos (priorizar texto_con_huecos)
                                     const texto =
-                                      pregunta.pregunta ||
+                                      pregunta.texto_con_huecos ||
+                                      pregunta.metadata?.texto_con_huecos ||
                                       pregunta.metadata?.text_with_gaps ||
+                                      pregunta.pregunta ||
                                       "";
 
-                                    // Dividir por cualquier patrón de llaves: {} o {1}, {2}, etc.
-                                    const partes = texto.split(/\{[^}]*\}/);
+                                    // Dividir por ___(N)___ (cloze estándar) o {} (reading_cloze)
+                                    const partes = texto.split(/___\([^)]+\)___|___|\{[^}]*\}/);
 
                                     // Obtener las respuestas del usuario
                                     const respuestas = (

@@ -1454,3 +1454,43 @@ Todos los ejercicios deben estar envueltos en esta estructura:
 ---
 
 _Última actualización: Enero 2025_
+
+
+Ejercicios Básicos
+MCQ - Opción Múltiple
+True/False - Verdadero/Falso
+Cloze - Rellenar Huecos
+Short_Answer - Respuesta Corta
+Open_Question - Pregunta Abierta
+Caso de Estudio
+Comprensión Lectora (Idiomas)
+Reading Comprehension
+Reading Written
+Reading True/False
+Reading Cloze
+Reading Skill
+Reading Matching
+Reading Sequence
+Expresión Escrita (Idiomas)
+Writing Short
+Writing Paraphrase
+Writing Correction
+Writing Transformation
+Writing Essay
+Sentence Builder
+Formal Email
+Picture Description
+Ejercicios "Libre" (Sin Tema Predefinido)
+Sentence Builder Libre
+Writing Short Libre
+Writing Paraphrase Libre
+Writing Correction Libre
+Writing Transformation Libre
+Picture Description Libre
+Programación
+Code MCQ
+Code Como Ejemplo
+Code Encontrar Error
+Code Qué Pasa Si
+Code Industria
+Code Error Industria
