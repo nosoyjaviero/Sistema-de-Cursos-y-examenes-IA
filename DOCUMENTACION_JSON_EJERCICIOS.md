@@ -647,14 +647,20 @@ Reescribir frases con diferentes palabras manteniendo el significado.
         "oraciones_originales": [
           {
             "original": "She stayed at home because she was sick.",
+            "instruccion": "Change 'because' to 'due to' and use noun form",
+            "pistas_parafraseo": "Convert 'she was sick' to a noun phrase",
             "parafraseo_esperado": "She stayed at home due to her illness."
           },
           {
             "original": "The movie was very interesting.",
+            "instruccion": "Use synonyms: 'movie'→'film', 'interesting'→'fascinating'",
+            "pistas_parafraseo": "Try 'film' and 'fascinating'",
             "parafraseo_esperado": "The film was quite fascinating."
           },
           {
             "original": "I can't understand this problem.",
+            "instruccion": "Use formal language: 'can't'→'unable to', 'understand'→'comprehend'",
+            "pistas_parafraseo": "Use 'unable to' and 'comprehend'",
             "parafraseo_esperado": "I'm unable to comprehend this issue."
           }
         ]
@@ -664,6 +670,11 @@ Reescribir frases con diferentes palabras manteniendo el significado.
   ]
 }
 ```
+
+**Campos importantes:**
+- **`instruccion`**: Indica **cómo debe transformarse** cada oración (ej: "Change to passive voice", "Use synonyms"). **Este campo se muestra en la interfaz** como instrucción destacada.
+- **`pistas_parafraseo`**: Pistas adicionales opcionales para ayudar al estudiante. Se muestran antes de responder.
+- **Diferencia**: `instruccion` es obligatoria (transformación requerida), `pistas_parafraseo` es opcional (ayudas).
 
 ---
 
@@ -1026,11 +1037,13 @@ Parafraseo con temas variados elegidos por ChatGPT.
         "oraciones_originales": [
           {
             "original": "Smartphones have revolutionized how we communicate.",
+            "instruccion": "Use synonym 'transform' and passive causative structure",
             "parafraseo_esperado": "Mobile phones have transformed our communication methods.",
             "pistas_parafraseo": "Try using 'transform' instead of 'revolutionize'."
           },
           {
             "original": "Many people prefer online shopping because it saves time.",
+            "instruccion": "Change 'because' to 'as' and restructure with adjective",
             "parafraseo_esperado": "Online shopping is popular as it is more time-efficient.",
             "pistas_parafraseo": "Try restructuring with 'as' instead of 'because'."
           }
@@ -1041,6 +1054,11 @@ Parafraseo con temas variados elegidos por ChatGPT.
   ]
 }
 ```
+
+**Campos importantes:**
+- **`instruccion`**: Indica la **transformación específica** que debe hacer el estudiante en cada oración (ej: "Use synonym 'transform' and passive causative structure"). **Se muestra en la interfaz** como instrucción destacada.
+- **`pistas_parafraseo`**: Pistas adicionales opcionales para ayudar (ej: "Try using 'transform' instead of 'revolutionize'"). Se muestran antes de responder.
+- **`titulo_tema`**: Tema contextual opcional para dar coherencia a las oraciones (ej: "Technology and Daily Life").
 
 ---
 
@@ -1463,6 +1481,8 @@ Cloze - Rellenar Huecos
 Short_Answer - Respuesta Corta
 Open_Question - Pregunta Abierta
 Caso de Estudio
+
+
 Comprensión Lectora (Idiomas)
 Reading Comprehension
 Reading Written
@@ -1471,6 +1491,7 @@ Reading Cloze
 Reading Skill
 Reading Matching
 Reading Sequence
+
 Expresión Escrita (Idiomas)
 Writing Short
 Writing Paraphrase
@@ -1480,6 +1501,8 @@ Writing Essay
 Sentence Builder
 Formal Email
 Picture Description
+
+
 Ejercicios "Libre" (Sin Tema Predefinido)
 Sentence Builder Libre
 Writing Short Libre
@@ -1487,6 +1510,8 @@ Writing Paraphrase Libre
 Writing Correction Libre
 Writing Transformation Libre
 Picture Description Libre
+
+
 Programación
 Code MCQ
 Code Como Ejemplo

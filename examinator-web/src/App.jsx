@@ -5132,6 +5132,53 @@ function App() {
               tieneOpciones: opcionesFinales.length > 0,
             });
 
+            // 🔥 RECONSTRUIR oraciones_originales para paraphrase_item si no existe
+            let oracionesOriginalesReconstruidas = null;
+            if (
+              (resultado.tipo === "paraphrase_item" ||
+                preguntaOriginal?.tipo === "paraphrase_item") &&
+              !resultado.oraciones_originales &&
+              !preguntaOriginal?.oraciones_originales &&
+              !preguntaPadre?.oraciones_originales
+            ) {
+              // Buscar campos individuales de la oración
+              const oracionOriginal =
+                resultado.oracion_original ||
+                preguntaOriginal?.oracion_original ||
+                null;
+              const instruccion =
+                resultado.instruccion ||
+                preguntaOriginal?.instruccion ||
+                null;
+              const pistasParafraseo =
+                resultado.pistas_parafraseo ||
+                preguntaOriginal?.pistas_parafraseo ||
+                instruccion || // Usar instrucción como fallback
+                null;
+              const parafraseoEsperado =
+                resultado.respuesta_correcta ||
+                resultado.parafraseo_esperado ||
+                preguntaOriginal?.respuesta_correcta ||
+                preguntaOriginal?.parafraseo_esperado ||
+                null;
+
+              // Si tenemos al menos la oración original, crear el array
+              if (oracionOriginal) {
+                oracionesOriginalesReconstruidas = [
+                  {
+                    original: oracionOriginal,
+                    instruccion: instruccion,
+                    pistas_parafraseo: pistasParafraseo,
+                    parafraseo_esperado: parafraseoEsperado,
+                  },
+                ];
+                console.log(
+                  "🔧 Reconstruido oraciones_originales para paraphrase_item:",
+                  oracionesOriginalesReconstruidas,
+                );
+              }
+            }
+
             errores.push({
               ...resultado,
               // 🔥 INCLUIR PREGUNTA ORIGINAL COMPLETA para tipos complejos (reading, writing, etc.)
@@ -5428,6 +5475,15 @@ function App() {
                 preguntaOriginal?.nivel_cefr ||
                 preguntaOriginal?.metadata?.nivel ||
                 null,
+              // 🔥 CAMPOS PARA WRITING_PARAPHRASE / PARAPHRASE_ITEM
+              oraciones_originales:
+                oracionesOriginalesReconstruidas ||
+                resultado.oraciones_originales ||
+                preguntaOriginal?.oraciones_originales ||
+                preguntaPadre?.oraciones_originales ||
+                preguntaOriginal?.metadata?.oraciones_originales ||
+                preguntaPadre?.metadata?.oraciones_originales ||
+                null,
               // 🔥 CAMPOS DE REPETICIÓN ESPACIADA
               estado_error: resultado.estado_error || "nuevo",
               veces_fallada: resultado.veces_fallada || 0,
@@ -5645,6 +5701,53 @@ function App() {
                 proximaRevision: proximaRev?.toISOString().split("T")[0],
               });
 
+              // 🔥 RECONSTRUIR oraciones_originales para paraphrase_item si no existe
+              let oracionesOriginalesReconstruidas = null;
+              if (
+                (resultado.tipo === "paraphrase_item" ||
+                  preguntaOriginal?.tipo === "paraphrase_item") &&
+                !resultado.oraciones_originales &&
+                !preguntaOriginal?.oraciones_originales &&
+                !preguntaPadre?.oraciones_originales
+              ) {
+                // Buscar campos individuales de la oración
+                const oracionOriginal =
+                  resultado.oracion_original ||
+                  preguntaOriginal?.oracion_original ||
+                  null;
+                const instruccion =
+                  resultado.instruccion ||
+                  preguntaOriginal?.instruccion ||
+                  null;
+                const pistasParafraseo =
+                  resultado.pistas_parafraseo ||
+                  preguntaOriginal?.pistas_parafraseo ||
+                  instruccion || // Usar instrucción como fallback
+                  null;
+                const parafraseoEsperado =
+                  resultado.respuesta_correcta ||
+                  resultado.parafraseo_esperado ||
+                  preguntaOriginal?.respuesta_correcta ||
+                  preguntaOriginal?.parafraseo_esperado ||
+                  null;
+
+                // Si tenemos al menos la oración original, crear el array
+                if (oracionOriginal) {
+                  oracionesOriginalesReconstruidas = [
+                    {
+                      original: oracionOriginal,
+                      instruccion: instruccion,
+                      pistas_parafraseo: pistasParafraseo,
+                      parafraseo_esperado: parafraseoEsperado,
+                    },
+                  ];
+                  console.log(
+                    "🔧 Reconstruido oraciones_originales para paraphrase_item (acierto):",
+                    oracionesOriginalesReconstruidas,
+                  );
+                }
+              }
+
               aciertos.push({
                 ...resultado,
                 examen_id: examen.id,
@@ -5836,6 +5939,15 @@ function App() {
                   resultado.lenguaje ||
                   preguntaOriginal?.lenguaje ||
                   "javascript",
+                // 🔥 CAMPOS PARA WRITING_PARAPHRASE / PARAPHRASE_ITEM
+                oraciones_originales:
+                  oracionesOriginalesReconstruidas ||
+                  resultado.oraciones_originales ||
+                  preguntaOriginal?.oraciones_originales ||
+                  preguntaPadre?.oraciones_originales ||
+                  preguntaOriginal?.metadata?.oraciones_originales ||
+                  preguntaPadre?.metadata?.oraciones_originales ||
+                  null,
               });
             }
           }
@@ -6525,27 +6637,55 @@ Responde SOLO con JSON válido:
 }`,
 
       writing_paraphrase: `Genera ${config.cantidad || 1} ejercicio(s) de parafraseo en ${langName}.
-Responde SOLO con JSON válido:
+
+⚠️ OBLIGATORIO: CADA oración DEBE tener el campo "instruccion" que indique CÓMO transformarla.
+
+Ejemplo de estructura CORRECTA con el campo "instruccion":
 {
   "preguntas": [
     {
       "tipo": "writing_paraphrase",
-      "pregunta": "Parafrasea las siguientes oraciones manteniendo el mismo significado:",
+      "pregunta": "Paraphrase the following sentences according to the instructions:",
       "metadata": {
-        "idioma": "${config.idioma}",
+        "idioma": "ingles",
         "nivel": "B1",
-        "instrucciones_parafraseo": "Usa sinónimos y cambia la estructura de la oración sin cambiar el significado.",
-        "tecnicas_parafraseo": ["Usa sinónimos", "Cambia la estructura gramatical", "Mantén el mismo significado"],
+        "instrucciones_parafraseo": "Use synonyms and change the structure.",
+        "tecnicas_parafraseo": ["Use synonyms", "Change structure", "Keep meaning"],
         "oraciones_originales": [
-          {"original": "<<Oración 1 en ${langName}>>", "parafraseo_esperado": "<<Parafraseo>>", "pistas_parafraseo": "<<Sugerencia>>"},
-          {"original": "<<Oración 2 en ${langName}>>", "parafraseo_esperado": "<<Parafraseo>>", "pistas_parafraseo": "<<Sugerencia>>"},
-          {"original": "<<Oración 3 en ${langName}>>", "parafraseo_esperado": "<<Parafraseo>>", "pistas_parafraseo": "<<Sugerencia>>"}
+          {
+            "original": "The concert was cancelled because the singer was sick.",
+            "instruccion": "Change 'because' to 'due to' and use noun form",
+            "parafraseo_esperado": "The concert was cancelled due to the singer's illness.",
+            "pistas_parafraseo": "due to + noun"
+          },
+          {
+            "original": "Someone stole my wallet.",
+            "instruccion": "Transform to passive voice",
+            "parafraseo_esperado": "My wallet was stolen.",
+            "pistas_parafraseo": "Remove subject"
+          },
+          {
+            "original": "Although it was raining, they went out.",
+            "instruccion": "Replace 'although' with 'despite' + noun",
+            "parafraseo_esperado": "Despite the rain, they went out.",
+            "pistas_parafraseo": "despite + noun"
+          }
         ]
       },
-      "puntos": ${config.num_frases || 3}
+      "puntos": 3
     }
   ]
-}`,
+}
+
+Ahora genera TU ejercicio en ${langName} con EXACTAMENTE esta estructura.
+
+🔴 CADA oración DEBE tener:
+- "original": oración a parafrasear
+- "instruccion": QUÉ transformación hacer (pasiva, sinónimos, tiempo verbal, etc.)
+- "parafraseo_esperado": resultado correcto  
+- "pistas_parafraseo": ayuda breve
+
+Responde SOLO con el JSON:`,
 
       writing_correction: `Genera ${config.cantidad || 1} ejercicio(s) de corrección de errores en ${langName}.
 Responde SOLO con JSON válido:
@@ -6697,28 +6837,51 @@ Responde SOLO con JSON válido:
 }`,
 
       writing_paraphrase_libre: `Genera ${config.cantidad || 1} ejercicio(s) de parafraseo LIBRE en ${langName}.
-⚠️ IMPORTANTE: Genera frases sobre temas VARIADOS e INTERESANTES
-Responde SOLO con JSON válido:
+💡 LIBRE = TÚ eliges el tema (tecnología, salud, educación, trabajo, deportes, etc.)
+
+⚠️ OBLIGATORIO: CADA oración DEBE tener el campo "instruccion" que indique CÓMO transformarla.
+
+Ejemplo de estructura CORRECTA con el campo "instruccion":
 {
   "preguntas": [
     {
       "tipo": "writing_paraphrase_libre",
-      "pregunta": "Parafrasea las siguientes oraciones:",
+      "pregunta": "Paraphrase the following sentences according to the instructions:",
       "metadata": {
-        "idioma": "${config.idioma}",
+        "idioma": "ingles",
         "es_libre": true,
-        "titulo_tema": "<<Tema variado>>",
-        "instrucciones_parafraseo": "Usa sinónimos y cambia la estructura sin cambiar el significado.",
-        "tecnicas_parafraseo": ["Usa sinónimos", "Cambia el orden", "Usa expresiones equivalentes"],
+        "titulo_tema": "Technology and Society",
+        "instrucciones_parafraseo": "Use synonyms and change structure.",
+        "tecnicas_parafraseo": ["Use synonyms", "Change order", "Use equivalent expressions"],
         "oraciones_originales": [
-          {"original": "<<Frase interesante>>", "parafraseo_esperado": "<<Parafraseo>>", "pistas_parafraseo": "<<Sugerencia>>"},
-          {"original": "<<Frase interesante>>", "parafraseo_esperado": "<<Parafraseo>>", "pistas_parafraseo": "<<Sugerencia>>"}
+          {
+            "original": "Social media has changed how people communicate.",
+            "instruccion": "Transform to passive voice with 'the way' structure",
+            "parafraseo_esperado": "The way people communicate has been changed by social media.",
+            "pistas_parafraseo": "Use passive + 'the way'"
+          },
+          {
+            "original": "Many students prefer online classes because they save time.",
+            "instruccion": "Replace 'because' with 'as' and use adjective 'time-saving'",
+            "parafraseo_esperado": "Many students prefer online classes as they are time-saving.",
+            "pistas_parafraseo": "'as' = 'because'"
+          }
         ]
       },
-      "puntos": ${config.num_frases || 3}
+      "puntos": 2
     }
   ]
-}`,
+}
+
+Ahora genera TU ejercicio en ${langName} sobre un tema INTERESANTE con EXACTAMENTE esta estructura.
+
+🔴 CADA oración DEBE tener:
+- "original": oración a parafrasear sobre el tema elegido
+- "instruccion": QUÉ transformación hacer (ESPECÍFICA: pasiva, sinónimos formales, tiempo verbal, etc.)
+- "parafraseo_esperado": resultado correcto
+- "pistas_parafraseo": ayuda breve
+
+Responde SOLO con el JSON:`,
 
       // ===== PROGRAMACIÓN =====
       codigo_mcq: `Genera ${config.cantidad || 1} pregunta(s) MCQ sobre código en ${config.lenguaje_prog || "JavaScript"}.
@@ -11929,7 +12092,9 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         const data = await response.json();
         setProgresoGeneracion(100);
 
-        setPreguntasExamen(data.preguntas || []);
+        // 🔀 Aleatorizar párrafos en reading_matching
+        const preguntasAleatorias = (data.preguntas || []).map(p => aleatorizarParrafosMatching(p));
+        setPreguntasExamen(preguntasAleatorias);
         setRespuestasUsuario({});
         setExamenCompletado(false);
         setModalExamenAbierto(true);
@@ -15429,7 +15594,10 @@ JSON:`;
           return false;
         }
 
-        setPreguntasExamen(normalizarPreguntasCargadas(examen.preguntas));
+        // 🔀 Aleatorizar párrafos en reading_matching
+        const preguntasNormalizadas = normalizarPreguntasCargadas(examen.preguntas);
+        const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+        setPreguntasExamen(preguntasAleatorias);
         setRespuestasUsuario(examen.respuestas || {});
         setCarpetaExamen(examen.carpeta);
         setExamenActivo(true);
@@ -16289,7 +16457,10 @@ JSON:`;
   // Continuar examen pausado
   const continuarExamen = (examen) => {
     limpiarExamenLocal(); // Limpiar cualquier examen local anterior
-    setPreguntasExamen(normalizarPreguntasCargadas(examen.preguntas));
+    // 🔀 Aleatorizar párrafos en reading_matching
+    const preguntasNormalizadas = normalizarPreguntasCargadas(examen.preguntas);
+    const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+    setPreguntasExamen(preguntasAleatorias);
     setRespuestasUsuario(examen.respuestas || {});
     setCarpetaExamen({
       ruta: examen.carpeta_ruta,
@@ -17860,28 +18031,24 @@ ${preguntasEjemplo.join(",\n")}
       // Generar frases de ejemplo según el número configurado
       const frasesEjemplo = [];
       for (let i = 1; i <= numFrases; i++) {
-        if (nivel === "A1" || nivel === "A2") {
-          // Niveles básicos: con instrucción explícita
-          frasesEjemplo.push(
-            `        {"original": "Frase original ${i} en ${langName}", "instruccion": "Instrucción con palabra/estructura a usar", "parafraseo_esperado": "Parafraseo correcto"}`,
-          );
-        } else {
-          // Niveles intermedios y avanzados: sin ayuda
-          frasesEjemplo.push(
-            `        {"original": "Frase original ${i} en ${langName} (${config.tipo_parafraseo})", "parafraseo_esperado": "Parafraseo correcto mostrando ${config.complejidad}"}`,
-          );
-        }
+        // TODOS los niveles: con instrucción, pistas y campos completos
+        frasesEjemplo.push(
+          `        {"original": "Frase original ${i} en ${langName} (${config.tipo_parafraseo})", "instruccion": "QUÉ transformación hacer (ESPECÍFICA: pasiva, sinónimos formales, tiempo verbal, replace 'because' with 'due to', etc.)", "parafraseo_esperado": "Parafraseo correcto mostrando ${config.complejidad}", "pistas_parafraseo": "Pista breve para ayudar (ej: 'Use passive voice', 'Replace with formal synonym')"}`,
+        );
       }
 
       instrucciones += `  // ${writing_paraphrase} EJERCICIO(S) DE PARAFRASEO (${nivel}) en ${langName}:
   // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Las frases DEBEN estar en ${langName}
   // ${config.descripcion}
+  // 🔴 IMPORTANTE: CADA oración DEBE tener los 4 campos: original, instruccion, parafraseo_esperado, pistas_parafraseo
   {
     "tipo": "writing_paraphrase",
-    "pregunta": "Paraphrase the following sentences using different words.",
+    "pregunta": "Paraphrase the following sentences according to the instructions:",
     "metadata": {
       "idioma": "${writing_paraphrase_lang}",
       "nivel": "${nivel}",
+      "instrucciones_parafraseo": "Change structure using synonyms and different grammatical patterns.",
+      "tecnicas_parafraseo": ["Use synonyms", "Change structure", "Transform voice (active/passive)"],
       "oraciones_originales": [
 ${frasesEjemplo.join(",\n")}
       ]
@@ -18925,14 +19092,18 @@ ${transformacionesEjemplo.join(",\n")}
 
       instrucciones += `  // ${writing_paraphrase_libre} EJERCICIO(S) DE PARAFRASEO LIBRE en ${langName}:
   // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todas las oraciones DEBEN estar en ${langName}
+  // 🔴 IMPORTANTE: CADA oración DEBE tener los 4 campos: original, instruccion, parafraseo_esperado, pistas_parafraseo
   {
     "tipo": "writing_paraphrase_libre",
-    "pregunta": "Paraphrase the following sentences: write the same meaning using different words.",
+    "pregunta": "Paraphrase the following sentences according to the instructions:",
     "metadata": {
       "idioma": "${writing_paraphrase_libre_lang}",
       "es_libre": true,
+      "titulo_tema": "Technology and Society (O CUALQUIER TEMA INTERESANTE)",
+      "instrucciones_parafraseo": "Use synonyms and change structure.",
+      "tecnicas_parafraseo": ["Use synonyms", "Change order", "Use equivalent expressions"],
       "oraciones_originales": [
-        ${Array(numFrases).fill(`{"original": "<<Oración en ${langName.toUpperCase()} - NO en español>>", "parafraseo_esperado": "<<Parafraseo correcto en ${langName}>>"}`).join(",\n        ")}
+        ${Array(numFrases).fill(`{"original": "<<Oración en ${langName.toUpperCase()} sobre el tema elegido - NO en español>>", "instruccion": "<<QUÉ transformación hacer (ESPECÍFICA: 'Transform to passive voice', 'Replace because with due to', 'Use formal vocabulary', etc.)>>", "parafraseo_esperado": "<<Parafraseo correcto en ${langName}>>", "pistas_parafraseo": "<<Pista breve (ej: 'Use passive', 'Try due to')>>"}`).join(",\n        ")}
       ]
     },
     "puntos": ${numFrases}
@@ -20579,7 +20750,11 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
       setPreguntasPropiasJSON("");
       setMostrarInstruccionesChatGPT(false);
 
-      // 🔥 ABRIR EL MODAL DE EXAMEN para mostrar las preguntas
+      // � Aleatorizar párrafos en reading_matching antes de abrir
+      const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+      setPreguntasExamen(preguntasAleatorias);
+
+      // �🔥 ABRIR EL MODAL DE EXAMEN para mostrar las preguntas
       setModalExamenAbierto(true);
 
       setMensaje({
@@ -21102,6 +21277,7 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
             numero: numeroGlobal,
             tipo: "paraphrase_item",
             oracion_original: oracion.original || "",
+            instruccion: oracion.instruccion || "",
             pistas_parafraseo:
               oracion.pistas_parafraseo || oracion.instruccion || "",
             respuesta_usuario:
@@ -21634,6 +21810,7 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
               pregunta: `Parafrasear: "${oracion.original}"${oracion.pistas_parafraseo ? ` (Pista: ${oracion.pistas_parafraseo})` : ""}`,
               tipo: "paraphrase_item",
               oracion_original: oracion.original || "",
+              instruccion: oracion.instruccion || "",
               pistas_parafraseo:
                 oracion.pistas_parafraseo || oracion.instruccion || "",
               respuesta_usuario:
@@ -24859,19 +25036,112 @@ Generate an educational reading passage about this topic that would be suitable 
     });
   };
 
+  // 🔥 Función auxiliar para extraer JSON de texto que puede contener prompt + JSON
+  const extraerJSON = (texto) => {
+    if (!texto || !texto.trim()) return null;
+    
+    try {
+      // Primero intentar parsear directamente (si es solo JSON)
+      return JSON.parse(texto.trim());
+    } catch (e) {
+      // Si falla, buscar todos los bloques JSON en el texto
+      const jsonRegex = /\{[\s\S]*?\}/g;
+      const matches = texto.match(jsonRegex);
+      
+      if (!matches || matches.length === 0) {
+        console.warn("No se encontró JSON válido en el texto");
+        return null;
+      }
+      
+      // Si hay múltiples JSONs, tomar el último (respuesta real de ChatGPT)
+      // y el más largo (para evitar fragmentos incompletos)
+      let mejorJSON = null;
+      let mejorTamaño = 0;
+      
+      for (let i = matches.length - 1; i >= 0; i--) {
+        try {
+          const parsed = JSON.parse(matches[i]);
+          // Verificar que tenga campos esperados de calificación
+          if (parsed.puntos_obtenidos !== undefined || 
+              parsed.correcto !== undefined || 
+              parsed.porcentaje !== undefined) {
+            const tamaño = matches[i].length;
+            if (tamaño > mejorTamaño) {
+              mejorJSON = parsed;
+              mejorTamaño = tamaño;
+            }
+          }
+        } catch (parseError) {
+          continue; // Intentar con el siguiente
+        }
+      }
+      
+      if (mejorJSON) {
+        console.log("✅ JSON extraído exitosamente del texto pegado");
+        return mejorJSON;
+      }
+      
+      console.warn("No se encontró JSON válido de calificación en el texto");
+      return null;
+    }
+  };
+
   // Función auxiliar para normalizar texto (quitar acentos y caracteres especiales)
   const normalizarTexto = (texto) => {
     if (!texto) return "";
     try {
       return String(texto)
+        .trim() // Eliminar espacios al inicio/final
         .toLowerCase()
         .normalize("NFD") // Descomponer caracteres acentuados
         .replace(/[\u0300-\u036f]/g, "") // Eliminar marcas de acento
-        .replace(/[¿?¡!]/g, ""); // Eliminar signos de interrogación y exclamación
+        .replace(/[¿?¡!]/g, "") // Eliminar signos de interrogación y exclamación
+        .replace(/["'`´''""]/g, "") // Eliminar comillas de todo tipo
+        .replace(/\.+$/g, "") // Eliminar puntos finales (pero no intermedios)
+        .replace(/\s+/g, " "); // Normalizar múltiples espacios a uno solo
     } catch (e) {
       console.warn("Error normalizando texto:", e);
-      return String(texto).toLowerCase();
+      return String(texto).toLowerCase().trim();
     }
+  };
+
+  // 🔀 Función para mezclar array (Fisher-Yates shuffle)
+  const mezclarArray = (array) => {
+    const nuevoArray = [...array];
+    for (let i = nuevoArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [nuevoArray[i], nuevoArray[j]] = [nuevoArray[j], nuevoArray[i]];
+    }
+    return nuevoArray;
+  };
+
+  // 🔀 Función para aleatorizar párrafos en reading_matching
+  const aleatorizarParrafosMatching = (pregunta) => {
+    if (pregunta.tipo !== 'reading_matching' || !pregunta.metadata?.parrafos) {
+      return pregunta; // No es reading_matching, devolver sin cambios
+    }
+
+    // Si ya fue aleatorizado, no volver a mezclar
+    if (pregunta.metadata._parrafos_mezclados) {
+      return pregunta;
+    }
+
+    const parrafosOriginales = [...pregunta.metadata.parrafos];
+    const parrafosMezclados = mezclarArray(parrafosOriginales);
+
+    console.log('🔀 Aleatorizando párrafos de reading_matching:', {
+      original: parrafosOriginales.map(p => p.letra).join(','),
+      mezclado: parrafosMezclados.map(p => p.letra).join(',')
+    });
+
+    return {
+      ...pregunta,
+      metadata: {
+        ...pregunta.metadata,
+        parrafos: parrafosMezclados,
+        _parrafos_mezclados: true, // Marcar como ya mezclado
+      },
+    };
   };
 
   const buscarConIA = async () => {
@@ -35683,10 +35953,8 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonWritingShortError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonWritingShortError);
+                                          if (parsed) {
                                             setJsonCalificacionWritingShortError(
                                               parsed,
                                             );
@@ -35705,8 +35973,8 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -35796,20 +36064,44 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                           {(() => {
                             const errorActual =
                               erroresActuales[indiceErrorActual];
-                            if (
-                              errorActual?.tipo !== "writing_paraphrase" &&
-                              errorActual?.tipo !== "writing_paraphrase_libre"
-                            )
+                            // 🔥 Detectar si es paraphrase: tipo directo o paraphrase_item con tipo_padre
+                            const esWritingParaphrase =
+                              errorActual?.tipo === "writing_paraphrase" ||
+                              errorActual?.tipo === "writing_paraphrase_libre" ||
+                              errorActual?.tipo === "paraphrase_item" ||
+                              errorActual?.tipo_padre === "writing_paraphrase" ||
+                              errorActual?.tipo_padre === "writing_paraphrase_libre";
+                            
+                            if (!esWritingParaphrase)
                               return null;
 
                             const metadata = errorActual?.metadata || {};
                             // Buscar en múltiples campos posibles
-                            const frasesParafrasear =
+                            let frasesParafrasear =
                               errorActual?.oraciones_originales ||
                               metadata?.oraciones_originales ||
                               errorActual?.frases ||
                               metadata?.frases ||
                               [];
+                            
+                            // 🔥 Si es un paraphrase_item individual (subpregunta), mostrar SOLO esa oración
+                            if (
+                              errorActual?.tipo === "paraphrase_item" &&
+                              errorActual?.es_subpregunta &&
+                              errorActual?.subindice !== undefined &&
+                              frasesParafrasear.length > 1
+                            ) {
+                              // Filtrar para mostrar solo la oración correspondiente al subindice
+                              const oracionEspecifica = frasesParafrasear[errorActual.subindice];
+                              if (oracionEspecifica) {
+                                frasesParafrasear = [oracionEspecifica];
+                                console.log("🎯 Mostrando solo oración específica:", {
+                                  subindice: errorActual.subindice,
+                                  oracion: oracionEspecifica.original
+                                });
+                              }
+                            }
+                            
                             const nivel =
                               metadata?.nivel || errorActual?.nivel_cefr || "";
                             const esLibre =
@@ -36015,8 +36307,11 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                         fontWeight: "600",
                                       }}
                                     >
-                                      📝 Frases a parafrasear (
-                                      {frasesParafrasear.length}):
+                                      {frasesParafrasear.length === 1
+                                        ? "📝 Oración a parafrasear:"
+                                        : `📝 Frases a parafrasear (${
+                                            frasesParafrasear.length
+                                          }):`}
                                     </span>
                                     <div
                                       style={{
@@ -36044,18 +36339,20 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                               gap: "0.5rem",
                                             }}
                                           >
-                                            <span
-                                              style={{
-                                                background: "#667eea",
-                                                color: "white",
-                                                padding: "2px 8px",
-                                                borderRadius: "10px",
-                                                fontSize: "0.8rem",
-                                                fontWeight: "600",
-                                              }}
-                                            >
-                                              {i + 1}
-                                            </span>
+                                            {frasesParafrasear.length > 1 && (
+                                              <span
+                                                style={{
+                                                  background: "#667eea",
+                                                  color: "white",
+                                                  padding: "2px 8px",
+                                                  borderRadius: "10px",
+                                                  fontSize: "0.8rem",
+                                                  fontWeight: "600",
+                                                }}
+                                              >
+                                                {i + 1}
+                                              </span>
+                                            )}
                                             <span
                                               style={{
                                                 color: "#e2e8f0",
@@ -36065,12 +36362,62 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                               "{f.original || f}"
                                             </span>
                                           </div>
+                                          {/* Instrucción de transformación */}
+                                          {f.instruccion && (
+                                            <div
+                                              style={{
+                                                marginTop: "0.5rem",
+                                                marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                background:
+                                                  "rgba(59, 130, 246, 0.15)",
+                                                border:
+                                                  "2px solid rgba(59, 130, 246, 0.5)",
+                                                borderRadius: "6px",
+                                                padding: "0.5rem",
+                                                display: "flex",
+                                                alignItems: "flex-start",
+                                                gap: "0.5rem",
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  fontSize: "1rem",
+                                                }}
+                                              >
+                                                🎯
+                                              </span>
+                                              <div>
+                                                <div
+                                                  style={{
+                                                    color: "#60a5fa",
+                                                    fontSize: "0.7rem",
+                                                    fontWeight: "700",
+                                                    textTransform:
+                                                      "uppercase",
+                                                    letterSpacing: "0.5px",
+                                                    marginBottom: "0.2rem",
+                                                  }}
+                                                >
+                                                  Instrucción:
+                                                </div>
+                                                <span
+                                                  style={{
+                                                    color: "#93c5fd",
+                                                    fontSize: "0.85rem",
+                                                    fontWeight: "600",
+                                                  }}
+                                                >
+                                                  {f.instruccion}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          )}
                                           {f.pistas_parafraseo &&
                                             !errorYaRespondido && (
                                               <div
                                                 style={{
                                                   marginTop: "0.5rem",
-                                                  marginLeft: "2rem",
+                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
                                                   color: "#fbbf24",
                                                   fontSize: "0.8rem",
                                                 }}
@@ -36083,7 +36430,7 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                               <div
                                                 style={{
                                                   marginTop: "0.5rem",
-                                                  marginLeft: "2rem",
+                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
                                                   color: "#86efac",
                                                   fontSize: "0.85rem",
                                                 }}
@@ -36247,10 +36594,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonParaphraseError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonParaphraseError);
+                                          if (parsed) {
                                             setJsonCalificacionParaphraseError(
                                               parsed,
                                             );
@@ -36269,8 +36614,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -36783,10 +37128,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Corrige los errores en las siguientes 
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonCorrectionError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonCorrectionError);
+                                          if (parsed) {
                                             setJsonCalificacionCorrectionError(
                                               parsed,
                                             );
@@ -36805,8 +37148,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Corrige los errores en las siguientes 
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -37307,10 +37650,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Transforma las siguientes frases"}
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonTransformationError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonTransformationError);
+                                          if (parsed) {
                                             setJsonCalificacionTransformationError(
                                               parsed,
                                             );
@@ -37329,8 +37670,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Transforma las siguientes frases"}
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -37920,10 +38261,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonSentenceBuilderError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonSentenceBuilderError);
+                                          if (parsed) {
                                             setJsonCalificacionSentenceBuilderError(
                                               parsed,
                                             );
@@ -37942,8 +38281,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -38448,10 +38787,8 @@ IDIOMA: ${idiomaSBL}
                                       />
                                       <button
                                         onClick={() => {
-                                          try {
-                                            const parsed = JSON.parse(
-                                              textoJsonSentenceBuilderLibreError,
-                                            );
+                                          const parsed = extraerJSON(textoJsonSentenceBuilderLibreError);
+                                          if (parsed) {
                                             setJsonCalificacionSentenceBuilderLibreError(
                                               parsed,
                                             );
@@ -38470,8 +38807,8 @@ IDIOMA: ${idiomaSBL}
                                                       ),
                                                 100,
                                               );
-                                          } catch (e) {
-                                            alert("JSON inválido");
+                                          } else {
+                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
                                           }
                                         }}
                                         disabled={
@@ -46472,20 +46809,39 @@ IMPORTANTE: Responde SOLO con un JSON válido:
                             // 🔄 CASO WRITING_PARAPHRASE / WRITING_PARAPHRASE_LIBRE (ACIERTOS)
                             const esWritingParaphraseAcierto =
                               aciertoActual?.tipo === "writing_paraphrase" ||
-                              aciertoActual?.tipo ===
-                                "writing_paraphrase_libre" ||
-                              aciertoActual?.tipo_padre ===
-                                "writing_paraphrase";
+                              aciertoActual?.tipo === "writing_paraphrase_libre" ||
+                              aciertoActual?.tipo === "paraphrase_item" ||
+                              aciertoActual?.tipo_padre === "writing_paraphrase" ||
+                              aciertoActual?.tipo_padre === "writing_paraphrase_libre";
 
                             if (esWritingParaphraseAcierto) {
                               const metadataParaphrase =
                                 aciertoActual?.metadata || {};
-                              const frasesParafrasear =
+                              let frasesParafrasear =
                                 aciertoActual?.oraciones_originales ||
                                 metadataParaphrase?.oraciones_originales ||
                                 aciertoActual?.frases ||
                                 metadataParaphrase?.frases ||
                                 [];
+                              
+                              // 🔥 Si es un paraphrase_item individual (subpregunta), mostrar SOLO esa oración
+                              if (
+                                aciertoActual?.tipo === "paraphrase_item" &&
+                                aciertoActual?.es_subpregunta &&
+                                aciertoActual?.subindice !== undefined &&
+                                frasesParafrasear.length > 1
+                              ) {
+                                // Filtrar para mostrar solo la oración correspondiente al subindice
+                                const oracionEspecifica = frasesParafrasear[aciertoActual.subindice];
+                                if (oracionEspecifica) {
+                                  frasesParafrasear = [oracionEspecifica];
+                                  console.log("🎯 Mostrando solo oración específica (acierto):", {
+                                    subindice: aciertoActual.subindice,
+                                    oracion: oracionEspecifica.original
+                                  });
+                                }
+                              }
+                              
                               const nivelParaphrase =
                                 metadataParaphrase?.nivel ||
                                 aciertoActual?.nivel_cefr ||
@@ -46701,8 +47057,11 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                           fontWeight: "600",
                                         }}
                                       >
-                                        📝 Frases a parafrasear (
-                                        {frasesParafrasear.length}):
+                                        {frasesParafrasear.length === 1
+                                          ? "📝 Oración a parafrasear:"
+                                          : `📝 Frases a parafrasear (${
+                                              frasesParafrasear.length
+                                            }):`}
                                       </span>
                                       <div
                                         style={{
@@ -46730,18 +47089,20 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 gap: "0.5rem",
                                               }}
                                             >
-                                              <span
-                                                style={{
-                                                  background: "#667eea",
-                                                  color: "white",
-                                                  padding: "2px 8px",
-                                                  borderRadius: "10px",
-                                                  fontSize: "0.8rem",
-                                                  fontWeight: "600",
-                                                }}
-                                              >
-                                                {i + 1}
-                                              </span>
+                                              {frasesParafrasear.length > 1 && (
+                                                <span
+                                                  style={{
+                                                    background: "#667eea",
+                                                    color: "white",
+                                                    padding: "2px 8px",
+                                                    borderRadius: "10px",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: "600",
+                                                  }}
+                                                >
+                                                  {i + 1}
+                                                </span>
+                                              )}
                                               <span
                                                 style={{
                                                   color: "#e2e8f0",
@@ -46751,12 +47112,62 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 "{f.original || f}"
                                               </span>
                                             </div>
+                                            {/* Instrucción de transformación */}
+                                            {f.instruccion && (
+                                              <div
+                                                style={{
+                                                  marginTop: "0.5rem",
+                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                  background:
+                                                    "rgba(59, 130, 246, 0.15)",
+                                                  border:
+                                                    "2px solid rgba(59, 130, 246, 0.5)",
+                                                  borderRadius: "6px",
+                                                  padding: "0.5rem",
+                                                  display: "flex",
+                                                  alignItems: "flex-start",
+                                                  gap: "0.5rem",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    fontSize: "1rem",
+                                                  }}
+                                                >
+                                                  🎯
+                                                </span>
+                                                <div>
+                                                  <div
+                                                    style={{
+                                                      color: "#60a5fa",
+                                                      fontSize: "0.7rem",
+                                                      fontWeight: "700",
+                                                      textTransform:
+                                                        "uppercase",
+                                                      letterSpacing: "0.5px",
+                                                      marginBottom: "0.2rem",
+                                                    }}
+                                                  >
+                                                    Instrucción:
+                                                  </div>
+                                                  <span
+                                                    style={{
+                                                      color: "#93c5fd",
+                                                      fontSize: "0.85rem",
+                                                      fontWeight: "600",
+                                                    }}
+                                                  >
+                                                    {f.instruccion}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                            )}
                                             {f.pistas_parafraseo &&
                                               !aciertoYaRespondido && (
                                                 <div
                                                   style={{
                                                     marginTop: "0.5rem",
-                                                    marginLeft: "2rem",
+                                                    marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
                                                     color: "#fbbf24",
                                                     fontSize: "0.8rem",
                                                   }}
@@ -46770,7 +47181,7 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 <div
                                                   style={{
                                                     marginTop: "0.5rem",
-                                                    marginLeft: "2rem",
+                                                    marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
                                                     color: "#86efac",
                                                     fontSize: "0.85rem",
                                                   }}
@@ -80290,9 +80701,60 @@ IDIOMA: ${idiomaSBL}
                                                   </span>
                                                 </div>
 
-                                                {/* Pista específica para esta frase (si existe) */}
-                                                {(oracion.pistas_parafraseo ||
-                                                  oracion.instruccion) && (
+                                                {/* Instrucción de transformación (SIEMPRE mostrar si existe) */}
+                                                {oracion.instruccion && (
+                                                  <div
+                                                    style={{
+                                                      background:
+                                                        "rgba(59, 130, 246, 0.15)",
+                                                      border:
+                                                        "2px solid rgba(59, 130, 246, 0.5)",
+                                                      borderRadius: "8px",
+                                                      padding: "0.75rem",
+                                                      marginBottom: "0.75rem",
+                                                      display: "flex",
+                                                      alignItems: "flex-start",
+                                                      gap: "0.5rem",
+                                                    }}
+                                                  >
+                                                    <span
+                                                      style={{
+                                                        fontSize: "1.2rem",
+                                                        marginTop: "0.1rem",
+                                                      }}
+                                                    >
+                                                      🎯
+                                                    </span>
+                                                    <div>
+                                                      <div
+                                                        style={{
+                                                          color: "#60a5fa",
+                                                          fontSize: "0.75rem",
+                                                          fontWeight: "700",
+                                                          textTransform:
+                                                            "uppercase",
+                                                          letterSpacing: "0.5px",
+                                                          marginBottom: "0.25rem",
+                                                        }}
+                                                      >
+                                                        Instrucción de
+                                                        Transformación:
+                                                      </div>
+                                                      <span
+                                                        style={{
+                                                          color: "#93c5fd",
+                                                          fontSize: "0.9rem",
+                                                          fontWeight: "600",
+                                                        }}
+                                                      >
+                                                        {oracion.instruccion}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Pista adicional (opcional) */}
+                                                {oracion.pistas_parafraseo && (
                                                   <div
                                                     style={{
                                                       background:
@@ -80322,8 +80784,7 @@ IDIOMA: ${idiomaSBL}
                                                       }}
                                                     >
                                                       Pista:{" "}
-                                                      {oracion.pistas_parafraseo ||
-                                                        oracion.instruccion}
+                                                      {oracion.pistas_parafraseo}
                                                     </span>
                                                   </div>
                                                 )}
