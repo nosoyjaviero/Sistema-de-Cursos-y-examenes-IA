@@ -7738,7 +7738,9 @@ Califica ahora:`;
 
     if (esVerdaderoFalso) {
       // Normalizar respuesta correcta y comparar
-      const correctaEsVerdadero = ["VERDADERO", "V", "TRUE"].includes(respCorrecta);
+      const correctaEsVerdadero = ["VERDADERO", "V", "TRUE"].includes(
+        respCorrecta,
+      );
       const opcionEsVerdadero = opcionUpper === "VERDADERO";
       esCorrecta =
         (correctaEsVerdadero && opcionEsVerdadero) ||
@@ -16403,7 +16405,7 @@ JSON:`;
     // 🔥 Mostrar alerta de confirmación antes de eliminar práctica no completada
     if (esPractica && !examenCompletado && !esPausa) {
       const confirmar = window.confirm(
-        "⚠️ ¿Salir de la práctica?\n\nSi cierras ahora, la práctica se eliminará y perderás el progreso."
+        "⚠️ ¿Salir de la práctica?\n\nSi cierras ahora, la práctica se eliminará y perderás el progreso.",
       );
       if (!confirmar) return;
     }
@@ -27472,7 +27474,8 @@ Generate an educational reading passage about this topic that would be suitable 
                 {/* FASE: REFUERZO DE ERRORES */}
                 {faseActual === "errores" && (
                   <div className="fase-errores">
-                    {erroresActuales.length > 0 && erroresActuales[indiceErrorActual] ? (
+                    {erroresActuales.length > 0 &&
+                    erroresActuales[indiceErrorActual] ? (
                       <>
                         {/* Header de la fase */}
                         <div className="errores-header">
@@ -30305,7 +30308,8 @@ Generate an educational reading passage about this topic that would be suitable 
 
                                       const esSeleccionada =
                                         respuestaErrorSeleccionada &&
-                                        letraOpcion === respuestaErrorSeleccionada;
+                                        letraOpcion ===
+                                          respuestaErrorSeleccionada;
 
                                       let claseOpcion = "opcion-item";
                                       if (errorYaRespondido) {
@@ -30329,7 +30333,9 @@ Generate an educational reading passage about this topic that would be suitable 
                                           className={claseOpcion}
                                           onClick={() =>
                                             !errorYaRespondido &&
-                                            seleccionarRespuestaError(letraOpcion)
+                                            seleccionarRespuestaError(
+                                              letraOpcion,
+                                            )
                                           }
                                           style={{
                                             cursor: errorYaRespondido
@@ -30669,7 +30675,9 @@ Generate an educational reading passage about this topic that would be suitable 
                                 }
                               }
 
-                              const partes = textoConHuecos.split(/___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/);
+                              const partes = textoConHuecos.split(
+                                /___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/,
+                              );
                               const numHuecos = partes.length - 1;
 
                               return (
@@ -32575,7 +32583,9 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                   {erroresActuales[
                                     indiceErrorActual
                                   ].opciones.map((opcion, idx) => {
-                                    const letraOpcion = String.fromCharCode(65 + idx);
+                                    const letraOpcion = String.fromCharCode(
+                                      65 + idx,
+                                    );
                                     const esRespuestaOriginal =
                                       opcion.startsWith(
                                         erroresActuales[indiceErrorActual]
@@ -32588,7 +32598,8 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                       );
                                     const esSeleccionada =
                                       respuestaErrorSeleccionada &&
-                                      letraOpcion === respuestaErrorSeleccionada;
+                                      letraOpcion ===
+                                        respuestaErrorSeleccionada;
 
                                     let claseOpcion = "opcion-item";
                                     if (errorYaRespondido) {
@@ -41615,8 +41626,9 @@ IDIOMA: ${idiomaSBL}
                                   <div className="opciones-grid">
                                     {aciertoActual.opciones.map(
                                       (opcion, idx) => {
-                                        const letraOpcion =
-                                          String.fromCharCode(65 + idx); // A, B, C, D...
+                                        const letraOpcion = String.fromCharCode(
+                                          65 + idx,
+                                        ); // A, B, C, D...
                                         const respCorrecta = (
                                           aciertoActual.respuesta_correcta || ""
                                         )
@@ -41847,7 +41859,9 @@ IDIOMA: ${idiomaSBL}
                                 }
                               }
 
-                              const partes = textoConHuecos.split(/___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/);
+                              const partes = textoConHuecos.split(
+                                /___\([^)]+\)___|___\([^)]+\)___|___\(\d+\)___|___|\{[^}]*\}/,
+                              );
                               const numHuecos = partes.length - 1;
 
                               return (
@@ -76605,7 +76619,9 @@ IDIOMA: ${idiomaSBL}
                                       "";
 
                                     // Dividir por ___(N)___ (cloze estándar) o {} (reading_cloze)
-                                    const partes = texto.split(/___\([^)]+\)___|___|\{[^}]*\}/);
+                                    const partes = texto.split(
+                                      /___\([^)]+\)___|___|\{[^}]*\}/,
+                                    );
 
                                     // Obtener las respuestas del usuario
                                     const respuestas = (
