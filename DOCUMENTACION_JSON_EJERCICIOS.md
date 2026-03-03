@@ -672,6 +672,7 @@ Reescribir frases con diferentes palabras manteniendo el significado.
 ```
 
 **Campos importantes:**
+
 - **`instruccion`**: Indica **cómo debe transformarse** cada oración (ej: "Change to passive voice", "Use synonyms"). **Este campo se muestra en la interfaz** como instrucción destacada.
 - **`pistas_parafraseo`**: Pistas adicionales opcionales para ayudar al estudiante. Se muestran antes de responder.
 - **Diferencia**: `instruccion` es obligatoria (transformación requerida), `pistas_parafraseo` es opcional (ayudas).
@@ -1056,6 +1057,7 @@ Parafraseo con temas variados elegidos por ChatGPT.
 ```
 
 **Campos importantes:**
+
 - **`instruccion`**: Indica la **transformación específica** que debe hacer el estudiante en cada oración (ej: "Use synonym 'transform' and passive causative structure"). **Se muestra en la interfaz** como instrucción destacada.
 - **`pistas_parafraseo`**: Pistas adicionales opcionales para ayudar (ej: "Try using 'transform' instead of 'revolutionize'"). Se muestran antes de responder.
 - **`titulo_tema`**: Tema contextual opcional para dar coherencia a las oraciones (ej: "Technology and Daily Life").
@@ -1473,7 +1475,6 @@ Todos los ejercicios deben estar envueltos en esta estructura:
 
 _Última actualización: Enero 2025_
 
-
 Ejercicios Básicos
 MCQ - Opción Múltiple
 True/False - Verdadero/Falso
@@ -1481,7 +1482,6 @@ Cloze - Rellenar Huecos
 Short_Answer - Respuesta Corta
 Open_Question - Pregunta Abierta
 Caso de Estudio
-
 
 Comprensión Lectora (Idiomas)
 Reading Comprehension
@@ -1502,7 +1502,6 @@ Sentence Builder
 Formal Email
 Picture Description
 
-
 Ejercicios "Libre" (Sin Tema Predefinido)
 Sentence Builder Libre
 Writing Short Libre
@@ -1510,7 +1509,6 @@ Writing Paraphrase Libre
 Writing Correction Libre
 Writing Transformation Libre
 Picture Description Libre
-
 
 Programación
 Code MCQ

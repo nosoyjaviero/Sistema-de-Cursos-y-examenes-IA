@@ -5147,9 +5147,7 @@ function App() {
                 preguntaOriginal?.oracion_original ||
                 null;
               const instruccion =
-                resultado.instruccion ||
-                preguntaOriginal?.instruccion ||
-                null;
+                resultado.instruccion || preguntaOriginal?.instruccion || null;
               const pistasParafraseo =
                 resultado.pistas_parafraseo ||
                 preguntaOriginal?.pistas_parafraseo ||
@@ -5483,6 +5481,15 @@ function App() {
                 preguntaPadre?.oraciones_originales ||
                 preguntaOriginal?.metadata?.oraciones_originales ||
                 preguntaPadre?.metadata?.oraciones_originales ||
+                null,
+              // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM
+              palabras_clave:
+                resultado.palabras_clave ||
+                preguntaOriginal?.palabras_clave ||
+                null,
+              contexto_pista:
+                resultado.contexto_pista ||
+                preguntaOriginal?.contexto_pista ||
                 null,
               // 🔥 CAMPOS DE REPETICIÓN ESPACIADA
               estado_error: resultado.estado_error || "nuevo",
@@ -5947,6 +5954,15 @@ function App() {
                   preguntaPadre?.oraciones_originales ||
                   preguntaOriginal?.metadata?.oraciones_originales ||
                   preguntaPadre?.metadata?.oraciones_originales ||
+                  null,
+                // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM
+                palabras_clave:
+                  resultado.palabras_clave ||
+                  preguntaOriginal?.palabras_clave ||
+                  null,
+                contexto_pista:
+                  resultado.contexto_pista ||
+                  preguntaOriginal?.contexto_pista ||
                   null,
               });
             }
@@ -6569,6 +6585,9 @@ Responde SOLO con JSON válido:
 }`,
 
       reading_matching: `Genera ${config.cantidad || 1} ejercicio(s) de relacionar ideas en ${langName}.
+⚠️ IMPORTANTE: Las respuestas correctas DEBEN estar en ORDEN ALEATORIO (NO uses A,B,C en orden secuencial).
+Ejemplo correcto de orden aleatorio: C, A, B o B, C, A (cualquier permutación aleatoria).
+
 Responde SOLO con JSON válido:
 {
   "preguntas": [
@@ -6583,8 +6602,8 @@ Responde SOLO con JSON válido:
           {"letra": "C", "contenido": "<<Párrafo C>>"}
         ],
         "afirmaciones": [
-          {"afirmacion": "<<Esta idea aparece en...>>", "respuesta_correcta": "A"},
-          {"afirmacion": "<<Esta información está en...>>", "respuesta_correcta": "B"}
+          {"afirmacion": "<<Esta idea aparece en...>>", "respuesta_correcta": "C"},
+          {"afirmacion": "<<Esta información está en...>>", "respuesta_correcta": "A"}
         ]
       },
       "puntos": 2
@@ -12093,7 +12112,9 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         setProgresoGeneracion(100);
 
         // 🔀 Aleatorizar párrafos en reading_matching
-        const preguntasAleatorias = (data.preguntas || []).map(p => aleatorizarParrafosMatching(p));
+        const preguntasAleatorias = (data.preguntas || []).map((p) =>
+          aleatorizarParrafosMatching(p),
+        );
         setPreguntasExamen(preguntasAleatorias);
         setRespuestasUsuario({});
         setExamenCompletado(false);
@@ -15595,8 +15616,12 @@ JSON:`;
         }
 
         // 🔀 Aleatorizar párrafos en reading_matching
-        const preguntasNormalizadas = normalizarPreguntasCargadas(examen.preguntas);
-        const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+        const preguntasNormalizadas = normalizarPreguntasCargadas(
+          examen.preguntas,
+        );
+        const preguntasAleatorias = preguntasNormalizadas.map((p) =>
+          aleatorizarParrafosMatching(p),
+        );
         setPreguntasExamen(preguntasAleatorias);
         setRespuestasUsuario(examen.respuestas || {});
         setCarpetaExamen(examen.carpeta);
@@ -16459,7 +16484,9 @@ JSON:`;
     limpiarExamenLocal(); // Limpiar cualquier examen local anterior
     // 🔀 Aleatorizar párrafos en reading_matching
     const preguntasNormalizadas = normalizarPreguntasCargadas(examen.preguntas);
-    const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+    const preguntasAleatorias = preguntasNormalizadas.map((p) =>
+      aleatorizarParrafosMatching(p),
+    );
     setPreguntasExamen(preguntasAleatorias);
     setRespuestasUsuario(examen.respuestas || {});
     setCarpetaExamen({
@@ -17794,6 +17821,8 @@ ${preguntasEjemplo.join(",\n")}
       const langName = idiomasNombre[reading_matching_lang] || "Inglés";
       instrucciones += `  // ${reading_matching} EJERCICIO(S) DE RELACIONAR IDEAS (MATCHING) en ${langName}:
   // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Los párrafos DEBEN estar en ${langName}
+  // ⚠️ IMPORTANTE: Las respuestas correctas DEBEN estar en ORDEN ALEATORIO (NO uses A,B,C,D en orden secuencial)
+  // ✅ EJEMPLO DE ORDEN ALEATORIO CORRECTO: C, A, D, B o B, D, A, C (cualquier permutación aleatoria)
   {
     "tipo": "reading_matching",
     "pregunta": "Match each sentence with the correct paragraph (A-D).",
@@ -17806,10 +17835,10 @@ ${preguntasEjemplo.join(",\n")}
         {"letra": "D", "texto": "<<Párrafo en ${langName.toUpperCase()} - Conclusión o actitud del personaje (2-3 oraciones)>>"}
       ],
       "oraciones": [
-        {"texto": "This paragraph describes the character's background and purpose.", "parrafo_correcto": "A"},
-        {"texto": "This paragraph explains the character's daily routine.", "parrafo_correcto": "B"},
         {"texto": "This paragraph explains why the character avoids something.", "parrafo_correcto": "C"},
-        {"texto": "This paragraph shows the character's confidence or conclusion.", "parrafo_correcto": "D"}
+        {"texto": "This paragraph describes the character's background and purpose.", "parrafo_correcto": "A"},
+        {"texto": "This paragraph shows the character's confidence or conclusion.", "parrafo_correcto": "D"},
+        {"texto": "This paragraph explains the character's daily routine.", "parrafo_correcto": "B"}
       ]
     },
     "puntos": 4
@@ -19183,23 +19212,30 @@ ${transformacionesEjemplo.join(",\n")}
       const langName =
         idiomasNombre[picture_description_libre_lang] || "Inglés";
 
-      instrucciones += `  // ${picture_description_libre} EJERCICIO(S) DE DESCRIPCIÓN DE IMAGEN LIBRE en ${langName}:
-  // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todo el contenido DEBE estar en ${langName}
-  {
+      // Generar múltiples ejercicios si se solicitan más de 1
+      const ejerciciosPDL = [];
+      for (let i = 0; i < picture_description_libre; i++) {
+        ejerciciosPDL.push(`  {
     "tipo": "picture_description_libre",
     "pregunta": "Look at the image and describe it in ${langName}. Use the suggested vocabulary and structures.",
     "metadata": {
       "idioma": "${picture_description_libre_lang}",
       "es_libre": true,
-      "prompt_generador_imagen": "<<GENERA UN PROMPT DETALLADO PARA DALL-E/MIDJOURNEY: Describe una escena específica con personas, objetos, lugar, acciones, colores, iluminación. Mínimo 50 palabras.>>",
-      "descripcion_escena": "<<Descripción breve de la escena en ${langName}>>",
+      "prompt_generador_imagen": "<<GENERA UN PROMPT DETALLADO Y ÚNICO PARA DALL-E/MIDJOURNEY (Escena ${i + 1}/${picture_description_libre}): Describe una escena específica DIFERENTE con personas, objetos, lugar, acciones, colores, iluminación. Mínimo 50 palabras. Debe ser completamente diferente a otras escenas.>>",
+      "descripcion_escena": "<<Descripción breve de la escena ${i + 1} en ${langName}>>",
       "elementos_requeridos": ["<<Elemento en ${langName}>>", "<<Elemento en ${langName}>>", "<<Elemento en ${langName}>>"],
       "vocabulario_sugerido": ["<<Palabra en ${langName.toUpperCase()}>>", "<<Palabra en ${langName.toUpperCase()}>>", "<<Palabra en ${langName.toUpperCase()}>>"],
       "estructuras_gramaticales": ["<<Estructura gramatical de ${langName}>>", "<<Estructura gramatical de ${langName}>>"],
       "ejemplo_descripcion": "<<Una descripción modelo de la imagen EN ${langName.toUpperCase()}>>"
     },
     "puntos": 5
-  },
+  }`);
+      }
+
+      instrucciones += `  // GENERA EXACTAMENTE ${picture_description_libre} EJERCICIO(S) DIFERENTES DE DESCRIPCIÓN DE IMAGEN LIBRE en ${langName}:
+  // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todo el contenido DEBE estar en ${langName}
+  // 🎨 IMPORTANTE: Cada ejercicio debe tener una escena COMPLETAMENTE DIFERENTE (ej: personas comprando, niños en parque, oficina, restaurante, playa, etc.)
+${ejerciciosPDL.join(',\n')},
 `;
     }
 
@@ -20751,7 +20787,9 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
       setMostrarInstruccionesChatGPT(false);
 
       // � Aleatorizar párrafos en reading_matching antes de abrir
-      const preguntasAleatorias = preguntasNormalizadas.map(p => aleatorizarParrafosMatching(p));
+      const preguntasAleatorias = preguntasNormalizadas.map((p) =>
+        aleatorizarParrafosMatching(p),
+      );
       setPreguntasExamen(preguntasAleatorias);
 
       // �🔥 ABRIR EL MODAL DE EXAMEN para mostrar las preguntas
@@ -21095,17 +21133,28 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
 
         // Desglosar cada item
         itemsArray.forEach((item, iIdx) => {
+          const palabrasClave = item.palabras_clave || [];
+          const pista = item.contexto_pista || "";
+          // Construir texto descriptivo de la pregunta
+          let textoPregunta = `Construye una oración usando las palabras: ${palabrasClave.join(", ")}`;
+          if (pista) {
+            textoPregunta += `. Contexto: ${pista}`;
+          }
+          
           preguntasConRespuestas.push({
             numero: numeroGlobal,
             tipo: "sentence_builder_libre_item",
-            palabras_clave: item.palabras_clave || [],
-            contexto_pista: item.contexto_pista || "",
+            pregunta: textoPregunta, // 🔥 AGREGADO: texto descriptivo para mostrar en interfaz
+            palabras_clave: palabrasClave,
+            contexto_pista: pista,
             respuesta_usuario:
               respuestasArray[iIdx]?.trim() || "(sin respuesta)",
             respuesta_correcta: item.oracion_esperada || "",
             puntos_maximos: puntosPorItem,
             indice_original: index,
             subindice: iIdx,
+            tipo_padre: "sentence_builder_libre", // 🔥 AGREGADO: para identificar el tipo padre
+            idioma: pregunta.metadata?.idioma || pregunta.idioma || "inglés", // 🔥 AGREGADO: idioma del ejercicio
           });
           numeroGlobal++;
         });
@@ -21369,7 +21418,12 @@ Para cada pregunta numerada, evalúa la respuesta del usuario:
 - matching_item: 100% si la letra del párrafo coincide con respuesta_correcta, 0% si no
 - sequence_item: 100% si el número de posición coincide con respuesta_correcta, 0% si no (1°, 2°, 3°, 4°...)
 - sentence_builder_item: Compara respuesta_usuario con respuesta_correcta (debe ser idéntica o muy similar, orden correcto de palabras)
-- sentence_builder_libre_item: Evalúa si respuesta_usuario forma una oración correcta usando las palabras_clave. CALIFICAR INDIVIDUALMENTE: 100% si usa las palabras clave y es gramaticalmente correcta, 80% si usa palabras clave pero tiene errores menores, 50% si usa algunas palabras clave, 0% si no responde o es incorrecta
+- sentence_builder_libre_item: Evalúa si respuesta_usuario forma una oración correcta usando las palabras_clave. EVALUAR ESTRICTAMENTE:
+  * GRAMÁTICA: La oración DEBE ser gramaticalmente correcta (tiempo verbal correcto, concordancia, orden de palabras correcto)
+  * USO DE PALABRAS: DEBE usar TODAS las palabras_clave proporcionadas
+  * COHERENCIA: La oración debe tener sentido lógico y relacionarse con contexto_pista (si existe)
+  * Si respuesta_correcta (ejemplo) existe, usar como referencia de calidad esperada
+  * CALIFICACIÓN: 100% si usa todas las palabras clave Y es gramaticalmente perfecta, 80% si usa todas pero tiene 1-2 errores gramaticales menores, 50% si usa algunas palabras clave pero tiene errores, 0% si no responde, no usa las palabras clave o tiene errores gramaticales graves
 - transformation_item: Compara respuesta_usuario con respuesta_correcta (la transformación gramatical debe aplicar la instrucción correctamente manteniendo el significado, tolerar errores menores de puntuación)
 - correction_item: Compara respuesta_usuario con respuesta_correcta (la corrección debe ser gramaticalmente correcta y arreglar el error indicado)
 - short_answer_item: Evalúa si respuesta_usuario contiene las palabras_clave o transmite el mismo significado que respuesta_correcta (tolerar variaciones gramaticales menores)
@@ -25039,7 +25093,7 @@ Generate an educational reading passage about this topic that would be suitable 
   // 🔥 Función auxiliar para extraer JSON de texto que puede contener prompt + JSON
   const extraerJSON = (texto) => {
     if (!texto || !texto.trim()) return null;
-    
+
     try {
       // Primero intentar parsear directamente (si es solo JSON)
       return JSON.parse(texto.trim());
@@ -25047,24 +25101,26 @@ Generate an educational reading passage about this topic that would be suitable 
       // Si falla, buscar todos los bloques JSON en el texto
       const jsonRegex = /\{[\s\S]*?\}/g;
       const matches = texto.match(jsonRegex);
-      
+
       if (!matches || matches.length === 0) {
         console.warn("No se encontró JSON válido en el texto");
         return null;
       }
-      
+
       // Si hay múltiples JSONs, tomar el último (respuesta real de ChatGPT)
       // y el más largo (para evitar fragmentos incompletos)
       let mejorJSON = null;
       let mejorTamaño = 0;
-      
+
       for (let i = matches.length - 1; i >= 0; i--) {
         try {
           const parsed = JSON.parse(matches[i]);
           // Verificar que tenga campos esperados de calificación
-          if (parsed.puntos_obtenidos !== undefined || 
-              parsed.correcto !== undefined || 
-              parsed.porcentaje !== undefined) {
+          if (
+            parsed.puntos_obtenidos !== undefined ||
+            parsed.correcto !== undefined ||
+            parsed.porcentaje !== undefined
+          ) {
             const tamaño = matches[i].length;
             if (tamaño > mejorTamaño) {
               mejorJSON = parsed;
@@ -25075,12 +25131,12 @@ Generate an educational reading passage about this topic that would be suitable 
           continue; // Intentar con el siguiente
         }
       }
-      
+
       if (mejorJSON) {
         console.log("✅ JSON extraído exitosamente del texto pegado");
         return mejorJSON;
       }
-      
+
       console.warn("No se encontró JSON válido de calificación en el texto");
       return null;
     }
@@ -25117,7 +25173,7 @@ Generate an educational reading passage about this topic that would be suitable 
 
   // 🔀 Función para aleatorizar párrafos en reading_matching
   const aleatorizarParrafosMatching = (pregunta) => {
-    if (pregunta.tipo !== 'reading_matching' || !pregunta.metadata?.parrafos) {
+    if (pregunta.tipo !== "reading_matching" || !pregunta.metadata?.parrafos) {
       return pregunta; // No es reading_matching, devolver sin cambios
     }
 
@@ -25129,9 +25185,9 @@ Generate an educational reading passage about this topic that would be suitable 
     const parrafosOriginales = [...pregunta.metadata.parrafos];
     const parrafosMezclados = mezclarArray(parrafosOriginales);
 
-    console.log('🔀 Aleatorizando párrafos de reading_matching:', {
-      original: parrafosOriginales.map(p => p.letra).join(','),
-      mezclado: parrafosMezclados.map(p => p.letra).join(',')
+    console.log("🔀 Aleatorizando párrafos de reading_matching:", {
+      original: parrafosOriginales.map((p) => p.letra).join(","),
+      mezclado: parrafosMezclados.map((p) => p.letra).join(","),
     });
 
     return {
@@ -27953,6 +28009,68 @@ Generate an educational reading passage about this topic that would be suitable 
                             <h3 className="question-text">
                               {erroresActuales[indiceErrorActual]?.pregunta}
                             </h3>
+                            
+                            {/* 🔥 MOSTRAR PALABRAS CLAVE para sentence_builder_libre_item */}
+                            {erroresActuales[indiceErrorActual]?.tipo === "sentence_builder_libre_item" && 
+                             erroresActuales[indiceErrorActual]?.palabras_clave?.length > 0 && (
+                              <div style={{
+                                marginTop: "1rem",
+                                background: "rgba(139, 92, 246, 0.1)",
+                                border: "1px solid rgba(139, 92, 246, 0.3)",
+                                borderRadius: "8px",
+                                padding: "1rem"
+                              }}>
+                                <div style={{
+                                  color: "#a78bfa",
+                                  fontSize: "0.85rem",
+                                  fontWeight: "600",
+                                  marginBottom: "0.5rem"
+                                }}>
+                                  💡 Palabras clave a usar:
+                                </div>
+                                <div style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: "0.5rem"
+                                }}>
+                                  {erroresActuales[indiceErrorActual].palabras_clave.map((palabra, idx) => (
+                                    <span key={idx} style={{
+                                      background: "rgba(139, 92, 246, 0.3)",
+                                      padding: "6px 12px",
+                                      borderRadius: "8px",
+                                      color: "#c4b5fd",
+                                      fontSize: "0.9rem",
+                                      fontWeight: "500",
+                                      border: "1px solid rgba(139, 92, 246, 0.5)"
+                                    }}>
+                                      {palabra}
+                                    </span>
+                                  ))}
+                                </div>
+                                {erroresActuales[indiceErrorActual]?.contexto_pista && (
+                                  <div style={{
+                                    marginTop: "0.75rem",
+                                    color: "#fcd34d",
+                                    fontSize: "0.85rem"
+                                  }}>
+                                    💡 Pista: <span style={{color: "#fef3c7", fontStyle: "italic"}}>
+                                      {erroresActuales[indiceErrorActual].contexto_pista}
+                                    </span>
+                                  </div>
+                                )}
+                                {erroresActuales[indiceErrorActual]?.respuesta_correcta && (
+                                  <div style={{
+                                    marginTop: "0.75rem",
+                                    color: "#86efac",
+                                    fontSize: "0.85rem"
+                                  }}>
+                                    ✓ Ejemplo de respuesta: <span style={{color: "#a5f3c4", fontStyle: "italic"}}>
+                                      "{erroresActuales[indiceErrorActual].respuesta_correcta}"
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* 🔥 CONTENIDO ADICIONAL PARA PREGUNTAS COMPLEJAS (Reading, Writing, Cloze, etc.) */}
@@ -35953,7 +36071,9 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonWritingShortError);
+                                          const parsed = extraerJSON(
+                                            textoJsonWritingShortError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionWritingShortError(
                                               parsed,
@@ -35974,7 +36094,9 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -36067,13 +36189,15 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                             // 🔥 Detectar si es paraphrase: tipo directo o paraphrase_item con tipo_padre
                             const esWritingParaphrase =
                               errorActual?.tipo === "writing_paraphrase" ||
-                              errorActual?.tipo === "writing_paraphrase_libre" ||
+                              errorActual?.tipo ===
+                                "writing_paraphrase_libre" ||
                               errorActual?.tipo === "paraphrase_item" ||
-                              errorActual?.tipo_padre === "writing_paraphrase" ||
-                              errorActual?.tipo_padre === "writing_paraphrase_libre";
-                            
-                            if (!esWritingParaphrase)
-                              return null;
+                              errorActual?.tipo_padre ===
+                                "writing_paraphrase" ||
+                              errorActual?.tipo_padre ===
+                                "writing_paraphrase_libre";
+
+                            if (!esWritingParaphrase) return null;
 
                             const metadata = errorActual?.metadata || {};
                             // Buscar en múltiples campos posibles
@@ -36083,7 +36207,7 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                               errorActual?.frases ||
                               metadata?.frases ||
                               [];
-                            
+
                             // 🔥 Si es un paraphrase_item individual (subpregunta), mostrar SOLO esa oración
                             if (
                               errorActual?.tipo === "paraphrase_item" &&
@@ -36092,16 +36216,20 @@ PREGUNTA: ${errorActual?.pregunta || ""}
                               frasesParafrasear.length > 1
                             ) {
                               // Filtrar para mostrar solo la oración correspondiente al subindice
-                              const oracionEspecifica = frasesParafrasear[errorActual.subindice];
+                              const oracionEspecifica =
+                                frasesParafrasear[errorActual.subindice];
                               if (oracionEspecifica) {
                                 frasesParafrasear = [oracionEspecifica];
-                                console.log("🎯 Mostrando solo oración específica:", {
-                                  subindice: errorActual.subindice,
-                                  oracion: oracionEspecifica.original
-                                });
+                                console.log(
+                                  "🎯 Mostrando solo oración específica:",
+                                  {
+                                    subindice: errorActual.subindice,
+                                    oracion: oracionEspecifica.original,
+                                  },
+                                );
                               }
                             }
-                            
+
                             const nivel =
                               metadata?.nivel || errorActual?.nivel_cefr || "";
                             const esLibre =
@@ -36367,7 +36495,10 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                             <div
                                               style={{
                                                 marginTop: "0.5rem",
-                                                marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                marginLeft:
+                                                  frasesParafrasear.length > 1
+                                                    ? "2rem"
+                                                    : "0",
                                                 background:
                                                   "rgba(59, 130, 246, 0.15)",
                                                 border:
@@ -36392,8 +36523,7 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                                     color: "#60a5fa",
                                                     fontSize: "0.7rem",
                                                     fontWeight: "700",
-                                                    textTransform:
-                                                      "uppercase",
+                                                    textTransform: "uppercase",
                                                     letterSpacing: "0.5px",
                                                     marginBottom: "0.2rem",
                                                   }}
@@ -36417,7 +36547,10 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                               <div
                                                 style={{
                                                   marginTop: "0.5rem",
-                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                  marginLeft:
+                                                    frasesParafrasear.length > 1
+                                                      ? "2rem"
+                                                      : "0",
                                                   color: "#fbbf24",
                                                   fontSize: "0.8rem",
                                                 }}
@@ -36430,7 +36563,10 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                               <div
                                                 style={{
                                                   marginTop: "0.5rem",
-                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                  marginLeft:
+                                                    frasesParafrasear.length > 1
+                                                      ? "2rem"
+                                                      : "0",
                                                   color: "#86efac",
                                                   fontSize: "0.85rem",
                                                 }}
@@ -36594,7 +36730,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonParaphraseError);
+                                          const parsed = extraerJSON(
+                                            textoJsonParaphraseError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionParaphraseError(
                                               parsed,
@@ -36615,7 +36753,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -37128,7 +37268,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Corrige los errores en las siguientes 
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonCorrectionError);
+                                          const parsed = extraerJSON(
+                                            textoJsonCorrectionError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionCorrectionError(
                                               parsed,
@@ -37149,7 +37291,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Corrige los errores en las siguientes 
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -37650,7 +37794,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Transforma las siguientes frases"}
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonTransformationError);
+                                          const parsed = extraerJSON(
+                                            textoJsonTransformationError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionTransformationError(
                                               parsed,
@@ -37671,7 +37817,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Transforma las siguientes frases"}
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -38261,7 +38409,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonSentenceBuilderError);
+                                          const parsed = extraerJSON(
+                                            textoJsonSentenceBuilderError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionSentenceBuilderError(
                                               parsed,
@@ -38282,7 +38432,9 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -38787,7 +38939,9 @@ IDIOMA: ${idiomaSBL}
                                       />
                                       <button
                                         onClick={() => {
-                                          const parsed = extraerJSON(textoJsonSentenceBuilderLibreError);
+                                          const parsed = extraerJSON(
+                                            textoJsonSentenceBuilderLibreError,
+                                          );
                                           if (parsed) {
                                             setJsonCalificacionSentenceBuilderLibreError(
                                               parsed,
@@ -38808,7 +38962,9 @@ IDIOMA: ${idiomaSBL}
                                                 100,
                                               );
                                           } else {
-                                            alert("❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.");
+                                            alert(
+                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
+                                            );
                                           }
                                         }}
                                         disabled={
@@ -40341,6 +40497,68 @@ IDIOMA: ${idiomaSBL}
                             <h3 className="question-text">
                               {aciertosRepaso[indiceAciertoActual]?.pregunta}
                             </h3>
+                            
+                            {/* 🔥 MOSTRAR PALABRAS CLAVE para sentence_builder_libre_item */}
+                            {aciertosRepaso[indiceAciertoActual]?.tipo === "sentence_builder_libre_item" && 
+                             aciertosRepaso[indiceAciertoActual]?.palabras_clave?.length > 0 && (
+                              <div style={{
+                                marginTop: "1rem",
+                                background: "rgba(139, 92, 246, 0.1)",
+                                border: "1px solid rgba(139, 92, 246, 0.3)",
+                                borderRadius: "8px",
+                                padding: "1rem"
+                              }}>
+                                <div style={{
+                                  color: "#a78bfa",
+                                  fontSize: "0.85rem",
+                                  fontWeight: "600",
+                                  marginBottom: "0.5rem"
+                                }}>
+                                  💡 Palabras clave a usar:
+                                </div>
+                                <div style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: "0.5rem"
+                                }}>
+                                  {aciertosRepaso[indiceAciertoActual].palabras_clave.map((palabra, idx) => (
+                                    <span key={idx} style={{
+                                      background: "rgba(139, 92, 246, 0.3)",
+                                      padding: "6px 12px",
+                                      borderRadius: "8px",
+                                      color: "#c4b5fd",
+                                      fontSize: "0.9rem",
+                                      fontWeight: "500",
+                                      border: "1px solid rgba(139, 92, 246, 0.5)"
+                                    }}>
+                                      {palabra}
+                                    </span>
+                                  ))}
+                                </div>
+                                {aciertosRepaso[indiceAciertoActual]?.contexto_pista && (
+                                  <div style={{
+                                    marginTop: "0.75rem",
+                                    color: "#fcd34d",
+                                    fontSize: "0.85rem"
+                                  }}>
+                                    💡 Pista: <span style={{color: "#fef3c7", fontStyle: "italic"}}>
+                                      {aciertosRepaso[indiceAciertoActual].contexto_pista}
+                                    </span>
+                                  </div>
+                                )}
+                                {aciertosRepaso[indiceAciertoActual]?.respuesta_correcta && (
+                                  <div style={{
+                                    marginTop: "0.75rem",
+                                    color: "#86efac",
+                                    fontSize: "0.85rem"
+                                  }}>
+                                    ✓ Ejemplo de respuesta: <span style={{color: "#a5f3c4", fontStyle: "italic"}}>
+                                      "{aciertosRepaso[indiceAciertoActual].respuesta_correcta}"
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           {/* 🔥 CONTENIDO ADICIONAL PARA READING_COMPREHENSION (texto_lectura) */}
@@ -46809,10 +47027,13 @@ IMPORTANTE: Responde SOLO con un JSON válido:
                             // 🔄 CASO WRITING_PARAPHRASE / WRITING_PARAPHRASE_LIBRE (ACIERTOS)
                             const esWritingParaphraseAcierto =
                               aciertoActual?.tipo === "writing_paraphrase" ||
-                              aciertoActual?.tipo === "writing_paraphrase_libre" ||
+                              aciertoActual?.tipo ===
+                                "writing_paraphrase_libre" ||
                               aciertoActual?.tipo === "paraphrase_item" ||
-                              aciertoActual?.tipo_padre === "writing_paraphrase" ||
-                              aciertoActual?.tipo_padre === "writing_paraphrase_libre";
+                              aciertoActual?.tipo_padre ===
+                                "writing_paraphrase" ||
+                              aciertoActual?.tipo_padre ===
+                                "writing_paraphrase_libre";
 
                             if (esWritingParaphraseAcierto) {
                               const metadataParaphrase =
@@ -46823,7 +47044,7 @@ IMPORTANTE: Responde SOLO con un JSON válido:
                                 aciertoActual?.frases ||
                                 metadataParaphrase?.frases ||
                                 [];
-                              
+
                               // 🔥 Si es un paraphrase_item individual (subpregunta), mostrar SOLO esa oración
                               if (
                                 aciertoActual?.tipo === "paraphrase_item" &&
@@ -46832,16 +47053,20 @@ IMPORTANTE: Responde SOLO con un JSON válido:
                                 frasesParafrasear.length > 1
                               ) {
                                 // Filtrar para mostrar solo la oración correspondiente al subindice
-                                const oracionEspecifica = frasesParafrasear[aciertoActual.subindice];
+                                const oracionEspecifica =
+                                  frasesParafrasear[aciertoActual.subindice];
                                 if (oracionEspecifica) {
                                   frasesParafrasear = [oracionEspecifica];
-                                  console.log("🎯 Mostrando solo oración específica (acierto):", {
-                                    subindice: aciertoActual.subindice,
-                                    oracion: oracionEspecifica.original
-                                  });
+                                  console.log(
+                                    "🎯 Mostrando solo oración específica (acierto):",
+                                    {
+                                      subindice: aciertoActual.subindice,
+                                      oracion: oracionEspecifica.original,
+                                    },
+                                  );
                                 }
                               }
-                              
+
                               const nivelParaphrase =
                                 metadataParaphrase?.nivel ||
                                 aciertoActual?.nivel_cefr ||
@@ -47117,7 +47342,10 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                               <div
                                                 style={{
                                                   marginTop: "0.5rem",
-                                                  marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                  marginLeft:
+                                                    frasesParafrasear.length > 1
+                                                      ? "2rem"
+                                                      : "0",
                                                   background:
                                                     "rgba(59, 130, 246, 0.15)",
                                                   border:
@@ -47167,7 +47395,11 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 <div
                                                   style={{
                                                     marginTop: "0.5rem",
-                                                    marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                    marginLeft:
+                                                      frasesParafrasear.length >
+                                                      1
+                                                        ? "2rem"
+                                                        : "0",
                                                     color: "#fbbf24",
                                                     fontSize: "0.8rem",
                                                   }}
@@ -47181,7 +47413,11 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Parafrasea las siguientes frases"}
                                                 <div
                                                   style={{
                                                     marginTop: "0.5rem",
-                                                    marginLeft: frasesParafrasear.length > 1 ? "2rem" : "0",
+                                                    marginLeft:
+                                                      frasesParafrasear.length >
+                                                      1
+                                                        ? "2rem"
+                                                        : "0",
                                                     color: "#86efac",
                                                     fontSize: "0.85rem",
                                                   }}
@@ -78604,10 +78840,8 @@ IDIOMA: ${idiomaSBL}
                                     </div>
                                   )}
 
-                                {/* Renderizado especial para picture_description y picture_description_libre */}
-                                {(pregunta.tipo === "picture_description" ||
-                                  pregunta.tipo ===
-                                    "picture_description_libre") && (
+                                {/* Renderizado especial para picture_description (sin libre) */}
+                                {pregunta.tipo === "picture_description" && (
                                   <div style={{ marginBottom: "1rem" }}>
                                     {/* Información del nivel CEFR - SIEMPRE VISIBLE */}
                                     {(pregunta.nivel_cefr ||
@@ -80733,8 +80967,10 @@ IDIOMA: ${idiomaSBL}
                                                           fontWeight: "700",
                                                           textTransform:
                                                             "uppercase",
-                                                          letterSpacing: "0.5px",
-                                                          marginBottom: "0.25rem",
+                                                          letterSpacing:
+                                                            "0.5px",
+                                                          marginBottom:
+                                                            "0.25rem",
                                                         }}
                                                       >
                                                         Instrucción de
@@ -80784,7 +81020,9 @@ IDIOMA: ${idiomaSBL}
                                                       }}
                                                     >
                                                       Pista:{" "}
-                                                      {oracion.pistas_parafraseo}
+                                                      {
+                                                        oracion.pistas_parafraseo
+                                                      }
                                                     </span>
                                                   </div>
                                                 )}
