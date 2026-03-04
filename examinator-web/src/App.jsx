@@ -489,8 +489,10 @@ function App() {
   ] = useState(null);
   // 🧩 Sentence Builder Libre (para corrección de errores)
   const [sentenceBuilderLibreError, setSentenceBuilderLibreError] = useState(
-    {},
+    "",
   );
+  const [indiceItemSBLError, setIndiceItemSBLError] = useState(0);
+  const [indiceItemSBLAcierto, setIndiceItemSBLAcierto] = useState(0);
   const [
     promptCopiadoSentenceBuilderLibreError,
     setPromptCopiadoSentenceBuilderLibreError,
@@ -1342,6 +1344,10 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [mensaje]);
+
+  // Resetear índice de item SBL al cambiar de pregunta
+  useEffect(() => { setIndiceItemSBLError(0); }, [indiceErrorActual]);
+  useEffect(() => { setIndiceItemSBLAcierto(0); }, [indiceAciertoActual]);
 
   // Debug: Loguear cada vez que cambie la configuración
   useEffect(() => {
@@ -8162,6 +8168,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "writing_transformation_libre",
       "sentence_builder",
       "sentence_builder_libre",
+      "sentence_builder_libre_item",
       "formal_email",
       "picture_description",
       "picture_description_libre",
@@ -8664,6 +8671,9 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       setJsonCalificacionIA(null); // 🔥 Limpiar resultado IA
       setHistorialIntentos([]);
       setFeedbackIA(null);
+      setSentenceBuilderLibreError(""); // 🔥 Limpiar SBL
+      setTextoJsonSentenceBuilderLibreError(""); // 🔥 Limpiar SBL JSON
+      setJsonCalificacionSentenceBuilderLibreError(null); // 🔥 Limpiar SBL calificacion
       avanzarFase();
       return;
     }
@@ -8687,6 +8697,9 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
     setJsonCalificacionIA(null); // 🔥 Limpiar resultado IA
     setHistorialIntentos([]);
     setFeedbackIA(null);
+    setSentenceBuilderLibreError(""); // 🔥 Limpiar SBL
+    setTextoJsonSentenceBuilderLibreError(""); // 🔥 Limpiar SBL JSON
+    setJsonCalificacionSentenceBuilderLibreError(null); // 🔥 Limpiar SBL calificacion
   };
 
   // ============================================
@@ -8855,6 +8868,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "writing_transformation_libre",
       "sentence_builder",
       "sentence_builder_libre",
+      "sentence_builder_libre_item",
       "formal_email",
       "picture_description",
       "picture_description_libre",
@@ -16038,20 +16052,69 @@ JSON:`;
           };
 
           // 📜 También actualizar historial en las preguntas originales
+          // 🔥 Y EXPANDIR sentence_builder_libre en items individuales para que preguntas[] y resultados[] queden 1:1
           if (practicas[practicaIndex].preguntas) {
-            practicas[practicaIndex].preguntas = practicas[
-              practicaIndex
-            ].preguntas.map((pregunta, idx) => {
-              const resultadoCorrespondiente = resultadosConHistorial[idx];
-              if (resultadoCorrespondiente) {
-                return {
-                  ...pregunta,
-                  historial_respuestas:
-                    resultadoCorrespondiente.historial_respuestas,
-                };
+            const preguntasExpandidas = [];
+            practicas[practicaIndex].preguntas.forEach((pregunta, idx) => {
+              if (pregunta.tipo === "sentence_builder_libre") {
+                // Expandir cada item en una pregunta independiente sentence_builder_libre_item
+                const items =
+                  pregunta.metadata?.items || pregunta.items || [];
+                const respuestasStr =
+                  resultadosConHistorial[idx]?.respuesta_usuario || "";
+                const respuestasArr = respuestasStr
+                  .split("|||")
+                  .map((r) => r.trim());
+
+                if (items.length > 0) {
+                  items.forEach((item, itemIdx) => {
+                    const respuestaItem = respuestasArr[itemIdx] || "";
+                    preguntasExpandidas.push({
+                      ...pregunta,
+                      id: `${pregunta.id}_item${itemIdx}`,
+                      tipo: "sentence_builder_libre_item",
+                      tipo_padre: "sentence_builder_libre",
+                      // Campos del item al nivel raíz — sin anidación
+                      palabras_clave: item.palabras_clave || [],
+                      contexto_pista: item.contexto_pista || "",
+                      oracion_esperada: item.oracion_esperada || "",
+                      pregunta: `${pregunta.pregunta || "Construye oración"} - Item ${itemIdx + 1}`,
+                      indice_item: itemIdx,
+                      indice_pregunta: idx,
+                      es_subitem: true,
+                      // Limpiar items anidados para no duplicar
+                      items: undefined,
+                      metadata: {
+                        ...(pregunta.metadata || {}),
+                        items: undefined,
+                        palabras_clave: item.palabras_clave || [],
+                        contexto_pista: item.contexto_pista || "",
+                        oracion_esperada: item.oracion_esperada || "",
+                      },
+                      historial_respuestas: respuestaItem
+                        ? [
+                            {
+                              fecha: new Date().toISOString(),
+                              respuesta: respuestaItem,
+                              correcta: false,
+                            },
+                          ]
+                        : (resultadosConHistorial[idx]?.historial_respuestas || []),
+                    });
+                  });
+                  return; // No agregar la pregunta padre
+                }
               }
-              return pregunta;
+              // Pregunta normal: solo actualizar historial
+              const resultadoCorrespondiente = resultadosConHistorial[idx];
+              preguntasExpandidas.push({
+                ...pregunta,
+                historial_respuestas:
+                  resultadoCorrespondiente?.historial_respuestas ||
+                  pregunta.historial_respuestas,
+              });
             });
+            practicas[practicaIndex].preguntas = preguntasExpandidas;
           }
 
           // 🔥 GUARDAR EN CARPETA CORRESPONDIENTE
@@ -16314,9 +16377,54 @@ JSON:`;
             resultadosExamenExpandidos.push(resultado);
           });
 
+          // 🔥 EXPANDIR preguntas[] para que queden 1:1 con resultadosExamenExpandidos
+          const preguntasExamenExpandidas = [];
+          preguntasExamen.forEach((pregunta, idx) => {
+            if (pregunta.tipo === "sentence_builder_libre") {
+              const items =
+                pregunta.metadata?.items || pregunta.items || [];
+              const respuestasStr =
+                resultadosExamenConHistorial[idx]?.respuesta_usuario || "";
+              const respuestasArr = respuestasStr
+                .split("|||")
+                .map((r) => r.trim());
+              if (items.length > 0) {
+                items.forEach((item, itemIdx) => {
+                  const respuestaItem = respuestasArr[itemIdx] || "";
+                  preguntasExamenExpandidas.push({
+                    ...pregunta,
+                    id: `${pregunta.id || idx}_item${itemIdx}`,
+                    tipo: "sentence_builder_libre_item",
+                    tipo_padre: "sentence_builder_libre",
+                    palabras_clave: item.palabras_clave || [],
+                    contexto_pista: item.contexto_pista || "",
+                    oracion_esperada: item.oracion_esperada || "",
+                    pregunta: `${pregunta.pregunta || "Construye oración"} - Item ${itemIdx + 1}`,
+                    indice_item: itemIdx,
+                    indice_pregunta: idx,
+                    es_subitem: true,
+                    items: undefined,
+                    metadata: {
+                      ...(pregunta.metadata || {}),
+                      items: undefined,
+                      palabras_clave: item.palabras_clave || [],
+                      contexto_pista: item.contexto_pista || "",
+                      oracion_esperada: item.oracion_esperada || "",
+                    },
+                    historial_respuestas: respuestaItem
+                      ? [{ fecha: ahora.toISOString(), respuesta: respuestaItem, correcta: false }]
+                      : [],
+                  });
+                });
+                return;
+              }
+            }
+            preguntasExamenExpandidas.push(pregunta);
+          });
+
           const nuevoExamen = {
             id: Date.now(),
-            preguntas: preguntasExamen,
+            preguntas: preguntasExamenExpandidas,
             respuestas: respuestasUsuario,
             completado: true,
             es_practica: false, // 🔥 CAMPO EXPLÍCITO: es examen, no práctica
@@ -19235,7 +19343,7 @@ ${transformacionesEjemplo.join(",\n")}
       instrucciones += `  // GENERA EXACTAMENTE ${picture_description_libre} EJERCICIO(S) DIFERENTES DE DESCRIPCIÓN DE IMAGEN LIBRE en ${langName}:
   // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todo el contenido DEBE estar en ${langName}
   // 🎨 IMPORTANTE: Cada ejercicio debe tener una escena COMPLETAMENTE DIFERENTE (ej: personas comprando, niños en parque, oficina, restaurante, playa, etc.)
-${ejerciciosPDL.join(',\n')},
+${ejerciciosPDL.join(",\n")},
 `;
     }
 
@@ -21140,7 +21248,7 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
           if (pista) {
             textoPregunta += `. Contexto: ${pista}`;
           }
-          
+
           preguntasConRespuestas.push({
             numero: numeroGlobal,
             tipo: "sentence_builder_libre_item",
@@ -28009,68 +28117,108 @@ Generate an educational reading passage about this topic that would be suitable 
                             <h3 className="question-text">
                               {erroresActuales[indiceErrorActual]?.pregunta}
                             </h3>
-                            
+
                             {/* 🔥 MOSTRAR PALABRAS CLAVE para sentence_builder_libre_item */}
-                            {erroresActuales[indiceErrorActual]?.tipo === "sentence_builder_libre_item" && 
-                             erroresActuales[indiceErrorActual]?.palabras_clave?.length > 0 && (
-                              <div style={{
-                                marginTop: "1rem",
-                                background: "rgba(139, 92, 246, 0.1)",
-                                border: "1px solid rgba(139, 92, 246, 0.3)",
-                                borderRadius: "8px",
-                                padding: "1rem"
-                              }}>
-                                <div style={{
-                                  color: "#a78bfa",
-                                  fontSize: "0.85rem",
-                                  fontWeight: "600",
-                                  marginBottom: "0.5rem"
-                                }}>
-                                  💡 Palabras clave a usar:
-                                </div>
-                                <div style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: "0.5rem"
-                                }}>
-                                  {erroresActuales[indiceErrorActual].palabras_clave.map((palabra, idx) => (
-                                    <span key={idx} style={{
-                                      background: "rgba(139, 92, 246, 0.3)",
-                                      padding: "6px 12px",
-                                      borderRadius: "8px",
-                                      color: "#c4b5fd",
-                                      fontSize: "0.9rem",
-                                      fontWeight: "500",
-                                      border: "1px solid rgba(139, 92, 246, 0.5)"
-                                    }}>
-                                      {palabra}
-                                    </span>
-                                  ))}
-                                </div>
-                                {erroresActuales[indiceErrorActual]?.contexto_pista && (
-                                  <div style={{
-                                    marginTop: "0.75rem",
-                                    color: "#fcd34d",
-                                    fontSize: "0.85rem"
-                                  }}>
-                                    💡 Pista: <span style={{color: "#fef3c7", fontStyle: "italic"}}>
-                                      {erroresActuales[indiceErrorActual].contexto_pista}
-                                    </span>
+                            {erroresActuales[indiceErrorActual]?.tipo ===
+                              "sentence_builder_libre_item" &&
+                              erroresActuales[indiceErrorActual]?.palabras_clave
+                                ?.length > 0 && (
+                                <div
+                                  style={{
+                                    marginTop: "1rem",
+                                    background: "rgba(139, 92, 246, 0.1)",
+                                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                                    borderRadius: "8px",
+                                    padding: "1rem",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      color: "#a78bfa",
+                                      fontSize: "0.85rem",
+                                      fontWeight: "600",
+                                      marginBottom: "0.5rem",
+                                    }}
+                                  >
+                                    💡 Palabras clave a usar:
                                   </div>
-                                )}
-                                {erroresActuales[indiceErrorActual]?.respuesta_correcta && (
-                                  <div style={{
-                                    marginTop: "0.75rem",
-                                    color: "#86efac",
-                                    fontSize: "0.85rem"
-                                  }}>
-                                    ✓ Ejemplo de respuesta: <span style={{color: "#a5f3c4", fontStyle: "italic"}}>
-                                      "{erroresActuales[indiceErrorActual].respuesta_correcta}"
-                                    </span>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: "0.5rem",
+                                    }}
+                                  >
+                                    {erroresActuales[
+                                      indiceErrorActual
+                                    ].palabras_clave.map((palabra, idx) => (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          background: "rgba(139, 92, 246, 0.3)",
+                                          padding: "6px 12px",
+                                          borderRadius: "8px",
+                                          color: "#c4b5fd",
+                                          fontSize: "0.9rem",
+                                          fontWeight: "500",
+                                          border:
+                                            "1px solid rgba(139, 92, 246, 0.5)",
+                                        }}
+                                      >
+                                        {palabra}
+                                      </span>
+                                    ))}
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                  {erroresActuales[indiceErrorActual]
+                                    ?.contexto_pista && (
+                                    <div
+                                      style={{
+                                        marginTop: "0.75rem",
+                                        color: "#fcd34d",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      💡 Pista:{" "}
+                                      <span
+                                        style={{
+                                          color: "#fef3c7",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        {
+                                          erroresActuales[indiceErrorActual]
+                                            .contexto_pista
+                                        }
+                                      </span>
+                                    </div>
+                                  )}
+                                  {erroresActuales[indiceErrorActual]
+                                    ?.respuesta_correcta && (
+                                    <div
+                                      style={{
+                                        marginTop: "0.75rem",
+                                        color: "#86efac",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      ✓ Ejemplo de respuesta:{" "}
+                                      <span
+                                        style={{
+                                          color: "#a5f3c4",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        "
+                                        {
+                                          erroresActuales[indiceErrorActual]
+                                            .respuesta_correcta
+                                        }
+                                        "
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                           </div>
 
                           {/* 🔥 CONTENIDO ADICIONAL PARA PREGUNTAS COMPLEJAS (Reading, Writing, Cloze, etc.) */}
@@ -38076,9 +38224,18 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                       }}
                                     >
                                       {oraciones.map((o, i) => {
+                                        // 🔥 Normalizar campos: buscar palabras_dadas O idea1/idea2/conector
                                         const palabras = o.palabras_dadas || [];
                                         const esperada =
-                                          o.oracion_esperada || "";
+                                          o.oracion_esperada ||
+                                          o.respuesta_correcta ||
+                                          "";
+                                        const idea1 =
+                                          o.idea1 || o.idea_1 || null;
+                                        const idea2 =
+                                          o.idea2 || o.idea_2 || null;
+                                        const conector = o.conector || null;
+
                                         return (
                                           <div
                                             key={i}
@@ -38111,33 +38268,152 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                                                 {i + 1}
                                               </span>
                                             </div>
-                                            <div
-                                              style={{
-                                                display: "flex",
-                                                flexWrap: "wrap",
-                                                gap: "0.5rem",
-                                                marginLeft: "0.5rem",
-                                              }}
-                                            >
-                                              {palabras.map((palabra, j) => (
-                                                <span
-                                                  key={j}
-                                                  style={{
-                                                    background:
-                                                      "rgba(59, 130, 246, 0.3)",
-                                                    padding: "6px 12px",
-                                                    borderRadius: "8px",
-                                                    color: "#93c5fd",
-                                                    fontSize: "0.9rem",
-                                                    fontWeight: "500",
-                                                    border:
-                                                      "1px solid rgba(59, 130, 246, 0.5)",
-                                                  }}
-                                                >
-                                                  {palabra}
-                                                </span>
-                                              ))}
-                                            </div>
+
+                                            {/* 🔥 Si tiene idea1/idea2/conector, mostrar formato de combinación */}
+                                            {idea1 || idea2 || conector ? (
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  flexDirection: "column",
+                                                  gap: "0.5rem",
+                                                  marginLeft: "0.5rem",
+                                                  marginBottom: "0.75rem",
+                                                }}
+                                              >
+                                                {idea1 && (
+                                                  <div
+                                                    style={{
+                                                      display: "flex",
+                                                      alignItems: "center",
+                                                      gap: "0.5rem",
+                                                    }}
+                                                  >
+                                                    <span
+                                                      style={{
+                                                        color: "#60a5fa",
+                                                        fontWeight: "600",
+                                                        fontSize: "0.85rem",
+                                                        minWidth: "60px",
+                                                      }}
+                                                    >
+                                                      💭 Idea 1:
+                                                    </span>
+                                                    <span
+                                                      style={{
+                                                        padding: "6px 12px",
+                                                        background:
+                                                          "rgba(59, 130, 246, 0.25)",
+                                                        border:
+                                                          "1px solid rgba(59, 130, 246, 0.5)",
+                                                        borderRadius: "6px",
+                                                        color: "#93c5fd",
+                                                        fontSize: "0.9rem",
+                                                      }}
+                                                    >
+                                                      {idea1}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                                {idea2 && (
+                                                  <div
+                                                    style={{
+                                                      display: "flex",
+                                                      alignItems: "center",
+                                                      gap: "0.5rem",
+                                                    }}
+                                                  >
+                                                    <span
+                                                      style={{
+                                                        color: "#60a5fa",
+                                                        fontWeight: "600",
+                                                        fontSize: "0.85rem",
+                                                        minWidth: "60px",
+                                                      }}
+                                                    >
+                                                      💭 Idea 2:
+                                                    </span>
+                                                    <span
+                                                      style={{
+                                                        padding: "6px 12px",
+                                                        background:
+                                                          "rgba(59, 130, 246, 0.25)",
+                                                        border:
+                                                          "1px solid rgba(59, 130, 246, 0.5)",
+                                                        borderRadius: "6px",
+                                                        color: "#93c5fd",
+                                                        fontSize: "0.9rem",
+                                                      }}
+                                                    >
+                                                      {idea2}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                                {conector && (
+                                                  <div
+                                                    style={{
+                                                      display: "flex",
+                                                      alignItems: "center",
+                                                      gap: "0.5rem",
+                                                    }}
+                                                  >
+                                                    <span
+                                                      style={{
+                                                        color: "#22c55e",
+                                                        fontWeight: "600",
+                                                        fontSize: "0.85rem",
+                                                        minWidth: "60px",
+                                                      }}
+                                                    >
+                                                      🔗 Conector:
+                                                    </span>
+                                                    <span
+                                                      style={{
+                                                        padding: "6px 12px",
+                                                        background:
+                                                          "rgba(34, 197, 94, 0.25)",
+                                                        border:
+                                                          "2px solid rgba(34, 197, 94, 0.6)",
+                                                        borderRadius: "6px",
+                                                        color: "#86efac",
+                                                        fontSize: "0.9rem",
+                                                        fontWeight: "600",
+                                                      }}
+                                                    >
+                                                      {conector}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ) : palabras.length > 0 ? (
+                                              /* Si tiene palabras_dadas, mostrar formato de palabras desordenadas */
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  flexWrap: "wrap",
+                                                  gap: "0.5rem",
+                                                  marginLeft: "0.5rem",
+                                                }}
+                                              >
+                                                {palabras.map((palabra, j) => (
+                                                  <span
+                                                    key={j}
+                                                    style={{
+                                                      background:
+                                                        "rgba(59, 130, 246, 0.3)",
+                                                      padding: "6px 12px",
+                                                      borderRadius: "8px",
+                                                      color: "#93c5fd",
+                                                      fontSize: "0.9rem",
+                                                      fontWeight: "500",
+                                                      border:
+                                                        "1px solid rgba(59, 130, 246, 0.5)",
+                                                    }}
+                                                  >
+                                                    {palabra}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            ) : null}
                                             {errorYaRespondido && esperada && (
                                               <div
                                                 style={{
@@ -38520,528 +38796,231 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                             );
                           })()}
 
-                          {/* 🔥 INTERFAZ PARA SENTENCE_BUILDER_LIBRE */}
+                          {/* 🔥 INTERFAZ PARA SENTENCE_BUILDER_LIBRE - CORRECCIÓN DE ERRORES */}
                           {(() => {
-                            const errorActual =
-                              erroresActuales[indiceErrorActual];
-                            if (
-                              errorActual?.tipo !== "sentence_builder_libre" &&
-                              errorActual?.tipo !==
-                                "sentence_builder_libre_item" &&
-                              errorActual?.tipo_padre !==
-                                "sentence_builder_libre"
-                            )
-                              return null;
+                            const errorActual = erroresActuales[indiceErrorActual];
+                            const esSBL =
+                              errorActual?.tipo === "sentence_builder_libre" ||
+                              errorActual?.tipo === "sentence_builder_libre_item" ||
+                              errorActual?.tipo_padre === "sentence_builder_libre";
+                            if (!esSBL) return null;
 
-                            const metadata = errorActual?.metadata || {};
-                            const itemsSBL =
-                              metadata?.items || errorActual?.items || [];
-                            const idiomaSBL =
-                              metadata?.idioma ||
-                              errorActual?.idioma ||
-                              "español";
-                            const criteriosRaw =
-                              metadata?.criterios_evaluacion || {};
-                            const criteriosSBL = Array.isArray(criteriosRaw)
-                              ? criteriosRaw
-                              : Object.values(criteriosRaw);
+                            const idioma = errorActual?.metadata?.idioma || errorActual?.idioma || "inglés";
+                            const preguntaItem = errorActual?.pregunta || errorActual?.instruccion || "Construye una oración usando las palabras clave.";
 
-                            const generarPromptSentenceBuilderLibre = () => {
-                              let prompt = `Evalúa la construcción de oraciones libres del estudiante (CORRECCIÓN DE ERROR).
+                            // ✅ Detectar si es sub-item expandido o ejercicio completo (viejo formato)
+                            const esSubItem =
+                              errorActual?.tipo === "sentence_builder_libre_item" ||
+                              errorActual?.tipo_padre === "sentence_builder_libre";
 
-INSTRUCCIÓN: ${errorActual?.pregunta || "Construye oraciones usando las palabras/ideas proporcionadas"}
-IDIOMA: ${idiomaSBL}
+                            let itemsParaMostrar = [];
+                            if (esSubItem) {
+                              // Sub-item expandido: datos directamente en el objeto
+                              itemsParaMostrar = [{
+                                palabras_clave: errorActual?.palabras_clave || [],
+                                contexto_pista: errorActual?.contexto_pista || "",
+                                oracion_esperada: errorActual?.oracion_esperada || "",
+                              }];
+                            } else {
+                              // Ejercicio completo (viejo formato): items en metadata.items o items
+                              itemsParaMostrar =
+                                errorActual?.metadata?.items ||
+                                errorActual?.items ||
+                                [];
+                            }
 
-`;
-                              if (itemsSBL.length > 0) {
-                                prompt += `ITEMS A CONSTRUIR:\n`;
-                                itemsSBL.forEach((item, i) => {
-                                  const palabras = item.palabras_clave || [];
-                                  const pista = item.contexto_pista || "";
-                                  const esperada = item.oracion_esperada || "";
-                                  prompt += `${i + 1}. Palabras clave: [${palabras.join(", ")}]`;
-                                  if (pista)
-                                    prompt += `\n   Contexto/pista: "${pista}"`;
-                                  if (esperada)
-                                    prompt += `\n   Ejemplo esperado: "${esperada}"`;
-                                  prompt += `\n`;
-                                });
-                                prompt += `\n`;
-                              }
-                              if (criteriosSBL.length > 0) {
-                                prompt += `CRITERIOS DE EVALUACIÓN: ${criteriosSBL.join(", ")}\n\n`;
-                              }
+                            // Item actual a mostrar (un solo item a la vez)
+                            const idxItemErr = Math.min(indiceItemSBLError, Math.max(0, itemsParaMostrar.length - 1));
+                            const itemActualErr = itemsParaMostrar[idxItemErr] || null;
 
-                              prompt += `RESPUESTA DEL ESTUDIANTE:\n${sentenceBuilderLibreError || "(vacío)"}\n\n`;
-                              prompt += `IMPORTANTE: El estudiante debe usar las palabras clave para construir oraciones coherentes. JSON:
+                            const generarPromptSBL = () => {
+                              const item = itemActualErr;
+                              if (!item) return "";
+                              let prompt = `Evalúa la siguiente oración construida por un estudiante de ${idioma}.\n\nINSTRUCCIÓN: ${preguntaItem}\nPALABRAS CLAVE: [${(item.palabras_clave || []).join(", ")}]`;
+                              if (item.contexto_pista) prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
+                              if (item.oracion_esperada) prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
+                              prompt += `\n\nRESPUESTA DEL ESTUDIANTE: "${sentenceBuilderLibreError || "(vacío)"}";
+
+EVALÚA estrictamente: uso de palabras clave, gramática y coherencia con cada contexto.
+Devuelve SOLO este JSON:
 {
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
   "correcto": <true si >= 60%>,
-  "feedback": "<feedback general>",
-  "evaluacion_items": [
-    {"item": 1, "correcto": true/false, "oracion_estudiante": "", "sugerencia": ""}
-  ],
+  "feedback": "<explicación breve>",
   "palabras_usadas_correctamente": [],
   "palabras_faltantes": [],
-  "sugerencias": []
+  "sugerencia": "<oración mejorada>"
 }`;
                               return prompt;
                             };
 
                             return (
-                              <div
-                                style={{
-                                  background: "rgba(139, 92, 246, 0.1)",
-                                  border: "1px solid rgba(139, 92, 246, 0.3)",
-                                  borderRadius: "12px",
-                                  padding: "1.5rem",
-                                  marginTop: "1rem",
-                                }}
-                              >
-                                <h4
-                                  style={{
-                                    color: "#c4b5fd",
-                                    marginBottom: "1rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                  }}
-                                >
+                              <div style={{
+                                background: "rgba(139, 92, 246, 0.1)",
+                                border: "1px solid rgba(139, 92, 246, 0.3)",
+                                borderRadius: "12px",
+                                padding: "1.5rem",
+                                marginTop: "1rem",
+                              }}>
+                                <h4 style={{ color: "#c4b5fd", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                                   <span>🧩</span>
                                   <span>Constructor de Oraciones Libre</span>
-                                  <span
-                                    style={{
-                                      fontSize: "0.75rem",
-                                      padding: "2px 8px",
-                                      background: "rgba(139, 92, 246, 0.3)",
-                                      borderRadius: "10px",
-                                      color: "#c4b5fd",
-                                    }}
-                                  >
-                                    {idiomaSBL}
+                                  <span style={{ fontSize: "0.75rem", padding: "2px 8px", background: "rgba(139, 92, 246, 0.3)", borderRadius: "10px", color: "#c4b5fd" }}>
+                                    {idioma}
                                   </span>
                                 </h4>
 
-                                {/* Mostrar items con palabras clave */}
-                                {itemsSBL.length > 0 ? (
-                                  <div
-                                    style={{
-                                      background: "rgba(139, 92, 246, 0.1)",
-                                      border:
-                                        "1px solid rgba(139, 92, 246, 0.3)",
-                                      borderRadius: "8px",
-                                      padding: "1rem",
-                                      marginBottom: "1rem",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "#a78bfa",
-                                        fontSize: "0.85rem",
-                                        fontWeight: "600",
-                                      }}
-                                    >
-                                      💡 Construye oraciones con estas
-                                      palabras/ideas ({itemsSBL.length}):
-                                    </span>
-                                    <div
-                                      style={{
-                                        marginTop: "0.75rem",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "0.75rem",
-                                      }}
-                                    >
-                                      {itemsSBL.map((item, i) => {
-                                        const palabras =
-                                          item.palabras_clave || [];
-                                        const pista = item.contexto_pista || "";
-                                        const esperada =
-                                          item.oracion_esperada || "";
-                                        return (
-                                          <div
-                                            key={i}
-                                            style={{
-                                              background:
-                                                "rgba(255,255,255,0.05)",
-                                              padding: "0.75rem",
-                                              borderRadius: "8px",
-                                              borderLeft: "3px solid #8b5cf6",
-                                            }}
-                                          >
-                                            <div
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "flex-start",
-                                                gap: "0.5rem",
-                                                marginBottom: "0.5rem",
-                                              }}
-                                            >
-                                              <span
-                                                style={{
-                                                  background: "#8b5cf6",
-                                                  color: "white",
-                                                  padding: "2px 8px",
-                                                  borderRadius: "10px",
-                                                  fontSize: "0.8rem",
-                                                  fontWeight: "600",
-                                                }}
-                                              >
-                                                {i + 1}
-                                              </span>
-                                            </div>
-                                            <div
-                                              style={{
-                                                display: "flex",
-                                                flexWrap: "wrap",
-                                                gap: "0.5rem",
-                                                marginLeft: "0.5rem",
-                                              }}
-                                            >
-                                              {palabras.map((palabra, j) => (
-                                                <span
-                                                  key={j}
-                                                  style={{
-                                                    background:
-                                                      "rgba(139, 92, 246, 0.3)",
-                                                    padding: "6px 12px",
-                                                    borderRadius: "8px",
-                                                    color: "#c4b5fd",
-                                                    fontSize: "0.9rem",
-                                                    fontWeight: "500",
-                                                    border:
-                                                      "1px solid rgba(139, 92, 246, 0.5)",
-                                                  }}
-                                                >
-                                                  {palabra}
-                                                </span>
-                                              ))}
-                                            </div>
-                                            {pista && (
-                                              <div
-                                                style={{
-                                                  marginTop: "0.5rem",
-                                                  marginLeft: "0.5rem",
-                                                }}
-                                              >
-                                                <span
-                                                  style={{
-                                                    color: "#fcd34d",
-                                                    fontSize: "0.8rem",
-                                                  }}
-                                                >
-                                                  💡 Pista:{" "}
-                                                </span>
-                                                <span
-                                                  style={{
-                                                    color: "#fef3c7",
-                                                    fontSize: "0.85rem",
-                                                    fontStyle: "italic",
-                                                  }}
-                                                >
-                                                  {pista}
-                                                </span>
-                                              </div>
-                                            )}
-                                            {errorYaRespondido && esperada && (
-                                              <div
-                                                style={{
-                                                  marginTop: "0.5rem",
-                                                  marginLeft: "0.5rem",
-                                                }}
-                                              >
-                                                <span
-                                                  style={{
-                                                    color: "#86efac",
-                                                    fontSize: "0.8rem",
-                                                  }}
-                                                >
-                                                  ✓ Ejemplo:{" "}
-                                                </span>
-                                                <span
-                                                  style={{
-                                                    color: "#a5f3c4",
-                                                    fontSize: "0.85rem",
-                                                  }}
-                                                >
-                                                  "{esperada}"
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
+                                {/* ✅ UN solo item a la vez con navegación */}
+                                {itemActualErr && (
+                                  <div style={{ marginBottom: "1rem" }}>
+                                    {itemsParaMostrar.length > 1 && (
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                                        <button onClick={() => setIndiceItemSBLError(i => Math.max(0, i - 1))} disabled={idxItemErr === 0}
+                                          style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemErr === 0 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemErr === 0 ? "#64748b" : "#c4b5fd", cursor: idxItemErr === 0 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
+                                        >{"←"} Anterior</button>
+                                        <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>Oración {idxItemErr + 1} de {itemsParaMostrar.length}</span>
+                                        <button onClick={() => setIndiceItemSBLError(i => Math.min(itemsParaMostrar.length - 1, i + 1))} disabled={idxItemErr === itemsParaMostrar.length - 1}
+                                          style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemErr === itemsParaMostrar.length - 1 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemErr === itemsParaMostrar.length - 1 ? "#64748b" : "#c4b5fd", cursor: idxItemErr === itemsParaMostrar.length - 1 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
+                                        >Siguiente {"→"}</button>
+                                      </div>
+                                    )}
+                                    <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)", borderRadius: "8px", padding: "1rem" }}>
+                                      <div style={{ marginBottom: "0.35rem" }}>
+                                        <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>🔑 Palabras clave:</span>
+                                      </div>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: itemActualErr.contexto_pista ? "0.5rem" : "0" }}>
+                                        {(itemActualErr.palabras_clave || []).map((palabra, j) => (
+                                          <span key={j} style={{ background: "rgba(139, 92, 246, 0.3)", padding: "6px 12px", borderRadius: "8px", color: "#c4b5fd", fontSize: "0.9rem", fontWeight: "500", border: "1px solid rgba(139, 92, 246, 0.5)" }}>{palabra}</span>
+                                        ))}
+                                      </div>
+                                      {itemActualErr.contexto_pista && (
+                                        <div style={{ marginTop: "0.35rem" }}>
+                                          <span style={{ color: "#fcd34d", fontSize: "0.85rem" }}>💡 Contexto: </span>
+                                          <span style={{ color: "#fef3c7", fontSize: "0.85rem", fontStyle: "italic" }}>{itemActualErr.contexto_pista}</span>
+                                        </div>
+                                      )}
+                                      {errorYaRespondido && itemActualErr.oracion_esperada && (
+                                        <div style={{ marginTop: "0.35rem" }}>
+                                          <span style={{ color: "#86efac", fontSize: "0.8rem" }}>✓ Ejemplo: </span>
+                                          <span style={{ color: "#a5f3c4", fontSize: "0.85rem" }}>"{itemActualErr.oracion_esperada}"</span>
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
-                                ) : (
-                                  <div
-                                    style={{
-                                      background: "rgba(251, 191, 36, 0.1)",
-                                      border:
-                                        "1px solid rgba(251, 191, 36, 0.3)",
-                                      borderRadius: "8px",
-                                      padding: "0.75rem",
-                                      marginBottom: "1rem",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "#fcd34d",
-                                        fontSize: "0.9rem",
-                                      }}
-                                    >
-                                      ⚠️ No se encontraron items/palabras clave
-                                      en este ejercicio.
-                                    </span>
                                   </div>
                                 )}
 
-                                {/* Criterios de evaluación */}
-                                {criteriosSBL.length > 0 && (
-                                  <div
-                                    style={{
-                                      background: "rgba(251, 191, 36, 0.1)",
-                                      border:
-                                        "1px solid rgba(251, 191, 36, 0.3)",
-                                      borderRadius: "8px",
-                                      padding: "0.5rem 0.75rem",
-                                      marginBottom: "1rem",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "#fcd34d",
-                                        fontSize: "0.8rem",
-                                      }}
-                                    >
-                                      📋 Criterios: {criteriosSBL.join(" • ")}
-                                    </span>
-                                  </div>
-                                )}
 
                                 {!errorYaRespondido && (
                                   <>
                                     <textarea
                                       value={sentenceBuilderLibreError}
-                                      onChange={(e) =>
-                                        setSentenceBuilderLibreError(
-                                          e.target.value,
-                                        )
-                                      }
-                                      placeholder="Escribe tus oraciones usando las palabras clave (una por línea)...\n1. ...\n2. ...\n3. ..."
+                                      onChange={(e) => setSentenceBuilderLibreError(e.target.value)}
+                                      placeholder="Escribe tu oración usando las palabras clave..."
                                       style={{
-                                        width: "100%",
-                                        minHeight: "120px",
-                                        padding: "1rem",
-                                        borderRadius: "8px",
-                                        border:
-                                          "1px solid rgba(139, 92, 246, 0.4)",
-                                        background: "rgba(15, 23, 42, 0.8)",
-                                        color: "#e2e8f0",
-                                        fontSize: "0.95rem",
-                                        resize: "vertical",
-                                        marginBottom: "1rem",
+                                        width: "100%", minHeight: "90px", padding: "1rem",
+                                        borderRadius: "8px", border: "1px solid rgba(139, 92, 246, 0.4)",
+                                        background: "rgba(15, 23, 42, 0.8)", color: "#e2e8f0",
+                                        fontSize: "0.95rem", resize: "vertical", marginBottom: "1rem",
                                       }}
                                     />
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        gap: "0.5rem",
-                                        flexWrap: "wrap",
-                                      }}
-                                    >
+                                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
                                       <button
                                         onClick={() => {
-                                          navigator.clipboard.writeText(
-                                            generarPromptSentenceBuilderLibre(),
-                                          );
-                                          setPromptCopiadoSentenceBuilderLibreError(
-                                            true,
-                                          );
-                                          setTimeout(
-                                            () =>
-                                              setPromptCopiadoSentenceBuilderLibreError(
-                                                false,
-                                              ),
-                                            2000,
-                                          );
+                                          navigator.clipboard.writeText(generarPromptSBL());
+                                          setPromptCopiadoSentenceBuilderLibreError(true);
+                                          setTimeout(() => setPromptCopiadoSentenceBuilderLibreError(false), 2000);
                                         }}
                                         style={{
-                                          padding: "8px 16px",
-                                          background: "rgba(139, 92, 246, 0.2)",
-                                          border:
-                                            "1px solid rgba(139, 92, 246, 0.4)",
-                                          borderRadius: "8px",
-                                          color: "#c4b5fd",
-                                          cursor: "pointer",
+                                          padding: "8px 16px", background: "rgba(139, 92, 246, 0.2)",
+                                          border: "1px solid rgba(139, 92, 246, 0.4)", borderRadius: "8px",
+                                          color: "#c4b5fd", cursor: "pointer",
                                         }}
                                       >
-                                        {promptCopiadoSentenceBuilderLibreError
-                                          ? "✓ Copiado"
-                                          : "📋 Copiar prompt ChatGPT"}
+                                        {promptCopiadoSentenceBuilderLibreError ? "✓ Copiado" : "📋 Copiar prompt ChatGPT"}
                                       </button>
                                       <button
                                         onClick={() => {
-                                          setRespuestaError(
-                                            sentenceBuilderLibreError,
-                                          );
-                                          setRespuestaErrorSeleccionada(
-                                            sentenceBuilderLibreError,
-                                          );
+                                          setRespuestaError(sentenceBuilderLibreError);
+                                          setRespuestaErrorSeleccionada(sentenceBuilderLibreError);
                                           setErrorYaRespondido(true);
                                         }}
-                                        disabled={
-                                          !sentenceBuilderLibreError.trim()
-                                        }
+                                        disabled={!sentenceBuilderLibreError.trim()}
                                         style={{
                                           padding: "8px 16px",
-                                          background:
-                                            sentenceBuilderLibreError.trim()
-                                              ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                                              : "rgba(100, 116, 139, 0.2)",
-                                          border: "none",
-                                          borderRadius: "8px",
-                                          color: "white",
-                                          cursor:
-                                            sentenceBuilderLibreError.trim()
-                                              ? "pointer"
-                                              : "not-allowed",
+                                          background: sentenceBuilderLibreError.trim() ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(100, 116, 139, 0.2)",
+                                          border: "none", borderRadius: "8px", color: "white",
+                                          cursor: sentenceBuilderLibreError.trim() ? "pointer" : "not-allowed",
                                         }}
                                       >
                                         ✓ Marcar respondido
                                       </button>
                                     </div>
-                                    <div style={{ marginTop: "0.75rem" }}>
-                                      <textarea
-                                        value={
-                                          textoJsonSentenceBuilderLibreError
-                                        }
-                                        onChange={(e) =>
-                                          setTextoJsonSentenceBuilderLibreError(
-                                            e.target.value,
-                                          )
-                                        }
-                                        placeholder="Pega el JSON de ChatGPT..."
-                                        style={{
-                                          width: "100%",
-                                          minHeight: "60px",
-                                          padding: "0.5rem",
-                                          borderRadius: "6px",
-                                          border: "1px solid #374151",
-                                          background: "#0f172a",
-                                          color: "#94a3b8",
-                                          fontSize: "0.8rem",
-                                          resize: "vertical",
-                                          marginBottom: "0.5rem",
-                                        }}
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const parsed = extraerJSON(
-                                            textoJsonSentenceBuilderLibreError,
-                                          );
-                                          if (parsed) {
-                                            setJsonCalificacionSentenceBuilderLibreError(
-                                              parsed,
+                                    {/* Pegar JSON de ChatGPT */}
+                                    <textarea
+                                      value={textoJsonSentenceBuilderLibreError}
+                                      onChange={(e) => setTextoJsonSentenceBuilderLibreError(e.target.value)}
+                                      placeholder='Pega aquí el JSON de ChatGPT... {"puntos_obtenidos": 8, "correcto": true, ...}'
+                                      style={{
+                                        width: "100%", minHeight: "70px", padding: "0.5rem",
+                                        borderRadius: "6px", border: "1px solid #374151",
+                                        background: "#0f172a", color: "#94a3b8",
+                                        fontSize: "0.8rem", resize: "vertical", marginBottom: "0.5rem",
+                                      }}
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const parsed = extraerJSON(textoJsonSentenceBuilderLibreError);
+                                        if (parsed) {
+                                          setJsonCalificacionSentenceBuilderLibreError(parsed);
+                                          setRespuestaError(sentenceBuilderLibreError);
+                                          if (parsed.correcto !== undefined)
+                                            setTimeout(() =>
+                                              parsed.correcto
+                                                ? verificarRespuestaError(sentenceBuilderLibreError)
+                                                : verificarRespuestaError("__INCORRECTO__"),
+                                              100,
                                             );
-                                            setRespuestaError(
-                                              sentenceBuilderLibreError,
-                                            );
-                                            if (parsed.correcto !== undefined)
-                                              setTimeout(
-                                                () =>
-                                                  parsed.correcto
-                                                    ? verificarRespuestaError(
-                                                        sentenceBuilderLibreError,
-                                                      )
-                                                    : verificarRespuestaError(
-                                                        "__INCORRECTO__",
-                                                      ),
-                                                100,
-                                              );
-                                          } else {
-                                            alert(
-                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
-                                            );
-                                          }
-                                        }}
-                                        disabled={
-                                          !textoJsonSentenceBuilderLibreError.trim()
+                                        } else {
+                                          alert("❌ No se encontró JSON válido.\n\nAsegúrate de pegar el JSON de respuesta de ChatGPT.");
                                         }
-                                        style={{
-                                          padding: "6px 12px",
-                                          background:
-                                            textoJsonSentenceBuilderLibreError.trim()
-                                              ? "rgba(34, 197, 94, 0.2)"
-                                              : "rgba(100, 116, 139, 0.2)",
-                                          border: `1px solid ${textoJsonSentenceBuilderLibreError.trim() ? "rgba(34, 197, 94, 0.5)" : "rgba(100, 116, 139, 0.3)"}`,
-                                          borderRadius: "8px",
-                                          color:
-                                            textoJsonSentenceBuilderLibreError.trim()
-                                              ? "#86efac"
-                                              : "#64748b",
-                                          cursor:
-                                            textoJsonSentenceBuilderLibreError.trim()
-                                              ? "pointer"
-                                              : "not-allowed",
-                                        }}
-                                      >
-                                        ✨ Procesar calificación
-                                      </button>
-                                    </div>
+                                      }}
+                                      disabled={!textoJsonSentenceBuilderLibreError.trim()}
+                                      style={{
+                                        padding: "6px 12px",
+                                        background: textoJsonSentenceBuilderLibreError.trim() ? "rgba(34, 197, 94, 0.2)" : "rgba(100, 116, 139, 0.2)",
+                                        border: `1px solid ${textoJsonSentenceBuilderLibreError.trim() ? "rgba(34, 197, 94, 0.5)" : "rgba(100, 116, 139, 0.3)"}`,
+                                        borderRadius: "8px",
+                                        color: textoJsonSentenceBuilderLibreError.trim() ? "#86efac" : "#64748b",
+                                        cursor: textoJsonSentenceBuilderLibreError.trim() ? "pointer" : "not-allowed",
+                                      }}
+                                    >
+                                      ✨ Procesar calificación
+                                    </button>
                                   </>
                                 )}
 
                                 {jsonCalificacionSentenceBuilderLibreError && (
-                                  <div
-                                    style={{
-                                      marginTop: "1rem",
-                                      padding: "1rem",
-                                      background:
-                                        jsonCalificacionSentenceBuilderLibreError.correcto
-                                          ? "rgba(34, 197, 94, 0.15)"
-                                          : "rgba(239, 68, 68, 0.15)",
-                                      border: `1px solid ${jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
-                                      borderRadius: "8px",
-                                    }}
-                                  >
-                                    <strong
-                                      style={{
-                                        color:
-                                          jsonCalificacionSentenceBuilderLibreError.correcto
-                                            ? "#86efac"
-                                            : "#fca5a5",
-                                      }}
-                                    >
-                                      {jsonCalificacionSentenceBuilderLibreError.correcto
-                                        ? "✅"
-                                        : "❌"}{" "}
-                                      {
-                                        jsonCalificacionSentenceBuilderLibreError.puntos_obtenidos
-                                      }
-                                      /
-                                      {
-                                        jsonCalificacionSentenceBuilderLibreError.puntos_totales
-                                      }{" "}
-                                      (
-                                      {
-                                        jsonCalificacionSentenceBuilderLibreError.porcentaje
-                                      }
-                                      %)
+                                  <div style={{
+                                    marginTop: "1rem", padding: "1rem",
+                                    background: jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                                    border: `1px solid ${jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
+                                    borderRadius: "8px",
+                                  }}>
+                                    <strong style={{ color: jsonCalificacionSentenceBuilderLibreError.correcto ? "#86efac" : "#fca5a5" }}>
+                                      {jsonCalificacionSentenceBuilderLibreError.correcto ? "✅" : "❌"}{" "}
+                                      {jsonCalificacionSentenceBuilderLibreError.puntos_obtenidos}/{jsonCalificacionSentenceBuilderLibreError.puntos_totales}{" "}
+                                      ({jsonCalificacionSentenceBuilderLibreError.porcentaje}%)
                                     </strong>
                                     {jsonCalificacionSentenceBuilderLibreError.feedback && (
-                                      <p
-                                        style={{
-                                          color: "#e2e8f0",
-                                          margin: "0.5rem 0",
-                                          fontSize: "0.9rem",
-                                        }}
-                                      >
-                                        {
-                                          jsonCalificacionSentenceBuilderLibreError.feedback
-                                        }
+                                      <p style={{ color: "#e2e8f0", margin: "0.5rem 0", fontSize: "0.9rem" }}>
+                                        {jsonCalificacionSentenceBuilderLibreError.feedback}
+                                      </p>
+                                    )}
+                                    {jsonCalificacionSentenceBuilderLibreError.sugerencia && (
+                                      <p style={{ color: "#93c5fd", margin: "0.25rem 0", fontSize: "0.85rem" }}>
+                                        💡 Sugerencia: {jsonCalificacionSentenceBuilderLibreError.sugerencia}
                                       </p>
                                     )}
                                   </div>
@@ -39706,6 +39685,7 @@ IDIOMA: ${idiomaSBL}
                                     "writing_transformation_libre",
                                     "sentence_builder",
                                     "sentence_builder_libre",
+                                    "sentence_builder_libre_item",
                                     "formal_email",
                                     "picture_description",
                                     "picture_description_libre",
@@ -40497,68 +40477,108 @@ IDIOMA: ${idiomaSBL}
                             <h3 className="question-text">
                               {aciertosRepaso[indiceAciertoActual]?.pregunta}
                             </h3>
-                            
+
                             {/* 🔥 MOSTRAR PALABRAS CLAVE para sentence_builder_libre_item */}
-                            {aciertosRepaso[indiceAciertoActual]?.tipo === "sentence_builder_libre_item" && 
-                             aciertosRepaso[indiceAciertoActual]?.palabras_clave?.length > 0 && (
-                              <div style={{
-                                marginTop: "1rem",
-                                background: "rgba(139, 92, 246, 0.1)",
-                                border: "1px solid rgba(139, 92, 246, 0.3)",
-                                borderRadius: "8px",
-                                padding: "1rem"
-                              }}>
-                                <div style={{
-                                  color: "#a78bfa",
-                                  fontSize: "0.85rem",
-                                  fontWeight: "600",
-                                  marginBottom: "0.5rem"
-                                }}>
-                                  💡 Palabras clave a usar:
-                                </div>
-                                <div style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: "0.5rem"
-                                }}>
-                                  {aciertosRepaso[indiceAciertoActual].palabras_clave.map((palabra, idx) => (
-                                    <span key={idx} style={{
-                                      background: "rgba(139, 92, 246, 0.3)",
-                                      padding: "6px 12px",
-                                      borderRadius: "8px",
-                                      color: "#c4b5fd",
-                                      fontSize: "0.9rem",
-                                      fontWeight: "500",
-                                      border: "1px solid rgba(139, 92, 246, 0.5)"
-                                    }}>
-                                      {palabra}
-                                    </span>
-                                  ))}
-                                </div>
-                                {aciertosRepaso[indiceAciertoActual]?.contexto_pista && (
-                                  <div style={{
-                                    marginTop: "0.75rem",
-                                    color: "#fcd34d",
-                                    fontSize: "0.85rem"
-                                  }}>
-                                    💡 Pista: <span style={{color: "#fef3c7", fontStyle: "italic"}}>
-                                      {aciertosRepaso[indiceAciertoActual].contexto_pista}
-                                    </span>
+                            {aciertosRepaso[indiceAciertoActual]?.tipo ===
+                              "sentence_builder_libre_item" &&
+                              aciertosRepaso[indiceAciertoActual]
+                                ?.palabras_clave?.length > 0 && (
+                                <div
+                                  style={{
+                                    marginTop: "1rem",
+                                    background: "rgba(139, 92, 246, 0.1)",
+                                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                                    borderRadius: "8px",
+                                    padding: "1rem",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      color: "#a78bfa",
+                                      fontSize: "0.85rem",
+                                      fontWeight: "600",
+                                      marginBottom: "0.5rem",
+                                    }}
+                                  >
+                                    💡 Palabras clave a usar:
                                   </div>
-                                )}
-                                {aciertosRepaso[indiceAciertoActual]?.respuesta_correcta && (
-                                  <div style={{
-                                    marginTop: "0.75rem",
-                                    color: "#86efac",
-                                    fontSize: "0.85rem"
-                                  }}>
-                                    ✓ Ejemplo de respuesta: <span style={{color: "#a5f3c4", fontStyle: "italic"}}>
-                                      "{aciertosRepaso[indiceAciertoActual].respuesta_correcta}"
-                                    </span>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: "0.5rem",
+                                    }}
+                                  >
+                                    {aciertosRepaso[
+                                      indiceAciertoActual
+                                    ].palabras_clave.map((palabra, idx) => (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          background: "rgba(139, 92, 246, 0.3)",
+                                          padding: "6px 12px",
+                                          borderRadius: "8px",
+                                          color: "#c4b5fd",
+                                          fontSize: "0.9rem",
+                                          fontWeight: "500",
+                                          border:
+                                            "1px solid rgba(139, 92, 246, 0.5)",
+                                        }}
+                                      >
+                                        {palabra}
+                                      </span>
+                                    ))}
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                  {aciertosRepaso[indiceAciertoActual]
+                                    ?.contexto_pista && (
+                                    <div
+                                      style={{
+                                        marginTop: "0.75rem",
+                                        color: "#fcd34d",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      💡 Pista:{" "}
+                                      <span
+                                        style={{
+                                          color: "#fef3c7",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        {
+                                          aciertosRepaso[indiceAciertoActual]
+                                            .contexto_pista
+                                        }
+                                      </span>
+                                    </div>
+                                  )}
+                                  {aciertosRepaso[indiceAciertoActual]
+                                    ?.respuesta_correcta && (
+                                    <div
+                                      style={{
+                                        marginTop: "0.75rem",
+                                        color: "#86efac",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      ✓ Ejemplo de respuesta:{" "}
+                                      <span
+                                        style={{
+                                          color: "#a5f3c4",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
+                                        "
+                                        {
+                                          aciertosRepaso[indiceAciertoActual]
+                                            .respuesta_correcta
+                                        }
+                                        "
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                           </div>
 
                           {/* 🔥 CONTENIDO ADICIONAL PARA READING_COMPREHENSION (texto_lectura) */}
@@ -43796,6 +43816,7 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
 
                                   {/* 🔥 RENDERIZAR CADA ORACIÓN */}
                                   {oracionesParaMostrar.map((oracion, oIdx) => {
+                                    // 🔥 Normalizar campos: buscar palabras O idea1/idea2/conector
                                     const palabras =
                                       oracion.elementos ||
                                       oracion.palabras_dadas ||
@@ -43810,6 +43831,12 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                       oracion.explicacion || "";
                                     const respuestaUsuario =
                                       respuestasSentenceAcierto[oIdx] || "";
+                                    // Detectar formato de ideas/conector
+                                    const idea1 =
+                                      oracion.idea1 || oracion.idea_1 || null;
+                                    const idea2 =
+                                      oracion.idea2 || oracion.idea_2 || null;
+                                    const conector = oracion.conector || null;
 
                                     return (
                                       <div
@@ -43853,44 +43880,180 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                           )}
                                         </div>
 
-                                        {/* Palabras disponibles */}
-                                        {palabras.length > 0 && (
+                                        {/* 🔥 RENDERIZADO IDEAS/CONECTOR (formato alternativo) */}
+                                        {(idea1 || idea2 || conector) && (
                                           <div
                                             style={{
                                               display: "flex",
-                                              flexWrap: "wrap",
+                                              flexDirection: "column",
                                               gap: "0.5rem",
                                               marginBottom: "0.75rem",
                                             }}
                                           >
-                                            {palabras.map((palabra, pIdx) => (
-                                              <span
-                                                key={pIdx}
+                                            {idea1 && (
+                                              <div
                                                 style={{
-                                                  padding: "8px 16px",
-                                                  background:
-                                                    "rgba(34, 197, 94, 0.3)",
-                                                  border:
-                                                    "2px solid rgba(34, 197, 94, 0.6)",
-                                                  borderRadius: "8px",
-                                                  color: "#86efac",
-                                                  fontSize: "1rem",
-                                                  fontWeight: "500",
-                                                  cursor: "pointer",
-                                                  transition: "all 0.2s",
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.5rem",
                                                 }}
-                                                title="Clic para copiar"
-                                                onClick={() =>
-                                                  navigator.clipboard?.writeText(
-                                                    palabra,
-                                                  )
-                                                }
                                               >
-                                                {palabra}
-                                              </span>
-                                            ))}
+                                                <span
+                                                  style={{
+                                                    padding: "6px 12px",
+                                                    background:
+                                                      "rgba(59, 130, 246, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(59, 130, 246, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#93c5fd",
+                                                    fontSize: "0.9rem",
+                                                    fontWeight: "600",
+                                                  }}
+                                                >
+                                                  💭 Idea 1
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    padding: "8px 16px",
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(34, 197, 94, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#86efac",
+                                                    fontSize: "1rem",
+                                                    fontWeight: "500",
+                                                  }}
+                                                >
+                                                  {idea1}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {idea2 && (
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.5rem",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    padding: "6px 12px",
+                                                    background:
+                                                      "rgba(59, 130, 246, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(59, 130, 246, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#93c5fd",
+                                                    fontSize: "0.9rem",
+                                                    fontWeight: "600",
+                                                  }}
+                                                >
+                                                  💭 Idea 2
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    padding: "8px 16px",
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(34, 197, 94, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#86efac",
+                                                    fontSize: "1rem",
+                                                    fontWeight: "500",
+                                                  }}
+                                                >
+                                                  {idea2}
+                                                </span>
+                                              </div>
+                                            )}
+                                            {conector && (
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.5rem",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    padding: "6px 12px",
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(34, 197, 94, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#86efac",
+                                                    fontSize: "0.9rem",
+                                                    fontWeight: "600",
+                                                  }}
+                                                >
+                                                  🔗 Conector
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    padding: "8px 16px",
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(34, 197, 94, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#86efac",
+                                                    fontSize: "1rem",
+                                                    fontWeight: "500",
+                                                  }}
+                                                >
+                                                  {conector}
+                                                </span>
+                                              </div>
+                                            )}
                                           </div>
                                         )}
+
+                                        {/* Palabras disponibles (formato clásico) */}
+                                        {!idea1 &&
+                                          !idea2 &&
+                                          !conector &&
+                                          palabras.length > 0 && (
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                flexWrap: "wrap",
+                                                gap: "0.5rem",
+                                                marginBottom: "0.75rem",
+                                              }}
+                                            >
+                                              {palabras.map((palabra, pIdx) => (
+                                                <span
+                                                  key={pIdx}
+                                                  style={{
+                                                    padding: "8px 16px",
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.3)",
+                                                    border:
+                                                      "2px solid rgba(34, 197, 94, 0.6)",
+                                                    borderRadius: "8px",
+                                                    color: "#86efac",
+                                                    fontSize: "1rem",
+                                                    fontWeight: "500",
+                                                    cursor: "pointer",
+                                                    transition: "all 0.2s",
+                                                  }}
+                                                  title="Clic para copiar"
+                                                  onClick={() =>
+                                                    navigator.clipboard?.writeText(
+                                                      palabra,
+                                                    )
+                                                  }
+                                                >
+                                                  {palabra}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
 
                                         {/* Input o resultado */}
                                         {!aciertoYaRespondido ? (
@@ -49413,310 +49576,103 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Ordena las palabras para formar orac
                               );
                             }
 
-                            // 🧩 CASO SENTENCE_BUILDER_LIBRE (ACIERTOS)
-                            const esSentenceBuilderLibreAcierto =
-                              aciertoActual?.tipo ===
-                                "sentence_builder_libre" ||
-                              aciertoActual?.tipo ===
-                                "sentence_builder_libre_item" ||
-                              aciertoActual?.tipo_padre ===
-                                "sentence_builder_libre";
+                            // 🧩 CASO SENTENCE_BUILDER_LIBRE (ACIERTOS) — solo datos del item actual
+                            const esSBLAcierto =
+                              aciertoActual?.tipo === "sentence_builder_libre" ||
+                              aciertoActual?.tipo === "sentence_builder_libre_item" ||
+                              aciertoActual?.tipo_padre === "sentence_builder_libre";
 
-                            if (esSentenceBuilderLibreAcierto) {
-                              const metadataSBL = aciertoActual?.metadata || {};
-                              const itemsSBL =
-                                metadataSBL?.items ||
-                                aciertoActual?.items ||
-                                [];
-                              const idiomaSBL =
-                                metadataSBL?.idioma ||
-                                aciertoActual?.idioma ||
-                                "español";
-                              const criteriosRawSBL =
-                                metadataSBL?.criterios_evaluacion || {};
-                              const criteriosSBL = Array.isArray(
-                                criteriosRawSBL,
-                              )
-                                ? criteriosRawSBL
-                                : Object.values(criteriosRawSBL);
+                            if (esSBLAcierto) {
+                              // ✅ Detectar formato: sub-item expandido o padre con items[]
+                              const esSubItemAcierto = aciertoActual?.tipo === "sentence_builder_libre_item" || aciertoActual?.tipo_padre === "sentence_builder_libre";
+                              let itemsParaMostrarAcierto = [];
+                              if (esSubItemAcierto) {
+                                itemsParaMostrarAcierto = [{ palabras_clave: aciertoActual?.palabras_clave || [], contexto_pista: aciertoActual?.contexto_pista || "", oracion_esperada: aciertoActual?.oracion_esperada || "" }];
+                              } else {
+                                itemsParaMostrarAcierto = aciertoActual?.metadata?.items || aciertoActual?.items || [];
+                              }
+                              const idioma = aciertoActual?.metadata?.idioma || aciertoActual?.idioma || "inglés";
+                              const preguntaItem = aciertoActual?.pregunta || aciertoActual?.instruccion || "Construye una oración usando las palabras clave.";
 
-                              const generarPromptSentenceBuilderLibreAcierto =
-                                () => {
-                                  let prompt = `Evalúa la construcción de oraciones libres del estudiante (REPASO de acierto).
+                              // Item actual a mostrar (un solo item a la vez)
+                              const idxItemAc = Math.min(indiceItemSBLAcierto, Math.max(0, itemsParaMostrarAcierto.length - 1));
+                              const itemActualAc = itemsParaMostrarAcierto[idxItemAc] || null;
 
-INSTRUCCIÓN: ${aciertoActual?.pregunta || "Construye oraciones usando las palabras/ideas proporcionadas"}
-IDIOMA: ${idiomaSBL}
+                              const generarPromptSBLAcierto = () => {
+                                const item = itemActualAc;
+                                if (!item) return "";
+                                let prompt = `Evalúa la siguiente oración construida por un estudiante de ${idioma}.\n\nINSTRUCCIÓN: ${preguntaItem}\nPALABRAS CLAVE: [${(item.palabras_clave || []).join(", ")}]`;
+                                if (item.contexto_pista) prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
+                                if (item.oracion_esperada) prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
+                                prompt += `\n\nRESPUESTA DEL ESTUDIANTE: "${respuestaWritingAcierto || "(vacío)"}";
 
-`;
-                                  if (itemsSBL.length > 0) {
-                                    prompt += `ITEMS A CONSTRUIR:\n`;
-                                    itemsSBL.forEach((item, i) => {
-                                      const palabras =
-                                        item.palabras_clave || [];
-                                      const pista = item.contexto_pista || "";
-                                      const esperada =
-                                        item.oracion_esperada || "";
-                                      prompt += `${i + 1}. Palabras clave: [${palabras.join(", ")}]`;
-                                      if (pista)
-                                        prompt += `\n   Contexto/pista: "${pista}"`;
-                                      if (esperada)
-                                        prompt += `\n   Ejemplo esperado: "${esperada}"`;
-                                      prompt += `\n`;
-                                    });
-                                    prompt += `\n`;
-                                  }
-                                  if (criteriosSBL.length > 0) {
-                                    prompt += `CRITERIOS DE EVALUACIÓN: ${criteriosSBL.join(", ")}\n\n`;
-                                  }
-
-                                  prompt += `RESPUESTA DEL ESTUDIANTE:\n${respuestaWritingAcierto || "(vacío)"}\n\n`;
-                                  prompt += `IMPORTANTE: El estudiante debe usar las palabras clave para construir oraciones coherentes. JSON:
+EVALÚA estrictamente: uso de palabras clave, gramática y coherencia con el contexto.
+Devuelve SOLO este JSON:
 {
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
   "correcto": <true si >= 60%>,
-  "feedback": "<feedback general>",
-  "evaluacion_items": [
-    {"item": 1, "correcto": true/false, "oracion_estudiante": "", "sugerencia": ""}
-  ],
+  "feedback": "<explicación breve>",
   "palabras_usadas_correctamente": [],
   "palabras_faltantes": [],
-  "sugerencias": []
+  "sugerencia": "<oración mejorada>"
 }`;
-                                  return prompt;
-                                };
+                                return prompt;
+                              };
 
                               return (
-                                <div
-                                  style={{
-                                    background: "rgba(139, 92, 246, 0.1)",
-                                    border: "1px solid rgba(139, 92, 246, 0.3)",
-                                    borderRadius: "12px",
-                                    padding: "1.5rem",
-                                    marginTop: "1rem",
-                                  }}
-                                >
-                                  <h4
-                                    style={{
-                                      color: "#c4b5fd",
-                                      marginBottom: "1rem",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: "0.5rem",
-                                    }}
-                                  >
+                                <div style={{
+                                  background: "rgba(139, 92, 246, 0.1)",
+                                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                                  borderRadius: "12px",
+                                  padding: "1.5rem",
+                                  marginTop: "1rem",
+                                }}>
+                                  <h4 style={{ color: "#c4b5fd", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                                     <span>🧩</span>
                                     <span>Constructor de Oraciones Libre</span>
-                                    <span
-                                      style={{
-                                        fontSize: "0.75rem",
-                                        padding: "2px 8px",
-                                        background: "rgba(139, 92, 246, 0.3)",
-                                        borderRadius: "10px",
-                                        color: "#c4b5fd",
-                                      }}
-                                    >
-                                      {idiomaSBL}
+                                    <span style={{ fontSize: "0.75rem", padding: "2px 8px", background: "rgba(139, 92, 246, 0.3)", borderRadius: "10px", color: "#c4b5fd" }}>
+                                      {idioma}
                                     </span>
                                   </h4>
 
-                                  {/* Mostrar items con palabras clave */}
-                                  {itemsSBL.length > 0 ? (
-                                    <div
-                                      style={{
-                                        background: "rgba(139, 92, 246, 0.1)",
-                                        border:
-                                          "1px solid rgba(139, 92, 246, 0.3)",
-                                        borderRadius: "8px",
-                                        padding: "1rem",
-                                        marginBottom: "1rem",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color: "#a78bfa",
-                                          fontSize: "0.85rem",
-                                          fontWeight: "600",
-                                        }}
-                                      >
-                                        💡 Construye oraciones con estas
-                                        palabras/ideas ({itemsSBL.length}):
-                                      </span>
-                                      <div
-                                        style={{
-                                          marginTop: "0.75rem",
-                                          display: "flex",
-                                          flexDirection: "column",
-                                          gap: "0.75rem",
-                                        }}
-                                      >
-                                        {itemsSBL.map((item, i) => {
-                                          const palabras =
-                                            item.palabras_clave || [];
-                                          const pista =
-                                            item.contexto_pista || "";
-                                          const esperada =
-                                            item.oracion_esperada || "";
-                                          return (
-                                            <div
-                                              key={i}
-                                              style={{
-                                                background:
-                                                  "rgba(255,255,255,0.05)",
-                                                padding: "0.75rem",
-                                                borderRadius: "8px",
-                                                borderLeft: "3px solid #8b5cf6",
-                                              }}
-                                            >
-                                              <div
-                                                style={{
-                                                  display: "flex",
-                                                  alignItems: "flex-start",
-                                                  gap: "0.5rem",
-                                                  marginBottom: "0.5rem",
-                                                }}
-                                              >
-                                                <span
-                                                  style={{
-                                                    background: "#8b5cf6",
-                                                    color: "white",
-                                                    padding: "2px 8px",
-                                                    borderRadius: "10px",
-                                                    fontSize: "0.8rem",
-                                                    fontWeight: "600",
-                                                  }}
-                                                >
-                                                  {i + 1}
-                                                </span>
-                                              </div>
-                                              <div
-                                                style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "0.5rem",
-                                                  marginLeft: "0.5rem",
-                                                }}
-                                              >
-                                                {palabras.map((palabra, j) => (
-                                                  <span
-                                                    key={j}
-                                                    style={{
-                                                      background:
-                                                        "rgba(139, 92, 246, 0.3)",
-                                                      padding: "6px 12px",
-                                                      borderRadius: "8px",
-                                                      color: "#c4b5fd",
-                                                      fontSize: "0.9rem",
-                                                      fontWeight: "500",
-                                                      border:
-                                                        "1px solid rgba(139, 92, 246, 0.5)",
-                                                    }}
-                                                  >
-                                                    {palabra}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                              {pista && (
-                                                <div
-                                                  style={{
-                                                    marginTop: "0.5rem",
-                                                    marginLeft: "0.5rem",
-                                                  }}
-                                                >
-                                                  <span
-                                                    style={{
-                                                      color: "#fcd34d",
-                                                      fontSize: "0.8rem",
-                                                    }}
-                                                  >
-                                                    💡 Pista:{" "}
-                                                  </span>
-                                                  <span
-                                                    style={{
-                                                      color: "#fef3c7",
-                                                      fontSize: "0.85rem",
-                                                      fontStyle: "italic",
-                                                    }}
-                                                  >
-                                                    {pista}
-                                                  </span>
-                                                </div>
-                                              )}
-                                              {aciertoYaRespondido &&
-                                                esperada && (
-                                                  <div
-                                                    style={{
-                                                      marginTop: "0.5rem",
-                                                      marginLeft: "0.5rem",
-                                                    }}
-                                                  >
-                                                    <span
-                                                      style={{
-                                                        color: "#86efac",
-                                                        fontSize: "0.8rem",
-                                                      }}
-                                                    >
-                                                      ✓ Ejemplo:{" "}
-                                                    </span>
-                                                    <span
-                                                      style={{
-                                                        color: "#a5f3c4",
-                                                        fontSize: "0.85rem",
-                                                      }}
-                                                    >
-                                                      "{esperada}"
-                                                    </span>
-                                                  </div>
-                                                )}
-                                            </div>
-                                          );
-                                        })}
+                                  {/* ✅ UN solo item a la vez con navegación */}
+                                  {itemActualAc && (
+                                    <div style={{ marginBottom: "1rem" }}>
+                                      {itemsParaMostrarAcierto.length > 1 && (
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+                                          <button onClick={() => setIndiceItemSBLAcierto(i => Math.max(0, i - 1))} disabled={idxItemAc === 0}
+                                            style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemAc === 0 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemAc === 0 ? "#64748b" : "#c4b5fd", cursor: idxItemAc === 0 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
+                                          >{"←"} Anterior</button>
+                                          <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>Oración {idxItemAc + 1} de {itemsParaMostrarAcierto.length}</span>
+                                          <button onClick={() => setIndiceItemSBLAcierto(i => Math.min(itemsParaMostrarAcierto.length - 1, i + 1))} disabled={idxItemAc === itemsParaMostrarAcierto.length - 1}
+                                            style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "#64748b" : "#c4b5fd", cursor: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
+                                          >Siguiente {"→"}</button>
+                                        </div>
+                                      )}
+                                      <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)", borderRadius: "8px", padding: "1rem" }}>
+                                        <div style={{ marginBottom: "0.35rem" }}>
+                                          <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>🔑 Palabras clave:</span>
+                                        </div>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: itemActualAc.contexto_pista ? "0.5rem" : "0" }}>
+                                          {(itemActualAc.palabras_clave || []).map((palabra, j) => (
+                                            <span key={j} style={{ background: "rgba(139, 92, 246, 0.3)", padding: "6px 12px", borderRadius: "8px", color: "#c4b5fd", fontSize: "0.9rem", fontWeight: "500", border: "1px solid rgba(139, 92, 246, 0.5)" }}>{palabra}</span>
+                                          ))}
+                                        </div>
+                                        {itemActualAc.contexto_pista && (
+                                          <div style={{ marginTop: "0.35rem" }}>
+                                            <span style={{ color: "#fcd34d", fontSize: "0.85rem" }}>💡 Contexto: </span>
+                                            <span style={{ color: "#fef3c7", fontSize: "0.85rem", fontStyle: "italic" }}>{itemActualAc.contexto_pista}</span>
+                                          </div>
+                                        )}
+                                        {aciertoYaRespondido && itemActualAc.oracion_esperada && (
+                                          <div style={{ marginTop: "0.35rem" }}>
+                                            <span style={{ color: "#86efac", fontSize: "0.8rem" }}>✓ Ejemplo: </span>
+                                            <span style={{ color: "#a5f3c4", fontSize: "0.85rem" }}>"{itemActualAc.oracion_esperada}"</span>
+                                          </div>
+                                        )}
                                       </div>
-                                    </div>
-                                  ) : (
-                                    <div
-                                      style={{
-                                        background: "rgba(251, 191, 36, 0.1)",
-                                        border:
-                                          "1px solid rgba(251, 191, 36, 0.3)",
-                                        borderRadius: "8px",
-                                        padding: "0.75rem",
-                                        marginBottom: "1rem",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color: "#fcd34d",
-                                          fontSize: "0.9rem",
-                                        }}
-                                      >
-                                        ⚠️ No se encontraron items/palabras
-                                        clave en este ejercicio.
-                                      </span>
-                                    </div>
-                                  )}
-
-                                  {/* Criterios de evaluación */}
-                                  {criteriosSBL.length > 0 && (
-                                    <div
-                                      style={{
-                                        background: "rgba(251, 191, 36, 0.1)",
-                                        border:
-                                          "1px solid rgba(251, 191, 36, 0.3)",
-                                        borderRadius: "8px",
-                                        padding: "0.5rem 0.75rem",
-                                        marginBottom: "1rem",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color: "#fcd34d",
-                                          fontSize: "0.8rem",
-                                        }}
-                                      >
-                                        📋 Criterios: {criteriosSBL.join(" • ")}
-                                      </span>
                                     </div>
                                   )}
 
@@ -49724,262 +49680,115 @@ IDIOMA: ${idiomaSBL}
                                     <>
                                       <textarea
                                         value={respuestaWritingAcierto}
-                                        onChange={(e) =>
-                                          setRespuestaWritingAcierto(
-                                            e.target.value,
-                                          )
-                                        }
-                                        placeholder="Escribe tus oraciones usando las palabras clave (una por línea)...\n1. ...\n2. ...\n3. ..."
+                                        onChange={(e) => setRespuestaWritingAcierto(e.target.value)}
+                                        placeholder="Escribe tu oración usando las palabras clave..."
                                         style={{
-                                          width: "100%",
-                                          minHeight: "120px",
-                                          padding: "1rem",
-                                          borderRadius: "8px",
-                                          border:
-                                            "1px solid rgba(139, 92, 246, 0.4)",
-                                          background: "rgba(15, 23, 42, 0.8)",
-                                          color: "#e2e8f0",
-                                          fontSize: "0.95rem",
-                                          resize: "vertical",
-                                          marginBottom: "1rem",
+                                          width: "100%", minHeight: "90px", padding: "1rem",
+                                          borderRadius: "8px", border: "1px solid rgba(139, 92, 246, 0.4)",
+                                          background: "rgba(15, 23, 42, 0.8)", color: "#e2e8f0",
+                                          fontSize: "0.95rem", resize: "vertical", marginBottom: "1rem",
                                         }}
                                       />
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          gap: "0.5rem",
-                                          flexWrap: "wrap",
-                                          marginBottom: "1rem",
-                                        }}
-                                      >
+                                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
                                         <button
                                           onClick={() => {
-                                            navigator.clipboard.writeText(
-                                              generarPromptSentenceBuilderLibreAcierto(),
-                                            );
-                                            setPromptCopiadoWritingAcierto(
-                                              true,
-                                            );
-                                            setTimeout(
-                                              () =>
-                                                setPromptCopiadoWritingAcierto(
-                                                  false,
-                                                ),
-                                              2000,
-                                            );
+                                            navigator.clipboard.writeText(generarPromptSBLAcierto());
+                                            setPromptCopiadoWritingAcierto(true);
+                                            setTimeout(() => setPromptCopiadoWritingAcierto(false), 2000);
                                           }}
                                           style={{
-                                            padding: "8px 16px",
-                                            background:
-                                              "rgba(139, 92, 246, 0.2)",
-                                            border:
-                                              "1px solid rgba(139, 92, 246, 0.4)",
-                                            borderRadius: "8px",
-                                            color: promptCopiadoWritingAcierto
-                                              ? "#86efac"
-                                              : "#c4b5fd",
-                                            cursor: "pointer",
+                                            padding: "8px 16px", background: "rgba(139, 92, 246, 0.2)",
+                                            border: "1px solid rgba(139, 92, 246, 0.4)", borderRadius: "8px",
+                                            color: promptCopiadoWritingAcierto ? "#86efac" : "#c4b5fd", cursor: "pointer",
                                           }}
                                         >
-                                          {promptCopiadoWritingAcierto
-                                            ? "✓ Copiado"
-                                            : "📋 Copiar prompt ChatGPT"}
+                                          {promptCopiadoWritingAcierto ? "✓ Copiado" : "📋 Copiar prompt ChatGPT"}
                                         </button>
                                         <button
                                           onClick={() => {
-                                            setRespuestaAciertoSeleccionada(
-                                              respuestaWritingAcierto,
-                                            );
+                                            setRespuestaAciertoSeleccionada(respuestaWritingAcierto);
                                             setAciertoYaRespondido(true);
                                           }}
-                                          disabled={
-                                            !respuestaWritingAcierto.trim()
-                                          }
+                                          disabled={!respuestaWritingAcierto.trim()}
                                           style={{
                                             padding: "8px 16px",
-                                            background:
-                                              respuestaWritingAcierto.trim()
-                                                ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                                                : "rgba(100, 116, 139, 0.2)",
-                                            border: "none",
-                                            borderRadius: "8px",
-                                            color: "white",
-                                            cursor:
-                                              respuestaWritingAcierto.trim()
-                                                ? "pointer"
-                                                : "not-allowed",
+                                            background: respuestaWritingAcierto.trim() ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(100, 116, 139, 0.2)",
+                                            border: "none", borderRadius: "8px", color: "white",
+                                            cursor: respuestaWritingAcierto.trim() ? "pointer" : "not-allowed",
                                           }}
                                         >
                                           ✓ Marcar respondido
                                         </button>
                                       </div>
-                                      <div style={{ marginTop: "0.75rem" }}>
-                                        <label
-                                          style={{
-                                            color: "#94a3b8",
-                                            fontSize: "0.85rem",
-                                            display: "block",
-                                            marginBottom: "0.5rem",
-                                          }}
-                                        >
-                                          📥 Pega aquí el JSON de ChatGPT:
-                                        </label>
-                                        <textarea
-                                          value={textoJsonWritingAcierto}
-                                          onChange={(e) => {
-                                            setTextoJsonWritingAcierto(
-                                              e.target.value,
-                                            );
-                                            try {
-                                              const jsonMatch =
-                                                e.target.value.match(
-                                                  /\{[\s\S]*\}/,
-                                                );
-                                              if (jsonMatch)
-                                                setJsonCalificacionWritingAcierto(
-                                                  JSON.parse(jsonMatch[0]),
-                                                );
-                                            } catch {}
-                                          }}
-                                          placeholder='{"puntos_obtenidos": 8, "correcto": true, ...}'
-                                          style={{
-                                            width: "100%",
-                                            minHeight: "80px",
-                                            padding: "0.75rem",
-                                            borderRadius: "8px",
-                                            border:
-                                              jsonCalificacionWritingAcierto
-                                                ? jsonCalificacionWritingAcierto.correcto
-                                                  ? "2px solid #22c55e"
-                                                  : "2px solid #ef4444"
-                                                : "1px solid rgba(139, 92, 246, 0.4)",
-                                            background: "rgba(15, 23, 42, 0.8)",
-                                            color: "#c4b5fd",
-                                            fontSize: "0.85rem",
-                                            fontFamily: "monospace",
-                                            resize: "vertical",
-                                          }}
-                                        />
-                                        {jsonCalificacionWritingAcierto && (
-                                          <div
+                                      <label style={{ color: "#94a3b8", fontSize: "0.85rem", display: "block", marginBottom: "0.5rem" }}>
+                                        📥 Pega aquí el JSON de ChatGPT:
+                                      </label>
+                                      <textarea
+                                        value={textoJsonWritingAcierto}
+                                        onChange={(e) => {
+                                          setTextoJsonWritingAcierto(e.target.value);
+                                          try {
+                                            const jsonMatch = e.target.value.match(/\{[\s\S]*\}/);
+                                            if (jsonMatch) setJsonCalificacionWritingAcierto(JSON.parse(jsonMatch[0]));
+                                          } catch {}
+                                        }}
+                                        placeholder='{"puntos_obtenidos": 8, "correcto": true, ...}'
+                                        style={{
+                                          width: "100%", minHeight: "80px", padding: "0.75rem",
+                                          borderRadius: "8px",
+                                          border: jsonCalificacionWritingAcierto
+                                            ? (jsonCalificacionWritingAcierto.correcto ? "2px solid #22c55e" : "2px solid #ef4444")
+                                            : "1px solid rgba(139, 92, 246, 0.4)",
+                                          background: "rgba(15, 23, 42, 0.8)", color: "#c4b5fd",
+                                          fontSize: "0.85rem", fontFamily: "monospace", resize: "vertical",
+                                        }}
+                                      />
+                                      {jsonCalificacionWritingAcierto && (
+                                        <div style={{
+                                          marginTop: "12px", padding: "12px", borderRadius: "8px",
+                                          background: jsonCalificacionWritingAcierto.correcto ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                                          border: `1px solid ${jsonCalificacionWritingAcierto.correcto ? "#22c55e" : "#ef4444"}`,
+                                        }}>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                                            <span style={{ fontSize: "1.5rem" }}>{jsonCalificacionWritingAcierto.correcto ? "✅" : "❌"}</span>
+                                            <strong style={{ color: jsonCalificacionWritingAcierto.correcto ? "#86efac" : "#fca5a5" }}>
+                                              {jsonCalificacionWritingAcierto.puntos_obtenidos}/{jsonCalificacionWritingAcierto.puntos_totales || 10}{" "}
+                                              ({jsonCalificacionWritingAcierto.porcentaje}%)
+                                            </strong>
+                                          </div>
+                                          {jsonCalificacionWritingAcierto.feedback && (
+                                            <p style={{ color: "#e2e8f0", margin: "0 0 8px 0", fontSize: "0.9rem" }}>
+                                              {jsonCalificacionWritingAcierto.feedback}
+                                            </p>
+                                          )}
+                                          {jsonCalificacionWritingAcierto.sugerencia && (
+                                            <p style={{ color: "#93c5fd", margin: "0 0 8px 0", fontSize: "0.85rem" }}>
+                                              💡 Sugerencia: {jsonCalificacionWritingAcierto.sugerencia}
+                                            </p>
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              setRespuestaAciertoSeleccionada(respuestaWritingAcierto);
+                                              setAciertoYaRespondido(true);
+                                            }}
                                             style={{
-                                              marginTop: "12px",
-                                              padding: "12px",
-                                              borderRadius: "8px",
-                                              background:
-                                                jsonCalificacionWritingAcierto.correcto
-                                                  ? "rgba(34, 197, 94, 0.15)"
-                                                  : "rgba(239, 68, 68, 0.15)",
-                                              border: `1px solid ${jsonCalificacionWritingAcierto.correcto ? "#22c55e" : "#ef4444"}`,
+                                              marginTop: "8px", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                              color: "white", border: "none", padding: "10px 20px",
+                                              borderRadius: "8px", cursor: "pointer", fontWeight: "600",
                                             }}
                                           >
-                                            <div
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: "8px",
-                                                marginBottom: "8px",
-                                              }}
-                                            >
-                                              <span
-                                                style={{ fontSize: "1.5rem" }}
-                                              >
-                                                {jsonCalificacionWritingAcierto.correcto
-                                                  ? "✅"
-                                                  : "❌"}
-                                              </span>
-                                              <strong
-                                                style={{
-                                                  color:
-                                                    jsonCalificacionWritingAcierto.correcto
-                                                      ? "#86efac"
-                                                      : "#fca5a5",
-                                                }}
-                                              >
-                                                {
-                                                  jsonCalificacionWritingAcierto.puntos_obtenidos
-                                                }
-                                                /
-                                                {jsonCalificacionWritingAcierto.puntos_totales ||
-                                                  10}{" "}
-                                                (
-                                                {
-                                                  jsonCalificacionWritingAcierto.porcentaje
-                                                }
-                                                %)
-                                              </strong>
-                                            </div>
-                                            {jsonCalificacionWritingAcierto.feedback && (
-                                              <p
-                                                style={{
-                                                  color: "#e2e8f0",
-                                                  margin: "0 0 8px 0",
-                                                  fontSize: "0.9rem",
-                                                }}
-                                              >
-                                                {
-                                                  jsonCalificacionWritingAcierto.feedback
-                                                }
-                                              </p>
-                                            )}
-                                            <button
-                                              onClick={() => {
-                                                setRespuestaAciertoSeleccionada(
-                                                  respuestaWritingAcierto,
-                                                );
-                                                setAciertoYaRespondido(true);
-                                              }}
-                                              style={{
-                                                marginTop: "8px",
-                                                background:
-                                                  "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                                                color: "white",
-                                                border: "none",
-                                                padding: "10px 20px",
-                                                borderRadius: "8px",
-                                                cursor: "pointer",
-                                                fontWeight: "600",
-                                              }}
-                                            >
-                                              ✓ Aplicar Calificación IA
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
+                                            ✓ Aplicar Calificación IA
+                                          </button>
+                                        </div>
+                                      )}
                                     </>
                                   )}
 
                                   {aciertoYaRespondido && (
-                                    <div
-                                      style={{
-                                        padding: "1rem",
-                                        background: "rgba(34, 197, 94, 0.1)",
-                                        borderRadius: "8px",
-                                        border:
-                                          "1px solid rgba(34, 197, 94, 0.3)",
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          color: "#86efac",
-                                          fontWeight: "600",
-                                          fontSize: "0.85rem",
-                                        }}
-                                      >
-                                        🧩 Tu respuesta:
-                                      </span>
-                                      <p
-                                        style={{
-                                          color: "#e2e8f0",
-                                          margin: "0.5rem 0 0 0",
-                                          fontSize: "0.95rem",
-                                          whiteSpace: "pre-wrap",
-                                        }}
-                                      >
-                                        "
-                                        {respuestaAciertoSeleccionada ||
-                                          respuestaWritingAcierto}
-                                        "
+                                    <div style={{ padding: "1rem", background: "rgba(34, 197, 94, 0.1)", borderRadius: "8px", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
+                                      <span style={{ color: "#86efac", fontWeight: "600", fontSize: "0.85rem" }}>🧩 Tu respuesta:</span>
+                                      <p style={{ color: "#e2e8f0", margin: "0.5rem 0 0 0", fontSize: "0.95rem", whiteSpace: "pre-wrap" }}>
+                                        "{respuestaAciertoSeleccionada || respuestaWritingAcierto}"
                                       </p>
                                     </div>
                                   )}
@@ -50478,6 +50287,7 @@ IDIOMA: ${idiomaSBL}
                                     "writing_transformation_libre",
                                     "sentence_builder",
                                     "sentence_builder_libre",
+                                    "sentence_builder_libre_item",
                                     "formal_email",
                                     "picture_description",
                                     "picture_description_libre",
@@ -79564,191 +79374,220 @@ IDIOMA: ${idiomaSBL}
                                               )}
                                             </div>
 
-                                            {/* Si tiene elementos_obj (formato idea_1, idea_2, conector) */}
-                                            {oracion.elementos_obj ? (
-                                              <div
-                                                style={{
-                                                  marginBottom: "0.75rem",
-                                                }}
-                                              >
+                                            {/* 🔥 DETECTAR FORMATO: elementos_obj O propiedades directas (idea1/idea_1, idea2/idea_2) */}
+                                            {(() => {
+                                              // Normalizar campos: buscar en elementos_obj O en la oración directamente
+                                              const idea1 =
+                                                oracion.elementos_obj?.idea_1 ||
+                                                oracion.elementos_obj?.idea1 ||
+                                                oracion.idea_1 ||
+                                                oracion.idea1 ||
+                                                null;
+                                              const idea2 =
+                                                oracion.elementos_obj?.idea_2 ||
+                                                oracion.elementos_obj?.idea2 ||
+                                                oracion.idea_2 ||
+                                                oracion.idea2 ||
+                                                null;
+                                              const conector =
+                                                oracion.elementos_obj
+                                                  ?.conector ||
+                                                oracion.conector ||
+                                                null;
+
+                                              // Si tiene ideas y conector, mostrar formato de combinación
+                                              if (idea1 || idea2 || conector) {
+                                                return (
+                                                  <div
+                                                    style={{
+                                                      marginBottom: "0.75rem",
+                                                    }}
+                                                  >
+                                                    <div
+                                                      style={{
+                                                        display: "flex",
+                                                        flexDirection: "column",
+                                                        gap: "0.5rem",
+                                                      }}
+                                                    >
+                                                      {idea1 && (
+                                                        <div
+                                                          style={{
+                                                            display: "flex",
+                                                            alignItems:
+                                                              "center",
+                                                            gap: "0.5rem",
+                                                          }}
+                                                        >
+                                                          <span
+                                                            style={{
+                                                              color: "#60a5fa",
+                                                              fontWeight: "600",
+                                                              fontSize:
+                                                                "0.85rem",
+                                                              minWidth: "60px",
+                                                            }}
+                                                          >
+                                                            💭 Idea 1:
+                                                          </span>
+                                                          <span
+                                                            style={{
+                                                              padding:
+                                                                "6px 14px",
+                                                              background:
+                                                                "rgba(59, 130, 246, 0.25)",
+                                                              border:
+                                                                "1px solid rgba(59, 130, 246, 0.5)",
+                                                              borderRadius:
+                                                                "6px",
+                                                              color: "#93c5fd",
+                                                              fontSize:
+                                                                "0.95rem",
+                                                            }}
+                                                          >
+                                                            {idea1}
+                                                          </span>
+                                                        </div>
+                                                      )}
+                                                      {idea2 && (
+                                                        <div
+                                                          style={{
+                                                            display: "flex",
+                                                            alignItems:
+                                                              "center",
+                                                            gap: "0.5rem",
+                                                          }}
+                                                        >
+                                                          <span
+                                                            style={{
+                                                              color: "#60a5fa",
+                                                              fontWeight: "600",
+                                                              fontSize:
+                                                                "0.85rem",
+                                                              minWidth: "60px",
+                                                            }}
+                                                          >
+                                                            💭 Idea 2:
+                                                          </span>
+                                                          <span
+                                                            style={{
+                                                              padding:
+                                                                "6px 14px",
+                                                              background:
+                                                                "rgba(59, 130, 246, 0.25)",
+                                                              border:
+                                                                "1px solid rgba(59, 130, 246, 0.5)",
+                                                              borderRadius:
+                                                                "6px",
+                                                              color: "#93c5fd",
+                                                              fontSize:
+                                                                "0.95rem",
+                                                            }}
+                                                          >
+                                                            {idea2}
+                                                          </span>
+                                                        </div>
+                                                      )}
+                                                      {conector && (
+                                                        <div
+                                                          style={{
+                                                            display: "flex",
+                                                            alignItems:
+                                                              "center",
+                                                            gap: "0.5rem",
+                                                          }}
+                                                        >
+                                                          <span
+                                                            style={{
+                                                              color: "#22c55e",
+                                                              fontWeight: "600",
+                                                              fontSize:
+                                                                "0.85rem",
+                                                              minWidth: "60px",
+                                                            }}
+                                                          >
+                                                            🔗 Conector:
+                                                          </span>
+                                                          <span
+                                                            style={{
+                                                              padding:
+                                                                "6px 14px",
+                                                              background:
+                                                                "rgba(34, 197, 94, 0.25)",
+                                                              border:
+                                                                "2px solid rgba(34, 197, 94, 0.6)",
+                                                              borderRadius:
+                                                                "6px",
+                                                              color: "#86efac",
+                                                              fontSize:
+                                                                "0.95rem",
+                                                              fontWeight: "600",
+                                                            }}
+                                                          >
+                                                            {conector}
+                                                          </span>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              }
+
+                                              // Si no tiene ideas/conector, mostrar formato de palabras desordenadas
+                                              return (
                                                 <div
                                                   style={{
                                                     display: "flex",
-                                                    flexDirection: "column",
+                                                    flexWrap: "wrap",
                                                     gap: "0.5rem",
+                                                    marginBottom: "0.75rem",
                                                   }}
                                                 >
-                                                  {oracion.elementos_obj
-                                                    .idea_1 && (
-                                                    <div
+                                                  {(
+                                                    oracion.elementos ||
+                                                    oracion.palabras_dadas ||
+                                                    []
+                                                  ).map((palabra, pIdx) => (
+                                                    <span
+                                                      key={pIdx}
                                                       style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: "0.5rem",
+                                                        padding: "8px 16px",
+                                                        background:
+                                                          "rgba(59, 130, 246, 0.3)",
+                                                        border:
+                                                          "2px solid rgba(59, 130, 246, 0.6)",
+                                                        borderRadius: "8px",
+                                                        color: "#93c5fd",
+                                                        fontSize: "1rem",
+                                                        fontWeight: "500",
+                                                        cursor: "pointer",
+                                                        transition: "all 0.2s",
+                                                      }}
+                                                      title="Clic para copiar"
+                                                      onClick={() =>
+                                                        navigator.clipboard.writeText(
+                                                          palabra,
+                                                        )
+                                                      }
+                                                      onMouseOver={(e) => {
+                                                        e.currentTarget.style.background =
+                                                          "rgba(59, 130, 246, 0.5)";
+                                                        e.currentTarget.style.transform =
+                                                          "scale(1.05)";
+                                                      }}
+                                                      onMouseOut={(e) => {
+                                                        e.currentTarget.style.background =
+                                                          "rgba(59, 130, 246, 0.3)";
+                                                        e.currentTarget.style.transform =
+                                                          "scale(1)";
                                                       }}
                                                     >
-                                                      <span
-                                                        style={{
-                                                          color: "#60a5fa",
-                                                          fontWeight: "600",
-                                                          fontSize: "0.85rem",
-                                                          minWidth: "60px",
-                                                        }}
-                                                      >
-                                                        💭 Idea 1:
-                                                      </span>
-                                                      <span
-                                                        style={{
-                                                          padding: "6px 14px",
-                                                          background:
-                                                            "rgba(59, 130, 246, 0.25)",
-                                                          border:
-                                                            "1px solid rgba(59, 130, 246, 0.5)",
-                                                          borderRadius: "6px",
-                                                          color: "#93c5fd",
-                                                          fontSize: "0.95rem",
-                                                        }}
-                                                      >
-                                                        {
-                                                          oracion.elementos_obj
-                                                            .idea_1
-                                                        }
-                                                      </span>
-                                                    </div>
-                                                  )}
-                                                  {oracion.elementos_obj
-                                                    .idea_2 && (
-                                                    <div
-                                                      style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: "0.5rem",
-                                                      }}
-                                                    >
-                                                      <span
-                                                        style={{
-                                                          color: "#60a5fa",
-                                                          fontWeight: "600",
-                                                          fontSize: "0.85rem",
-                                                          minWidth: "60px",
-                                                        }}
-                                                      >
-                                                        💭 Idea 2:
-                                                      </span>
-                                                      <span
-                                                        style={{
-                                                          padding: "6px 14px",
-                                                          background:
-                                                            "rgba(59, 130, 246, 0.25)",
-                                                          border:
-                                                            "1px solid rgba(59, 130, 246, 0.5)",
-                                                          borderRadius: "6px",
-                                                          color: "#93c5fd",
-                                                          fontSize: "0.95rem",
-                                                        }}
-                                                      >
-                                                        {
-                                                          oracion.elementos_obj
-                                                            .idea_2
-                                                        }
-                                                      </span>
-                                                    </div>
-                                                  )}
-                                                  {oracion.elementos_obj
-                                                    .conector && (
-                                                    <div
-                                                      style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: "0.5rem",
-                                                      }}
-                                                    >
-                                                      <span
-                                                        style={{
-                                                          color: "#22c55e",
-                                                          fontWeight: "600",
-                                                          fontSize: "0.85rem",
-                                                          minWidth: "60px",
-                                                        }}
-                                                      >
-                                                        🔗 Conector:
-                                                      </span>
-                                                      <span
-                                                        style={{
-                                                          padding: "6px 14px",
-                                                          background:
-                                                            "rgba(34, 197, 94, 0.25)",
-                                                          border:
-                                                            "2px solid rgba(34, 197, 94, 0.6)",
-                                                          borderRadius: "6px",
-                                                          color: "#86efac",
-                                                          fontSize: "0.95rem",
-                                                          fontWeight: "600",
-                                                        }}
-                                                      >
-                                                        {
-                                                          oracion.elementos_obj
-                                                            .conector
-                                                        }
-                                                      </span>
-                                                    </div>
-                                                  )}
+                                                      {palabra}
+                                                    </span>
+                                                  ))}
                                                 </div>
-                                              </div>
-                                            ) : (
-                                              /* Formato antiguo: elementos como array o palabras_dadas (formato libre) */
-                                              <div
-                                                style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "0.5rem",
-                                                  marginBottom: "0.75rem",
-                                                }}
-                                              >
-                                                {(
-                                                  oracion.elementos ||
-                                                  oracion.palabras_dadas ||
-                                                  []
-                                                ).map((palabra, pIdx) => (
-                                                  <span
-                                                    key={pIdx}
-                                                    style={{
-                                                      padding: "8px 16px",
-                                                      background:
-                                                        "rgba(59, 130, 246, 0.3)",
-                                                      border:
-                                                        "2px solid rgba(59, 130, 246, 0.6)",
-                                                      borderRadius: "8px",
-                                                      color: "#93c5fd",
-                                                      fontSize: "1rem",
-                                                      fontWeight: "500",
-                                                      cursor: "pointer",
-                                                      transition: "all 0.2s",
-                                                    }}
-                                                    title="Clic para copiar"
-                                                    onClick={() =>
-                                                      navigator.clipboard.writeText(
-                                                        palabra,
-                                                      )
-                                                    }
-                                                    onMouseOver={(e) => {
-                                                      e.currentTarget.style.background =
-                                                        "rgba(59, 130, 246, 0.5)";
-                                                      e.currentTarget.style.transform =
-                                                        "scale(1.05)";
-                                                    }}
-                                                    onMouseOut={(e) => {
-                                                      e.currentTarget.style.background =
-                                                        "rgba(59, 130, 246, 0.3)";
-                                                      e.currentTarget.style.transform =
-                                                        "scale(1)";
-                                                    }}
-                                                  >
-                                                    {palabra}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                            )}
+                                              );
+                                            })()}
 
                                             {/* Input para esta oración específica */}
                                             <input
