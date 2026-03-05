@@ -3714,8 +3714,9 @@ function App() {
         rendimiento[ruta].flashcards.total++;
         const facilidad = fc.facilidad || 2.5;
         const intervalo = fc.intervalo || 1;
+        const estadoRev = fc.estadoRevision || "";
 
-        if (facilidad >= 2.8 && intervalo >= 21) {
+        if (estadoRev === "madura" || (facilidad >= 2.8 && intervalo >= 21)) {
           rendimiento[ruta].flashcards.dominadas++;
         } else if (intervalo > 1) {
           rendimiento[ruta].flashcards.enProgreso++;
@@ -8608,7 +8609,10 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
         // 🔒 REGLA CIENTÍFICA: El intervalo NUNCA debe bajar
         nuevoIntervalo = Math.max(nuevoIntervalo, intervaloAnterior);
-        nuevoIntervalo = Math.min(nuevoIntervalo, 365); // Máximo 1 año
+        // Hasta 90 días: cap normal. Después de 90: crece ×2
+        if (intervaloAnterior < 90) {
+          nuevoIntervalo = Math.min(nuevoIntervalo, 90);
+        }
       }
 
       nuevaProximaRevision = new Date(hoy);
@@ -9302,18 +9306,18 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         nuevasRepeticiones = 1; // Contar como 1 repetición exitosa
         nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.15);
       } else {
-        // 🎯 PROGRESIÓN FIJA: 1(inicial) → 3 → 7 → 15 → 30 → 60 → ×2.5
+        // 🎯 PROGRESIÓN FIJA: 1(inicial) → 3 → 7 → 15 → 30 → 60 → ×2.5 hasta 90, luego ×2
         // Día 0: generación (proximaRevision = mañana, rep=0)
-        // Repaso 1 (rep→1): 3 días | Repaso 2 (rep→2): 7 | 3→15 | 4→30 | 5→60 | 6+: ×2.5
+        // Repaso 1 (rep→1): 3 días | Repaso 2 (rep→2): 7 | 3→15 | 4→30 | 5→60 | 6+: ×2.5/×2
         const INTERVALOS_FIJOS_ACIERTOS = [3, 7, 15, 30, 60];
         if (nuevasRepeticiones <= INTERVALOS_FIJOS_ACIERTOS.length) {
           nuevoIntervalo = INTERVALOS_FIJOS_ACIERTOS[nuevasRepeticiones - 1];
+        } else if ((aciertoActual.intervalo || 60) >= 90) {
+          // Después de 90 días: crecer ×2
+          nuevoIntervalo = Math.round((aciertoActual.intervalo || 60) * 2);
         } else {
-          // Crecimiento exponencial ×2.5 con techo de 365 días
-          nuevoIntervalo = Math.min(
-            365,
-            Math.round((aciertoActual.intervalo || 60) * 2.5),
-          );
+          // Crecimiento exponencial ×2.5 hasta llegar a 90
+          nuevoIntervalo = Math.round((aciertoActual.intervalo || 60) * 2.5);
         }
 
         console.log(
@@ -9694,27 +9698,33 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
           "⚠️ Flashcard fallada antes en sesión → intervalo forzado a 1 día",
         );
     } else if (dificultad === "medio") {
-      // 🤔 Me Costó → Patrón: 2 → 5 → 12 → 30 → ... (×2.3)
+      // 🤔 Me Costó → Patrón: 2 → 5 → 12 → 28 → 64 → 90 → 180 → 360 (×2.3 hasta 90, luego ×2)
       if (nuevasRepeticiones === 0) {
         nuevoIntervalo = 2; // Primera prueba real → 2 días
+      } else if ((intervalo || 1) >= 90) {
+        // Después de 90 días: crecer ×2
+        nuevoIntervalo = Math.round((intervalo || 1) * 2);
       } else {
-        nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.3));
+        nuevoIntervalo = Math.round((intervalo || 1) * 2.3);
       }
       nuevasRepeticiones += 1;
       nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.05);
     } else if (dificultad === "facil") {
-      // 😎 Lo Recordé Fácil → Patrón: 3 → 8 → 20 → 52 → 135 → ... (×2.6)
+      // 😎 Lo Recordé Fácil → Patrón: 3 → 8 → 20 → 52 → 90 → 180 → 360 (×2.6 hasta 90, luego ×2)
       if (nuevasRepeticiones === 0) {
         nuevoIntervalo = 3; // Primera prueba real → 3 días
+      } else if ((intervalo || 1) >= 90) {
+        // Después de 90 días: crecer ×2
+        nuevoIntervalo = Math.round((intervalo || 1) * 2);
       } else {
-        nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.6));
+        nuevoIntervalo = Math.round((intervalo || 1) * 2.6);
       }
       nuevasRepeticiones += 1;
       nuevaFacilidad = Math.min(3.0, nuevaFacilidad + 0.1);
     }
 
-    // Límites de intervalo
-    nuevoIntervalo = Math.max(1, Math.min(nuevoIntervalo, 365));
+    // 🔒 Límites de intervalo: mínimo 1 día, hasta 90 se usa multiplicador normal, después ×2
+    nuevoIntervalo = Math.max(1, nuevoIntervalo);
     nuevaFacilidad = Math.max(1.3, Math.min(nuevaFacilidad, 3.0));
 
     // Calcular próxima fecha de revisión (inicio del día)
@@ -9732,7 +9742,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       facilidad: nuevaFacilidad,
       estadoRevision:
         nuevasRepeticiones >= 5
-          ? "dominada"
+          ? "madura"
           : nuevasRepeticiones >= 2
             ? "en_progreso"
             : "nueva",
@@ -9848,7 +9858,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
     const total = itemsCarpeta.length;
     const dominadas = itemsCarpeta.filter(
-      (i) => i.estadoRevision === "dominada",
+      (i) => i.estadoRevision === "dominada" || i.estadoRevision === "madura",
     ).length;
     const enProgreso = itemsCarpeta.filter(
       (i) => i.estadoRevision === "en_progreso",
@@ -22915,15 +22925,33 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
         );
         const ahora = new Date();
 
-        // Calcular próxima revisión basada en el resultado
-        const diasBase =
-          porcentaje >= 90
-            ? 7
-            : porcentaje >= 70
-              ? 3
-              : porcentaje >= 50
-                ? 1
-                : 0.5;
+        // 🧠 SM-2: Calcular próxima revisión basada en repeticiones previas y resultado
+        const repAnterior = practicas[practicaIndex].repeticiones || 0;
+        const facilidadAnterior = practicas[practicaIndex].facilidad || 2.5;
+        const intervaloAnterior = practicas[practicaIndex].intervalo || 1;
+        let diasBase;
+        let nuevaFacilidad = facilidadAnterior;
+        let nuevasRep = repAnterior;
+
+        if (porcentaje >= 70) {
+          // ✅ Aprobó → progresión SM-2
+          nuevasRep += 1;
+          nuevaFacilidad = Math.min(3.0, nuevaFacilidad + (porcentaje >= 90 ? 0.15 : 0.05));
+          if (nuevasRep === 1) {
+            diasBase = porcentaje >= 90 ? 3 : 2;
+          } else if (nuevasRep === 2) {
+            diasBase = porcentaje >= 90 ? 7 : 5;
+          } else {
+            diasBase = Math.min(90, Math.round(intervaloAnterior * nuevaFacilidad));
+          }
+        } else {
+          // ❌ No aprobó → reiniciar
+          nuevasRep = 0;
+          nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.2);
+          diasBase = 1;
+        }
+        diasBase = Math.max(1, Math.min(diasBase, 90));
+
         const proximaFecha = new Date(ahora);
         proximaFecha.setDate(proximaFecha.getDate() + diasBase);
 
@@ -22935,12 +22963,10 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
         practicas[practicaIndex].ultimaRevision = ahora.toISOString();
         practicas[practicaIndex].proximaRevision = proximaFecha.toISOString();
         practicas[practicaIndex].intervalo = diasBase;
-        practicas[practicaIndex].repeticiones =
-          (practicas[practicaIndex].repeticiones || 0) + 1;
-        practicas[practicaIndex].facilidad =
-          porcentaje >= 70 ? 2.5 : porcentaje >= 50 ? 2.0 : 1.5;
+        practicas[practicaIndex].repeticiones = nuevasRep;
+        practicas[practicaIndex].facilidad = nuevaFacilidad;
         practicas[practicaIndex].estadoRevision =
-          porcentaje >= 70 ? "aprendida" : "repaso";
+          nuevasRep >= 5 ? "madura" : nuevasRep >= 2 ? "en_progreso" : "repaso";
         practicas[practicaIndex].resultado = {
           puntos_obtenidos,
           puntos_totales,
@@ -71115,6 +71141,7 @@ Devuelve SOLO este JSON:
                               nueva: "#ff9800",
                               en_progreso: "#3b82f6",
                               dominada: "#4caf50",
+                              madura: "#4caf50",
                             }[flashcard.estadoRevision] || "#ff9800";
 
                           return (
@@ -71241,7 +71268,9 @@ Devuelve SOLO este JSON:
                                   {flashcard.estadoRevision === "en_progreso" &&
                                     "📖 En Progreso"}
                                   {flashcard.estadoRevision === "dominada" &&
-                                    "✅ Dominada"}
+                                    "✅ Madura"}
+                                  {flashcard.estadoRevision === "madura" &&
+                                    "✅ Madura"}
                                 </span>
                               </div>
 
@@ -71477,6 +71506,7 @@ Devuelve SOLO este JSON:
                           nueva: "#ff9800",
                           en_progreso: "#3b82f6",
                           dominada: "#4caf50",
+                          madura: "#4caf50",
                         }[flashcard.estadoRevision] || "#ff9800";
 
                       return (
@@ -71977,12 +72007,15 @@ Devuelve SOLO este JSON:
                               {flashcard.estadoRevision === "nueva" && "🆕"}
                               {flashcard.estadoRevision === "en_progreso" &&
                                 "📖"}
-                              {flashcard.estadoRevision === "dominada" && "✅"}{" "}
+                              {flashcard.estadoRevision === "dominada" && "✅"}
+                              {flashcard.estadoRevision === "madura" && "✅"}{" "}
                               {flashcard.estadoRevision === "nueva" && "Nueva"}
                               {flashcard.estadoRevision === "en_progreso" &&
                                 "En Progreso"}
                               {flashcard.estadoRevision === "dominada" &&
-                                "Dominada"}
+                                "Madura"}
+                              {flashcard.estadoRevision === "madura" &&
+                                "Madura"}
                             </span>
                           </div>
 

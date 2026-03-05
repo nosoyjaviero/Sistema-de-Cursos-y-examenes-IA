@@ -142,55 +142,67 @@ def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
     # 🔥 CORRECCIÓN 3: Limpiar opciones de MCQ (quitar A), B), etc.)
     if tipo == 'mcq' and 'opciones' in pregunta_dict:
         import re
-        opciones_limpias = []
-        for opcion in pregunta_dict['opciones']:
-            if isinstance(opcion, str):
-                # Quitar prefijos como "A)", "A.", "a)", etc.
-                opcion_limpia = re.sub(r'^[A-Da-d][\).\-:\s]+\s*', '', opcion).strip()
-                opciones_limpias.append(opcion_limpia if opcion_limpia else opcion)
-            else:
-                opciones_limpias.append(opcion)
-        pregunta_dict['opciones'] = opciones_limpias
-    
-    # 🔥 CORRECCIÓN 4: Intervalos enteros (no decimales)
-    if 'intervalo' in pregunta_dict and isinstance(pregunta_dict['intervalo'], (int, float)):
-        pregunta_dict['intervalo'] = max(1, int(round(pregunta_dict['intervalo'])))
-    
-    if 'interval' in pregunta_dict and isinstance(pregunta_dict['interval'], (int, float)):
-        pregunta_dict['interval'] = max(1, int(round(pregunta_dict['interval'])))
-    
-    # Generar ID único si no existe
-    if 'id' not in pregunta_dict or not pregunta_dict['id']:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        tipo = pregunta_dict.get('tipo', pregunta_dict.get('type', 'question'))
-        pregunta_dict['id'] = f"{tipo}_{timestamp}_{uuid.uuid4().hex[:8]}"
-    
-    # Campos de Spaced Repetition (nomenclatura española)
-    if 'facilidad' not in pregunta_dict:
-        pregunta_dict['facilidad'] = 2.5
-    
-    if 'intervalo' not in pregunta_dict:
-        pregunta_dict['intervalo'] = 1  # Mínimo 1 día
-    
-    if 'repeticiones' not in pregunta_dict:
-        pregunta_dict['repeticiones'] = 0
-    
-    if 'ultimaRevision' not in pregunta_dict:
-        pregunta_dict['ultimaRevision'] = None
-    
-    if 'proximaRevision' not in pregunta_dict:
-        pregunta_dict['proximaRevision'] = None
-    
-    if 'estadoRevision' not in pregunta_dict:
-        pregunta_dict['estadoRevision'] = 'nueva'
-    
-    # Asegurar historial
-    if 'historial_respuestas' not in pregunta_dict:
-        pregunta_dict['historial_respuestas'] = []
-    
-    # Puntos por defecto según tipo
-    if 'puntos' not in pregunta_dict:
-        puntos_defecto = {
+        # Normalizar tipo
+        if "tipo" in pregunta_dict:
+            tipo_original = pregunta_dict["tipo"]
+            tipo_map = {
+                "verdadero-falso": "verdadero_falso",
+                "verdadero_falso": "verdadero_falso",
+                "multiple": "mcq",
+                "mcq": "mcq",
+                "corta": "short_answer",
+                "short_answer": "short_answer",
+                "desarrollo": "open_question",
+                "open_question": "open_question",
+                "true_false": "verdadero_falso",
+                "cloze": "cloze",
+                "reading_comprehension": "reading_comprehension",
+                "reading_written": "reading_written",
+                "reading_true_false": "reading_true_false",
+                "reading_cloze": "reading_cloze",
+                "reading_skill": "reading_skill",
+                "reading_matching": "reading_matching",
+                "reading_sequence": "reading_sequence",
+                "writing_short": "writing_short",
+                "writing_paraphrase": "writing_paraphrase",
+                "writing_correction": "writing_correction",
+                "writing_transformation": "writing_transformation",
+                "writing_essay": "writing_essay",
+                "sentence_builder": "sentence_builder",
+                "formal_email": "formal_email",
+                "picture_description": "picture_description",
+                "code_mcq": "code_mcq",
+                "code_como_ejemplo": "code_como_ejemplo",
+                "code_encontrar_error": "code_encontrar_error",
+                "code_que_pasa_si": "code_que_pasa_si",
+                "code_industria": "code_industria",
+                "code_error_industria": "code_error_industria",
+                "caso_estudio": "caso_estudio"
+            }
+            pregunta_dict["tipo"] = tipo_map.get(tipo_original, tipo_original)
+        # Normalizar campos SM-2 en español
+        pregunta_dict["facilidad"] = pregunta_dict.get("facilidad", pregunta_dict.get("ease_factor", 2.5))
+        pregunta_dict["intervalo"] = pregunta_dict.get("intervalo", pregunta_dict.get("interval", 1))
+        pregunta_dict["repeticiones"] = pregunta_dict.get("repeticiones", pregunta_dict.get("repetitions", 0))
+        pregunta_dict["ultimaRevision"] = pregunta_dict.get("ultimaRevision", pregunta_dict.get("last_review"))
+        pregunta_dict["proximaRevision"] = pregunta_dict.get("proximaRevision", pregunta_dict.get("next_review"))
+        pregunta_dict["estadoRevision"] = pregunta_dict.get("estadoRevision", pregunta_dict.get("review_state", "nueva"))
+        # Remover campos en inglés si existen
+        for campo_ingles in ["ease_factor", "interval", "repetitions", "last_review", "next_review", "review_state"]:
+            pregunta_dict.pop(campo_ingles, None)
+        # Asegurar que todos los ejercicios tengan los campos SM-2
+        # Si falta algún campo, lo agrega
+        for campo, valor_defecto in [
+            ("facilidad", 2.5),
+            ("intervalo", 1),
+            ("repeticiones", 0),
+            ("ultimaRevision", None),
+            ("proximaRevision", None),
+            ("estadoRevision", "nueva")
+        ]:
+            if campo not in pregunta_dict:
+                pregunta_dict[campo] = valor_defecto
+        return pregunta_dict
             'mcq': 3, 'true_false': 2, 'cloze': 3, 
             'short_answer': 4, 'open_question': 5, 'case_study': 6
         }
@@ -4292,23 +4304,26 @@ async def evaluar_examen(datos: dict):
                 
                 # Calcular repetición espaciada individual según rendimiento
                 ahora = datetime.now()
+                repeticiones = pregunta_dict.get('repeticiones', 0)
+                facilidad = pregunta_dict.get('facilidad', 2.5)
+                # SM-2 clásico
+                # NOTA: La evaluación inicial NO incrementa repeticiones.
+                # Las repeticiones las lleva el sistema de repaso (aciertos/errores).
+                # El backend solo calcula el intervalo inicial.
                 if porcentaje_pregunta >= 90:
-                    # Excelente: revisar en 7 días
-                    intervalo_dias = 7
-                    facilidad = 2.8
-                elif porcentaje_pregunta >= 70:
-                    # Bien: revisar en 3 días
-                    intervalo_dias = 3
-                    facilidad = 2.5
-                elif porcentaje_pregunta >= 50:
-                    # Regular: revisar mañana
-                    intervalo_dias = 1
-                    facilidad = 2.2
+                    if repeticiones == 0:
+                        intervalo_dias = 1
+                    elif repeticiones == 1:
+                        intervalo_dias = 6
+                    else:
+                        intervalo_dias = int(round(pregunta_dict.get('intervalo', 1) * facilidad))
+                    intervalo_dias = min(intervalo_dias, 90)  # Máximo 90 días para repaso perpetuo
+                    facilidad = min(3.0, facilidad + 0.15)
+                    # NO incrementar repeticiones aquí — lo hace el sistema de repaso del frontend
                 else:
-                    # Mal: revisar hoy (en 12 horas)
-                    intervalo_dias = 0.5
-                    facilidad = 2.0
-                
+                    intervalo_dias = 1
+                    facilidad = max(1.3, facilidad - 0.2)
+                    repeticiones = 0
                 proxima_revision_pregunta = (ahora + timedelta(days=intervalo_dias)).isoformat()
 
                 # 🔥 Obtener opciones del dict original o del objeto pregunta
@@ -4347,7 +4362,7 @@ async def evaluar_examen(datos: dict):
                     "proximaRevision": proxima_revision_pregunta,
                     "ultimaRevision": ahora.isoformat(),
                     "intervalo": intervalo_dias,
-                    "repeticiones": 0,
+                    "repeticiones": repeticiones,
                     "facilidad": facilidad,
                     "estadoRevision": "nueva"
                 })
@@ -7327,7 +7342,7 @@ Responde SOLO con un JSON válido:
             facilidad = resultado_actual.get("facilidad", 2.5)
             
             # SM-2: Como acertó fácilmente (apelación exitosa = sabía la respuesta)
-            nuevo_intervalo = max(1, int(intervalo_actual * facilidad * 1.2))  # Bonus por apelación
+            nuevo_intervalo = min(90, max(1, int(intervalo_actual * facilidad * 1.2)))  # Bonus por apelación, máx 90 días
             nueva_facilidad = min(2.5, facilidad + 0.1)
             nuevas_repeticiones = repeticiones + 1
             
