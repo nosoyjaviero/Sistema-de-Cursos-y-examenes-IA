@@ -4903,7 +4903,7 @@ function App() {
                 (p) =>
                   p &&
                   (p.pregunta === resultado.pregunta ||
-                  p.id === resultado.pregunta_id),
+                    p.id === resultado.pregunta_id),
               ) || null;
           }
 
@@ -5047,10 +5047,7 @@ function App() {
 
             // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" → va a "Repaso de Aciertos", NO a errores
             // EXCEPTO si falló en repaso de aciertos (estado_repaso === 'fallo')
-            if (
-              resultado.corregido &&
-              resultado.estado_error === "ok"
-            ) {
+            if (resultado.corregido && resultado.estado_error === "ok") {
               // Si falló en repaso de aciertos, vuelve a errores
               if (resultado.estado_repaso === "fallo") {
                 const proximaRev = resultado.proximaRevisionError
@@ -5074,11 +5071,14 @@ function App() {
                 }
               } else {
                 // Error corregido sin fallo posterior → pertenece a "Repaso de Aciertos"
-                console.log("✅ Error corregido → va a Repaso de Aciertos (excluido de errores):", {
-                  pregunta: resultado.pregunta.substring(0, 40) + "...",
-                  estado_error: resultado.estado_error,
-                  proximaRevisionError: resultado.proximaRevisionError,
-                });
+                console.log(
+                  "✅ Error corregido → va a Repaso de Aciertos (excluido de errores):",
+                  {
+                    pregunta: resultado.pregunta.substring(0, 40) + "...",
+                    estado_error: resultado.estado_error,
+                    proximaRevisionError: resultado.proximaRevisionError,
+                  },
+                );
                 return; // NO incluir en errores, lo maneja extraerAciertosParaRepaso
               }
             }
@@ -5698,7 +5698,9 @@ function App() {
           const preguntaOriginal =
             preguntasOriginales[idx] ||
             preguntasOriginales.find(
-              (p) => p && (p.id === resultado.id || p.pregunta === resultado.pregunta),
+              (p) =>
+                p &&
+                (p.id === resultado.id || p.pregunta === resultado.pregunta),
             ) ||
             {};
 
@@ -31479,21 +31481,13 @@ Generate an educational reading passage about this topic that would be suitable 
                                         .trim()
                                         .toUpperCase();
 
-                                      // Es correcta si: la letra coincide, o el texto empieza con la letra correcta, o el texto completo coincide
+                                      // Es correcta si la letra coincide
                                       const esRespuestaCorrecta =
-                                        respCorrecta === letraOpcion ||
-                                        opcion
-                                          .toUpperCase()
-                                          .startsWith(respCorrecta) ||
-                                        respCorrecta.startsWith(letraOpcion);
+                                        respCorrecta === letraOpcion;
 
-                                      // Es la respuesta del usuario si: la letra coincide, o empieza con ella
+                                      // Es la respuesta original del usuario si la letra coincide
                                       const esRespuestaOriginal =
-                                        respUsuario === letraOpcion ||
-                                        opcion
-                                          .toUpperCase()
-                                          .startsWith(respUsuario) ||
-                                        respUsuario.startsWith(letraOpcion);
+                                        respUsuario === letraOpcion;
 
                                       const esSeleccionada =
                                         respuestaErrorSeleccionada &&
@@ -33775,16 +33769,24 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                     const letraOpcion = String.fromCharCode(
                                       65 + idx,
                                     );
+                                    const respCorrectaLetra = (
+                                      erroresActuales[indiceErrorActual]
+                                        .respuesta_correcta || ""
+                                    )
+                                      .toString()
+                                      .trim()
+                                      .toUpperCase();
+                                    const respUsuarioLetra = (
+                                      erroresActuales[indiceErrorActual]
+                                        .respuesta_usuario || ""
+                                    )
+                                      .toString()
+                                      .trim()
+                                      .toUpperCase();
                                     const esRespuestaOriginal =
-                                      opcion.startsWith(
-                                        erroresActuales[indiceErrorActual]
-                                          .respuesta_usuario,
-                                      );
+                                      respUsuarioLetra === letraOpcion;
                                     const esRespuestaCorrecta =
-                                      opcion.startsWith(
-                                        erroresActuales[indiceErrorActual]
-                                          .respuesta_correcta,
-                                      );
+                                      respCorrectaLetra === letraOpcion;
                                     const esSeleccionada =
                                       respuestaErrorSeleccionada &&
                                       letraOpcion ===
