@@ -4901,8 +4901,9 @@ function App() {
             preguntaOriginal =
               preguntasOriginales.find(
                 (p) =>
-                  p.pregunta === resultado.pregunta ||
-                  p.id === resultado.pregunta_id,
+                  p &&
+                  (p.pregunta === resultado.pregunta ||
+                  p.id === resultado.pregunta_id),
               ) || null;
           }
 
@@ -5044,52 +5045,41 @@ function App() {
               }
             }
 
-            // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" Y aún no toca repaso
-            // Solo ignorar si soloAtrasados = true (para sesión de estudio)
-            // Para conteo total (soloAtrasados = false), incluirlos marcados como corregidos
+            // 🔥 SI YA FUE CORREGIDO CON ESTADO "ok" → va a "Repaso de Aciertos", NO a errores
+            // EXCEPTO si falló en repaso de aciertos (estado_repaso === 'fallo')
             if (
-              soloAtrasados &&
               resultado.corregido &&
               resultado.estado_error === "ok"
             ) {
-              const proximaRev = resultado.proximaRevisionError
-                ? new Date(resultado.proximaRevisionError)
-                : null;
-              if (proximaRev) {
-                // 🔥 NORMALIZAR proximaRev a medianoche para comparar solo fechas (no horas)
-                // Esto evita que 2026-02-07T06:00:00 > 2026-02-07T00:00:00 excluya el mismo día
-                const proximaRevNormalizada = new Date(proximaRev);
-                proximaRevNormalizada.setHours(0, 0, 0, 0);
-
-                // 🔥 PERO si tiene estado_repaso === 'fallo', debe aparecer aunque estado_error sea 'ok'
-                // porque falló en repaso de aciertos y necesita ser corregido de nuevo
-                if (resultado.estado_repaso === "fallo") {
-                  console.log(
-                    "🔄 Error con estado_repaso=fallo, verificando fecha:",
-                    {
-                      pregunta: resultado.pregunta.substring(0, 40) + "...",
-                      proximaRevision: proximaRev.toISOString().split("T")[0],
-                      hoy: hoy.toISOString().split("T")[0],
-                      debeAparecer: proximaRevNormalizada <= hoy,
-                    },
-                  );
-                  // Continuar si ya toca revisión (no hacer return)
+              // Si falló en repaso de aciertos, vuelve a errores
+              if (resultado.estado_repaso === "fallo") {
+                const proximaRev = resultado.proximaRevisionError
+                  ? new Date(resultado.proximaRevisionError)
+                  : null;
+                if (proximaRev) {
+                  const proximaRevNormalizada = new Date(proximaRev);
+                  proximaRevNormalizada.setHours(0, 0, 0, 0);
                   if (proximaRevNormalizada <= hoy) {
-                    // Toca revisión, continuar con el flujo
+                    console.log(
+                      "🔄 Error corregido pero falló en repaso → vuelve a errores:",
+                      {
+                        pregunta: resultado.pregunta.substring(0, 40) + "...",
+                        proximaRevision: proximaRev.toISOString().split("T")[0],
+                      },
+                    );
+                    // Continuar con el flujo (incluir en errores)
                   } else {
-                    console.log("✅ Error con repaso fallido, aún no toca:", {
-                      pregunta: resultado.pregunta.substring(0, 40) + "...",
-                      proximaRevision: proximaRev.toISOString().split("T")[0],
-                    });
-                    return; // Skip - aún no toca
+                    return; // Aún no toca
                   }
-                } else if (proximaRevNormalizada > hoy) {
-                  console.log("✅ Error OK, aún no toca:", {
-                    pregunta: resultado.pregunta.substring(0, 40) + "...",
-                    proximaRevision: proximaRev.toISOString().split("T")[0],
-                  });
-                  return; // Skip this error (solo en modo soloAtrasados)
                 }
+              } else {
+                // Error corregido sin fallo posterior → pertenece a "Repaso de Aciertos"
+                console.log("✅ Error corregido → va a Repaso de Aciertos (excluido de errores):", {
+                  pregunta: resultado.pregunta.substring(0, 40) + "...",
+                  estado_error: resultado.estado_error,
+                  proximaRevisionError: resultado.proximaRevisionError,
+                });
+                return; // NO incluir en errores, lo maneja extraerAciertosParaRepaso
               }
             }
 
@@ -5708,7 +5698,7 @@ function App() {
           const preguntaOriginal =
             preguntasOriginales[idx] ||
             preguntasOriginales.find(
-              (p) => p.id === resultado.id || p.pregunta === resultado.pregunta,
+              (p) => p && (p.id === resultado.id || p.pregunta === resultado.pregunta),
             ) ||
             {};
 
@@ -8593,25 +8583,14 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         // - Tercera+: multiplicar por factor (mínimo ×2)
         const intervaloAnterior = errorActual.intervalo_error || 1;
 
-        if (nuevasRepeticiones === 1) {
-          // 🔬 Primera corrección exitosa: 3 días para consolidar
-          nuevoIntervalo = 3;
-        } else if (nuevasRepeticiones === 2) {
-          // 🔬 Segunda corrección exitosa: 7 días (curva de olvido)
-          nuevoIntervalo = 7;
+        // 🎯 PROGRESIÓN FIJA para errores: 3 → 7 → 15 → 30 → 60 → ×2
+        // Intervalos fijos garantizan progresión predecible y reset limpio tras fallo
+        const INTERVALOS_FIJOS_ERRORES = [3, 7, 15, 30, 60];
+        if (nuevasRepeticiones <= INTERVALOS_FIJOS_ERRORES.length) {
+          nuevoIntervalo = INTERVALOS_FIJOS_ERRORES[nuevasRepeticiones - 1];
         } else {
-          // 🔬 Tercera+: multiplicar por factor (mínimo ×2)
-          const factorMultiplicador = Math.max(nuevaFacilidad, 2.0);
-          nuevoIntervalo = Math.round(intervaloAnterior * factorMultiplicador);
-          // Asegurar incremento mínimo
-          nuevoIntervalo = Math.max(nuevoIntervalo, intervaloAnterior + 3);
-        }
-
-        // 🔒 REGLA CIENTÍFICA: El intervalo NUNCA debe bajar
-        nuevoIntervalo = Math.max(nuevoIntervalo, intervaloAnterior);
-        // Hasta 90 días: cap normal. Después de 90: crece ×2
-        if (intervaloAnterior < 90) {
-          nuevoIntervalo = Math.min(nuevoIntervalo, 90);
+          // Más allá de la tabla fija: duplicar intervalo anterior
+          nuevoIntervalo = Math.round((intervaloAnterior || 60) * 2);
         }
       }
 
@@ -8835,15 +8814,15 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         resultados[preguntaIndex].fechaCorreccion = ahora.toISOString();
 
         // 🔥 SINCRONIZAR SISTEMA DE ACIERTOS CON SISTEMA DE ERRORES
-        // Cuando un error se corrige, el sistema de aciertos debe usar el mismo intervalo
-        // para que al pasar a "repaso de aciertos" continúe la progresión correctamente
+        // Siempre iniciar en rep=1 para que al pasar a "repaso de aciertos"
+        // comience la progresión fija desde el segundo nivel (7 días)
         resultados[preguntaIndex].intervalo = nuevoIntervalo;
         resultados[preguntaIndex].facilidad = nuevaFacilidad;
-        resultados[preguntaIndex].repeticiones = nuevasRepeticiones;
+        resultados[preguntaIndex].repeticiones = 1;
         resultados[preguntaIndex].proximaRevision =
           nuevaProximaRevision.toISOString();
         console.log(
-          `🔄 Sincronizado sistema de aciertos: intervalo=${nuevoIntervalo}, facilidad=${nuevaFacilidad.toFixed(2)}, rep=${nuevasRepeticiones}`,
+          `🔄 Sincronizado sistema de aciertos: intervalo=${nuevoIntervalo}, facilidad=${nuevaFacilidad.toFixed(2)}, rep=1 (inicio fijo)`,
         );
 
         // Recalcular puntos totales
