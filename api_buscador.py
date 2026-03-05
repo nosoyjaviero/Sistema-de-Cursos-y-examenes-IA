@@ -127,13 +127,47 @@ def detectar_gpu_nvidia():
     return info
 
 def verificar_dependencias_gpu():
-    """Verifica si las dependencias para GPU están instaladas"""
+    """Verifica si las dependencias para GPU están instaladas (chequeo dinámico)"""
+    # Hacer chequeo dinámico en lugar de usar las variables cacheadas al inicio
+    refrescar_estado_gpu()
     return {
         "torch_cuda": TORCH_DISPONIBLE and CUDA_DISPONIBLE,
         "faiss_gpu": FAISS_GPU,
         "sentence_transformers": SENTENCE_TRANSFORMERS_DISPONIBLE,
         "completo": TORCH_DISPONIBLE and CUDA_DISPONIBLE and SENTENCE_TRANSFORMERS_DISPONIBLE
     }
+
+def refrescar_estado_gpu():
+    """Re-chequea las dependencias GPU actualizando las variables globales"""
+    global TORCH_DISPONIBLE, CUDA_DISPONIBLE, FAISS_GPU, SENTENCE_TRANSFORMERS_DISPONIBLE, torch, faiss, SentenceTransformer
+    
+    try:
+        import torch as _torch
+        torch = _torch
+        TORCH_DISPONIBLE = True
+        CUDA_DISPONIBLE = torch.cuda.is_available()
+    except ImportError:
+        torch = None
+        TORCH_DISPONIBLE = False
+        CUDA_DISPONIBLE = False
+    
+    try:
+        import faiss as _faiss
+        faiss = _faiss
+        try:
+            if hasattr(faiss, 'get_num_gpus') and faiss.get_num_gpus() > 0:
+                FAISS_GPU = True
+        except:
+            pass
+    except ImportError:
+        pass
+    
+    try:
+        from sentence_transformers import SentenceTransformer as _ST
+        SentenceTransformer = _ST
+        SENTENCE_TRANSFORMERS_DISPONIBLE = True
+    except ImportError:
+        pass
 
 
 # ===================================
@@ -647,8 +681,10 @@ def api_instalar_gpu():
         resultados.append("Instalando PyTorch con CUDA 12.4...")
         
         # Usar pip para instalar torch con CUDA
+        # IMPORTANTE: usar --force-reinstall en vez de --upgrade para evitar
+        # que pip instale una versión CPU-only más reciente del índice por defecto
         comando_torch = [
-            sys.executable, "-m", "pip", "install", "--upgrade",
+            sys.executable, "-m", "pip", "install", "--force-reinstall",
             "torch", "torchvision", "torchaudio",
             "--index-url", "https://download.pytorch.org/whl/cu124"
         ]
@@ -679,12 +715,16 @@ def api_instalar_gpu():
             else:
                 errores.append(f"Error instalando sentence-transformers: {proceso.stderr}")
         
-        # 3. Guardar configuración
+        # 3. Refrescar estado de las dependencias GPU tras instalar
+        refrescar_estado_gpu()
+        
+        # 4. Guardar configuración
         config_gpu = cargar_config_gpu()
         config_gpu["gpu_instalada"] = len(errores) == 0
         guardar_config_gpu(config_gpu)
         
         # Mensaje final
+        gpu_activa_ahora = TORCH_DISPONIBLE and CUDA_DISPONIBLE
         if errores:
             return jsonify({
                 'success': False,
@@ -696,8 +736,9 @@ def api_instalar_gpu():
             return jsonify({
                 'success': True,
                 'resultados': resultados,
-                'mensaje': '✅ Instalación completada. Reinicia el servidor para activar GPU.',
-                'siguiente_paso': 'Reinicia el servidor y activa el modo GPU'
+                'gpu_activa': gpu_activa_ahora,
+                'mensaje': '✅ GPU instalada y lista.' if gpu_activa_ahora else '✅ Instalación completada. Reinicia el servidor para activar GPU.',
+                'siguiente_paso': 'Activa el modo GPU' if gpu_activa_ahora else 'Reinicia el servidor y activa el modo GPU'
             })
             
     except subprocess.TimeoutExpired:

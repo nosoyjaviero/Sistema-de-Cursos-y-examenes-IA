@@ -4380,6 +4380,18 @@ function App() {
           emoji: "🃏",
         },
         {
+          tipo: "notas",
+          nombre: "Repaso de Notas",
+          duracion: Infinity,
+          emoji: "📝",
+        },
+        {
+          tipo: "repaso",
+          nombre: "Repaso de Aciertos",
+          duracion: Infinity,
+          emoji: "🔄",
+        },
+        {
           tipo: "contenido",
           nombre: "Estudio Nuevo",
           duracion: Infinity,
@@ -4795,7 +4807,7 @@ function App() {
           setNotasRepasoSesion([]);
         }
       };
-      cargarNotasParaRepaso();
+      await cargarNotasParaRepaso();
 
       // Cargar flashcards desde archivo
       const cargarFlashcardsAsync = async () => {
@@ -4840,7 +4852,7 @@ function App() {
           setFlashcardsSesion([]);
         }
       };
-      cargarFlashcardsAsync();
+      await cargarFlashcardsAsync();
     } catch (error) {
       console.error("Error cargando datos de sesión:", error);
     }
@@ -4978,8 +4990,10 @@ function App() {
             !!primeraRespuesta?.correcta || !!resultado.correcto;
 
           // Si la pregunta fue correcta desde el inicio y NO tiene estado de error/fallo posterior, ignorarla
+          // 🔥 PERO solo si también tiene buen porcentaje (>=60%), para no excluir parciales con correcto=true
           if (
             fueCorrectaEnPracticaInicial &&
+            porcentaje >= 60 &&
             !["fallo", "critical"].includes(resultado.estado_error) &&
             resultado.estado_repaso !== "fallo"
           ) {
@@ -5823,6 +5837,24 @@ function App() {
                 fuente = "oracion_nueva";
                 console.log(
                   "📝 Oración propia correcta sin repasar → incluida en aciertos:",
+                  resultado.pregunta?.substring(0, 40),
+                );
+              }
+            }
+
+            // 🔥 ACIERTOS SIN proximaRevision: si nunca fueron repasados, incluirlos
+            // Esto cubre aciertos de exámenes antiguos o cuyo proximaRevision no se guardó
+            if (!necesitaRepaso && !proximaRev) {
+              const yaRepasadaGeneral = (
+                resultado.historial_respuestas ||
+                preguntaOriginal?.historial_respuestas ||
+                []
+              ).some((h) => h.contexto === "repaso_aciertos");
+              if (!yaRepasadaGeneral) {
+                necesitaRepaso = true;
+                fuente = "sin_fecha_repaso";
+                console.log(
+                  "📋 Acierto sin proximaRevision, nunca repasado → incluido:",
                   resultado.pregunta?.substring(0, 40),
                 );
               }
@@ -26413,8 +26445,7 @@ Generate an educational reading passage about this topic that would be suitable 
       if (data.success) {
         setMensaje({
           tipo: "exito",
-          texto:
-            "✅ Dependencias GPU instaladas. Reinicia el servidor del buscador para activar.",
+          texto: data.mensaje || "✅ Dependencias GPU instaladas.",
         });
         // Recargar estado
         cargarEstadoIndice();
