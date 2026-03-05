@@ -1,4 +1,4 @@
 {
   "modo": "gpu",
-  "gpu_instalada": false
+  "gpu_instalada": true
 }

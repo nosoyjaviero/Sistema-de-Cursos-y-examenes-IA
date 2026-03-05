@@ -203,12 +203,6 @@ def normalizar_pregunta_spaced_repetition(pregunta_dict: dict) -> dict:
             if campo not in pregunta_dict:
                 pregunta_dict[campo] = valor_defecto
         return pregunta_dict
-            'mcq': 3, 'true_false': 2, 'cloze': 3, 
-            'short_answer': 4, 'open_question': 5, 'case_study': 6
-        }
-        pregunta_dict['puntos'] = puntos_defecto.get(tipo, 3)
-    
-    return pregunta_dict
 
 
 def cargar_config():

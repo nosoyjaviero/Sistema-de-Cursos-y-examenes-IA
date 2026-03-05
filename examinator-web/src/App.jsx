@@ -22936,13 +22936,19 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
         if (porcentaje >= 70) {
           // ✅ Aprobó → progresión SM-2
           nuevasRep += 1;
-          nuevaFacilidad = Math.min(3.0, nuevaFacilidad + (porcentaje >= 90 ? 0.15 : 0.05));
+          nuevaFacilidad = Math.min(
+            3.0,
+            nuevaFacilidad + (porcentaje >= 90 ? 0.15 : 0.05),
+          );
           if (nuevasRep === 1) {
             diasBase = porcentaje >= 90 ? 3 : 2;
           } else if (nuevasRep === 2) {
             diasBase = porcentaje >= 90 ? 7 : 5;
           } else {
-            diasBase = Math.min(90, Math.round(intervaloAnterior * nuevaFacilidad));
+            diasBase = Math.min(
+              90,
+              Math.round(intervaloAnterior * nuevaFacilidad),
+            );
           }
         } else {
           // ❌ No aprobó → reiniciar
@@ -72008,7 +72014,8 @@ Devuelve SOLO este JSON:
                               {flashcard.estadoRevision === "en_progreso" &&
                                 "📖"}
                               {flashcard.estadoRevision === "dominada" && "✅"}
-                              {flashcard.estadoRevision === "madura" && "✅"}{" "}
+                              {flashcard.estadoRevision === "madura" &&
+                                "✅"}{" "}
                               {flashcard.estadoRevision === "nueva" && "Nueva"}
                               {flashcard.estadoRevision === "en_progreso" &&
                                 "En Progreso"}
