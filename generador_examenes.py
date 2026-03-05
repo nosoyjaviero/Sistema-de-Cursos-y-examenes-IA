@@ -13,7 +13,8 @@ class PreguntaExamen:
     """Representa una pregunta de examen"""
     
     def __init__(self, tipo: str, pregunta: str, opciones: List[str] = None, 
-                 respuesta_correcta: str = "", puntos: int = 1, metadata: dict = None):
+                 respuesta_correcta: str = "", puntos: int = 1, metadata: dict = None,
+                 palabras_clave: list = None, respuesta_esperada: str = ""):
         self.tipo = tipo
         self.pregunta = pregunta
         self.opciones = opciones or []
@@ -22,6 +23,8 @@ class PreguntaExamen:
         self.respuesta_usuario = None
         self.puntos_obtenidos = 0
         self.metadata = metadata or {}  # Para almacenar estructura compleja (reading/writing types)
+        self.palabras_clave = palabras_clave or []  # Para short_answer
+        self.respuesta_esperada = respuesta_esperada or respuesta_correcta  # Para short_answer
     
     def to_dict(self):
         return {
@@ -90,12 +93,14 @@ class PreguntaExamen:
         # Para respuesta correcta, intentar varios campos
         respuesta_correcta = (
             data.get('respuesta_correcta') or 
-            data.get('respuesta_esperada') or  # Para casos de estudio
+            data.get('respuesta_esperada') or  # Para casos de estudio y short_answer
             data.get('correct_answer') or 
             data.get('answer') or 
             data.get('back') or  # Para flashcards
-            data.get('answers') or  # Para cloze (puede ser array)
-            data.get('expected_answer') or  # Para open_question
+            data.get('answers') or  # Para cloze en inglés
+            data.get('respuestas') or  # Para cloze en español
+            data.get('respuesta_modelo') or  # Para open_question
+            data.get('expected_answer') or  # Para open_question en inglés
             data.get('expected_output') or  # Para writing_transformation
             data.get('correct_text') or  # Para writing_correction
             data.get('correct_sentence') or  # Para writing_sentence_builder
@@ -110,16 +115,33 @@ class PreguntaExamen:
         elif isinstance(respuesta_correcta, bool):
             respuesta_correcta = 'verdadero' if respuesta_correcta else 'falso'
         
+        # Para caso_estudio / case_study: si no hay respuesta_correcta, construirla desde puntos_evaluacion
+        if tipo in ('caso_estudio', 'case_study') and not respuesta_correcta:
+            puntos_eval = data.get('puntos_evaluacion') or data.get('evaluation_criteria') or []
+            if puntos_eval:
+                respuesta_correcta = 'Criterios: ' + '; '.join(str(p) for p in puntos_eval)
+        
+        # Para open_question: si no hay respuesta_correcta, construirla desde puntos_clave
+        if tipo == 'open_question' and not respuesta_correcta:
+            puntos_clave = data.get('puntos_clave') or []
+            if puntos_clave:
+                respuesta_correcta = 'Puntos clave: ' + '; '.join(str(p) for p in puntos_clave)
+        
         # Metadata: guardar todo el dict original
         metadata = dict(data)
         
+        palabras_clave = data.get('palabras_clave') or []
+        respuesta_esperada = data.get('respuesta_esperada') or respuesta_correcta or ''
+
         return cls(
             tipo=tipo,
             pregunta=pregunta,
             opciones=opciones,
             respuesta_correcta=respuesta_correcta,
             puntos=data.get('puntos', 1),
-            metadata=metadata
+            metadata=metadata,
+            palabras_clave=palabras_clave,
+            respuesta_esperada=respuesta_esperada
         )
 
 

@@ -8259,7 +8259,16 @@ Califica ahora:`;
         body: JSON.stringify({
           pregunta: errorActual.pregunta,
           respuesta_usuario: respuestaTextual,
-          respuesta_correcta: errorActual.respuesta_correcta,
+          respuesta_correcta:
+            errorActual.respuesta_correcta ||
+            errorActual.respuesta_esperada ||
+            "",
+          respuesta_esperada:
+            errorActual.respuesta_esperada ||
+            errorActual.respuesta_correcta ||
+            "",
+          palabras_clave: errorActual.palabras_clave || [],
+          tipo_pregunta: errorActual.tipo || "short_answer",
           intentos_previos: historialIntentos,
           modelo: modelo,
         }),
@@ -8385,6 +8394,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "constructor_oracion_item", // 🔥 sub-ítems individuales de constructor_oraciones
       "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
       "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
+      "short_answer", // 🔥 Respuesta corta — evaluación semántica por IA
+      "open_question", // 🔥 Pregunta abierta — evaluación por IA
     ];
     const esEvaluadoPorIA = tiposEvaluadosPorIA.includes(errorActual.tipo);
 
@@ -19610,13 +19621,18 @@ ${transformacionesEjemplo.join(",\n")}
     // 🧩 Constructor de Oraciones con Palabras
     if (constructor_oraciones > 0) {
       const langName = idiomasNombre[constructor_oraciones_lang] || "Inglés";
-      const langNameEn = idiomasNombreEN[constructor_oraciones_lang] || "English";
+      const langNameEn =
+        idiomasNombreEN[constructor_oraciones_lang] || "English";
       const numOraciones = constructor_oraciones_cantidad || 5;
-      const dificultadDesc = {
-        basico: "basic level (simple present / past, common vocabulary, short sentences)",
-        intermedio: "intermediate level (mixed tenses, conditionals, varied vocabulary)",
-        avanzado: "advanced level (complex structures, passive voice, idiomatic expressions)",
-      }[constructor_oraciones_dificultad] || "intermediate level";
+      const dificultadDesc =
+        {
+          basico:
+            "basic level (simple present / past, common vocabulary, short sentences)",
+          intermedio:
+            "intermediate level (mixed tenses, conditionals, varied vocabulary)",
+          avanzado:
+            "advanced level (complex structures, passive voice, idiomatic expressions)",
+        }[constructor_oraciones_dificultad] || "intermediate level";
 
       instrucciones += `  // ${constructor_oraciones} EJERCICIO(S) DE CONSTRUCTOR DE ORACIONES CON PALABRAS en ${langName}:
   // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todas las palabras_clave y respuestas DEBEN estar en ${langName}
@@ -19633,7 +19649,13 @@ ${transformacionesEjemplo.join(",\n")}
       "instruccion_nivel": "${dificultadDesc}"
     },
     "oraciones": [
-      ${Array(numOraciones).fill(0).map((_, i) => `{\n        "id": ${i+1},\n        "palabras_clave": ["<<palabra1 en ${langName.toUpperCase()} relacionada al tema>>", "<<palabra2 en ${langName.toUpperCase()}>>", "<<palabra3 en ${langName.toUpperCase()}>>"],${constructor_oraciones_contexto ? `\n        "contexto_oracion": "<<Texto breve en ${langName.toUpperCase()} (1-3 frases) como diálogo, escenario o situación que contextualice el uso de las palabras clave — hazlo variado entre oraciones y relevante al tema estudiado>>",` : ''}\n        "pista": "<<Pista breve en ESPA\\u00d1OL (máx 1 oración): qué estructura usar o cómo conjugar>>",\n        "respuesta_correcta": "<<Oración correcta en ${langName.toUpperCase()} usando todas las palabras_clave>>",\n        "feedback": "<<Explicación breve en ESPA\\u00d1OL de por qué esa es la forma correcta>>",\n        "historial": []\n      }`).join(",\n      ")}
+      ${Array(numOraciones)
+        .fill(0)
+        .map(
+          (_, i) =>
+            `{\n        "id": ${i + 1},\n        "palabras_clave": ["<<palabra1 en ${langName.toUpperCase()} relacionada al tema>>", "<<palabra2 en ${langName.toUpperCase()}>>", "<<palabra3 en ${langName.toUpperCase()}>>"],${constructor_oraciones_contexto ? `\n        "contexto_oracion": "<<Texto breve en ${langName.toUpperCase()} (1-3 frases) como diálogo, escenario o situación que contextualice el uso de las palabras clave — hazlo variado entre oraciones y relevante al tema estudiado>>",` : ""}\n        "pista": "<<Pista breve en ESPA\\u00d1OL (máx 1 oración): qué estructura usar o cómo conjugar>>",\n        "respuesta_correcta": "<<Oración correcta en ${langName.toUpperCase()} usando todas las palabras_clave>>",\n        "feedback": "<<Explicación breve en ESPA\\u00d1OL de por qué esa es la forma correcta>>",\n        "historial": []\n      }`,
+        )
+        .join(",\n      ")}
     ],
     "puntos": ${numOraciones}
   },
@@ -21191,7 +21213,9 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
               p.metadata?.cantidad_oraciones ||
               oracionesNorm.length,
             nivel_dificultad:
-              p.metadata?.nivel_dificultad || p.nivel_dificultad || "intermedio",
+              p.metadata?.nivel_dificultad ||
+              p.nivel_dificultad ||
+              "intermedio",
             instruccion_nivel:
               p.metadata?.instruccion_nivel || p.instruccion_nivel || "",
             oraciones: oracionesNorm,
@@ -22533,8 +22557,7 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           // Expandir constructor de oraciones en ítems individuales
           const oracionesRaw = respuestaUsuarioCompleta.split("|||");
           const oracionesDef = pregunta.oraciones || [];
-          const numOraciones =
-            oracionesDef.length || oracionesRaw.length || 5;
+          const numOraciones = oracionesDef.length || oracionesRaw.length || 5;
           const puntosPorOracion =
             Math.round(
               ((pregunta.puntos || numOraciones) / numOraciones) * 10,
@@ -39981,10 +40004,13 @@ Devuelve SOLO este JSON:
                               errorActual?.tipo === "writing_short_libre";
                             const esWritingParaphrase =
                               errorActual?.tipo === "writing_paraphrase" ||
-                              errorActual?.tipo === "writing_paraphrase_libre" ||
+                              errorActual?.tipo ===
+                                "writing_paraphrase_libre" ||
                               errorActual?.tipo === "paraphrase_item" ||
-                              errorActual?.tipo_padre === "writing_paraphrase" ||
-                              errorActual?.tipo_padre === "writing_paraphrase_libre";
+                              errorActual?.tipo_padre ===
+                                "writing_paraphrase" ||
+                              errorActual?.tipo_padre ===
+                                "writing_paraphrase_libre";
                             const esWritingCorrection =
                               errorActual?.tipo === "writing_correction" ||
                               errorActual?.tipo === "writing_correction_libre";
@@ -40113,7 +40139,8 @@ Devuelve SOLO este JSON:
                                     <div
                                       style={{
                                         background: "rgba(99,102,241,0.1)",
-                                        border: "1px solid rgba(99,102,241,0.35)",
+                                        border:
+                                          "1px solid rgba(99,102,241,0.35)",
                                         borderRadius: "8px",
                                         padding: "0.75rem 1rem",
                                         marginBottom: "0.75rem",
@@ -40124,30 +40151,73 @@ Devuelve SOLO este JSON:
                                       }}
                                     >
                                       {errorActual?.titulo_tema && (
-                                        <span style={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.88rem" }}>
+                                        <span
+                                          style={{
+                                            color: "#a5b4fc",
+                                            fontWeight: 700,
+                                            fontSize: "0.88rem",
+                                          }}
+                                        >
                                           📚 {errorActual.titulo_tema}
                                         </span>
                                       )}
                                       {errorActual?.idioma && (
-                                        <span style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "2px 8px", borderRadius: "10px", color: "#c7d2fe", fontSize: "0.75rem" }}>
-                                          🌍 {errorActual.idioma.charAt(0).toUpperCase() + errorActual.idioma.slice(1)}
+                                        <span
+                                          style={{
+                                            background: "rgba(99,102,241,0.25)",
+                                            border:
+                                              "1px solid rgba(99,102,241,0.5)",
+                                            padding: "2px 8px",
+                                            borderRadius: "10px",
+                                            color: "#c7d2fe",
+                                            fontSize: "0.75rem",
+                                          }}
+                                        >
+                                          🌍{" "}
+                                          {errorActual.idioma
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                            errorActual.idioma.slice(1)}
                                         </span>
                                       )}
                                       {errorActual?.nivel_dificultad && (
-                                        <span style={{ background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)", padding: "2px 8px", borderRadius: "10px", color: "#fcd34d", fontSize: "0.75rem" }}>
+                                        <span
+                                          style={{
+                                            background: "rgba(251,191,36,0.15)",
+                                            border:
+                                              "1px solid rgba(251,191,36,0.35)",
+                                            padding: "2px 8px",
+                                            borderRadius: "10px",
+                                            color: "#fcd34d",
+                                            fontSize: "0.75rem",
+                                          }}
+                                        >
                                           🎯 {errorActual.nivel_dificultad}
                                         </span>
                                       )}
                                     </div>
                                     {/* Pregunta / enunciado */}
                                     {errorActual?.pregunta && (
-                                      <div style={{ color: "#94a3b8", fontSize: "0.82rem", marginBottom: "0.5rem", fontStyle: "italic" }}>
+                                      <div
+                                        style={{
+                                          color: "#94a3b8",
+                                          fontSize: "0.82rem",
+                                          marginBottom: "0.5rem",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
                                         {errorActual.pregunta}
                                       </div>
                                     )}
                                     {/* Nivel instruccion */}
                                     {errorActual?.instruccion_nivel && (
-                                      <div style={{ color: "#64748b", fontSize: "0.78rem", marginBottom: "0.6rem" }}>
+                                      <div
+                                        style={{
+                                          color: "#64748b",
+                                          fontSize: "0.78rem",
+                                          marginBottom: "0.6rem",
+                                        }}
+                                      >
                                         📋 {errorActual.instruccion_nivel}
                                       </div>
                                     )}
@@ -40156,7 +40226,8 @@ Devuelve SOLO este JSON:
                                       <div
                                         style={{
                                           background: "rgba(16,185,129,0.08)",
-                                          border: "1px solid rgba(16,185,129,0.25)",
+                                          border:
+                                            "1px solid rgba(16,185,129,0.25)",
                                           borderRadius: "8px",
                                           padding: "0.6rem 1rem",
                                           marginBottom: "0.75rem",
@@ -40170,46 +40241,142 @@ Devuelve SOLO este JSON:
                                       </div>
                                     )}
                                     {/* Palabras que debe usar */}
-                                    {errorActual?.palabras_clave?.length > 0 && (
+                                    {errorActual?.palabras_clave?.length >
+                                      0 && (
                                       <div
                                         style={{
                                           background: "rgba(99,102,241,0.1)",
-                                          border: "1px solid rgba(99,102,241,0.35)",
+                                          border:
+                                            "1px solid rgba(99,102,241,0.35)",
                                           borderRadius: "8px",
                                           padding: "0.75rem 1rem",
                                           marginBottom: "0.75rem",
                                         }}
                                       >
-                                        <p style={{ color: "#a5b4fc", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.45rem" }}>
+                                        <p
+                                          style={{
+                                            color: "#a5b4fc",
+                                            fontWeight: 600,
+                                            fontSize: "0.85rem",
+                                            marginBottom: "0.45rem",
+                                          }}
+                                        >
                                           🧩 Palabras a usar:
                                         </p>
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                                          {errorActual.palabras_clave.map((pal, pi) => (
-                                            <span key={pi} style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "3px 10px", borderRadius: "12px", color: "#c7d2fe", fontSize: "0.85rem", fontWeight: 600 }}>
-                                              {pal}
-                                            </span>
-                                          ))}
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: "0.4rem",
+                                          }}
+                                        >
+                                          {errorActual.palabras_clave.map(
+                                            (pal, pi) => (
+                                              <span
+                                                key={pi}
+                                                style={{
+                                                  background:
+                                                    "rgba(99,102,241,0.25)",
+                                                  border:
+                                                    "1px solid rgba(99,102,241,0.5)",
+                                                  padding: "3px 10px",
+                                                  borderRadius: "12px",
+                                                  color: "#c7d2fe",
+                                                  fontSize: "0.85rem",
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                {pal}
+                                              </span>
+                                            ),
+                                          )}
                                         </div>
                                       </div>
                                     )}
                                     {/* Pista */}
                                     {errorActual?.pista && (
-                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.6rem 1rem", marginBottom: "0.75rem", fontSize: "0.85rem", color: "#fde68a" }}>
-                                        💡 <strong>Pista:</strong> {errorActual.pista}
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.6rem 1rem",
+                                          marginBottom: "0.75rem",
+                                          fontSize: "0.85rem",
+                                          color: "#fde68a",
+                                        }}
+                                      >
+                                        💡 <strong>Pista:</strong>{" "}
+                                        {errorActual.pista}
                                       </div>
                                     )}
                                     {/* Feedback del intento original */}
                                     {errorActual?.feedback && (
-                                      <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "0.75rem" }}>
-                                        <p style={{ color: "#fca5a5", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.35rem" }}>❌ ¿Por qué falló?</p>
-                                        <p style={{ color: "#e2e8f0", fontSize: "0.9rem", margin: 0, whiteSpace: "pre-wrap" }}>{errorActual.feedback}</p>
+                                      <div
+                                        style={{
+                                          background: "rgba(239,68,68,0.1)",
+                                          border:
+                                            "1px solid rgba(239,68,68,0.35)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <p
+                                          style={{
+                                            color: "#fca5a5",
+                                            fontWeight: 600,
+                                            fontSize: "0.85rem",
+                                            marginBottom: "0.35rem",
+                                          }}
+                                        >
+                                          ❌ ¿Por qué falló?
+                                        </p>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            fontSize: "0.9rem",
+                                            margin: 0,
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {errorActual.feedback}
+                                        </p>
                                       </div>
                                     )}
                                     {/* Pistas IA */}
                                     {errorActual?.pistas_ia && (
-                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "1rem" }}>
-                                        <p style={{ color: "#fcd34d", fontWeight: 700, fontSize: "0.82rem", marginBottom: "0.3rem" }}>💡 Consejos para mejorar:</p>
-                                        <p style={{ color: "#e2e8f0", fontSize: "0.88rem", margin: 0, whiteSpace: "pre-wrap" }}>{errorActual.pistas_ia}</p>
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "1rem",
+                                        }}
+                                      >
+                                        <p
+                                          style={{
+                                            color: "#fcd34d",
+                                            fontWeight: 700,
+                                            fontSize: "0.82rem",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          💡 Consejos para mejorar:
+                                        </p>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            fontSize: "0.88rem",
+                                            margin: 0,
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {errorActual.pistas_ia}
+                                        </p>
                                       </div>
                                     )}
                                   </>
@@ -52767,7 +52934,8 @@ Devuelve SOLO este JSON:
                                     <div
                                       style={{
                                         background: "rgba(99,102,241,0.1)",
-                                        border: "1px solid rgba(99,102,241,0.35)",
+                                        border:
+                                          "1px solid rgba(99,102,241,0.35)",
                                         borderRadius: "8px",
                                         padding: "0.75rem 1rem",
                                         marginBottom: "0.75rem",
@@ -52778,30 +52946,73 @@ Devuelve SOLO este JSON:
                                       }}
                                     >
                                       {aciertoActual?.titulo_tema && (
-                                        <span style={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.88rem" }}>
+                                        <span
+                                          style={{
+                                            color: "#a5b4fc",
+                                            fontWeight: 700,
+                                            fontSize: "0.88rem",
+                                          }}
+                                        >
                                           📚 {aciertoActual.titulo_tema}
                                         </span>
                                       )}
                                       {aciertoActual?.idioma && (
-                                        <span style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "2px 8px", borderRadius: "10px", color: "#c7d2fe", fontSize: "0.75rem" }}>
-                                          🌍 {aciertoActual.idioma.charAt(0).toUpperCase() + aciertoActual.idioma.slice(1)}
+                                        <span
+                                          style={{
+                                            background: "rgba(99,102,241,0.25)",
+                                            border:
+                                              "1px solid rgba(99,102,241,0.5)",
+                                            padding: "2px 8px",
+                                            borderRadius: "10px",
+                                            color: "#c7d2fe",
+                                            fontSize: "0.75rem",
+                                          }}
+                                        >
+                                          🌍{" "}
+                                          {aciertoActual.idioma
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                            aciertoActual.idioma.slice(1)}
                                         </span>
                                       )}
                                       {aciertoActual?.nivel_dificultad && (
-                                        <span style={{ background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)", padding: "2px 8px", borderRadius: "10px", color: "#fcd34d", fontSize: "0.75rem" }}>
+                                        <span
+                                          style={{
+                                            background: "rgba(251,191,36,0.15)",
+                                            border:
+                                              "1px solid rgba(251,191,36,0.35)",
+                                            padding: "2px 8px",
+                                            borderRadius: "10px",
+                                            color: "#fcd34d",
+                                            fontSize: "0.75rem",
+                                          }}
+                                        >
                                           🎯 {aciertoActual.nivel_dificultad}
                                         </span>
                                       )}
                                     </div>
                                     {/* Pregunta / enunciado */}
                                     {aciertoActual?.pregunta && (
-                                      <div style={{ color: "#94a3b8", fontSize: "0.82rem", marginBottom: "0.5rem", fontStyle: "italic" }}>
+                                      <div
+                                        style={{
+                                          color: "#94a3b8",
+                                          fontSize: "0.82rem",
+                                          marginBottom: "0.5rem",
+                                          fontStyle: "italic",
+                                        }}
+                                      >
                                         {aciertoActual.pregunta}
                                       </div>
                                     )}
                                     {/* Nivel instruccion */}
                                     {aciertoActual?.instruccion_nivel && (
-                                      <div style={{ color: "#64748b", fontSize: "0.78rem", marginBottom: "0.6rem" }}>
+                                      <div
+                                        style={{
+                                          color: "#64748b",
+                                          fontSize: "0.78rem",
+                                          marginBottom: "0.6rem",
+                                        }}
+                                      >
                                         📋 {aciertoActual.instruccion_nivel}
                                       </div>
                                     )}
@@ -52810,7 +53021,8 @@ Devuelve SOLO este JSON:
                                       <div
                                         style={{
                                           background: "rgba(16,185,129,0.08)",
-                                          border: "1px solid rgba(16,185,129,0.25)",
+                                          border:
+                                            "1px solid rgba(16,185,129,0.25)",
                                           borderRadius: "8px",
                                           padding: "0.6rem 1rem",
                                           marginBottom: "0.75rem",
@@ -52824,36 +53036,144 @@ Devuelve SOLO este JSON:
                                       </div>
                                     )}
                                     {/* Palabras que debe usar */}
-                                    {aciertoActual?.palabras_clave?.length > 0 && (
-                                      <div style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.35)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "0.75rem" }}>
-                                        <p style={{ color: "#a5b4fc", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.45rem" }}>🧩 Palabras a usar:</p>
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                                          {aciertoActual.palabras_clave.map((pal, pi) => (
-                                            <span key={pi} style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "3px 10px", borderRadius: "12px", color: "#c7d2fe", fontSize: "0.85rem", fontWeight: 600 }}>
-                                              {pal}
-                                            </span>
-                                          ))}
+                                    {aciertoActual?.palabras_clave?.length >
+                                      0 && (
+                                      <div
+                                        style={{
+                                          background: "rgba(99,102,241,0.1)",
+                                          border:
+                                            "1px solid rgba(99,102,241,0.35)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <p
+                                          style={{
+                                            color: "#a5b4fc",
+                                            fontWeight: 600,
+                                            fontSize: "0.85rem",
+                                            marginBottom: "0.45rem",
+                                          }}
+                                        >
+                                          🧩 Palabras a usar:
+                                        </p>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: "0.4rem",
+                                          }}
+                                        >
+                                          {aciertoActual.palabras_clave.map(
+                                            (pal, pi) => (
+                                              <span
+                                                key={pi}
+                                                style={{
+                                                  background:
+                                                    "rgba(99,102,241,0.25)",
+                                                  border:
+                                                    "1px solid rgba(99,102,241,0.5)",
+                                                  padding: "3px 10px",
+                                                  borderRadius: "12px",
+                                                  color: "#c7d2fe",
+                                                  fontSize: "0.85rem",
+                                                  fontWeight: 600,
+                                                }}
+                                              >
+                                                {pal}
+                                              </span>
+                                            ),
+                                          )}
                                         </div>
                                       </div>
                                     )}
                                     {/* Pista */}
                                     {aciertoActual?.pista && (
-                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.6rem 1rem", marginBottom: "0.75rem", fontSize: "0.85rem", color: "#fde68a" }}>
-                                        💡 <strong>Pista:</strong> {aciertoActual.pista}
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.6rem 1rem",
+                                          marginBottom: "0.75rem",
+                                          fontSize: "0.85rem",
+                                          color: "#fde68a",
+                                        }}
+                                      >
+                                        💡 <strong>Pista:</strong>{" "}
+                                        {aciertoActual.pista}
                                       </div>
                                     )}
                                     {/* Feedback anterior */}
                                     {aciertoActual?.feedback && (
-                                      <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
-                                        <span style={{ color: "#86efac", fontWeight: 600, fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>✅ Feedback anterior:</span>
-                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.feedback}</p>
+                                      <div
+                                        style={{
+                                          background: "rgba(34,197,94,0.07)",
+                                          border:
+                                            "1px solid rgba(34,197,94,0.25)",
+                                          borderRadius: "8px",
+                                          padding: "0.7rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#86efac",
+                                            fontWeight: 600,
+                                            fontSize: "0.82rem",
+                                            display: "block",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          ✅ Feedback anterior:
+                                        </span>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            margin: 0,
+                                            fontSize: "0.88rem",
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {aciertoActual.feedback}
+                                        </p>
                                       </div>
                                     )}
                                     {/* Pistas IA */}
                                     {aciertoActual?.pistas_ia && (
-                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
-                                        <span style={{ color: "#fcd34d", fontWeight: 700, fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>💡 Consejos:</span>
-                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.pistas_ia}</p>
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.7rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#fcd34d",
+                                            fontWeight: 700,
+                                            fontSize: "0.82rem",
+                                            display: "block",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          💡 Consejos:
+                                        </span>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            margin: 0,
+                                            fontSize: "0.88rem",
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {aciertoActual.pistas_ia}
+                                        </p>
                                       </div>
                                     )}
                                   </>
@@ -63191,7 +63511,8 @@ Devuelve SOLO este JSON:
                                           padding: "0.3rem 0.5rem",
                                           background: "rgba(99,102,241,0.1)",
                                           borderRadius: "4px",
-                                          border: "1px solid rgba(99,102,241,0.25)",
+                                          border:
+                                            "1px solid rgba(99,102,241,0.25)",
                                         }}
                                       >
                                         <label
@@ -64646,7 +64967,8 @@ Devuelve SOLO este JSON:
                               (preguntasPropiasConfig.picture_description_libre ||
                                 0) +
                               (preguntasPropiasConfig.oraciones_propias || 0) +
-                              (preguntasPropiasConfig.constructor_oraciones || 0) +
+                              (preguntasPropiasConfig.constructor_oraciones ||
+                                0) +
                               (preguntasPropiasConfig.codigo_mcq || 0) +
                               (preguntasPropiasConfig.codigo_encontrar_error ||
                                 0) +
@@ -85745,10 +86067,9 @@ Devuelve SOLO este JSON:
                                               style={{
                                                 background:
                                                   "rgba(99, 102, 241, 0.08)",
-                                                border:
-                                                  respuestaItem
-                                                    ? "1px solid rgba(99, 102, 241, 0.5)"
-                                                    : "1px solid rgba(99, 102, 241, 0.2)",
+                                                border: respuestaItem
+                                                  ? "1px solid rgba(99, 102, 241, 0.5)"
+                                                  : "1px solid rgba(99, 102, 241, 0.2)",
                                                 borderRadius: "10px",
                                                 padding: "0.9rem",
                                               }}
@@ -85809,8 +86130,10 @@ Devuelve SOLO este JSON:
                                               {oracion.contexto_oracion && (
                                                 <div
                                                   style={{
-                                                    background: "rgba(16, 185, 129, 0.08)",
-                                                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                                                    background:
+                                                      "rgba(16, 185, 129, 0.08)",
+                                                    border:
+                                                      "1px solid rgba(16, 185, 129, 0.25)",
                                                     borderRadius: "8px",
                                                     padding: "0.6rem 0.9rem",
                                                     marginBottom: "0.6rem",
@@ -85854,10 +86177,7 @@ Devuelve SOLO este JSON:
                                                       ] || ""
                                                     ).split("|||"),
                                                   ];
-                                                  while (
-                                                    arr.length <=
-                                                    oIdx
-                                                  ) {
+                                                  while (arr.length <= oIdx) {
                                                     arr.push("");
                                                   }
                                                   arr[oIdx] = e.target.value;
@@ -98134,8 +98454,7 @@ Devuelve SOLO este JSON:
                                   0 ||
                                 preguntasPropiasConfig.writing_transformation_libre >
                                   0 ||
-                                preguntasPropiasConfig.oraciones_propias >
-                                  0 ||
+                                preguntasPropiasConfig.oraciones_propias > 0 ||
                                 preguntasPropiasConfig.constructor_oraciones >
                                   0) && (
                                 <span
@@ -98405,7 +98724,8 @@ Devuelve SOLO este JSON:
                                   background: "rgba(99, 102, 241, 0.1)",
                                   borderRadius: "8px",
                                   border:
-                                    preguntasPropiasConfig.constructor_oraciones > 0
+                                    preguntasPropiasConfig.constructor_oraciones >
+                                    0
                                       ? "2px solid #6366f1"
                                       : "1px solid rgba(99, 102, 241, 0.3)",
                                   marginBottom: "1rem",
@@ -98430,7 +98750,10 @@ Devuelve SOLO este JSON:
                                     lineHeight: "1.4",
                                   }}
                                 >
-                                  Recibo palabras específicas del tema y debo construir una oración correcta usándolas todas. Cada oración incluye pista, respuesta esperada y feedback.
+                                  Recibo palabras específicas del tema y debo
+                                  construir una oración correcta usándolas
+                                  todas. Cada oración incluye pista, respuesta
+                                  esperada y feedback.
                                 </p>
                                 <div
                                   style={{
@@ -98477,7 +98800,8 @@ Devuelve SOLO este JSON:
                                     onChange={(e) =>
                                       setPreguntasPropiasConfig({
                                         ...preguntasPropiasConfig,
-                                        constructor_oraciones_lang: e.target.value,
+                                        constructor_oraciones_lang:
+                                          e.target.value,
                                       })
                                     }
                                     style={{
@@ -98494,8 +98818,12 @@ Devuelve SOLO este JSON:
                                     <option value="ingles">🇬🇧 Inglés</option>
                                     <option value="frances">🇫🇷 Francés</option>
                                     <option value="aleman">🇩🇪 Alemán</option>
-                                    <option value="italiano">🇮🇹 Italiano</option>
-                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="italiano">
+                                      🇮🇹 Italiano
+                                    </option>
+                                    <option value="portugues">
+                                      🇵🇹 Portugués
+                                    </option>
                                     <option value="japones">🇯🇵 Japonés</option>
                                     <option value="chino">🇨🇳 Chino</option>
                                     <option value="coreano">🇰🇷 Coreano</option>
@@ -98532,10 +98860,11 @@ Devuelve SOLO este JSON:
                                       onChange={(e) =>
                                         setPreguntasPropiasConfig({
                                           ...preguntasPropiasConfig,
-                                          constructor_oraciones_cantidad: Math.max(
-                                            2,
-                                            parseInt(e.target.value) || 5,
-                                          ),
+                                          constructor_oraciones_cantidad:
+                                            Math.max(
+                                              2,
+                                              parseInt(e.target.value) || 5,
+                                            ),
                                         })
                                       }
                                       style={{
@@ -98579,8 +98908,12 @@ Devuelve SOLO este JSON:
                                       }}
                                     >
                                       <option value="basico">🟢 Básico</option>
-                                      <option value="intermedio">🟡 Intermedio</option>
-                                      <option value="avanzado">🔴 Avanzado</option>
+                                      <option value="intermedio">
+                                        🟡 Intermedio
+                                      </option>
+                                      <option value="avanzado">
+                                        🔴 Avanzado
+                                      </option>
                                     </select>
                                   </div>
                                 )}
@@ -100058,7 +100391,8 @@ Devuelve SOLO este JSON:
                           (preguntasPropiasConfig.writing_transformation_libre ||
                             0) +
                           (preguntasPropiasConfig.oraciones_propias || 0) +
-                          (preguntasPropiasConfig.constructor_oraciones || 0) ===
+                          (preguntasPropiasConfig.constructor_oraciones ||
+                            0) ===
                         0
                       }
                       className="btn-primary"

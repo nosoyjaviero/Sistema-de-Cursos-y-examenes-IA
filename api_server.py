@@ -4477,6 +4477,9 @@ async def evaluar_respuesta_textual(datos: dict):
         pregunta = datos.get("pregunta", "")
         respuesta_usuario = datos.get("respuesta_usuario", "")
         respuesta_correcta = datos.get("respuesta_correcta", "")
+        respuesta_esperada = datos.get("respuesta_esperada", "") or respuesta_correcta
+        palabras_clave = datos.get("palabras_clave", []) or []
+        tipo_pregunta = datos.get("tipo_pregunta", "")
         intentos_previos = datos.get("intentos_previos", [])
         modelo = datos.get("modelo")  # Modelo seleccionado por el usuario
         
@@ -4486,15 +4489,55 @@ async def evaluar_respuesta_textual(datos: dict):
         if not pregunta or not respuesta_usuario:
             raise HTTPException(status_code=400, detail="Faltan datos requeridos: pregunta y respuesta_usuario")
         
-        print(f"🤖 Evaluando respuesta con modelo: {modelo}")
+        print(f"🤖 Evaluando respuesta con modelo: {modelo} | tipo: {tipo_pregunta or 'n/a'}")
         print(f"   📝 Pregunta: {pregunta[:100]}...")
         print(f"   💭 Respuesta usuario: {respuesta_usuario[:100]}...")
         
-        # Construir prompt de evaluación
+        # ── Evaluación LOCAL para short_answer con palabras_clave ──────────────
+        if tipo_pregunta == "short_answer" and palabras_clave:
+            texto_usuario = respuesta_usuario.strip().lower()
+            encontradas = [kw for kw in palabras_clave if str(kw).strip().lower() in texto_usuario]
+            faltantes   = [kw for kw in palabras_clave if str(kw).strip().lower() not in texto_usuario]
+            proporcion  = len(encontradas) / len(palabras_clave)
+            puntuacion  = round(proporcion * 10, 1)
+            aprobada    = proporcion >= 0.6
+            
+            if proporcion == 1.0:
+                fb = f"✅ Excelente — incluiste todos los conceptos clave: {', '.join(palabras_clave)}."
+            elif aprobada:
+                fb = (f"✅ Bien — encontraste {len(encontradas)}/{len(palabras_clave)} conceptos clave. "
+                      f"Faltaron: {', '.join(faltantes)}." if faltantes else
+                      f"✅ Bien — encontraste {len(encontradas)}/{len(palabras_clave)} conceptos clave.")
+            else:
+                fb = (f"❌ Incompleto — solo {len(encontradas)}/{len(palabras_clave)} conceptos. "
+                      f"Asegúrate de mencionar: {', '.join(faltantes)}.")
+            
+            sugerencias = (f"Incluye las palabras clave faltantes en tu respuesta: {', '.join(faltantes)}."
+                           if faltantes else "¡Respuesta completa!")
+            
+            print(f"   ✅ Eval local short_answer: {puntuacion}/10 | Aprobada: {aprobada}")
+            return {
+                "success": True,
+                "evaluacion": {
+                    "puntuacion": puntuacion,
+                    "feedback": fb,
+                    "aprobada": aprobada,
+                    "sugerencias": sugerencias
+                }
+            }
+        # ───────────────────────────────────────────────────────────────────────
+        
+        # Construir prompt de evaluación (tipos que usan IA / open_question, etc.)
         historial_intentos = "\n".join([
             f"Intento {i+1} (puntuación {int.get('puntuacion', 0)}/10): {int.get('respuesta', '')}\nFeedback: {int.get('feedback', '')}"
             for i, int in enumerate(intentos_previos)
         ]) if intentos_previos else "Primer intento"
+        
+        seccion_palabras_clave = ""
+        if palabras_clave:
+            seccion_palabras_clave = f"\nPALABRAS CLAVE QUE DEBE INCLUIR:\n{', '.join(str(kw) for kw in palabras_clave)}\n"
+        
+        respuesta_ref = respuesta_esperada or respuesta_correcta
         
         prompt = f"""Eres un evaluador de respuestas académicas. Evalúa la siguiente respuesta de manera objetiva y constructiva.
 
@@ -4502,8 +4545,8 @@ PREGUNTA:
 {pregunta}
 
 RESPUESTA ESPERADA:
-{respuesta_correcta}
-
+{respuesta_ref}
+{seccion_palabras_clave}
 RESPUESTA DEL ESTUDIANTE:
 {respuesta_usuario}
 
@@ -4512,7 +4555,7 @@ HISTORIAL DE INTENTOS PREVIOS:
 
 Evalúa la respuesta con los siguientes criterios:
 1. Precisión conceptual (¿es correcta?)
-2. Completitud (¿incluye todos los puntos clave?)
+2. Completitud (¿incluye todos los puntos clave?){' Verifica especialmente las palabras clave indicadas.' if palabras_clave else ''}
 3. Claridad (¿está bien explicada?)
 4. Mejora respecto a intentos anteriores (si aplica)
 

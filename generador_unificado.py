@@ -2165,42 +2165,202 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         respuesta_correcta_lower = respuesta_correcta.strip().lower()
         
         if pregunta.tipo == "multiple" or pregunta.tipo == "mcq":
-            # Para múltiple, solo comparar la letra (A, B, C, D)
-            if respuesta_usuario_lower in respuesta_correcta_lower or respuesta_correcta_lower in respuesta_usuario_lower:
+            # Obtener explicacion desde metadata (campo del JSON del usuario)
+            meta_mcq = pregunta.metadata if isinstance(getattr(pregunta, 'metadata', None), dict) else {}
+            explicacion = meta_mcq.get('explicacion') or meta_mcq.get('explanation') or ''
+            
+            # Comparación flexible: extraer solo la letra inicial si la hay
+            import re as _re
+            def _extraer_letra(s):
+                m = _re.match(r'^\s*([A-Da-d])\s*[\.\)\:]?', s)
+                return m.group(1).upper() if m else s.strip().upper()
+            
+            letra_usuario  = _extraer_letra(respuesta_usuario)
+            letra_correcta = _extraer_letra(respuesta_correcta)
+            
+            # Comparar por letra extraída primero, luego por contenido completo
+            es_correcto = (
+                letra_usuario == letra_correcta or
+                respuesta_usuario_lower in respuesta_correcta_lower or
+                respuesta_correcta_lower in respuesta_usuario_lower
+            )
+            
+            if es_correcto:
                 resultado["correcta"] = True
                 resultado["puntos_obtenidos"] = pregunta.puntos
-                resultado["feedback"] = "¡Correcto!"
+                fb = "✅ ¡Correcto!"
+                if explicacion:
+                    fb += f"\n💡 {explicacion}"
+                resultado["feedback"] = fb
             else:
-                resultado["feedback"] = f"Incorrecto. La respuesta correcta es: {pregunta.respuesta_correcta}"
+                # Buscar el texto completo de la opción correcta
+                opciones = pregunta.opciones or []
+                opcion_correcta_texto = pregunta.respuesta_correcta
+                for op in opciones:
+                    if _extraer_letra(str(op)) == letra_correcta:
+                        opcion_correcta_texto = op
+                        break
+                fb = f"❌ Incorrecto. La respuesta correcta es: {opcion_correcta_texto}"
+                if explicacion:
+                    fb += f"\n💡 {explicacion}"
+                resultado["feedback"] = fb
         
         elif pregunta.tipo in ["verdadero_falso", "verdadero-falso", "true_false"]:
+            meta_tf = pregunta.metadata if isinstance(getattr(pregunta, 'metadata', None), dict) else {}
+            explicacion = meta_tf.get('explicacion') or meta_tf.get('explanation') or ''
+            
             # Extraer respuesta correcta de metadata si existe
             respuesta_correcta_display = pregunta.respuesta_correcta
-            if hasattr(pregunta, 'metadata') and pregunta.metadata:
-                if isinstance(pregunta.metadata, dict):
-                    correct_answer = pregunta.metadata.get('correct_answer')
-                    if correct_answer is not None:
-                        respuesta_correcta_display = 'Verdadero' if correct_answer else 'Falso'
+            if meta_tf:
+                correct_answer = meta_tf.get('correct_answer')
+                if correct_answer is not None:
+                    respuesta_correcta_display = 'Verdadero' if correct_answer else 'Falso'
             
             # Normalizar respuestas para comparación flexible
-            resp_lower = respuesta_usuario_lower.replace('verdadero', 'true').replace('falso', 'false')
-            corr_lower = respuesta_correcta_lower.replace('verdadero', 'true').replace('falso', 'false')
+            def _norm_tf(s):
+                return (s.lower()
+                        .replace('verdadero', 'true').replace('falso', 'false')
+                        .replace('yes', 'true').replace('no', 'false')
+                        .strip())
             
-            if resp_lower == corr_lower or respuesta_usuario_lower == respuesta_correcta_lower:
+            if _norm_tf(respuesta_usuario) == _norm_tf(respuesta_correcta_display):
                 resultado["correcta"] = True
                 resultado["puntos_obtenidos"] = pregunta.puntos
-                resultado["feedback"] = "¡Correcto!"
+                fb = "✅ ¡Correcto!"
+                if explicacion:
+                    fb += f"\n💡 {explicacion}"
+                resultado["feedback"] = fb
             else:
-                resultado["feedback"] = f"Incorrecto. La respuesta correcta es: {respuesta_correcta_display}"
+                fb = f"❌ Incorrecto. La respuesta correcta es: {respuesta_correcta_display}"
+                if explicacion:
+                    fb += f"\n💡 {explicacion}"
+                resultado["feedback"] = fb
         
-        elif pregunta.tipo in ["corta", "desarrollo", "short_answer", "open_question", "case_study",
+        elif pregunta.tipo == "short_answer":
+            # ========== EVALUACIÓN POR PALABRAS CLAVE (sin IA) ==========
+            palabras_clave = getattr(pregunta, 'palabras_clave', None) or pregunta.metadata.get('palabras_clave', [])
+            respuesta_esperada = (
+                getattr(pregunta, 'respuesta_esperada', None) or
+                pregunta.metadata.get('respuesta_esperada', '') or
+                pregunta.respuesta_correcta or ''
+            )
+            texto_usuario = respuesta_usuario.strip().lower()
+
+            if palabras_clave:
+                # Grading por palabras clave: cuenta cuántas están en la respuesta del usuario
+                encontradas = []
+                faltantes = []
+                for kw in palabras_clave:
+                    if str(kw).lower() in texto_usuario:
+                        encontradas.append(kw)
+                    else:
+                        faltantes.append(kw)
+                proporcion = len(encontradas) / len(palabras_clave)
+                puntos = round(proporcion * pregunta.puntos, 1)
+                correcto = proporcion >= 0.6
+
+                if proporcion == 1.0:
+                    fb = f"✅ Respuesta completa. Contiene todas las palabras clave: {', '.join(encontradas)}."
+                elif proporcion >= 0.6:
+                    fb = f"✅ Aceptable ({int(proporcion*100)}%). Palabras encontradas: {', '.join(encontradas)}. Faltó incluir: {', '.join(faltantes)}."
+                elif proporcion > 0:
+                    fb = f"⚠️ Incompleto ({int(proporcion*100)}%). Solo mencionaste: {', '.join(encontradas)}. Faltaron: {', '.join(faltantes)}."
+                else:
+                    fb = f"❌ No se encontraron las palabras clave esperadas: {', '.join(faltantes)}."
+                    if respuesta_esperada:
+                        fb += f" Respuesta esperada: {respuesta_esperada}"
+
+                resultado["correcta"] = correcto
+                resultado["puntos_obtenidos"] = puntos
+                resultado["feedback"] = fb
+                print(f"📝 short_answer → palabras_clave {len(encontradas)}/{len(palabras_clave)} → {puntos}/{pregunta.puntos} pts")
+            elif respuesta_esperada:
+                # Sin palabras_clave: comparación por similitud con respuesta_esperada
+                palabras_esperadas = set(w for w in respuesta_esperada.lower().split() if len(w) > 3)
+                palabras_usuario_set = set(w for w in texto_usuario.split() if len(w) > 3)
+                if palabras_esperadas:
+                    coincidencias = palabras_esperadas.intersection(palabras_usuario_set)
+                    proporcion = len(coincidencias) / len(palabras_esperadas)
+                    puntos = round(proporcion * pregunta.puntos, 1)
+                    correcto = proporcion >= 0.6
+                    resultado["correcta"] = correcto
+                    resultado["puntos_obtenidos"] = puntos
+                    resultado["feedback"] = (
+                        f"{'✅' if correcto else '❌'} ({int(proporcion*100)}% coincidencia). "
+                        f"Respuesta esperada: {respuesta_esperada}"
+                    )
+                else:
+                    resultado["feedback"] = f"Sin respuesta esperada definida. Se asignan 0 puntos."
+            else:
+                resultado["feedback"] = "No hay criterios de evaluación definidos para esta pregunta."
+
+        elif pregunta.tipo == "open_question":
+            # ===== EVALUACIÓN POR PUNTOS_CLAVE (sin IA cuando están definidos) =====
+            meta_oq = pregunta.metadata if isinstance(getattr(pregunta, 'metadata', None), dict) else {}
+            puntos_clave = meta_oq.get('puntos_clave') or []
+            respuesta_modelo_oq = meta_oq.get('respuesta_modelo') or meta_oq.get('model_answer') or pregunta.respuesta_correcta or ''
+            texto_usuario = respuesta_usuario.strip().lower()
+
+            if puntos_clave:
+                encontradas = [p for p in puntos_clave if str(p).strip().lower() in texto_usuario]
+                faltantes   = [p for p in puntos_clave if str(p).strip().lower() not in texto_usuario]
+                proporcion  = len(encontradas) / len(puntos_clave)
+                puntos_oq   = round(proporcion * pregunta.puntos, 1)
+                correcto    = proporcion >= 0.6
+                if proporcion == 1.0:
+                    fb = f"✅ Excelente — mencionaste todos los puntos clave ({len(encontradas)}/{len(puntos_clave)})."
+                elif correcto:
+                    fb = (f"✅ Bien — cubriste {len(encontradas)}/{len(puntos_clave)} puntos. "
+                          + (f"Faltó mencionar: {', '.join(faltantes)}." if faltantes else ""))
+                else:
+                    fb = (f"❌ Incompleto — solo {len(encontradas)}/{len(puntos_clave)} puntos. "
+                          f"Asegúrate de incluir: {', '.join(faltantes)}.")
+                if respuesta_modelo_oq:
+                    fb += f"\n📖 Respuesta modelo: {respuesta_modelo_oq}"
+                resultado["correcta"] = correcto
+                resultado["puntos_obtenidos"] = puntos_oq
+                resultado["feedback"] = fb
+            else:
+                # Sin puntos_clave — usar IA
+                print(f"\n🤖 open_question sin puntos_clave — evaluando con IA...")
+                resultado = self._evaluar_con_ia(pregunta, respuesta_usuario)
+
+        elif pregunta.tipo in ("caso_estudio", "case_study"):
+            # ===== EVALUACIÓN POR PUNTOS_EVALUACION (sin IA cuando están definidos) =====
+            meta_cs = pregunta.metadata if isinstance(getattr(pregunta, 'metadata', None), dict) else {}
+            puntos_eval = meta_cs.get('puntos_evaluacion') or meta_cs.get('evaluation_criteria') or []
+            texto_usuario = respuesta_usuario.strip().lower()
+
+            if puntos_eval:
+                encontradas = [p for p in puntos_eval if str(p).strip().lower() in texto_usuario]
+                faltantes   = [p for p in puntos_eval if str(p).strip().lower() not in texto_usuario]
+                proporcion  = len(encontradas) / len(puntos_eval)
+                puntos_cs   = round(proporcion * pregunta.puntos, 1)
+                correcto    = proporcion >= 0.6
+                if proporcion == 1.0:
+                    fb = f"✅ Análisis completo — abordaste todos los criterios ({len(encontradas)}/{len(puntos_eval)})."
+                elif correcto:
+                    fb = (f"✅ Buen análisis — cubriste {len(encontradas)}/{len(puntos_eval)} criterios. "
+                          + (f"Podrías ampliar: {', '.join(faltantes)}." if faltantes else ""))
+                else:
+                    fb = (f"❌ Análisis incompleto — solo {len(encontradas)}/{len(puntos_eval)} criterios. "
+                          f"Asegúrate de trabajar: {', '.join(faltantes)}.")
+                resultado["correcta"] = correcto
+                resultado["puntos_obtenidos"] = puntos_cs
+                resultado["feedback"] = fb
+            else:
+                # Sin criterios — usar IA
+                print(f"\n🤖 caso_estudio sin puntos_evaluacion — evaluando con IA...")
+                resultado = self._evaluar_con_ia(pregunta, respuesta_usuario)
+
+        elif pregunta.tipo in ["corta", "desarrollo",
                                "flashcard", "cloze",
                                "reading_comprehension", "reading_true_false", "reading_cloze", 
                                "reading_skill", "reading_matching", "reading_sequence",
                                "writing_short", "writing_paraphrase", "writing_correction",
                                "writing_transformation", "writing_essay", "writing_sentence_builder",
                                "writing_picture_description", "writing_email"]:
-            # Para todos los demás tipos, usar IA para evaluar
+            # Para estos tipos, usar IA para evaluar
             print(f"\n🤖 Evaluando respuesta de tipo '{pregunta.tipo}' con IA...")
             resultado = self._evaluar_con_ia(pregunta, respuesta_usuario)
         
@@ -2216,8 +2376,17 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         
         # ========== EVALUACIÓN ESPECIAL PARA CLOZE ==========
         if pregunta.tipo == 'cloze' and hasattr(pregunta, 'metadata') and pregunta.metadata:
-            if isinstance(pregunta.metadata, dict) and 'answers' in pregunta.metadata:
-                respuestas_correctas = pregunta.metadata['answers']
+            meta = pregunta.metadata if isinstance(pregunta.metadata, dict) else {}
+            # Soportar tanto 'answers' (inglés) como 'respuestas' (español)
+            respuestas_correctas = meta.get('answers') or meta.get('respuestas') or []
+            # También intentar desde respuesta_correcta del objeto si ya es string separado por comas
+            if not respuestas_correctas and pregunta.respuesta_correcta:
+                rc = pregunta.respuesta_correcta
+                if isinstance(rc, list):
+                    respuestas_correctas = rc
+                elif isinstance(rc, str) and (',' in rc or rc):
+                    respuestas_correctas = [r.strip() for r in rc.split(',')]
+            if respuestas_correctas:
                 
                 # Dividir respuestas del usuario (pueden estar separadas por comas o |||)
                 respuestas_usuario_lista = []
@@ -2273,21 +2442,47 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         
         # ========== EVALUACIÓN NORMAL PARA OTROS TIPOS ==========
         
-        # Extraer respuesta correcta dependiendo del tipo
+        # Extraer respuesta correcta / modelo dependiendo del tipo
         respuesta_modelo = pregunta.respuesta_correcta
+        meta = pregunta.metadata if isinstance(getattr(pregunta, 'metadata', None), dict) else {}
         
         # Para flashcards, extraer de metadata.solution.answer
-        if pregunta.tipo == 'flashcard' and hasattr(pregunta, 'metadata') and pregunta.metadata:
-            if isinstance(pregunta.metadata, dict):
-                solution = pregunta.metadata.get('solution', {})
-                if isinstance(solution, dict):
-                    respuesta_modelo = solution.get('answer', respuesta_modelo)
+        if pregunta.tipo == 'flashcard':
+            solution = meta.get('solution', {})
+            if isinstance(solution, dict):
+                respuesta_modelo = solution.get('answer', respuesta_modelo)
         
-        # Para casos de estudio, extraer de metadata (respuesta_esperada o sample_answer)
-        elif pregunta.tipo == 'case_study' and hasattr(pregunta, 'metadata') and pregunta.metadata:
-            if isinstance(pregunta.metadata, dict):
-                # Intentar primero respuesta_esperada, luego sample_answer
-                respuesta_modelo = pregunta.metadata.get('respuesta_esperada') or pregunta.metadata.get('sample_answer', respuesta_modelo)
+        # Para casos de estudio (español e inglés)
+        elif pregunta.tipo in ('caso_estudio', 'case_study'):
+            # Prioridad: respuesta_esperada > sample_answer > pregunta_principal + puntos_evaluacion
+            respuesta_modelo = (
+                meta.get('respuesta_esperada') or
+                meta.get('sample_answer') or
+                respuesta_modelo
+            )
+            # Si sigue sin haber nada, construir desde pregunta_principal + puntos_evaluacion
+            if not respuesta_modelo or respuesta_modelo == 'None':
+                pregunta_principal = meta.get('pregunta_principal', '')
+                puntos_eval = meta.get('puntos_evaluacion') or meta.get('evaluation_criteria') or []
+                partes = []
+                if pregunta_principal:
+                    partes.append(f"Pregunta central: {pregunta_principal}")
+                if puntos_eval:
+                    partes.append(f"Criterios de evaluación: {'; '.join(str(p) for p in puntos_eval)}")
+                if partes:
+                    respuesta_modelo = ' | '.join(partes)
+        
+        # Para open_question: usar respuesta_modelo o puntos_clave
+        elif pregunta.tipo == 'open_question':
+            respuesta_modelo = (
+                meta.get('respuesta_modelo') or
+                meta.get('model_answer') or
+                respuesta_modelo
+            )
+            if not respuesta_modelo or respuesta_modelo == 'None':
+                puntos_clave = meta.get('puntos_clave') or []
+                if puntos_clave:
+                    respuesta_modelo = 'Puntos clave esperados: ' + '; '.join(str(p) for p in puntos_clave)
         
         # Si es un diccionario (fallback), extraer el campo 'answer'
         if isinstance(respuesta_modelo, dict):
@@ -2301,30 +2496,50 @@ AHORA GENERA LAS {total} PREGUNTAS COMPLETAS CON DATOS REALES (recuerda incluir 
         if not respuesta_modelo or respuesta_modelo == 'None':
             respuesta_modelo = "No hay respuesta modelo definida para esta pregunta"
         
-        prompt = f"""Tarea: Comparación de texto y extracción de conceptos clave.
+        # ── Contexto adicional por tipo ─────────────────────────────────────
+        seccion_extra = ""
+        if pregunta.tipo in ('open_question',):
+            puntos_clave = meta.get('puntos_clave') or []
+            if puntos_clave:
+                seccion_extra = f"\nPUNTOS CLAVE QUE DEBE MENCIONAR:\n" + "\n".join(f"- {p}" for p in puntos_clave) + "\n"
+        elif pregunta.tipo in ('caso_estudio', 'case_study'):
+            desc = meta.get('descripcion_caso') or meta.get('scenario') or ''
+            pregunta_ppal = meta.get('pregunta_principal') or ''
+            puntos_eval = meta.get('puntos_evaluacion') or meta.get('evaluation_criteria') or []
+            if desc:
+                seccion_extra += f"\nCONTEXTO DEL CASO:\n{desc}\n"
+            if pregunta_ppal:
+                seccion_extra += f"\nPREGUNTA CENTRAL A RESPONDER:\n{pregunta_ppal}\n"
+            if puntos_eval:
+                seccion_extra += "\nCRITERIOS A EVALUAR:\n" + "\n".join(f"- {p}" for p in puntos_eval) + "\n"
+        # ────────────────────────────────────────────────────────────────────
+        
+        prompt = f"""Tarea: Evaluación de respuesta académica con retroalimentación detallada.
 
-TEXTO DE REFERENCIA:
-"{respuesta_modelo}"
+PREGUNTA:
+{pregunta.pregunta}
 
-TEXTO A COMPARAR:
-"{respuesta_usuario}"
+RESPUESTA ESPERADA / MODELO:
+{respuesta_modelo}
+{seccion_extra}
+RESPUESTA DEL ESTUDIANTE:
+{respuesta_usuario}
 
-INSTRUCCIONES DE PROCESAMIENTO:
-1. Extraer términos y conceptos importantes del texto de referencia
-2. Verificar presencia de cada término/concepto en el texto a comparar
-3. Calcular puntuación: (conceptos_presentes / total_conceptos) * {pregunta.puntos}
+INSTRUCCIONES:
+1. Identifica los conceptos clave de la respuesta esperada
+2. Verifica cuáles están presentes en la respuesta del estudiante
+3. Calcula: puntos = (conceptos_presentes / total_conceptos) × {pregunta.puntos}
+4. El feedback debe ser constructivo y en el mismo idioma de la pregunta
 
-OUTPUT REQUERIDO - JSON únicamente:
+OUTPUT REQUERIDO — JSON únicamente, sin texto extra:
 {{
   "puntos": <float entre 0 y {pregunta.puntos}>,
-  "conceptos_correctos": [<lista de términos encontrados>],
-  "conceptos_faltantes": [<lista de términos ausentes>],
-  "feedback": "<resumen de coincidencias>"
+  "conceptos_correctos": [<lista de conceptos encontrados>],
+  "conceptos_faltantes": [<lista de conceptos ausentes>],
+  "feedback": "<retroalimentación constructiva de 2-3 líneas>"
 }}
 
-CONTEXTO DE LA PREGUNTA: {pregunta.pregunta}
-
-Genera el JSON ahora:"""
+JSON:"""
 
         try:
             if self.usar_ollama:
