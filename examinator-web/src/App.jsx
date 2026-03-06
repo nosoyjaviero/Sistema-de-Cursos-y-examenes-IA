@@ -10653,9 +10653,10 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       falloAntesSesion: Boolean(falloAntesSesion),
       fase: "flashcards",
     };
-    const historialActualizado = [...historialPrevio, entradaHistorialRevision].slice(
-      -200,
-    );
+    const historialActualizado = [
+      ...historialPrevio,
+      entradaHistorialRevision,
+    ].slice(-200);
     flashcardConNuevosDatos.historial_revisiones = historialActualizado;
     flashcardConNuevosDatos.historialRevisiones = historialActualizado;
 
@@ -25320,12 +25321,7 @@ Generate an educational reading passage about this topic that would be suitable 
     const nota = notasGuardadas.find((n) => n.id === idNota);
     if (!nota) return;
 
-    const resultado = calcularProximaRevision(
-      nota,
-      dificultad,
-      false,
-      "notas",
-    );
+    const resultado = calcularProximaRevision(nota, dificultad, false, "notas");
     const historialPrevio = Array.isArray(nota.historial_revisiones)
       ? nota.historial_revisiones
       : Array.isArray(nota.historialRevisiones)
@@ -25354,9 +25350,10 @@ Generate an educational reading passage about this topic that would be suitable 
       estadoRevisionNuevo: resultado.estadoRevision || "nueva",
       fase: "notas",
     };
-    const historialActualizado = [...historialPrevio, entradaHistorialRevision].slice(
-      -200,
-    );
+    const historialActualizado = [
+      ...historialPrevio,
+      entradaHistorialRevision,
+    ].slice(-200);
     const notaActualizada = {
       ...nota,
       ...resultado,
@@ -60298,7 +60295,8 @@ Devuelve SOLO este JSON:
                                 correcta: dificultad !== "dificil",
                                 diasParaProximaRevision:
                                   resultadoNota.intervalo || 1,
-                                intervaloSiguiente: resultadoNota.intervalo || 1,
+                                intervaloSiguiente:
+                                  resultadoNota.intervalo || 1,
                                 proximaRevision:
                                   resultadoNota.proximaRevision || null,
                                 intervaloAnterior: nota.intervalo || 1,
@@ -60356,7 +60354,10 @@ Devuelve SOLO este JSON:
                               rep === 0
                                 ? 2
                                 : iv >= 90
-                                  ? Math.max(7, Math.min(90, Math.round(iv * 0.35)))
+                                  ? Math.max(
+                                      7,
+                                      Math.min(90, Math.round(iv * 0.35)),
+                                    )
                                   : Math.max(2, Math.round(iv * 1.7));
                             const diasFacil =
                               rep === 0
