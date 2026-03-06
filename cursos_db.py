@@ -68,6 +68,9 @@ class CursosDatabase:
                 # Excluir archivos JSON de prácticas/exámenes
                 if archivo.name.startswith("practica_") or archivo.name.startswith("examen_"):
                     continue
+                # Excluir archivos internos del sistema (notas y flashcards)
+                if archivo.name in ("notas.json", "flashcards.json"):
+                    continue
                 
                 stat = archivo.stat()
                 documentos.append({

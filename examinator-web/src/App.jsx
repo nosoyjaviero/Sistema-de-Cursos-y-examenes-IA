@@ -1508,7 +1508,12 @@ function App() {
       if (practicasGuardadas && practicasGuardadas.length > 0) {
         // ✅ CARGAR TODAS LAS PRÁCTICAS (sin filtrar)
         // El filtro por carpeta se hace en la UI
-        setPracticas(practicasGuardadas);
+        // Sanitizar: eliminar preguntas null del array
+        const sanitizadas = practicasGuardadas.map(p => ({
+          ...p,
+          preguntas: (p.preguntas || []).filter(q => q != null)
+        }));
+        setPracticas(sanitizadas);
       }
     };
     cargarPracticasIniciales();
@@ -16914,36 +16919,29 @@ JSON:`;
       if (data.success) {
         limpiarExamenLocal(); // Limpiar guardado local
 
-        // Mensaje y destino según tipo
-        if (esPractica) {
-          setMensaje({
-            tipo: "success",
-            texto:
-              '⏸️ Práctica pausada correctamente. Ve a la pestaña "Prácticas" para continuarla',
-          });
-          // Cambiar a la pestaña de prácticas
-          setTimeout(() => {
-            setSelectedMenu("practicas");
-          }, 2000);
-        } else {
-          setMensaje({
-            tipo: "success",
-            texto:
-              '⏸️ Examen pausado correctamente. Ve a la pestaña "Generar Exámenes" para continuarlo',
-          });
-          // Cambiar a la pestaña de generar exámenes
-          setTimeout(() => {
-            setSelectedMenu("generar");
-          }, 2000);
+        // Si es práctica, recargar prácticas ANTES de cerrar (cerrarExamen resetea esPractica)
+        const eraPractica = esPractica;
+        if (eraPractica) {
+          const practicasActualizadas = await getDatos("practicas");
+          setPracticas(practicasActualizadas);
         }
 
         cerrarExamen(true); // 🔥 true = es pausa, NO eliminar la práctica
         cargarExamenesGuardados();
 
-        // Si es práctica, también recargar prácticas
-        if (esPractica) {
-          const practicasActualizadas = await getDatos("practicas");
-          setPracticas(practicasActualizadas);
+        // Navegar a la pestaña correspondiente
+        if (eraPractica) {
+          setSelectedMenu("practicas");
+          setMensaje({
+            tipo: "success",
+            texto: '⏸️ Práctica pausada correctamente',
+          });
+        } else {
+          setSelectedMenu("generar");
+          setMensaje({
+            tipo: "success",
+            texto: '⏸️ Examen pausado correctamente',
+          });
         }
       }
     } catch (error) {
@@ -25873,7 +25871,7 @@ Generate an educational reading passage about this topic that would be suitable 
         );
         setFlashcardsActuales(flashcards);
       });
-      cargarCarpetasFlashcards("");
+      cargarCarpetasFlashcards(rutaFlashcardsActual || "");
     }
   }, [selectedMenu]);
 
@@ -66406,7 +66404,7 @@ Devuelve SOLO este JSON:
                     className="btn-acceso-rapido btn-flashcards"
                     onClick={() => {
                       setRutaFlashcardsActual(rutaActual);
-                      setCarpetaFlashcardActual({ ruta: rutaActual });
+                      setCarpetaFlashcardActual(null);
                       setSelectedMenu("flashcards");
                       cargarCarpetasFlashcards(rutaActual);
                     }}
@@ -66428,9 +66426,11 @@ Devuelve SOLO este JSON:
                   <button
                     className="btn-acceso-rapido btn-practicas"
                     onClick={() => {
+                      setRutaPracticasActual(rutaActual);
                       setSelectedMenu("practicas");
+                      cargarCarpetasPracticas(rutaActual);
                     }}
-                    title="Generar práctica en esta carpeta"
+                    title="Ver prácticas de esta carpeta"
                   >
                     🎯 Prácticas
                   </button>
@@ -70018,6 +70018,65 @@ Devuelve SOLO este JSON:
               )}
             </div>
 
+            {/* Botones de navegación cruzada */}
+            {rutaPracticasActual && (
+              <div
+                className="accesos-rapidos-fase"
+                style={{ marginBottom: "1rem" }}
+              >
+                <div className="accesos-rapidos-titulo">
+                  <span>🔗 Ver esta carpeta en:</span>
+                </div>
+                <div className="accesos-rapidos-botones">
+                  <button
+                    className="btn-acceso-rapido btn-cursos"
+                    onClick={() => {
+                      setRutaActual(rutaPracticasActual);
+                      setSelectedMenu("cursos");
+                      cargarCarpeta(rutaPracticasActual);
+                    }}
+                    title="Ver documentos de esta carpeta"
+                  >
+                    📚 Mis Cursos
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-notas"
+                    onClick={() => {
+                      setRutaNotasActual(rutaPracticasActual);
+                      setSelectedMenu("notas");
+                      cargarCarpetasNotas(rutaPracticasActual);
+                    }}
+                    title="Ver notas de esta carpeta"
+                  >
+                    📝 Notas
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-flashcards"
+                    onClick={() => {
+                      setRutaFlashcardsActual(rutaPracticasActual);
+                      setCarpetaFlashcardActual(null);
+                      setSelectedMenu("flashcards");
+                      cargarCarpetasFlashcards(rutaPracticasActual);
+                    }}
+                    title="Ver flashcards de esta carpeta"
+                  >
+                    🎴 Flashcards
+                  </button>
+                  <button
+                    className="btn-acceso-rapido btn-examenes"
+                    onClick={() => {
+                      setRutaActualExamenes(rutaPracticasActual);
+                      setSelectedMenu("examenes");
+                      cargarCarpetasExamenes(rutaPracticasActual);
+                    }}
+                    title="Ver exámenes de esta carpeta"
+                  >
+                    📋 Exámenes
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Mostrar carpetas disponibles */}
             {carpetasPracticas.length > 0 && (
               <div className="carpetas-grid" style={{ marginBottom: "2rem" }}>
@@ -70244,6 +70303,7 @@ Devuelve SOLO este JSON:
                               const preguntasReading =
                                 practica.preguntas?.filter(
                                   (p) =>
+                                    p &&
                                     p.tipo === "reading_comprehension" &&
                                     (p.metadata?.texto_lectura ||
                                       p.texto_lectura),
@@ -70497,7 +70557,9 @@ Devuelve SOLO este JSON:
                                 {practica.tipo === "documento" ? "📄" : "📁"}
                               </div>
                               <div className="practica-info">
-                                <h3>{practica.ruta.split("/").pop()}</h3>
+                                <h3>{practica.ruta
+                                  ? practica.ruta.split("/").pop()
+                                  : practica.carpeta_nombre || practica.titulo || "Práctica"}</h3>
                                 <p className="practica-fecha">
                                   {new Date(practica.fecha).toLocaleDateString(
                                     "es-ES",
@@ -70571,7 +70633,7 @@ Devuelve SOLO este JSON:
 
                                   setMensaje({
                                     tipo: "info",
-                                    texto: `🔄 Reintentando: ${practicaActual.ruta.split("/").pop() || practicaActual.ruta}`,
+                                    texto: `🔄 Reintentando: ${(practicaActual.ruta || "").split("/").pop() || practicaActual.carpeta_nombre || "Práctica"}`,
                                   });
                                 }}
                                 title="Reintentar práctica"
@@ -70626,6 +70688,7 @@ Devuelve SOLO este JSON:
                               const preguntasReading =
                                 practica.preguntas?.filter(
                                   (p) =>
+                                    p &&
                                     p.tipo === "reading_comprehension" &&
                                     (p.metadata?.texto_lectura ||
                                       p.texto_lectura),
@@ -70795,7 +70858,7 @@ Devuelve SOLO este JSON:
 
                                   setMensaje({
                                     tipo: "info",
-                                    texto: `🔄 Reintentando: ${practicaActual.ruta.split("/").pop() || practicaActual.ruta}`,
+                                    texto: `🔄 Reintentando: ${(practicaActual.ruta || "").split("/").pop() || practicaActual.carpeta_nombre || "Práctica"}`,
                                   });
                                 }}
                                 title="Reintentar práctica"
