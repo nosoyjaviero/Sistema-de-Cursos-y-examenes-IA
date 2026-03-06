@@ -4776,15 +4776,26 @@ function App() {
               }
             }
 
+            const proximaRevisionNota =
+              nota.proximaRevision || nota.proxima_revision;
+
             // Si es nueva (sin proximaRevision), SIEMPRE mostrar
-            if (!nota.proximaRevision) {
+            if (!proximaRevisionNota) {
               console.log(`✅ Nota nueva para repasar: ${nota.titulo}`);
               return true;
             }
 
             // Si tiene proximaRevision, verificar si ya toca
-            const fechaRepaso = new Date(nota.proximaRevision);
-            const tocaHoy = fechaRepaso <= hoy;
+            const fechaRepaso = new Date(proximaRevisionNota);
+            const diaRepaso = new Date(
+              fechaRepaso.getFullYear(),
+              fechaRepaso.getMonth(),
+              fechaRepaso.getDate(),
+              0,
+              0,
+              0,
+            );
+            const tocaHoy = diaRepaso <= hoy;
             if (tocaHoy) {
               console.log(`✅ Nota programada para hoy: ${nota.titulo}`);
             }
@@ -9674,6 +9685,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
     item,
     dificultad,
     falloAntesSesion = false,
+    perfil = "general",
   ) => {
     // dificultad: 'facil', 'medio', 'dificil'
     // falloAntesSesion: si el usuario falló esta flashcard antes en esta sesión
@@ -9711,12 +9723,26 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
           "⚠️ Flashcard fallada antes en sesión → intervalo forzado a 1 día",
         );
     } else if (dificultad === "medio") {
-      // 🤔 Me Costó → Patrón: 2 → 5 → 12 → 28 → 64 → 90 → 180 → 360 (×2.3 hasta 90, luego ×2)
+      // 🤔 Me Costó
+      // - Perfil notas: si el intervalo es alto, ACORTAR para ver la nota más frecuente
+      // - Perfil general: mantener crecimiento moderado actual
       if (nuevasRepeticiones === 0) {
         nuevoIntervalo = 2; // Primera prueba real → 2 días
+      } else if (
+        (intervalo || 1) >= 90 &&
+        (perfil === "notas" || perfil === "flashcards")
+      ) {
+        // Si empieza a costar un item maduro, volverlo más frecuente (máx 90 días)
+        nuevoIntervalo = Math.max(
+          7,
+          Math.min(90, Math.round((intervalo || 1) * 0.35)),
+        );
       } else if ((intervalo || 1) >= 90) {
-        // Después de 90 días: crecer ×2
+        // Perfil general: después de 90 días crece ×2
         nuevoIntervalo = Math.round((intervalo || 1) * 2);
+      } else if (perfil === "notas" || perfil === "flashcards") {
+        // Notas/flashcards en progreso: crecimiento más conservador cuando cuesta recordar
+        nuevoIntervalo = Math.max(2, Math.round((intervalo || 1) * 1.7));
       } else {
         nuevoIntervalo = Math.round((intervalo || 1) * 2.3);
       }
@@ -10424,6 +10450,16 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
   // Función auxiliar para guardar notas en su carpeta correspondiente
   const guardarNotaEnCarpeta = async (nota) => {
     const carpeta = nota.carpeta || "";
+    const historialNormalizado = Array.isArray(nota.historial_revisiones)
+      ? nota.historial_revisiones
+      : Array.isArray(nota.historialRevisiones)
+        ? nota.historialRevisiones
+        : [];
+    const notaNormalizada = {
+      ...nota,
+      historial_revisiones: historialNormalizado,
+      historialRevisiones: historialNormalizado,
+    };
 
     // Ya no usamos "Sin carpeta" - la carpeta vacía significa raíz
     console.log("📁 Guardando nota en carpeta:", carpeta || "(raíz)");
@@ -10433,7 +10469,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          nota: nota,
+          nota: notaNormalizada,
           carpeta: carpeta,
         }),
       });
@@ -10583,7 +10619,45 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       flashcardActualizada,
       dificultad,
       falloAntesSesion, // Si falló antes y ahora acierta -> intervalo = 1 día
+      "flashcards",
     );
+
+    const historialPrevio = Array.isArray(
+      flashcardActualizada.historial_revisiones,
+    )
+      ? flashcardActualizada.historial_revisiones
+      : Array.isArray(flashcardActualizada.historialRevisiones)
+        ? flashcardActualizada.historialRevisiones
+        : [];
+    const respuestaEvaluacion =
+      dificultad === "facil"
+        ? "Lo Recorde Facil"
+        : dificultad === "medio"
+          ? "Me Costo"
+          : "Lo Olvide";
+    const entradaHistorialRevision = {
+      fecha: new Date().toISOString(),
+      respuesta: respuestaEvaluacion,
+      evaluacion: dificultad,
+      correcta: dificultad !== "dificil",
+      diasParaProximaRevision: flashcardConNuevosDatos.intervalo || 1,
+      intervaloSiguiente: flashcardConNuevosDatos.intervalo || 1,
+      proximaRevision: flashcardConNuevosDatos.proximaRevision || null,
+      intervaloAnterior: flashcardActualizada.intervalo || 1,
+      repeticionesAnteriores: flashcardActualizada.repeticiones || 0,
+      repeticionesNuevas: flashcardConNuevosDatos.repeticiones || 0,
+      facilidadAnterior: flashcardActualizada.facilidad || 2.5,
+      facilidadNueva: flashcardConNuevosDatos.facilidad || 2.5,
+      estadoRevisionAnterior: flashcardActualizada.estadoRevision || "nueva",
+      estadoRevisionNuevo: flashcardConNuevosDatos.estadoRevision || "nueva",
+      falloAntesSesion: Boolean(falloAntesSesion),
+      fase: "flashcards",
+    };
+    const historialActualizado = [...historialPrevio, entradaHistorialRevision].slice(
+      -200,
+    );
+    flashcardConNuevosDatos.historial_revisiones = historialActualizado;
+    flashcardConNuevosDatos.historialRevisiones = historialActualizado;
 
     console.log("📊 Nuevos datos calculados:", {
       ultima_revision: flashcardConNuevosDatos.ultima_revision,
@@ -10591,6 +10665,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       intervalo: flashcardConNuevosDatos.intervalo,
       repeticiones: flashcardConNuevosDatos.repeticiones,
       estadoRevision: flashcardConNuevosDatos.estadoRevision,
+      historialRevisiones: historialActualizado.length,
     });
 
     // 🔥 GUARDAR EN SU CARPETA CORRESPONDIENTE
@@ -24635,10 +24710,29 @@ Generate an educational reading passage about this topic that would be suitable 
     const cargarNotasIniciales = async () => {
       try {
         console.log("📓 Cargando notas iniciales...");
-        const notasGuardadas = await getDatos("notas");
-        console.log("✅ Notas cargadas:", notasGuardadas?.length || 0);
-        if (notasGuardadas && notasGuardadas.length > 0) {
-          setNotasGuardadas(notasGuardadas);
+        const notasData = await getDatos("notas");
+        const notasNormalizadas = Array.isArray(notasData)
+          ? notasData.map((nota) => {
+              const historial = Array.isArray(nota.historial_revisiones)
+                ? nota.historial_revisiones
+                : Array.isArray(nota.historialRevisiones)
+                  ? nota.historialRevisiones
+                  : [];
+              return {
+                ...nota,
+                proximaRevision:
+                  nota.proximaRevision || nota.proxima_revision || null,
+                proxima_revision:
+                  nota.proxima_revision || nota.proximaRevision || null,
+                historial_revisiones: historial,
+                historialRevisiones: historial,
+              };
+            })
+          : [];
+
+        console.log("✅ Notas cargadas:", notasNormalizadas?.length || 0);
+        if (notasNormalizadas.length > 0) {
+          setNotasGuardadas(notasNormalizadas);
         } else {
           setNotasGuardadas([]);
         }
@@ -25226,8 +25320,49 @@ Generate an educational reading passage about this topic that would be suitable 
     const nota = notasGuardadas.find((n) => n.id === idNota);
     if (!nota) return;
 
-    const resultado = calcularProximaRevision(nota, dificultad);
-    const notaActualizada = { ...nota, ...resultado };
+    const resultado = calcularProximaRevision(
+      nota,
+      dificultad,
+      false,
+      "notas",
+    );
+    const historialPrevio = Array.isArray(nota.historial_revisiones)
+      ? nota.historial_revisiones
+      : Array.isArray(nota.historialRevisiones)
+        ? nota.historialRevisiones
+        : [];
+    const respuestaEvaluacion =
+      dificultad === "facil"
+        ? "Lo Recorde Facil"
+        : dificultad === "medio"
+          ? "Me Costo"
+          : "Lo Olvide";
+    const entradaHistorialRevision = {
+      fecha: new Date().toISOString(),
+      respuesta: respuestaEvaluacion,
+      evaluacion: dificultad,
+      correcta: dificultad !== "dificil",
+      diasParaProximaRevision: resultado.intervalo || 1,
+      intervaloSiguiente: resultado.intervalo || 1,
+      proximaRevision: resultado.proximaRevision || null,
+      intervaloAnterior: nota.intervalo || 1,
+      repeticionesAnteriores: nota.repeticiones || 0,
+      repeticionesNuevas: resultado.repeticiones || 0,
+      facilidadAnterior: nota.facilidad || 2.5,
+      facilidadNueva: resultado.facilidad || 2.5,
+      estadoRevisionAnterior: nota.estadoRevision || "nueva",
+      estadoRevisionNuevo: resultado.estadoRevision || "nueva",
+      fase: "notas",
+    };
+    const historialActualizado = [...historialPrevio, entradaHistorialRevision].slice(
+      -200,
+    );
+    const notaActualizada = {
+      ...nota,
+      ...resultado,
+      historial_revisiones: historialActualizado,
+      historialRevisiones: historialActualizado,
+    };
 
     await guardarNotaEnCarpeta(notaActualizada);
 
@@ -25635,6 +25770,17 @@ Generate an educational reading passage about this topic that would be suitable 
       hoyInicio.setHours(0, 0, 0, 0);
 
       flashcards = flashcards.map((fc) => {
+        // Normalizar historial de revisiones (compatibilidad snake_case y camelCase)
+        const historialRevisionesNormalizado = Array.isArray(
+          fc.historial_revisiones,
+        )
+          ? fc.historial_revisiones
+          : Array.isArray(fc.historialRevisiones)
+            ? fc.historialRevisiones
+            : [];
+        fc.historial_revisiones = historialRevisionesNormalizado;
+        fc.historialRevisiones = historialRevisionesNormalizado;
+
         const ultimaRevision =
           fc.ultima_revision || fc.ultimaRevision || fc.fechaRevision;
 
@@ -27001,6 +27147,10 @@ Generate an educational reading passage about this topic that would be suitable 
       repeticiones: flashcard.repeticiones || 0, // veces que se ha recordado correctamente
       facilidad: flashcard.facilidad || 2.5, // factor de facilidad (1.3-2.5)
       estadoRevision: flashcard.estadoRevision || "nueva",
+      historial_revisiones:
+        flashcard.historial_revisiones || flashcard.historialRevisiones || [],
+      historialRevisiones:
+        flashcard.historialRevisiones || flashcard.historial_revisiones || [],
       archivos: flashcard.archivos || [],
       imagenes: flashcard.imagenes || [],
       latex: flashcard.latex || false,
@@ -55118,7 +55268,12 @@ Devuelve SOLO este JSON:
                               const diasMeCosto =
                                 rep === 0
                                   ? 2
-                                  : Math.min(365, Math.round(iv * 2.3));
+                                  : iv >= 90
+                                    ? Math.max(
+                                        7,
+                                        Math.min(90, Math.round(iv * 0.35)),
+                                      )
+                                    : Math.max(2, Math.round(iv * 1.7));
                               const diasFacil =
                                 rep === 0
                                   ? 3
@@ -60117,10 +60272,57 @@ Devuelve SOLO este JSON:
                             const marcarNota = async (dificultad) => {
                               const nota =
                                 notasRepasoSesion[indiceNotaRepasoActual];
-                              const notaActualizada = calcularProximaRevision(
+                              const resultadoNota = calcularProximaRevision(
                                 nota,
                                 dificultad,
+                                false,
+                                "notas",
                               );
+                              const historialPrevio = Array.isArray(
+                                nota.historial_revisiones,
+                              )
+                                ? nota.historial_revisiones
+                                : Array.isArray(nota.historialRevisiones)
+                                  ? nota.historialRevisiones
+                                  : [];
+                              const respuestaEvaluacion =
+                                dificultad === "facil"
+                                  ? "Lo Recorde Facil"
+                                  : dificultad === "medio"
+                                    ? "Me Costo"
+                                    : "Lo Olvide";
+                              const entradaHistorialRevision = {
+                                fecha: new Date().toISOString(),
+                                respuesta: respuestaEvaluacion,
+                                evaluacion: dificultad,
+                                correcta: dificultad !== "dificil",
+                                diasParaProximaRevision:
+                                  resultadoNota.intervalo || 1,
+                                intervaloSiguiente: resultadoNota.intervalo || 1,
+                                proximaRevision:
+                                  resultadoNota.proximaRevision || null,
+                                intervaloAnterior: nota.intervalo || 1,
+                                repeticionesAnteriores: nota.repeticiones || 0,
+                                repeticionesNuevas:
+                                  resultadoNota.repeticiones || 0,
+                                facilidadAnterior: nota.facilidad || 2.5,
+                                facilidadNueva: resultadoNota.facilidad || 2.5,
+                                estadoRevisionAnterior:
+                                  nota.estadoRevision || "nueva",
+                                estadoRevisionNuevo:
+                                  resultadoNota.estadoRevision || "nueva",
+                                fase: "notas",
+                              };
+                              const historialActualizado = [
+                                ...historialPrevio,
+                                entradaHistorialRevision,
+                              ].slice(-200);
+                              const notaActualizada = {
+                                ...nota,
+                                ...resultadoNota,
+                                historial_revisiones: historialActualizado,
+                                historialRevisiones: historialActualizado,
+                              };
                               // Asegurar campos de marca de revisión
                               const ahora = new Date().toISOString();
                               notaActualizada.ultimoRepaso = ahora;
@@ -60153,7 +60355,9 @@ Devuelve SOLO este JSON:
                             const diasMeCosto =
                               rep === 0
                                 ? 2
-                                : Math.min(365, Math.round(iv * 2.3));
+                                : iv >= 90
+                                  ? Math.max(7, Math.min(90, Math.round(iv * 0.35)))
+                                  : Math.max(2, Math.round(iv * 1.7));
                             const diasFacil =
                               rep === 0
                                 ? 3
