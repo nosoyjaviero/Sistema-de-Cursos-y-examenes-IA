@@ -1509,9 +1509,9 @@ function App() {
         // ✅ CARGAR TODAS LAS PRÁCTICAS (sin filtrar)
         // El filtro por carpeta se hace en la UI
         // Sanitizar: eliminar preguntas null del array
-        const sanitizadas = practicasGuardadas.map(p => ({
+        const sanitizadas = practicasGuardadas.map((p) => ({
           ...p,
-          preguntas: (p.preguntas || []).filter(q => q != null)
+          preguntas: (p.preguntas || []).filter((q) => q != null),
         }));
         setPracticas(sanitizadas);
       }
@@ -16934,13 +16934,13 @@ JSON:`;
           setSelectedMenu("practicas");
           setMensaje({
             tipo: "success",
-            texto: '⏸️ Práctica pausada correctamente',
+            texto: "⏸️ Práctica pausada correctamente",
           });
         } else {
           setSelectedMenu("generar");
           setMensaje({
             tipo: "success",
-            texto: '⏸️ Examen pausado correctamente',
+            texto: "⏸️ Examen pausado correctamente",
           });
         }
       }
@@ -70557,9 +70557,13 @@ Devuelve SOLO este JSON:
                                 {practica.tipo === "documento" ? "📄" : "📁"}
                               </div>
                               <div className="practica-info">
-                                <h3>{practica.ruta
-                                  ? practica.ruta.split("/").pop()
-                                  : practica.carpeta_nombre || practica.titulo || "Práctica"}</h3>
+                                <h3>
+                                  {practica.ruta
+                                    ? practica.ruta.split("/").pop()
+                                    : practica.carpeta_nombre ||
+                                      practica.titulo ||
+                                      "Práctica"}
+                                </h3>
                                 <p className="practica-fecha">
                                   {new Date(practica.fecha).toLocaleDateString(
                                     "es-ES",
