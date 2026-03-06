@@ -7848,12 +7848,16 @@
 .editor-toolbar {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(20, 20, 40, 0.97);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px 8px 0 0;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
 }
 
 .btn-toolbar {
@@ -9274,7 +9278,7 @@
 }
 
 .editor-html-simple p:empty:before {
-  content: '\\200B'; /* Zero-width space para mantener altura */
+  content: '\200B'; /* Zero-width space para mantener altura */
 }
 
 /* Modal de recorte */
