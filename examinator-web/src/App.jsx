@@ -7721,44 +7721,31 @@ Califica ahora:`;
 
     const errorActual = erroresActuales[indiceErrorActual];
 
-    // 🔥 VERIFICAR CORRECTA: MCQ usa comparación mejorada, V/F usa normalización
+    // 🔥 VERIFICAR CORRECTA: MCQ usa letras (A,B,C,D), V/F usa texto
     let esCorrecta = false;
     const respCorrecta = (errorActual.respuesta_correcta || "")
       .toString()
-      .trim();
-    const opcionLower = opcion.toLowerCase();
+      .trim()
+      .toUpperCase();
+    const opcionUpper = opcion.toString().trim().toUpperCase();
 
     // Detectar si es V/F
     const esVerdaderoFalso =
       errorActual.tipo === "verdadero_falso" ||
       errorActual.tipo === "true_false" ||
       errorActual.tipo === "verdadero-falso" ||
-      ["verdadero", "falso", "v", "f", "true", "false"].includes(
-        respCorrecta.toLowerCase(),
-      );
+      ["VERDADERO", "FALSO", "V", "F", "TRUE", "FALSE"].includes(respCorrecta);
 
     if (esVerdaderoFalso) {
       // Normalizar respuesta correcta y comparar
-      const correctaEsVerdadero = ["verdadero", "v", "true"].includes(
-        respCorrecta.toLowerCase(),
-      );
-      const opcionEsVerdadero = opcionLower === "verdadero";
+      const correctaEsVerdadero = ["VERDADERO", "V", "TRUE"].includes(respCorrecta);
+      const opcionEsVerdadero = opcionUpper === "VERDADERO";
       esCorrecta =
         (correctaEsVerdadero && opcionEsVerdadero) ||
         (!correctaEsVerdadero && !opcionEsVerdadero);
     } else {
-      // 🔥 MCQ: comparación mejorada - por letra o por texto
-      // Obtener índice de la opción seleccionada
-      const opciones = errorActual.opciones || [];
-      const idxSeleccionado = opciones.findIndex((o) => o === opcion);
-      const letraSeleccionada =
-        idxSeleccionado >= 0 ? String.fromCharCode(65 + idxSeleccionado) : "";
-
-      // La respuesta correcta puede ser una letra (A, B, C, D) o el texto completo
-      esCorrecta =
-        respCorrecta.toUpperCase() === letraSeleccionada ||
-        opcion.toUpperCase().startsWith(respCorrecta.toUpperCase()) ||
-        respCorrecta.toUpperCase().startsWith(letraSeleccionada);
+      // 🔥 MCQ: Comparar letras directamente (A-D)
+      esCorrecta = opcionUpper === respCorrecta && /^[A-D]$/.test(opcionUpper);
     }
 
     if (esCorrecta) {
@@ -8531,25 +8518,32 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
     // Verificar si es correcta (MCQ, V/F)
     let esCorrecta = false;
-    const respCorrecta = aciertoActual.respuesta_correcta?.trim().toLowerCase();
-    const opcionLower = opcion.toLowerCase();
+    const respCorrecta = aciertoActual.respuesta_correcta?.trim().toUpperCase();
+    const opcionUpper = opcion.toUpperCase();
 
     const esVerdaderoFalso =
       aciertoActual.tipo === "verdadero_falso" ||
       aciertoActual.tipo === "true_false" ||
       aciertoActual.tipo === "verdadero-falso" ||
-      ["verdadero", "falso", "v", "f", "true", "false"].includes(respCorrecta);
+      ["verdadero", "falso", "v", "f", "true", "false"].includes(
+        respCorrecta?.toLowerCase(),
+      );
 
     if (esVerdaderoFalso) {
       const correctaEsVerdadero = ["verdadero", "v", "true"].includes(
-        respCorrecta,
+        respCorrecta?.toLowerCase(),
       );
-      const opcionEsVerdadero = opcionLower === "verdadero";
+      const opcionEsVerdadero = opcion.toLowerCase() === "verdadero";
       esCorrecta =
         (correctaEsVerdadero && opcionEsVerdadero) ||
         (!correctaEsVerdadero && !opcionEsVerdadero);
     } else {
-      esCorrecta = opcion.startsWith(aciertoActual.respuesta_correcta);
+      // MCQ: comparar letras directamente (A, B, C, D)
+      // Tanto la opción recibida como respuesta_correcta deberían ser solo letras
+      esCorrecta = opcionUpper === respCorrecta && /^[A-D]$/.test(opcionUpper);
+      console.log(
+        `🔍 MCQ acierto selección: opción='${opcionUpper}', correcta='${respCorrecta}' → ${esCorrecta ? "✅" : "❌"}`,
+      );
     }
 
     if (esCorrecta) {
@@ -27470,7 +27464,7 @@ Generate an educational reading passage about this topic that would be suitable 
                 {/* FASE: REFUERZO DE ERRORES */}
                 {faseActual === "errores" && (
                   <div className="fase-errores">
-                    {erroresActuales.length > 0 ? (
+                    {erroresActuales.length > 0 && erroresActuales[indiceErrorActual] ? (
                       <>
                         {/* Header de la fase */}
                         <div className="errores-header">
@@ -30303,7 +30297,7 @@ Generate an educational reading passage about this topic that would be suitable 
 
                                       const esSeleccionada =
                                         respuestaErrorSeleccionada &&
-                                        opcion === respuestaErrorSeleccionada;
+                                        letraOpcion === respuestaErrorSeleccionada;
 
                                       let claseOpcion = "opcion-item";
                                       if (errorYaRespondido) {
@@ -30319,9 +30313,6 @@ Generate an educational reading passage about this topic that would be suitable 
                                         if (esSeleccionada)
                                           claseOpcion +=
                                             " seleccionada-temporal";
-                                        // 🔥 Selección temporal
-                                        else if (esRespuestaOriginal)
-                                          claseOpcion += " tu-error-anterior";
                                       }
 
                                       return (
@@ -30330,7 +30321,7 @@ Generate an educational reading passage about this topic that would be suitable 
                                           className={claseOpcion}
                                           onClick={() =>
                                             !errorYaRespondido &&
-                                            seleccionarRespuestaError(opcion)
+                                            seleccionarRespuestaError(letraOpcion)
                                           }
                                           style={{
                                             cursor: errorYaRespondido
@@ -30355,16 +30346,6 @@ Generate an educational reading passage about this topic that would be suitable 
                                             !esRespuestaCorrecta && (
                                               <span className="opcion-icon">
                                                 ✗
-                                              </span>
-                                            )}
-                                          {!errorYaRespondido &&
-                                            esRespuestaOriginal &&
-                                            !esSeleccionada && (
-                                              <span
-                                                className="opcion-hint"
-                                                title="Esta fue tu respuesta anterior"
-                                              >
-                                                ⚠️
                                               </span>
                                             )}
                                           {!errorYaRespondido &&
@@ -30493,9 +30474,6 @@ Generate an educational reading passage about this topic that would be suitable 
                                         if (esSeleccionada)
                                           claseOpcion +=
                                             " seleccionada-temporal";
-                                        // 🔥 Selección temporal
-                                        else if (esRespuestaOriginal)
-                                          claseOpcion += " tu-error-anterior";
                                       }
 
                                       return (
@@ -30529,16 +30507,6 @@ Generate an educational reading passage about this topic that would be suitable 
                                             !esRespuestaCorrecta && (
                                               <span className="opcion-icon">
                                                 ✗
-                                              </span>
-                                            )}
-                                          {!errorYaRespondido &&
-                                            esRespuestaOriginal &&
-                                            !esSeleccionada && (
-                                              <span
-                                                className="opcion-hint"
-                                                title="Esta fue tu respuesta anterior"
-                                              >
-                                                ⚠️
                                               </span>
                                             )}
                                           {!errorYaRespondido &&
@@ -32598,6 +32566,7 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                   {erroresActuales[
                                     indiceErrorActual
                                   ].opciones.map((opcion, idx) => {
+                                    const letraOpcion = String.fromCharCode(65 + idx);
                                     const esRespuestaOriginal =
                                       opcion.startsWith(
                                         erroresActuales[indiceErrorActual]
@@ -32610,7 +32579,7 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                       );
                                     const esSeleccionada =
                                       respuestaErrorSeleccionada &&
-                                      opcion === respuestaErrorSeleccionada;
+                                      letraOpcion === respuestaErrorSeleccionada;
 
                                     let claseOpcion = "opcion-item";
                                     if (errorYaRespondido) {
@@ -32626,9 +32595,6 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                     } else {
                                       // No ha respondido: hacer clickeable
                                       claseOpcion += " clickeable";
-                                      if (esRespuestaOriginal) {
-                                        claseOpcion += " tu-error-anterior"; // Estilo suave para mostrar su error anterior
-                                      }
                                     }
 
                                     return (
@@ -32637,7 +32603,7 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                         className={claseOpcion}
                                         onClick={() =>
                                           !errorYaRespondido &&
-                                          seleccionarRespuestaError(opcion)
+                                          seleccionarRespuestaError(letraOpcion)
                                         }
                                         style={{
                                           cursor: errorYaRespondido
@@ -32662,15 +32628,6 @@ IMPORTANTE: Responde SOLO con un JSON válido con esta estructura:
                                           !esRespuestaCorrecta && (
                                             <span className="opcion-icon">
                                               ✗
-                                            </span>
-                                          )}
-                                        {!errorYaRespondido &&
-                                          esRespuestaOriginal && (
-                                            <span
-                                              className="opcion-hint"
-                                              title="Esta fue tu respuesta anterior"
-                                            >
-                                              ⚠️
                                             </span>
                                           )}
                                       </div>
@@ -41649,14 +41606,20 @@ IDIOMA: ${idiomaSBL}
                                   <div className="opciones-grid">
                                     {aciertoActual.opciones.map(
                                       (opcion, idx) => {
+                                        const letraOpcion =
+                                          String.fromCharCode(65 + idx); // A, B, C, D...
+                                        const respCorrecta = (
+                                          aciertoActual.respuesta_correcta || ""
+                                        )
+                                          .toString()
+                                          .trim()
+                                          .toUpperCase();
+
                                         const esRespuestaCorrecta =
-                                          opcion.startsWith(
-                                            aciertoActual.respuesta_correcta ||
-                                              "",
-                                          );
+                                          letraOpcion === respCorrecta;
                                         const esSeleccionada =
                                           respuestaAciertoSeleccionada ===
-                                          opcion;
+                                          letraOpcion;
 
                                         let claseOpcion = "opcion-item";
                                         if (aciertoYaRespondido) {
@@ -41678,7 +41641,7 @@ IDIOMA: ${idiomaSBL}
                                             onClick={() =>
                                               !aciertoYaRespondido &&
                                               seleccionarRespuestaAcierto(
-                                                opcion,
+                                                letraOpcion,
                                               )
                                             }
                                             style={{
@@ -76550,10 +76513,10 @@ IDIOMA: ${idiomaSBL}
                                       <input
                                         type="radio"
                                         name={`pregunta-${index}`}
-                                        value={opcion.charAt(0)}
+                                        value={String.fromCharCode(65 + i)}
                                         checked={
                                           respuestasUsuario[index] ===
-                                          opcion.charAt(0)
+                                          String.fromCharCode(65 + i)
                                         }
                                         onChange={(e) =>
                                           actualizarRespuesta(
