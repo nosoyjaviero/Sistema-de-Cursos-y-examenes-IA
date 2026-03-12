@@ -488,9 +488,8 @@ function App() {
     setJsonCalificacionSentenceBuilderError,
   ] = useState(null);
   // 🧩 Sentence Builder Libre (para corrección de errores)
-  const [sentenceBuilderLibreError, setSentenceBuilderLibreError] = useState(
-    "",
-  );
+  const [sentenceBuilderLibreError, setSentenceBuilderLibreError] =
+    useState("");
   const [indiceItemSBLError, setIndiceItemSBLError] = useState(0);
   const [indiceItemSBLAcierto, setIndiceItemSBLAcierto] = useState(0);
   const [
@@ -507,6 +506,12 @@ function App() {
   ] = useState(null);
   // Matching Item (para corrección de errores)
   const [respuestasMatchingError, setRespuestasMatchingError] = useState([]);
+  // 📝 Estados para oraciones_propias en corrección de errores
+  const [oracionesPropError, setOracionesPropError] = useState([]);
+  const [promptCopiadoOracionesPropError, setPromptCopiadoOracionesPropError] = useState(-1); // idx del prompt copiado
+  const [textoJsonOracionesPropError, setTextoJsonOracionesPropError] = useState([]); // array por oración
+  const [jsonCalificacionOracionesPropError, setJsonCalificacionOracionesPropError] = useState([]); // array por oración
+  const [indiceOracionError, setIndiceOracionError] = useState(0); // índice de la oración actual en corrección
 
   const [historialIntentos, setHistorialIntentos] = useState([]); // Historial de intentos para preguntas cortas
   const [evaluandoRespuesta, setEvaluandoRespuesta] = useState(false); // Estado de carga al evaluar
@@ -580,6 +585,12 @@ function App() {
   const [textoJsonWritingAcierto, setTextoJsonWritingAcierto] = useState("");
   const [jsonCalificacionWritingAcierto, setJsonCalificacionWritingAcierto] =
     useState(null);
+  // 📝 Estados para oraciones_propias en repaso de aciertos
+  const [oracionesPropAcierto, setOracionesPropAcierto] = useState([]);
+  const [promptCopiadoOracionesPropAcierto, setPromptCopiadoOracionesPropAcierto] = useState(-1); // idx del prompt copiado
+  const [textoJsonOracionesPropAcierto, setTextoJsonOracionesPropAcierto] = useState([]); // array por oración
+  const [jsonCalificacionOracionesPropAcierto, setJsonCalificacionOracionesPropAcierto] = useState([]); // array por oración
+  const [indiceOracionAcierto, setIndiceOracionAcierto] = useState(0); // índice de la oración actual en aciertos
   const [historialIntentosAcierto, setHistorialIntentosAcierto] = useState([]);
   const [evaluandoRespuestaAcierto, setEvaluandoRespuestaAcierto] =
     useState(false);
@@ -1346,8 +1357,12 @@ function App() {
   }, [mensaje]);
 
   // Resetear índice de item SBL al cambiar de pregunta
-  useEffect(() => { setIndiceItemSBLError(0); }, [indiceErrorActual]);
-  useEffect(() => { setIndiceItemSBLAcierto(0); }, [indiceAciertoActual]);
+  useEffect(() => {
+    setIndiceItemSBLError(0);
+  }, [indiceErrorActual]);
+  useEffect(() => {
+    setIndiceItemSBLAcierto(0);
+  }, [indiceAciertoActual]);
 
   // Debug: Loguear cada vez que cambie la configuración
   useEffect(() => {
@@ -1427,6 +1442,12 @@ function App() {
     setJsonCalificacionSentenceBuilderLibreError(null);
     // Resetear estados de matching_item
     setRespuestasMatchingError([]);
+    // Resetear estados de oraciones_propias
+    setOracionesPropError([]);
+    setPromptCopiadoOracionesPropError(-1);
+    setTextoJsonOracionesPropError([]);
+    setJsonCalificacionOracionesPropError([]);
+    setIndiceOracionError(0);
   }, [indiceErrorActual]);
 
   // 🔥 RESET: Estados globales de interfaces de aciertos cuando cambia indiceAciertoActual
@@ -1445,6 +1466,12 @@ function App() {
     setPromptCopiadoWritingAcierto(false);
     setTextoJsonWritingAcierto("");
     setJsonCalificacionWritingAcierto(null);
+    // Resetear estados de oraciones_propias
+    setOracionesPropAcierto([]);
+    setPromptCopiadoOracionesPropAcierto(-1);
+    setTextoJsonOracionesPropAcierto([]);
+    setJsonCalificacionOracionesPropAcierto([]);
+    setIndiceOracionAcierto(0);
   }, [indiceAciertoActual]);
 
   // Helper: Verificar si algo fue revisado hoy (control de spaced repetition)
@@ -4934,7 +4961,7 @@ function App() {
             (h) => h.contexto === "practica_inicial",
           );
           const fueCorrectaEnPracticaInicial =
-            primeraRespuesta?.correcta === true || resultado.correcto === true;
+            !!primeraRespuesta?.correcta || !!resultado.correcto;
 
           // Si la pregunta fue correcta desde el inicio y NO tiene estado de error/fallo posterior, ignorarla
           if (
@@ -4953,6 +4980,29 @@ function App() {
             return; // No incluir preguntas que fueron correctas desde el inicio
           }
 
+          // 🔥 TIPOS DE ESCRITURA LIBRE (evaluados únicamente por IA):
+          // Solo añadir a errores si fueron EXPLÍCITAMENTE calificados como incorrectos.
+          // Si aún no tienen calificación (correcto === undefined/null) o fueron correctos,
+          // se omiten de errores (van a Repaso de Aciertos o quedan pendientes de calificar).
+          const tiposEscrLibre = [
+            "oraciones_propias",
+            "oracion_propia_item",
+            "sentence_builder_libre",
+            "picture_description_libre",
+            "writing_short_libre",
+            "writing_paraphrase_libre",
+            "writing_correction_libre",
+            "writing_transformation_libre",
+          ];
+          if (tiposEscrLibre.includes(resultado.tipo)) {
+            const tieneEstadoFalloLibre =
+              ["fallo", "critical"].includes(resultado.estado_error) ||
+              resultado.estado_repaso === "fallo";
+            if (!tieneEstadoFalloLibre && resultado.correcto !== false) {
+              return; // Sin fallo explícito → no mostrar en Corrección de Errores
+            }
+          }
+
           // Considerar error si:
           // 1. 🔥 CAMBIO: Si correcto === false, SIEMPRE es error (sin importar porcentaje)
           //    Esto asegura que si fallas al menos un hueco en cloze, aparezca en errores
@@ -4960,7 +5010,7 @@ function App() {
           // 3. Tiene estado_error = 'fallo' o 'critical' (falló en corrección de errores)
           // 4. Tiene estado_repaso = 'fallo' (falló en repaso de aciertos)
           const esErrorOriginal =
-            resultado.correcto === false || porcentaje < 60;
+            !resultado.correcto || porcentaje < 60;
           const esErrorPorEstado = ["fallo", "critical"].includes(
             resultado.estado_error,
           );
@@ -5626,8 +5676,8 @@ function App() {
           // Esto asegura que preguntas con correcto: false NO aparezcan en aciertos
           // EXCEPTO si ya fueron corregidas
           const esAcierto =
-            resultado.correcto === true ||
-            (porcentaje >= 60 && resultado.correcto !== false) ||
+            !!resultado.correcto ||
+            (porcentaje >= 60 && resultado.correcto !== false && resultado.correcto !== 0) ||
             resultado.estado_error === "ok"; // Errores corregidos van a repaso
 
           if (esAcierto) {
@@ -5703,6 +5753,28 @@ function App() {
               if (usarProximaRevError && proximaRevError <= hoy) {
                 necesitaRepaso = true;
                 fuente = "error_corregido";
+              }
+            }
+
+            // 🔥 ORACION_PROPIA_ITEM: si es correcta y nunca fue repasada, incluir siempre
+            // (la proximaRevision futura no debe bloquear el primer repaso)
+            if (
+              !necesitaRepaso &&
+              resultado.tipo === "oracion_propia_item" &&
+              resultado.correcto === true
+            ) {
+              const yaRepasada = (
+                resultado.historial_respuestas ||
+                preguntaOriginal?.historial_respuestas ||
+                []
+              ).some((h) => h.contexto === "repaso_aciertos");
+              if (!yaRepasada) {
+                necesitaRepaso = true;
+                fuente = "oracion_nueva";
+                console.log(
+                  "📝 Oración propia correcta sin repasar → incluida en aciertos:",
+                  resultado.pregunta?.substring(0, 40),
+                );
               }
             }
 
@@ -5969,6 +6041,28 @@ function App() {
                 contexto_pista:
                   resultado.contexto_pista ||
                   preguntaOriginal?.contexto_pista ||
+                  null,
+                // 🔥 CAMPOS PARA ORACION_PROPIA_ITEM
+                pistas_ia: resultado.pistas_ia || null,
+                titulo_tema:
+                  resultado.titulo_tema ||
+                  preguntaOriginal?.titulo_tema ||
+                  preguntaOriginal?.metadata?.titulo_tema ||
+                  null,
+                estructuras_sugeridas:
+                  resultado.estructuras_sugeridas ||
+                  preguntaOriginal?.estructuras_sugeridas ||
+                  preguntaOriginal?.metadata?.estructuras_sugeridas ||
+                  null,
+                vocabulario_sugerido:
+                  resultado.vocabulario_sugerido ||
+                  preguntaOriginal?.vocabulario_sugerido ||
+                  preguntaOriginal?.metadata?.vocabulario_sugerido ||
+                  null,
+                nivel_dificultad:
+                  resultado.nivel_dificultad ||
+                  preguntaOriginal?.nivel_dificultad ||
+                  preguntaOriginal?.metadata?.nivel_dificultad ||
                   null,
               });
             }
@@ -7557,6 +7651,7 @@ INSTRUCCIONES:
 2. Verifica si usó correctamente las palabras clave esperadas (si hay)
 3. Evalúa la corrección gramatical básica
 4. Evalúa si la respuesta demuestra comprensión del texto
+5. SIEMPRE incluye en "respuesta_corregida" la versión corregida y mejorada de la respuesta del estudiante
 
 PUNTUACIÓN:
 - 100%: Respuesta correcta, coherente y gramaticalmente correcta
@@ -7621,7 +7716,29 @@ PUNTUACIÓN:
 - 50%: Transformación parcial o incompleta
 - 25%: Transformación incorrecta pero gramática entendible
 - 0%: No realizó la transformación solicitada`
-              : `Evalúa la respuesta del usuario según el tipo:
+              : tipo === "oraciones_propias"
+                ? `🎯 CRITERIOS PARA ORACIONES PROPIAS:
+
+OBJETIVO: El estudiante crea oraciones libremente para fortalecer fluidez y dominio gramatical.
+SIN palabras clave ni pistas — pura expresión propia.
+
+⚠️ FORMATO: Las oraciones vienen separadas por "|||" en respuesta_usuario. Evalúa CADA oración individualmente.
+
+INSTRUCCIONES:
+1. Separa las oraciones por "|||" y evalúa cada una por separado
+2. Verifica que el estudiante escribió el número de oraciones solicitado
+3. Evalúa la CORRECCIÓN GRAMATICAL de cada oración (tiempo verbal, concordancia, orden de palabras)
+4. Evalúa el VOCABULARIO (variedad, apropiado al nivel y al tema)
+5. Verifica que las oraciones son COHERENTES y se relacionan con el tema indicado
+6. Valora la ORIGINALIDAD y expresión auténtica del estudiante
+
+PUNTUACIÓN:
+- 100%: Todas las oraciones correctas, gramática perfecta, vocabulario variado y coherente
+- 75%: Mayoría correctas, errores gramaticales menores (1-2 por oración)
+- 50%: Algunas oraciones incorrectas o con errores gramaticales notables
+- 25%: La mayoría de oraciones con errores graves o incompletas
+- 0%: Sin respuesta, respuesta incomprensible o no relacionada con el tema`
+                : `Evalúa la respuesta del usuario según el tipo:
 - MCQ: 100% si es correcta, 0% si es incorrecta
 - True/False: 100% si es correcta, 0% si es incorrecta  
 - Cloze: ${numHuecos > 0 ? `Esta pregunta tiene ${numHuecos} huecos. La respuesta del usuario viene separada por "|||". Compara cada hueco con su respuesta correcta correspondiente. Ejemplo: si respuesta_usuario="be|||no" y respuestas_correctas=["be","no"], ambos huecos son correctos = 100%.` : "Porcentaje según huecos correctos"}
@@ -7640,7 +7757,7 @@ RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
       "correcto": true,
       "puntos": ${preguntaParaCalificar.puntos_maximos},
       "puntos_maximos": ${preguntaParaCalificar.puntos_maximos},
-      "feedback": "Explicación breve de por qué está bien/mal"
+      "feedback": "Explicación breve de por qué está bien/mal"${tipo === "oracion_propia_item" ? ',\n      "pistas": "2-3 consejos breves (en español) sobre cómo construir bien este tipo de oración"' : ''}${(tipo === "writing_short" || tipo === "writing_short_libre") ? ',\n      "respuesta_corregida": "Versión corregida y mejorada de la respuesta del estudiante"' : ''}
     }
   ],
   "puntos_obtenidos": 0,
@@ -7650,9 +7767,9 @@ RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
 
 REGLAS:
 1. "correcto": true si puntos >= 50% de puntos_maximos
-2. "feedback": Retroalimentación constructiva breve${tipo === "case_study" ? " que indique qué hizo bien y qué puede mejorar según los criterios del tipo de caso" : ""}
-3. Calcula porcentaje = (puntos / puntos_maximos) * 100
-4. SÉ ESTRICTO pero justo con las respuestas
+2. "feedback": Retroalimentación constructiva breve${tipo === "case_study" ? " que indique qué hizo bien y qué puede mejorar según los criterios del tipo de caso" : ""}${tipo === "oracion_propia_item" ? '\n3. "pistas": 2-3 consejos específicos (en español) para construir bien este tipo de oración en el siguiente repaso' : ''}${(tipo === "writing_short" || tipo === "writing_short_libre") ? '\n3. "respuesta_corregida": SIEMPRE incluir la versión corregida de la respuesta del estudiante (aunque esté bien)' : ''}
+${tipo === "oracion_propia_item" ? "4" : "3"}. Calcula porcentaje = (puntos / puntos_maximos) * 100
+${tipo === "oracion_propia_item" ? "5" : "4"}. SÉ ESTRICTO pero justo con las respuestas
 
 Califica ahora:`;
 
@@ -7868,6 +7985,8 @@ Califica ahora:`;
         puntos_maximos: puntosMax,
         feedback: calificacion.feedback || "",
         porcentaje: resultado.porcentaje || (puntos / puntosMax) * 100,
+        pistas: calificacion.pistas || null,
+        respuesta_corregida: calificacion.respuesta_corregida || null,
       };
 
       console.log("✅ Guardando jsonCalificacionIA:", nuevoJsonCalificacion);
@@ -8172,6 +8291,10 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "formal_email",
       "picture_description",
       "picture_description_libre",
+      "oraciones_propias",
+      "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+      "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
+      "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
     ];
     const esEvaluadoPorIA = tiposEvaluadosPorIA.includes(errorActual.tipo);
 
@@ -8303,7 +8426,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       jsonCalificacionCorrectionError ||
       jsonCalificacionTransformationError ||
       jsonCalificacionSentenceBuilderError ||
-      jsonCalificacionSentenceBuilderLibreError;
+      jsonCalificacionSentenceBuilderLibreError ||
+      (jsonCalificacionOracionesPropError?.find?.((x) => x) ?? null);
     if (calificacionIAActiva) {
       esCorrecta = calificacionIAActiva.correcto;
       console.log(
@@ -8311,6 +8435,12 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       );
     }
 
+    // 🔥 FALLBACK: si el tipo requiere IA, el usuario marcó manualmente Y no hay calificación IA
+    // → confiar en el marcado explícito del usuario (tomó la responsabilidad)
+    if (!esCorrecta && esEvaluadoPorIA && respuestaErrorSeleccionada && !calificacionIAActiva && !feedbackIA) {
+      esCorrecta = true;
+      console.log("✅ Tipo IA-evaluado con marcado manual sin IA → asumiendo correcto");
+    }
     // 🔥 CALCULAR NUEVO ESTADO DE ERROR
     const ahora = new Date();
     const hoy = new Date(ahora);
@@ -8558,6 +8688,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       if (jsonCalificacionIA) {
         puntosObtenidos = jsonCalificacionIA.puntos || 0;
         feedbackFinal = jsonCalificacionIA.feedback || feedbackFinal;
+        if (jsonCalificacionIA.pistas) resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
       }
 
       const entradaHistorialError = {
@@ -8872,6 +9003,10 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "formal_email",
       "picture_description",
       "picture_description_libre",
+      "oraciones_propias",
+      "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+      "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
+      "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
     ];
     const esEvaluadoPorIAAcierto = tiposEvaluadosPorIAAcierto.includes(
       aciertoActual.tipo,
@@ -8994,12 +9129,20 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       jsonCalificacionIA ||
       jsonCalificacionPictureAcierto ||
       jsonCalificacionEmailAcierto ||
-      jsonCalificacionWritingAcierto;
+      jsonCalificacionWritingAcierto ||
+      (jsonCalificacionOracionesPropAcierto?.find?.((x) => x) ?? null);
     if (calificacionIAActivaAcierto) {
       esCorrecta = calificacionIAActivaAcierto.correcto;
       console.log(
         `🤖 Calificación externa de IA (aciertos): correcto=${esCorrecta}, puntos=${calificacionIAActivaAcierto.puntos_obtenidos || calificacionIAActivaAcierto.puntos}`,
       );
+    }
+
+    // 🔥 FALLBACK: si el tipo requiere IA, el usuario marcó manualmente Y no hay calificación IA
+    // → confiar en el marcado explícito del usuario (tomó la responsabilidad)
+    if (!esCorrecta && esEvaluadoPorIAAcierto && respuestaAciertoSeleccionada && !calificacionIAActivaAcierto && !feedbackIAAcierto) {
+      esCorrecta = true;
+      console.log("✅ Tipo IA-evaluado con marcado manual sin IA en aciertos → asumiendo correcto");
     }
 
     // Calcular nuevo estado según resultado
@@ -9039,15 +9182,19 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         nuevasRepeticiones = 1; // Contar como 1 repetición exitosa
         nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.15);
       } else {
-        // 🎯 PROGRESIÓN FIJA DE INTERVALOS PARA ACIERTOS
-        // Día 0 (acierto inicial) → repaso 1: 3 días → repaso 2: 7 días → repaso 3: 14 días → repaso 4+: 30 días
-        const INTERVALOS_FIJOS_ACIERTOS = [3, 7, 14, 30];
-        const indiceIntervalo = Math.min(
-          nuevasRepeticiones - 1,
-          INTERVALOS_FIJOS_ACIERTOS.length - 1,
-        );
-        nuevoIntervalo =
-          INTERVALOS_FIJOS_ACIERTOS[Math.max(0, indiceIntervalo)];
+        // 🎯 PROGRESIÓN FIJA: 1(inicial) → 3 → 7 → 15 → 30 → 60 → ×2.5
+        // Día 0: generación (proximaRevision = mañana, rep=0)
+        // Repaso 1 (rep→1): 3 días | Repaso 2 (rep→2): 7 | 3→15 | 4→30 | 5→60 | 6+: ×2.5
+        const INTERVALOS_FIJOS_ACIERTOS = [3, 7, 15, 30, 60];
+        if (nuevasRepeticiones <= INTERVALOS_FIJOS_ACIERTOS.length) {
+          nuevoIntervalo = INTERVALOS_FIJOS_ACIERTOS[nuevasRepeticiones - 1];
+        } else {
+          // Crecimiento exponencial ×2.5 con techo de 365 días
+          nuevoIntervalo = Math.min(
+            365,
+            Math.round((aciertoActual.intervalo || 60) * 2.5),
+          );
+        }
 
         console.log(
           `🎯 Progresión fija: repetición ${nuevasRepeticiones} → intervalo ${nuevoIntervalo} días`,
@@ -9199,6 +9346,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         puntosObtenidosAcierto = jsonCalificacionIA.puntos || 0;
         feedbackFinalAcierto =
           jsonCalificacionIA.feedback || feedbackFinalAcierto;
+        if (jsonCalificacionIA.pistas) resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
       }
 
       // �📜 AGREGAR AL HISTORIAL DE RESPUESTAS
@@ -9406,42 +9554,40 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       repeticionesActuales: repeticiones,
     });
 
-    // 🔥 LÓGICA DE REPETICIÓN ESPACIADA MEJORADA
-    // Si falló antes en esta sesión y ahora acierta -> revisar mañana
-    if (dificultad === "dificil") {
-      // 😰 Lo Olvidé - Revisar pronto (mañana)
+    // 🔥 REPETICIÓN ESPACIADA: Día 0 = creación, Día 1 = primera prueba real
+    //
+    //  😰 Olvidé   → siempre mañana (×1), reinicio completo
+    //  🤔 Me Costó → rep=0: 2 días; rep≥1: intervaloActual × 2.3  (2→5→12→30→69...)
+    //  😎 Fácil     → rep=0: 3 días; rep≥1: intervaloActual × 2.6  (3→8→20→52→135...)
+    //
+    //  Si olvidó en esta sesión y luego acierta, la prueba real sigue siendo mañana.
+
+    if (falloAntesSesion || dificultad === "dificil") {
+      // 😰 Lo Olvidé / falló antes en sesión
+      // → mañana otra vez; reinicio completo de la curva
       nuevoIntervalo = 1;
-      nuevasRepeticiones = 0; // Reiniciar contador
+      nuevasRepeticiones = 0;
       nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.2);
-    } else if (falloAntesSesion) {
-      // ⚠️ Acertó DESPUÉS de haber fallado en esta sesión
-      // Debe revisarse mañana para consolidar
-      console.log("⚠️ Flashcard fallada antes -> intervalo forzado a 1 día");
-      nuevoIntervalo = 1;
-      nuevasRepeticiones = 1; // Contar como 1 repetición exitosa
-      nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.15);
+      if (falloAntesSesion)
+        console.log("⚠️ Flashcard fallada antes en sesión → intervalo forzado a 1 día");
     } else if (dificultad === "medio") {
-      // 🤔 Me Costó - Intervalo medio (2-3 días)
+      // 🤔 Me Costó → Patrón: 2 → 5 → 12 → 30 → ... (×2.3)
       if (nuevasRepeticiones === 0) {
-        nuevoIntervalo = 2; // 2 días
+        nuevoIntervalo = 2;   // Primera prueba real → 2 días
       } else {
-        nuevoIntervalo = Math.round((intervalo || 1) * 1.3); // 1.3x intervalo anterior
+        nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.3));
       }
       nuevasRepeticiones += 1;
-      nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.1);
+      nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.05);
     } else if (dificultad === "facil") {
-      // 😎 Lo Recordé Fácil - Intervalo largo (3-7 días primeras veces)
+      // 😎 Lo Recordé Fácil → Patrón: 3 → 8 → 20 → 52 → 135 → ... (×2.6)
       if (nuevasRepeticiones === 0) {
-        nuevoIntervalo = 3; // Primera vez fácil: 3 días
-      } else if (nuevasRepeticiones === 1) {
-        nuevoIntervalo = 7; // Segunda vez fácil: 7 días
-      } else if (nuevasRepeticiones === 2) {
-        nuevoIntervalo = 14; // Tercera vez: 14 días
+        nuevoIntervalo = 3;   // Primera prueba real → 3 días
       } else {
-        nuevoIntervalo = Math.round((intervalo || 1) * nuevaFacilidad); // Factor de facilidad
+        nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.6));
       }
       nuevasRepeticiones += 1;
-      nuevaFacilidad = nuevaFacilidad + 0.1;
+      nuevaFacilidad = Math.min(3.0, nuevaFacilidad + 0.1);
     }
 
     // Límites de intervalo
@@ -9613,70 +9759,58 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       : new Date();
     const repeticionesActuales = item.repeticiones || 0;
 
-    // Intervalos fijos del sistema de repetición espaciada
-    const INTERVALOS_ACIERTO = [3, 7, 14, 30]; // Primera vez: +3d, Segunda: +7d, Tercera: +14d, Cuarta+: +30d
-    const INTERVALO_FALLO = 1; // Si fallas: revisar mañana
+    // 🔥 NUEVO: Simulación fiel al algoritmo de calcularProximaRevision
+    // 😰 Olvidé: siempre 1 día, reinicio (rep=0)
+    // 🤔 Me Costó: rep=0→2d; rep≥1→×2.3
+    // 😎 Fácil:    rep=0→3d; rep≥1→×2.6
 
-    // Generar 3 escenarios: siempre acierta, mixto, siempre falla
     const escenarios = {
-      facil: [], // Siempre acierta
-      medio: [], // Acierta pero a veces falla (1 de cada 3)
-      dificil: [], // Siempre falla
+      facil: [],
+      medio: [],
+      dificil: [],
     };
 
-    // Simular cada escenario
     ["facil", "medio", "dificil"].forEach((dificultad) => {
       let fecha = new Date(fechaInicial);
       let repeticiones = repeticionesActuales;
-      let racha = 0; // Aciertos consecutivos para determinar intervalo
+      let intervaloSim = item.intervalo || 1;
 
       for (let i = 0; i < 10; i++) {
         let nuevoIntervalo;
         let resultado;
 
-        if (dificultad === "facil") {
-          // Siempre acierta → usa intervalos fijos progresivos
-          resultado = "acierto";
-          const indice = Math.min(racha, INTERVALOS_ACIERTO.length - 1);
-          nuevoIntervalo = INTERVALOS_ACIERTO[indice];
-          racha++;
+        if (dificultad === "dificil") {
+          resultado = "olvido";
+          nuevoIntervalo = 1;
+          repeticiones = 0; // reinicio
+          intervaloSim = 1;
         } else if (dificultad === "medio") {
-          // Acierta 2 de cada 3 veces
-          if ((i + 1) % 3 === 0) {
-            resultado = "fallo";
-            nuevoIntervalo = INTERVALO_FALLO;
-            racha = 0; // Reset racha
-          } else {
-            resultado = "acierto";
-            const indice = Math.min(racha, INTERVALOS_ACIERTO.length - 1);
-            nuevoIntervalo = INTERVALOS_ACIERTO[indice];
-            racha++;
-          }
+          resultado = "costó";
+          nuevoIntervalo = repeticiones === 0 ? 2 : Math.min(365, Math.round(intervaloSim * 2.3));
+          repeticiones += 1;
+          intervaloSim = nuevoIntervalo;
         } else {
-          // Siempre falla → siempre 1 día
-          resultado = "fallo";
-          nuevoIntervalo = INTERVALO_FALLO;
-          racha = 0;
+          resultado = "fácil";
+          nuevoIntervalo = repeticiones === 0 ? 3 : Math.min(365, Math.round(intervaloSim * 2.6));
+          repeticiones += 1;
+          intervaloSim = nuevoIntervalo;
         }
 
-        // Calcular próxima fecha
         const proximaFecha = new Date(
           fecha.getTime() + nuevoIntervalo * 24 * 60 * 60 * 1000,
         );
 
         escenarios[dificultad].push({
-          repeticion: repeticiones + 1,
+          repeticion: repeticiones,
           fecha: proximaFecha,
           intervalo: nuevoIntervalo,
-          resultado: resultado,
+          resultado,
           diasDesdeHoy: Math.ceil(
             (proximaFecha - new Date()) / (1000 * 60 * 60 * 24),
           ),
         });
 
-        // Actualizar para siguiente iteración
         fecha = proximaFecha;
-        repeticiones++;
       }
     });
 
@@ -9684,11 +9818,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       item,
       fechaInicial,
       escenarios,
-      // Info del sistema de intervalos para mostrar al usuario
       sistemaIntervalos: {
-        acierto: INTERVALOS_ACIERTO,
-        fallo: INTERVALO_FALLO,
-        descripcion: "Acierto: +3d → +7d → +14d → +30d | Fallo: +1d (mañana)",
+        descripcion: "😰 Olvidé→1d | 🤔 Me Costó→2→5→12→30 (×2.3) | 😎 Fácil→3→8→20→52 (×2.6)",
       },
     };
   };
@@ -15998,10 +16129,8 @@ JSON:`;
                   const itemCorrecto =
                     tieneRespuesta && porcentajeGeneral >= 0.5;
 
-                  // 🔄 Primera vez: acierto = +2-3 días, fallo = +1 día
-                  const diasRevisionItem = itemCorrecto
-                    ? Math.floor(Math.random() * 2) + 2
-                    : 1;
+                  // 🧠 Primera vez: siempre mañana (diagnóstico)
+                  const diasRevisionItem = 1;
                   const fechaProximaItem = new Date(ahora);
                   fechaProximaItem.setDate(
                     fechaProximaItem.getDate() + diasRevisionItem,
@@ -16058,8 +16187,7 @@ JSON:`;
             practicas[practicaIndex].preguntas.forEach((pregunta, idx) => {
               if (pregunta.tipo === "sentence_builder_libre") {
                 // Expandir cada item en una pregunta independiente sentence_builder_libre_item
-                const items =
-                  pregunta.metadata?.items || pregunta.items || [];
+                const items = pregunta.metadata?.items || pregunta.items || [];
                 const respuestasStr =
                   resultadosConHistorial[idx]?.respuesta_usuario || "";
                 const respuestasArr = respuestasStr
@@ -16099,7 +16227,8 @@ JSON:`;
                               correcta: false,
                             },
                           ]
-                        : (resultadosConHistorial[idx]?.historial_respuestas || []),
+                        : resultadosConHistorial[idx]?.historial_respuestas ||
+                          [],
                     });
                   });
                   return; // No agregar la pregunta padre
@@ -16229,10 +16358,9 @@ JSON:`;
                 resultado.historial_respuestas ||
                 [];
 
-              // 🔄 Repetición espaciada mejorada:
-              // - Acierto primera vez → +2-3 días
-              // - Fallo hoy + acierto hoy → +1 día (mañana)
-              // - Aciertos consecutivos → progresa: 2-3 → 7 → 14 → 30...
+              // 🧠 Repetición espaciada correcta: 1 → 3 → 7 → 15 → 30 → 60 → ×2.5
+              // Primera vez: SIEMPRE mañana (diagnóstico, no consolidación)
+              // La consolidación empieza el día siguiente con el primer repaso real
               const hoyStr = ahora.toISOString().split("T")[0];
               const falloPrevioHoy = historialPrevio.some((h) => {
                 const fechaH = h.fecha?.split("T")[0];
@@ -16248,14 +16376,21 @@ JSON:`;
                   // Fallé hoy pero ahora acerté → mañana
                   diasRevision = 1;
                 } else if (aciertosConsecutivos === 0) {
-                  // Primera vez acierto → 2-3 días
-                  diasRevision = Math.floor(Math.random() * 2) + 2;
+                  // Primera vez: diagnóstico → mañana SIEMPRE
+                  diasRevision = 1;
                 } else if (aciertosConsecutivos === 1) {
-                  diasRevision = 7;
+                  diasRevision = 3;  // Pasó el test del día 1 → 3 días
                 } else if (aciertosConsecutivos === 2) {
-                  diasRevision = 14;
+                  diasRevision = 7;  // 3 × 2.5 ≈ 7
+                } else if (aciertosConsecutivos === 3) {
+                  diasRevision = 15; // 7 × 2.5 ≈ 15
+                } else if (aciertosConsecutivos === 4) {
+                  diasRevision = 30; // 15 × 2 ≈ 30
+                } else if (aciertosConsecutivos === 5) {
+                  diasRevision = 60; // 30 × 2 = 60
                 } else {
-                  diasRevision = 30;
+                  // Crecimiento exponencial ×2.5 con techo de 365 días
+                  diasRevision = Math.min(365, Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)));
                 }
               } else {
                 // Fallo → mañana
@@ -16331,10 +16466,8 @@ JSON:`;
                   const itemCorrecto =
                     tieneRespuesta && porcentajeGeneral >= 0.5;
 
-                  // 🔄 Primera vez: acierto = +2-3 días, fallo = +1 día
-                  const diasRevisionItem = itemCorrecto
-                    ? Math.floor(Math.random() * 2) + 2
-                    : 1;
+                  // 🧠 Primera vez: siempre mañana (diagnóstico)
+                  const diasRevisionItem = 1;
                   const fechaProximaItem = new Date(ahora);
                   fechaProximaItem.setDate(
                     fechaProximaItem.getDate() + diasRevisionItem,
@@ -16381,8 +16514,7 @@ JSON:`;
           const preguntasExamenExpandidas = [];
           preguntasExamen.forEach((pregunta, idx) => {
             if (pregunta.tipo === "sentence_builder_libre") {
-              const items =
-                pregunta.metadata?.items || pregunta.items || [];
+              const items = pregunta.metadata?.items || pregunta.items || [];
               const respuestasStr =
                 resultadosExamenConHistorial[idx]?.respuesta_usuario || "";
               const respuestasArr = respuestasStr
@@ -16412,7 +16544,13 @@ JSON:`;
                       oracion_esperada: item.oracion_esperada || "",
                     },
                     historial_respuestas: respuestaItem
-                      ? [{ fecha: ahora.toISOString(), respuesta: respuestaItem, correcta: false }]
+                      ? [
+                          {
+                            fecha: ahora.toISOString(),
+                            respuesta: respuestaItem,
+                            correcta: false,
+                          },
+                        ]
                       : [],
                   });
                 });
@@ -16970,6 +17108,11 @@ JSON:`;
     // ═══════════════════════════════════════════════════════════════
     // 📝 EXPRESIÓN ESCRITA LIBRE (sin niveles CEFR, basado en título)
     // ═══════════════════════════════════════════════════════════════
+    // ✏️ ORACIONES PROPIAS - Creación libre de oraciones por cuenta propia
+    oraciones_propias: 0,
+    oraciones_propias_lang: "ingles",
+    oraciones_propias_cantidad: 5,
+    oraciones_propias_dificultad: "intermedio",
     writing_short_libre: 0,
     writing_short_libre_lang: "ingles",
     writing_short_libre_titulo: "",
@@ -17357,6 +17500,20 @@ JSON:`;
       arabe: "Árabe",
     };
 
+    // Nombres de idiomas en inglés (para usar dentro del contenido en inglés)
+    const idiomasNombreEN = {
+      ingles: "English",
+      frances: "French",
+      aleman: "German",
+      italiano: "Italian",
+      portugues: "Portuguese",
+      japones: "Japanese",
+      chino: "Chinese",
+      coreano: "Korean",
+      ruso: "Russian",
+      arabe: "Arabic",
+    };
+
     // Mapeo de tipos de ejercicio de idiomas
     const tiposIdiomaDescripcion = {
       reading_comprehension:
@@ -17404,13 +17561,15 @@ JSON:`;
       preguntasPropiasConfig.writing_correction_libre > 0 ||
       preguntasPropiasConfig.writing_transformation_libre > 0 ||
       preguntasPropiasConfig.sentence_builder_libre > 0 ||
-      preguntasPropiasConfig.picture_description_libre > 0;
+      preguntasPropiasConfig.picture_description_libre > 0 ||
+      preguntasPropiasConfig.oraciones_propias > 0;
 
     let instrucciones = `GENERA ejercicios en formato JSON para un sistema de práctica.
 
 ⚠️ REGLAS CRÍTICAS:
 - Responde SOLO con el JSON array, SIN explicaciones ni markdown
 - Cada ejercicio DEBE tener TODOS los campos del modelo indicado
+- ⚠️ NO incluyas comentarios (// ...) en el JSON de respuesta. Los comentarios del FORMATO REQUERIDO son solo anotaciones de referencia para ti, NO van en el resultado final
 ${
   tieneEjerciciosIdiomas
     ? `
@@ -17423,7 +17582,7 @@ ${
 `
     : ""
 }
-FORMATO REQUERIDO:
+FORMATO REQUERIDO (los // son solo anotaciones explicativas, NO los incluyas en el JSON final):
 [
 `;
 
@@ -19196,6 +19355,10 @@ ${transformacionesEjemplo.join(",\n")}
       picture_description_libre = 0,
       picture_description_libre_lang = "ingles",
       picture_description_libre_imagen = null,
+      oraciones_propias = 0,
+      oraciones_propias_lang = "ingles",
+      oraciones_propias_cantidad = 5,
+      oraciones_propias_dificultad = "intermedio",
     } = preguntasPropiasConfig;
 
     // Respuesta Corta Libre
@@ -19291,6 +19454,20 @@ ${transformacionesEjemplo.join(",\n")}
     "puntos": ${numFrases}
   },
 `;
+    }
+
+    // ✏️ Oraciones Propias
+    if (oraciones_propias > 0) {
+      const langName = idiomasNombre[oraciones_propias_lang] || "Inglés";
+      const langNameEn = idiomasNombreEN[oraciones_propias_lang] || "English";
+      const numOraciones = oraciones_propias_cantidad || 5;
+      const dificultadDesc = {
+        basico: "basic level (simple present, simple past, common vocabulary)",
+        intermedio: "intermediate level (mixed tenses, conditionals, varied vocabulary)",
+        avanzado: "advanced level (complex structures, passive voice, idiomatic expressions, nuanced vocabulary)",
+      }[oraciones_propias_dificultad] || "intermediate level";
+
+      instrucciones += `  // ${oraciones_propias} EJERCICIO(S) DE ORACIONES PROPIAS en ${langName}:\n  // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todo el contenido DEBE estar en ${langName}\n  // El estudiante crea oraciones COMPLETAMENTE por su cuenta (sin palabras clave ni pistas)\n  {\n    "tipo": "oraciones_propias",\n    "pregunta": "Write ${numOraciones} sentences in ${langNameEn} about the topic. Express your own ideas with correct grammar and vocabulary.",\n    "metadata": {\n      "idioma": "${oraciones_propias_lang}",\n      "es_libre": true,\n      "titulo_tema": "<<⚠️ EXTRAE el tema DIRECTAMENTE del texto pegado abajo en la sección ═══. NO inventes un tema genérico. El tema debe reflejar el concepto EXACTO que se estudia en ese texto (ej: si el texto trata sobre el verbo auxiliar 'do', pon 'The auxiliary verb do in questions and negations', NO 'Daily routines'). Máximo 8 palabras en ${langName}>>",\n      "cantidad_oraciones": ${numOraciones},\n      "nivel_dificultad": "${oraciones_propias_dificultad}",\n      "instruccion_nivel": "${dificultadDesc}",\n      "estructuras_sugeridas": ["<<Extrae del texto pegado: estructura gramatical clave que el estudiante debe practicar, en ${langName}>>", "<<Extrae del texto pegado: otra estructura gramatical relevante, en ${langName}>>", "<<Extrae del texto pegado: tercera estructura o patrón importante, en ${langName}>>"],\n      "vocabulario_sugerido": ["<<Extrae del texto pegado: palabra o término clave del concepto estudiado, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: segunda palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: tercera palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: cuarta palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: quinta palabra clave, en ${langName.toUpperCase()}>>"],\n      "criterios_evaluacion": {\n        "gramatica": "Correct grammar and punctuation at ${oraciones_propias_dificultad} level",\n        "vocabulario": "Appropriate and varied vocabulary",\n        "coherencia": "Clear, coherent sentences that relate to the topic",\n        "originalidad": "Student's own authentic expression"\n      }\n    },\n    "puntos": ${numOraciones}\n  },\n`;
     }
 
     // 🧩 Constructor de Oraciones Libre
@@ -19637,7 +19814,19 @@ ${ejerciciosPDL.join(",\n")},
       cantidades.push(
         `1 tipo "${idioma_tipo}" en ${idiomasNombre[idioma_lang]}`,
       );
-    // 💻 Cantidades de código (niveles de dificultad basados en teoría)
+    // 🆓 Tipos libres (generación propia)
+    if (oraciones_propias > 0)
+      cantidades.push(
+        `${oraciones_propias} tipo "oraciones_propias" en ${idiomasNombre[oraciones_propias_lang] || "Inglés"} (${oraciones_propias_cantidad || 5} oraciones libres por ejercicio, nivel ${oraciones_propias_dificultad || "intermedio"}) ⚠️ SOLO tipo oraciones_propias, NO generes mcq ni preguntas`,
+      );
+    if (sentence_builder_libre > 0)
+      cantidades.push(
+        `${sentence_builder_libre} tipo "sentence_builder_libre" en ${idiomasNombre[sentence_builder_libre_lang] || "Inglés"}`,
+      );
+    if (picture_description_libre > 0)
+      cantidades.push(
+        `${picture_description_libre} tipo "picture_description_libre" en ${idiomasNombre[picture_description_libre_lang] || "Inglés"}`,
+      );
     if (codigo_mcq > 0)
       cantidades.push(
         `${codigo_mcq} tipo "code_mcq" MCQ con código formateado en ${lang}`,
@@ -19704,7 +19893,7 @@ ${ejerciciosPDL.join(",\n")},
     instrucciones += `]
 
 REGLAS:
-1. Convierte EXACTAMENTE a:
+1. ${oraciones_propias > 0 && mcq === 0 && true_false === 0 && cloze === 0 && short_answer === 0 && open_question === 0 ? "GENERA" : "Convierte"} EXACTAMENTE:
    - ${cantidades.join("\n   - ")}
 2. El JSON debe ser válido (sin comas al final del último elemento)
 3. ⚠️ IMPORTANTE SOBRE COMILLAS:
@@ -19718,13 +19907,28 @@ REGLAS:
 8. Para open_question: incluye key_points con los puntos a desarrollar
 9. Para case_study: incluye un escenario detallado con contexto realista${reglasAdicionales}
 
+${oraciones_propias > 0 ? `═══════════════════════════════════════════════════════════════
+📚 PEGA AQUÍ TUS NOTAS DE ESTUDIO o apuntes (reemplaza este texto):
+→ ChatGPT extraerá el tema, vocabulario y estructuras de estas notas para crear el ejercicio.
 ═══════════════════════════════════════════════════════════════
+
+[Pega aquí tus notas o apuntes de estudio]
+
+═══════════════════════════════════════════════════════════════` : `═══════════════════════════════════════════════════════════════
 📋 PEGA TUS PREGUNTAS/CONTENIDO AQUÍ ABAJO (reemplaza este texto):
 ═══════════════════════════════════════════════════════════════
 
 [Pega aquí las preguntas que quieres convertir a JSON]
 
-═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════`}
+
+⚠️ INSTRUCCIÓN FINAL IMPORTANTE:
+Para cualquier campo que diga "Extrae del texto pegado" o "⚠️ EXTRAE el tema DIRECTAMENTE":
+  → Analiza el contenido pegado ARRIBA y extrae la información de AHÍ.
+  → "titulo_tema" debe reflejar el concepto EXACTO del texto (ej: si el texto es sobre el verbo auxiliar "do", el titulo_tema debe ser algo como "The auxiliary verb do in questions and negations", NO "Daily routines").
+  → "vocabulario_sugerido" → lista de palabras/términos clave del concepto estudiado (NO palabras genéricas).
+  → "estructuras_sugeridas" → patrones gramaticales o estructuras del concepto estudiado.
+Si el texto pegado no tiene contenido claro, usa el tema más relacionado al nivel de dificultad indicado.
 
 Ahora convierte SOLO el contenido de arriba a JSON:`;
 
@@ -20111,6 +20315,7 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
         "writing_transformation_libre",
         "sentence_builder_libre",
         "picture_description_libre",
+        "oraciones_propias",
         // Tipos legacy (compatibilidad hacia atrás)
         "writing_sentence_builder",
         "writing_picture_description",
@@ -21447,6 +21652,33 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
           numeroGlobal++;
         });
       } else {
+        // Para oraciones_propias: expandir cada oración como ítem individual
+        if (pregunta.tipo === "oraciones_propias") {
+          const oracionesRaw = respuestaUsuario.split("|||");
+          const numOraciones = pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
+          const puntosPorOracion = Math.round(((pregunta.puntos || numOraciones) / numOraciones) * 10) / 10;
+          for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
+            const respOracion = oracionesRaw[oIdx]?.trim() || "(sin respuesta)";
+            preguntasConRespuestas.push({
+              numero: numeroGlobal,
+              tipo: "oracion_propia_item",
+              oracion_numero: oIdx + 1,
+              total_oraciones: numOraciones,
+              pregunta: `Oración ${oIdx + 1} de ${numOraciones} — tema: ${pregunta.metadata?.titulo_tema || ""}`,
+              respuesta_usuario: respOracion,
+              titulo_tema: pregunta.metadata?.titulo_tema || "",
+              estructuras_sugeridas: pregunta.metadata?.estructuras_sugeridas || [],
+              vocabulario_sugerido: pregunta.metadata?.vocabulario_sugerido || [],
+              nivel_dificultad: pregunta.metadata?.nivel_dificultad || "intermedio",
+              puntos_maximos: puntosPorOracion,
+              indice_original: index,
+              subindice: oIdx,
+            });
+            numeroGlobal++;
+          }
+          return; // saltar al siguiente pregunta del forEach
+        }
+
         // Formato normal para otros tipos de preguntas
         let preguntaFormato = {
           numero: numeroGlobal,
@@ -21546,6 +21778,15 @@ Para cada pregunta numerada, evalúa la respuesta del usuario:
 - Open Question: Evalúa profundidad, puntos clave cubiertos (0-100%)
 - Case Study: Evalúa análisis, solución propuesta, coherencia (0-100%)
 - subpregunta_idioma: Compara respuesta_usuario con respuesta_esperada (0-100%)
+- oracion_propia_item: Evalúa UNA oración libre del estudiante. Campos relevantes: titulo_tema, estructuras_sugeridas, vocabulario_sugerido, nivel_dificultad. Evaluar en ESPAÑOL:
+  * ¿Es gramaticalmente correcta según el nivel?
+  * ¿Usa vocabulario apropiado relacionado al tema?
+  * ¿Tiene coherencia con el tema?
+  * 100% si la oración es correcta y relevante al tema. 50-80% si tiene errores menores. 0% si está en blanco o es incoherente.
+  * El campo feedback DEBE estar en ESPAÑOL: indica el error específico y cómo corregirlo. Ej: "✅ Correcta." o "❌ Error: el auxiliar 'do' va antes de 'not'. Debe ser: 'I do not hunt'."
+  * OBLIGATORIO: incluir el campo "pistas" con 2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración
+
+⚠️ RESPUESTAS EN BLANCO: Si respuesta_usuario está vacía, es "(sin respuesta)" o contiene solo separadores "|||", asigna 0 puntos y "correcto": false con feedback "Sin respuesta". NUNCA omitas una pregunta del resultado.
 
 📝 CRITERIOS ESPECIALES PARA SHORT_ANSWER:
 - Tolerancia a sinónimos: "rápido" = "veloz" = "acelerado"
@@ -21562,14 +21803,16 @@ RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
       "correcto": true,
       "puntos": 0.8,
       "puntos_maximos": 0.8,
-      "feedback": "Explicación breve"
+      "feedback": "Explicación en español",
+      "pistas": "Solo para oracion_propia_item: 2-3 consejos breves en español"
     },
     {
       "pregunta_numero": 2,
-      "correcto": true,
-      "puntos": 0.8,
+      "correcto": false,
+      "puntos": 0,
       "puntos_maximos": 0.8,
-      "feedback": "Explicación breve"
+      "feedback": "❌ Error específico en español y cómo corregirlo",
+      "pistas": "Solo para oracion_propia_item: 2-3 consejos breves en español"
     }
   ],
   "puntos_obtenidos": 0,
@@ -21581,10 +21824,11 @@ REGLAS:
 1. ⚠️ OBLIGATORIO: Incluir resultado para CADA pregunta numerada (1 a ${totalPreguntasReales})
 2. NO incluir elementos tipo "contexto_lectura" en resultados
 3. "correcto": true si puntos >= 50% de puntos_maximos
-4. "feedback": Retroalimentación constructiva breve
+4. "feedback": Retroalimentación constructiva EN ESPAÑOL. Para oraciones_propias: detalla CADA oración numerada con su error específico
 5. Calcula puntos_obtenidos sumando todos los puntos
 6. Calcula puntos_totales sumando todos los puntos_maximos
 7. porcentaje = (puntos_obtenidos / puntos_totales) * 100
+8. Para cada pregunta tipo oracion_propia_item: OBLIGATORIO incluir "pistas" con 2-3 consejos breves en ESPAÑOL
 
 Califica ahora las ${totalPreguntasReales} preguntas:`;
 
@@ -21984,6 +22228,26 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
               es_subpregunta: true,
             });
           });
+        } else if (pregunta.tipo === "oraciones_propias") {
+          // Expandir oraciones propias en ítems individuales
+          const oracionesRaw = respuestaUsuarioCompleta.split("|||");
+          const numOraciones = pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
+          const puntosPorOracion = Math.round(((pregunta.puntos || numOraciones) / numOraciones) * 10) / 10;
+          for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
+            preguntasDesglosadas.push({
+              pregunta: `Oración ${oIdx + 1} de ${numOraciones}`,
+              tipo: "oracion_propia_item",
+              respuesta_usuario: oracionesRaw[oIdx]?.trim() || "(sin respuesta)",
+              titulo_tema: pregunta.metadata?.titulo_tema || "",
+              estructuras_sugeridas: pregunta.metadata?.estructuras_sugeridas || [],
+              vocabulario_sugerido: pregunta.metadata?.vocabulario_sugerido || [],
+              nivel_dificultad: pregunta.metadata?.nivel_dificultad || "intermedio",
+              puntos: puntosPorOracion,
+              indice_original: index,
+              subindice: oIdx,
+              es_subpregunta: true,
+            });
+          }
         } else {
           // Pregunta normal
           preguntasDesglosadas.push({
@@ -22053,15 +22317,10 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           }
         }
 
-        // Calcular repetición espaciada para esta pregunta individual
-        const diasIntervalo =
-          porcentajePregunta >= 90
-            ? 7
-            : porcentajePregunta >= 70
-              ? 3
-              : porcentajePregunta >= 50
-                ? 1
-                : 0.5;
+        // 🧠 Repetición espaciada: primera generación SIEMPRE = mañana (día 1)
+        // El primer contacto es diagnóstico, no consolidación.
+        // La consolidación empieza con el primer repaso exitoso al día siguiente.
+        const diasIntervalo = 1;
         const proximaRevision = new Date(ahora);
         proximaRevision.setDate(proximaRevision.getDate() + diasIntervalo);
 
@@ -22099,6 +22358,8 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           es_subpregunta: preguntaDesglosada.es_subpregunta || false,
           indice_original: preguntaDesglosada.indice_original,
           subindice: preguntaDesglosada.subindice,
+          // Guardar pistas para oracion_propia_item
+          ...(r.pistas ? { pistas_ia: r.pistas } : {}),
         };
       });
 
@@ -22209,18 +22470,26 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
             (h) => h.correcta,
           ).length;
 
+          // 🧠 Repetición espaciada: 1 → 3 → 7 → 15 → 30 → 60 → ×2.5
           let diasRevision;
           if (resultado.correcto) {
             if (falloPrevioHoy) {
               diasRevision = 1;
             } else if (aciertosConsecutivos === 0) {
-              diasRevision = Math.floor(Math.random() * 2) + 2;
+              // Primera vez: diagnóstico → mañana SIEMPRE
+              diasRevision = 1;
             } else if (aciertosConsecutivos === 1) {
-              diasRevision = 7;
+              diasRevision = 3;  // Pasó el test del día 1 → 3 días
             } else if (aciertosConsecutivos === 2) {
-              diasRevision = 14;
+              diasRevision = 7;  // 7 días
+            } else if (aciertosConsecutivos === 3) {
+              diasRevision = 15; // 15 días
+            } else if (aciertosConsecutivos === 4) {
+              diasRevision = 30; // 30 días
+            } else if (aciertosConsecutivos === 5) {
+              diasRevision = 60; // 60 días
             } else {
-              diasRevision = 30;
+              diasRevision = Math.min(365, Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)));
             }
           } else {
             diasRevision = 1;
@@ -22338,6 +22607,20 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
         }
 
         setPracticas([...practicas]);
+
+        // 🔥 Reconstruir aciertos y errores para que los campos nuevos (pistas_ia, etc.)
+        // estén disponibles en Repaso de Aciertos sin necesidad de recargar la carpeta
+        const todosLosItemsActualizados = [
+          ...examenesCompletados.map((e) => ({ ...e, es_practica: false })),
+          ...practicas.map((p) => ({ ...p, es_practica: true })),
+        ];
+        const aciertosActualizados = extraerAciertosParaRepaso(todosLosItemsActualizados);
+        setAciertosRepaso(aciertosActualizados);
+        setIndiceAciertoActual(0);
+        const erroresActualizados = extraerErroresDeExamenes(todosLosItemsActualizados);
+        setErroresActuales(erroresActualizados);
+        setIndiceErrorActual(0);
+
       } else {
         // 🔥 No hay práctica existente - crear una nueva usando carpetaExamen
         console.log(
@@ -28250,6 +28533,7 @@ Generate an educational reading passage about this topic that would be suitable 
                               "formal_email",
                               "picture_description",
                               "picture_description_libre",
+                              "oraciones_propias",
                               "short_answer_item",
                               "comprehension_mcq",
                               "skill_mcq",
@@ -36786,16 +37070,10 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                         color: "#e2e8f0",
                                         fontSize: "0.95rem",
                                         resize: "vertical",
-                                        marginBottom: "1rem",
+                                        marginBottom: "0.75rem",
                                       }}
                                     />
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        gap: "0.5rem",
-                                        flexWrap: "wrap",
-                                      }}
-                                    >
+                                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
                                       <button
                                         onClick={() => {
                                           navigator.clipboard.writeText(
@@ -36824,110 +37102,44 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                           ? "✓ Copiado"
                                           : "📋 Copiar prompt ChatGPT"}
                                       </button>
-                                      <button
-                                        onClick={() => {
-                                          setRespuestaError(
-                                            writingParaphraseError,
-                                          );
-                                          setRespuestaErrorSeleccionada(
-                                            writingParaphraseError,
-                                          );
-                                          setErrorYaRespondido(true);
-                                        }}
-                                        disabled={
-                                          !writingParaphraseError.trim()
-                                        }
-                                        style={{
-                                          padding: "8px 16px",
-                                          background:
-                                            writingParaphraseError.trim()
-                                              ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                                              : "rgba(100, 116, 139, 0.2)",
-                                          border: "none",
-                                          borderRadius: "8px",
-                                          color: "white",
-                                          cursor: writingParaphraseError.trim()
-                                            ? "pointer"
-                                            : "not-allowed",
-                                        }}
-                                      >
-                                        ✓ Marcar respondido
-                                      </button>
                                     </div>
-                                    <div style={{ marginTop: "0.75rem" }}>
+                                    {/* 🤖 Pega el JSON de calificación */}
+                                    <div style={{ background: "rgba(16,163,127,0.07)", border: "1px solid rgba(16,163,127,0.25)", borderRadius: "10px", padding: "0.75rem 1rem" }}>
+                                      <span style={{ color: "#6ee7b7", fontSize: "0.82rem", fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>🤖 Pega aquí la respuesta JSON de ChatGPT/DeepSeek:</span>
                                       <textarea
                                         value={textoJsonParaphraseError}
-                                        onChange={(e) =>
-                                          setTextoJsonParaphraseError(
-                                            e.target.value,
-                                          )
-                                        }
-                                        placeholder="Pega el JSON de ChatGPT..."
-                                        style={{
-                                          width: "100%",
-                                          minHeight: "60px",
-                                          padding: "0.5rem",
-                                          borderRadius: "6px",
-                                          border: "1px solid #374151",
-                                          background: "#0f172a",
-                                          color: "#94a3b8",
-                                          fontSize: "0.8rem",
-                                          resize: "vertical",
-                                          marginBottom: "0.5rem",
-                                        }}
-                                      />
-                                      <button
-                                        onClick={() => {
-                                          const parsed = extraerJSON(
-                                            textoJsonParaphraseError,
-                                          );
+                                        onChange={(e) => {
+                                          setTextoJsonParaphraseError(e.target.value);
+                                          const parsed = extraerJSON(e.target.value);
                                           if (parsed) {
-                                            setJsonCalificacionParaphraseError(
-                                              parsed,
-                                            );
-                                            setRespuestaError(
-                                              writingParaphraseError,
-                                            );
+                                            setJsonCalificacionParaphraseError(parsed);
+                                            setRespuestaError(writingParaphraseError);
                                             if (parsed.correcto !== undefined)
                                               setTimeout(
                                                 () =>
                                                   parsed.correcto
-                                                    ? verificarRespuestaError(
-                                                        writingParaphraseError,
-                                                      )
-                                                    : verificarRespuestaError(
-                                                        "__INCORRECTO__",
-                                                      ),
+                                                    ? verificarRespuestaError(writingParaphraseError)
+                                                    : verificarRespuestaError("__INCORRECTO__"),
                                                 100,
                                               );
-                                          } else {
-                                            alert(
-                                              "❌ No se encontró JSON válido de calificación.\n\nAsegúrate de pegar solo el JSON de respuesta de ChatGPT.",
-                                            );
                                           }
                                         }}
-                                        disabled={
-                                          !textoJsonParaphraseError.trim()
-                                        }
+                                        placeholder='{"puntos_obtenidos": 3, "correcto": true, "feedback": "..."}'
                                         style={{
-                                          padding: "6px 12px",
-                                          background:
-                                            textoJsonParaphraseError.trim()
-                                              ? "rgba(34, 197, 94, 0.2)"
-                                              : "rgba(100, 116, 139, 0.2)",
-                                          border: `1px solid ${textoJsonParaphraseError.trim() ? "rgba(34, 197, 94, 0.5)" : "rgba(100, 116, 139, 0.3)"}`,
-                                          borderRadius: "8px",
-                                          color: textoJsonParaphraseError.trim()
-                                            ? "#86efac"
-                                            : "#64748b",
-                                          cursor:
-                                            textoJsonParaphraseError.trim()
-                                              ? "pointer"
-                                              : "not-allowed",
+                                          width: "100%",
+                                          minHeight: "70px",
+                                          padding: "0.5rem 0.65rem",
+                                          borderRadius: "7px",
+                                          border: textoJsonParaphraseError.trim()
+                                            ? "1px solid rgba(34,197,94,0.4)"
+                                            : "1px solid #374151",
+                                          background: "#0f172a",
+                                          color: "#94a3b8",
+                                          fontSize: "0.8rem",
+                                          resize: "vertical",
+                                          boxSizing: "border-box",
                                         }}
-                                      >
-                                        ✨ Procesar calificación
-                                      </button>
+                                      />
                                     </div>
                                   </>
                                 )}
@@ -38798,29 +39010,45 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
 
                           {/* 🔥 INTERFAZ PARA SENTENCE_BUILDER_LIBRE - CORRECCIÓN DE ERRORES */}
                           {(() => {
-                            const errorActual = erroresActuales[indiceErrorActual];
+                            const errorActual =
+                              erroresActuales[indiceErrorActual];
                             const esSBL =
                               errorActual?.tipo === "sentence_builder_libre" ||
-                              errorActual?.tipo === "sentence_builder_libre_item" ||
-                              errorActual?.tipo_padre === "sentence_builder_libre";
+                              errorActual?.tipo ===
+                                "sentence_builder_libre_item" ||
+                              errorActual?.tipo_padre ===
+                                "sentence_builder_libre";
                             if (!esSBL) return null;
 
-                            const idioma = errorActual?.metadata?.idioma || errorActual?.idioma || "inglés";
-                            const preguntaItem = errorActual?.pregunta || errorActual?.instruccion || "Construye una oración usando las palabras clave.";
+                            const idioma =
+                              errorActual?.metadata?.idioma ||
+                              errorActual?.idioma ||
+                              "inglés";
+                            const preguntaItem =
+                              errorActual?.pregunta ||
+                              errorActual?.instruccion ||
+                              "Construye una oración usando las palabras clave.";
 
                             // ✅ Detectar si es sub-item expandido o ejercicio completo (viejo formato)
                             const esSubItem =
-                              errorActual?.tipo === "sentence_builder_libre_item" ||
-                              errorActual?.tipo_padre === "sentence_builder_libre";
+                              errorActual?.tipo ===
+                                "sentence_builder_libre_item" ||
+                              errorActual?.tipo_padre ===
+                                "sentence_builder_libre";
 
                             let itemsParaMostrar = [];
                             if (esSubItem) {
                               // Sub-item expandido: datos directamente en el objeto
-                              itemsParaMostrar = [{
-                                palabras_clave: errorActual?.palabras_clave || [],
-                                contexto_pista: errorActual?.contexto_pista || "",
-                                oracion_esperada: errorActual?.oracion_esperada || "",
-                              }];
+                              itemsParaMostrar = [
+                                {
+                                  palabras_clave:
+                                    errorActual?.palabras_clave || [],
+                                  contexto_pista:
+                                    errorActual?.contexto_pista || "",
+                                  oracion_esperada:
+                                    errorActual?.oracion_esperada || "",
+                                },
+                              ];
                             } else {
                               // Ejercicio completo (viejo formato): items en metadata.items o items
                               itemsParaMostrar =
@@ -38830,15 +39058,21 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Ordena las palabras para formar oracio
                             }
 
                             // Item actual a mostrar (un solo item a la vez)
-                            const idxItemErr = Math.min(indiceItemSBLError, Math.max(0, itemsParaMostrar.length - 1));
-                            const itemActualErr = itemsParaMostrar[idxItemErr] || null;
+                            const idxItemErr = Math.min(
+                              indiceItemSBLError,
+                              Math.max(0, itemsParaMostrar.length - 1),
+                            );
+                            const itemActualErr =
+                              itemsParaMostrar[idxItemErr] || null;
 
                             const generarPromptSBL = () => {
                               const item = itemActualErr;
                               if (!item) return "";
                               let prompt = `Evalúa la siguiente oración construida por un estudiante de ${idioma}.\n\nINSTRUCCIÓN: ${preguntaItem}\nPALABRAS CLAVE: [${(item.palabras_clave || []).join(", ")}]`;
-                              if (item.contexto_pista) prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
-                              if (item.oracion_esperada) prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
+                              if (item.contexto_pista)
+                                prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
+                              if (item.oracion_esperada)
+                                prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
                               prompt += `\n\nRESPUESTA DEL ESTUDIANTE: "${sentenceBuilderLibreError || "(vacío)"}";
 
 EVALÚA estrictamente: uso de palabras clave, gramática y coherencia con cada contexto.
@@ -38857,17 +39091,35 @@ Devuelve SOLO este JSON:
                             };
 
                             return (
-                              <div style={{
-                                background: "rgba(139, 92, 246, 0.1)",
-                                border: "1px solid rgba(139, 92, 246, 0.3)",
-                                borderRadius: "12px",
-                                padding: "1.5rem",
-                                marginTop: "1rem",
-                              }}>
-                                <h4 style={{ color: "#c4b5fd", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div
+                                style={{
+                                  background: "rgba(139, 92, 246, 0.1)",
+                                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                                  borderRadius: "12px",
+                                  padding: "1.5rem",
+                                  marginTop: "1rem",
+                                }}
+                              >
+                                <h4
+                                  style={{
+                                    color: "#c4b5fd",
+                                    marginBottom: "1rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "0.5rem",
+                                  }}
+                                >
                                   <span>🧩</span>
                                   <span>Constructor de Oraciones Libre</span>
-                                  <span style={{ fontSize: "0.75rem", padding: "2px 8px", background: "rgba(139, 92, 246, 0.3)", borderRadius: "10px", color: "#c4b5fd" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "0.75rem",
+                                      padding: "2px 8px",
+                                      background: "rgba(139, 92, 246, 0.3)",
+                                      borderRadius: "10px",
+                                      color: "#c4b5fd",
+                                    }}
+                                  >
                                     {idioma}
                                   </span>
                                 </h4>
@@ -38876,82 +39128,279 @@ Devuelve SOLO este JSON:
                                 {itemActualErr && (
                                   <div style={{ marginBottom: "1rem" }}>
                                     {itemsParaMostrar.length > 1 && (
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-                                        <button onClick={() => setIndiceItemSBLError(i => Math.max(0, i - 1))} disabled={idxItemErr === 0}
-                                          style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemErr === 0 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemErr === 0 ? "#64748b" : "#c4b5fd", cursor: idxItemErr === 0 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
-                                        >{"←"} Anterior</button>
-                                        <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>Oración {idxItemErr + 1} de {itemsParaMostrar.length}</span>
-                                        <button onClick={() => setIndiceItemSBLError(i => Math.min(itemsParaMostrar.length - 1, i + 1))} disabled={idxItemErr === itemsParaMostrar.length - 1}
-                                          style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemErr === itemsParaMostrar.length - 1 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemErr === itemsParaMostrar.length - 1 ? "#64748b" : "#c4b5fd", cursor: idxItemErr === itemsParaMostrar.length - 1 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
-                                        >Siguiente {"→"}</button>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <button
+                                          onClick={() =>
+                                            setIndiceItemSBLError((i) =>
+                                              Math.max(0, i - 1),
+                                            )
+                                          }
+                                          disabled={idxItemErr === 0}
+                                          style={{
+                                            padding: "4px 14px",
+                                            borderRadius: "6px",
+                                            border:
+                                              "1px solid rgba(139,92,246,0.4)",
+                                            background:
+                                              idxItemErr === 0
+                                                ? "rgba(100,116,139,0.2)"
+                                                : "rgba(139,92,246,0.2)",
+                                            color:
+                                              idxItemErr === 0
+                                                ? "#64748b"
+                                                : "#c4b5fd",
+                                            cursor:
+                                              idxItemErr === 0
+                                                ? "not-allowed"
+                                                : "pointer",
+                                            fontSize: "0.85rem",
+                                          }}
+                                        >
+                                          {"←"} Anterior
+                                        </button>
+                                        <span
+                                          style={{
+                                            color: "#a78bfa",
+                                            fontSize: "0.85rem",
+                                            fontWeight: "600",
+                                          }}
+                                        >
+                                          Oración {idxItemErr + 1} de{" "}
+                                          {itemsParaMostrar.length}
+                                        </span>
+                                        <button
+                                          onClick={() =>
+                                            setIndiceItemSBLError((i) =>
+                                              Math.min(
+                                                itemsParaMostrar.length - 1,
+                                                i + 1,
+                                              ),
+                                            )
+                                          }
+                                          disabled={
+                                            idxItemErr ===
+                                            itemsParaMostrar.length - 1
+                                          }
+                                          style={{
+                                            padding: "4px 14px",
+                                            borderRadius: "6px",
+                                            border:
+                                              "1px solid rgba(139,92,246,0.4)",
+                                            background:
+                                              idxItemErr ===
+                                              itemsParaMostrar.length - 1
+                                                ? "rgba(100,116,139,0.2)"
+                                                : "rgba(139,92,246,0.2)",
+                                            color:
+                                              idxItemErr ===
+                                              itemsParaMostrar.length - 1
+                                                ? "#64748b"
+                                                : "#c4b5fd",
+                                            cursor:
+                                              idxItemErr ===
+                                              itemsParaMostrar.length - 1
+                                                ? "not-allowed"
+                                                : "pointer",
+                                            fontSize: "0.85rem",
+                                          }}
+                                        >
+                                          Siguiente {"→"}
+                                        </button>
                                       </div>
                                     )}
-                                    <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)", borderRadius: "8px", padding: "1rem" }}>
+                                    <div
+                                      style={{
+                                        background: "rgba(139, 92, 246, 0.1)",
+                                        border:
+                                          "1px solid rgba(139, 92, 246, 0.3)",
+                                        borderRadius: "8px",
+                                        padding: "1rem",
+                                      }}
+                                    >
                                       <div style={{ marginBottom: "0.35rem" }}>
-                                        <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>🔑 Palabras clave:</span>
+                                        <span
+                                          style={{
+                                            color: "#a78bfa",
+                                            fontSize: "0.85rem",
+                                            fontWeight: "600",
+                                          }}
+                                        >
+                                          🔑 Palabras clave:
+                                        </span>
                                       </div>
-                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: itemActualErr.contexto_pista ? "0.5rem" : "0" }}>
-                                        {(itemActualErr.palabras_clave || []).map((palabra, j) => (
-                                          <span key={j} style={{ background: "rgba(139, 92, 246, 0.3)", padding: "6px 12px", borderRadius: "8px", color: "#c4b5fd", fontSize: "0.9rem", fontWeight: "500", border: "1px solid rgba(139, 92, 246, 0.5)" }}>{palabra}</span>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          flexWrap: "wrap",
+                                          gap: "0.5rem",
+                                          marginBottom:
+                                            itemActualErr.contexto_pista
+                                              ? "0.5rem"
+                                              : "0",
+                                        }}
+                                      >
+                                        {(
+                                          itemActualErr.palabras_clave || []
+                                        ).map((palabra, j) => (
+                                          <span
+                                            key={j}
+                                            style={{
+                                              background:
+                                                "rgba(139, 92, 246, 0.3)",
+                                              padding: "6px 12px",
+                                              borderRadius: "8px",
+                                              color: "#c4b5fd",
+                                              fontSize: "0.9rem",
+                                              fontWeight: "500",
+                                              border:
+                                                "1px solid rgba(139, 92, 246, 0.5)",
+                                            }}
+                                          >
+                                            {palabra}
+                                          </span>
                                         ))}
                                       </div>
                                       {itemActualErr.contexto_pista && (
                                         <div style={{ marginTop: "0.35rem" }}>
-                                          <span style={{ color: "#fcd34d", fontSize: "0.85rem" }}>💡 Contexto: </span>
-                                          <span style={{ color: "#fef3c7", fontSize: "0.85rem", fontStyle: "italic" }}>{itemActualErr.contexto_pista}</span>
+                                          <span
+                                            style={{
+                                              color: "#fcd34d",
+                                              fontSize: "0.85rem",
+                                            }}
+                                          >
+                                            💡 Contexto:{" "}
+                                          </span>
+                                          <span
+                                            style={{
+                                              color: "#fef3c7",
+                                              fontSize: "0.85rem",
+                                              fontStyle: "italic",
+                                            }}
+                                          >
+                                            {itemActualErr.contexto_pista}
+                                          </span>
                                         </div>
                                       )}
-                                      {errorYaRespondido && itemActualErr.oracion_esperada && (
-                                        <div style={{ marginTop: "0.35rem" }}>
-                                          <span style={{ color: "#86efac", fontSize: "0.8rem" }}>✓ Ejemplo: </span>
-                                          <span style={{ color: "#a5f3c4", fontSize: "0.85rem" }}>"{itemActualErr.oracion_esperada}"</span>
-                                        </div>
-                                      )}
+                                      {errorYaRespondido &&
+                                        itemActualErr.oracion_esperada && (
+                                          <div style={{ marginTop: "0.35rem" }}>
+                                            <span
+                                              style={{
+                                                color: "#86efac",
+                                                fontSize: "0.8rem",
+                                              }}
+                                            >
+                                              ✓ Ejemplo:{" "}
+                                            </span>
+                                            <span
+                                              style={{
+                                                color: "#a5f3c4",
+                                                fontSize: "0.85rem",
+                                              }}
+                                            >
+                                              "{itemActualErr.oracion_esperada}"
+                                            </span>
+                                          </div>
+                                        )}
                                     </div>
                                   </div>
                                 )}
-
 
                                 {!errorYaRespondido && (
                                   <>
                                     <textarea
                                       value={sentenceBuilderLibreError}
-                                      onChange={(e) => setSentenceBuilderLibreError(e.target.value)}
+                                      onChange={(e) =>
+                                        setSentenceBuilderLibreError(
+                                          e.target.value,
+                                        )
+                                      }
                                       placeholder="Escribe tu oración usando las palabras clave..."
                                       style={{
-                                        width: "100%", minHeight: "90px", padding: "1rem",
-                                        borderRadius: "8px", border: "1px solid rgba(139, 92, 246, 0.4)",
-                                        background: "rgba(15, 23, 42, 0.8)", color: "#e2e8f0",
-                                        fontSize: "0.95rem", resize: "vertical", marginBottom: "1rem",
+                                        width: "100%",
+                                        minHeight: "90px",
+                                        padding: "1rem",
+                                        borderRadius: "8px",
+                                        border:
+                                          "1px solid rgba(139, 92, 246, 0.4)",
+                                        background: "rgba(15, 23, 42, 0.8)",
+                                        color: "#e2e8f0",
+                                        fontSize: "0.95rem",
+                                        resize: "vertical",
+                                        marginBottom: "1rem",
                                       }}
                                     />
-                                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.5rem",
+                                        flexWrap: "wrap",
+                                        marginBottom: "1rem",
+                                      }}
+                                    >
                                       <button
                                         onClick={() => {
-                                          navigator.clipboard.writeText(generarPromptSBL());
-                                          setPromptCopiadoSentenceBuilderLibreError(true);
-                                          setTimeout(() => setPromptCopiadoSentenceBuilderLibreError(false), 2000);
+                                          navigator.clipboard.writeText(
+                                            generarPromptSBL(),
+                                          );
+                                          setPromptCopiadoSentenceBuilderLibreError(
+                                            true,
+                                          );
+                                          setTimeout(
+                                            () =>
+                                              setPromptCopiadoSentenceBuilderLibreError(
+                                                false,
+                                              ),
+                                            2000,
+                                          );
                                         }}
                                         style={{
-                                          padding: "8px 16px", background: "rgba(139, 92, 246, 0.2)",
-                                          border: "1px solid rgba(139, 92, 246, 0.4)", borderRadius: "8px",
-                                          color: "#c4b5fd", cursor: "pointer",
+                                          padding: "8px 16px",
+                                          background: "rgba(139, 92, 246, 0.2)",
+                                          border:
+                                            "1px solid rgba(139, 92, 246, 0.4)",
+                                          borderRadius: "8px",
+                                          color: "#c4b5fd",
+                                          cursor: "pointer",
                                         }}
                                       >
-                                        {promptCopiadoSentenceBuilderLibreError ? "✓ Copiado" : "📋 Copiar prompt ChatGPT"}
+                                        {promptCopiadoSentenceBuilderLibreError
+                                          ? "✓ Copiado"
+                                          : "📋 Copiar prompt ChatGPT"}
                                       </button>
                                       <button
                                         onClick={() => {
-                                          setRespuestaError(sentenceBuilderLibreError);
-                                          setRespuestaErrorSeleccionada(sentenceBuilderLibreError);
+                                          setRespuestaError(
+                                            sentenceBuilderLibreError,
+                                          );
+                                          setRespuestaErrorSeleccionada(
+                                            sentenceBuilderLibreError,
+                                          );
                                           setErrorYaRespondido(true);
                                         }}
-                                        disabled={!sentenceBuilderLibreError.trim()}
+                                        disabled={
+                                          !sentenceBuilderLibreError.trim()
+                                        }
                                         style={{
                                           padding: "8px 16px",
-                                          background: sentenceBuilderLibreError.trim() ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(100, 116, 139, 0.2)",
-                                          border: "none", borderRadius: "8px", color: "white",
-                                          cursor: sentenceBuilderLibreError.trim() ? "pointer" : "not-allowed",
+                                          background:
+                                            sentenceBuilderLibreError.trim()
+                                              ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                                              : "rgba(100, 116, 139, 0.2)",
+                                          border: "none",
+                                          borderRadius: "8px",
+                                          color: "white",
+                                          cursor:
+                                            sentenceBuilderLibreError.trim()
+                                              ? "pointer"
+                                              : "not-allowed",
                                         }}
                                       >
                                         ✓ Marcar respondido
@@ -38960,40 +39409,74 @@ Devuelve SOLO este JSON:
                                     {/* Pegar JSON de ChatGPT */}
                                     <textarea
                                       value={textoJsonSentenceBuilderLibreError}
-                                      onChange={(e) => setTextoJsonSentenceBuilderLibreError(e.target.value)}
+                                      onChange={(e) =>
+                                        setTextoJsonSentenceBuilderLibreError(
+                                          e.target.value,
+                                        )
+                                      }
                                       placeholder='Pega aquí el JSON de ChatGPT... {"puntos_obtenidos": 8, "correcto": true, ...}'
                                       style={{
-                                        width: "100%", minHeight: "70px", padding: "0.5rem",
-                                        borderRadius: "6px", border: "1px solid #374151",
-                                        background: "#0f172a", color: "#94a3b8",
-                                        fontSize: "0.8rem", resize: "vertical", marginBottom: "0.5rem",
+                                        width: "100%",
+                                        minHeight: "70px",
+                                        padding: "0.5rem",
+                                        borderRadius: "6px",
+                                        border: "1px solid #374151",
+                                        background: "#0f172a",
+                                        color: "#94a3b8",
+                                        fontSize: "0.8rem",
+                                        resize: "vertical",
+                                        marginBottom: "0.5rem",
                                       }}
                                     />
                                     <button
                                       onClick={() => {
-                                        const parsed = extraerJSON(textoJsonSentenceBuilderLibreError);
+                                        const parsed = extraerJSON(
+                                          textoJsonSentenceBuilderLibreError,
+                                        );
                                         if (parsed) {
-                                          setJsonCalificacionSentenceBuilderLibreError(parsed);
-                                          setRespuestaError(sentenceBuilderLibreError);
+                                          setJsonCalificacionSentenceBuilderLibreError(
+                                            parsed,
+                                          );
+                                          setRespuestaError(
+                                            sentenceBuilderLibreError,
+                                          );
                                           if (parsed.correcto !== undefined)
-                                            setTimeout(() =>
-                                              parsed.correcto
-                                                ? verificarRespuestaError(sentenceBuilderLibreError)
-                                                : verificarRespuestaError("__INCORRECTO__"),
+                                            setTimeout(
+                                              () =>
+                                                parsed.correcto
+                                                  ? verificarRespuestaError(
+                                                      sentenceBuilderLibreError,
+                                                    )
+                                                  : verificarRespuestaError(
+                                                      "__INCORRECTO__",
+                                                    ),
                                               100,
                                             );
                                         } else {
-                                          alert("❌ No se encontró JSON válido.\n\nAsegúrate de pegar el JSON de respuesta de ChatGPT.");
+                                          alert(
+                                            "❌ No se encontró JSON válido.\n\nAsegúrate de pegar el JSON de respuesta de ChatGPT.",
+                                          );
                                         }
                                       }}
-                                      disabled={!textoJsonSentenceBuilderLibreError.trim()}
+                                      disabled={
+                                        !textoJsonSentenceBuilderLibreError.trim()
+                                      }
                                       style={{
                                         padding: "6px 12px",
-                                        background: textoJsonSentenceBuilderLibreError.trim() ? "rgba(34, 197, 94, 0.2)" : "rgba(100, 116, 139, 0.2)",
+                                        background:
+                                          textoJsonSentenceBuilderLibreError.trim()
+                                            ? "rgba(34, 197, 94, 0.2)"
+                                            : "rgba(100, 116, 139, 0.2)",
                                         border: `1px solid ${textoJsonSentenceBuilderLibreError.trim() ? "rgba(34, 197, 94, 0.5)" : "rgba(100, 116, 139, 0.3)"}`,
                                         borderRadius: "8px",
-                                        color: textoJsonSentenceBuilderLibreError.trim() ? "#86efac" : "#64748b",
-                                        cursor: textoJsonSentenceBuilderLibreError.trim() ? "pointer" : "not-allowed",
+                                        color:
+                                          textoJsonSentenceBuilderLibreError.trim()
+                                            ? "#86efac"
+                                            : "#64748b",
+                                        cursor:
+                                          textoJsonSentenceBuilderLibreError.trim()
+                                            ? "pointer"
+                                            : "not-allowed",
                                       }}
                                     >
                                       ✨ Procesar calificación
@@ -39002,25 +39485,67 @@ Devuelve SOLO este JSON:
                                 )}
 
                                 {jsonCalificacionSentenceBuilderLibreError && (
-                                  <div style={{
-                                    marginTop: "1rem", padding: "1rem",
-                                    background: jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                                    border: `1px solid ${jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
-                                    borderRadius: "8px",
-                                  }}>
-                                    <strong style={{ color: jsonCalificacionSentenceBuilderLibreError.correcto ? "#86efac" : "#fca5a5" }}>
-                                      {jsonCalificacionSentenceBuilderLibreError.correcto ? "✅" : "❌"}{" "}
-                                      {jsonCalificacionSentenceBuilderLibreError.puntos_obtenidos}/{jsonCalificacionSentenceBuilderLibreError.puntos_totales}{" "}
-                                      ({jsonCalificacionSentenceBuilderLibreError.porcentaje}%)
+                                  <div
+                                    style={{
+                                      marginTop: "1rem",
+                                      padding: "1rem",
+                                      background:
+                                        jsonCalificacionSentenceBuilderLibreError.correcto
+                                          ? "rgba(34, 197, 94, 0.15)"
+                                          : "rgba(239, 68, 68, 0.15)",
+                                      border: `1px solid ${jsonCalificacionSentenceBuilderLibreError.correcto ? "rgba(34, 197, 94, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
+                                      borderRadius: "8px",
+                                    }}
+                                  >
+                                    <strong
+                                      style={{
+                                        color:
+                                          jsonCalificacionSentenceBuilderLibreError.correcto
+                                            ? "#86efac"
+                                            : "#fca5a5",
+                                      }}
+                                    >
+                                      {jsonCalificacionSentenceBuilderLibreError.correcto
+                                        ? "✅"
+                                        : "❌"}{" "}
+                                      {
+                                        jsonCalificacionSentenceBuilderLibreError.puntos_obtenidos
+                                      }
+                                      /
+                                      {
+                                        jsonCalificacionSentenceBuilderLibreError.puntos_totales
+                                      }{" "}
+                                      (
+                                      {
+                                        jsonCalificacionSentenceBuilderLibreError.porcentaje
+                                      }
+                                      %)
                                     </strong>
                                     {jsonCalificacionSentenceBuilderLibreError.feedback && (
-                                      <p style={{ color: "#e2e8f0", margin: "0.5rem 0", fontSize: "0.9rem" }}>
-                                        {jsonCalificacionSentenceBuilderLibreError.feedback}
+                                      <p
+                                        style={{
+                                          color: "#e2e8f0",
+                                          margin: "0.5rem 0",
+                                          fontSize: "0.9rem",
+                                        }}
+                                      >
+                                        {
+                                          jsonCalificacionSentenceBuilderLibreError.feedback
+                                        }
                                       </p>
                                     )}
                                     {jsonCalificacionSentenceBuilderLibreError.sugerencia && (
-                                      <p style={{ color: "#93c5fd", margin: "0.25rem 0", fontSize: "0.85rem" }}>
-                                        💡 Sugerencia: {jsonCalificacionSentenceBuilderLibreError.sugerencia}
+                                      <p
+                                        style={{
+                                          color: "#93c5fd",
+                                          margin: "0.25rem 0",
+                                          fontSize: "0.85rem",
+                                        }}
+                                      >
+                                        💡 Sugerencia:{" "}
+                                        {
+                                          jsonCalificacionSentenceBuilderLibreError.sugerencia
+                                        }
                                       </p>
                                     )}
                                   </div>
@@ -39091,7 +39616,12 @@ Devuelve SOLO este JSON:
                               errorActual?.tipo ===
                                 "writing_transformation_libre";
 
-                            // Si tiene opciones MCQ, es V/F, Cloze, sequence_item, sentence_builder, sentence_builder_libre, matching, writing_essay, formal_email, picture_description o tipos de writing específicos, no mostrar textarea
+                            // Solo excluir el padre oraciones_propias (tiene su propio bloque de nav por oraciones)
+                            // oracion_propia_item (sub-ítems individuales) SÍ usan el textarea normal
+                            const esOracionesPropias =
+                              errorActual?.tipo === "oraciones_propias";
+
+                            // Si tiene opciones MCQ, es V/F, Cloze, sequence_item, sentence_builder, sentence_builder_libre, matching, writing_essay, formal_email, picture_description, tipos de writing específicos o oraciones_propias padre, no mostrar textarea
                             if (
                               tieneOpciones ||
                               esVerdaderoFalso ||
@@ -39106,7 +39636,8 @@ Devuelve SOLO este JSON:
                               esWritingShort ||
                               esWritingParaphrase ||
                               esWritingCorrection ||
-                              esWritingTransformation
+                              esWritingTransformation ||
+                              esOracionesPropias
                             )
                               return null;
 
@@ -39117,6 +39648,76 @@ Devuelve SOLO este JSON:
                                     ? "Tu respuesta final:"
                                     : "✍️ Escribe tu respuesta:"}
                                 </h4>
+
+                                {/* 📝 Feedback + pistas — para oracion_propia_item */}
+                                {errorActual?.tipo === "oracion_propia_item" && (
+                                  <>
+                                    {errorActual?.feedback && (
+                                      <div
+                                        style={{
+                                          background: "rgba(239,68,68,0.1)",
+                                          border: "1px solid rgba(239,68,68,0.35)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <p
+                                          style={{
+                                            color: "#fca5a5",
+                                            fontWeight: "600",
+                                            fontSize: "0.85rem",
+                                            marginBottom: "0.35rem",
+                                          }}
+                                        >
+                                          ❌ ¿Por qué falló?
+                                        </p>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            fontSize: "0.9rem",
+                                            margin: 0,
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {errorActual.feedback}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {errorActual?.pistas_ia && (
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border: "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "1rem",
+                                        }}
+                                      >
+                                        <p
+                                          style={{
+                                            color: "#fcd34d",
+                                            fontWeight: "700",
+                                            fontSize: "0.82rem",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          💡 Pistas para hacerlo bien:
+                                        </p>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            fontSize: "0.88rem",
+                                            margin: 0,
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {errorActual.pistas_ia}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
 
                                 {/* Mostrar respuesta original del examen */}
                                 {!errorYaRespondido &&
@@ -39134,9 +39735,12 @@ Devuelve SOLO este JSON:
                                       </div>
                                       <p className="respuesta-original-hint">
                                         💡 Esta respuesta obtuvo{" "}
-                                        {erroresActuales[
-                                          indiceErrorActual
-                                        ].porcentaje_obtenido?.toFixed(0)}
+                                        {(
+                                          erroresActuales[indiceErrorActual]
+                                            .porcentaje_obtenido ??
+                                          erroresActuales[indiceErrorActual]
+                                            .porcentaje
+                                        )?.toFixed(0)}
                                         %. Intenta mejorarla abajo.
                                       </p>
                                     </div>
@@ -39447,6 +40051,12 @@ Devuelve SOLO este JSON:
                                                   {jsonCalificacionIA.feedback}
                                                 </p>
                                               )}
+                                              {jsonCalificacionIA.respuesta_corregida && (
+                                                <div style={{ marginTop: "10px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "7px", padding: "8px 12px" }}>
+                                                  <span style={{ color: "#86efac", fontSize: "12px", fontWeight: "600", display: "block", marginBottom: "4px" }}>✅ Respuesta corregida:</span>
+                                                  <p style={{ color: "#e2e8f0", margin: 0, fontSize: "13px", fontStyle: "italic" }}>"{jsonCalificacionIA.respuesta_corregida}"</p>
+                                                </div>
+                                              )}
                                               <button
                                                 onClick={() => {
                                                   setRespuestaErrorSeleccionada(
@@ -39530,6 +40140,442 @@ Devuelve SOLO este JSON:
                                     )}
                                   </div>
                                 )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* 📝 INTERFAZ PARA ORACIONES_PROPIAS - CORRECCIÓN DE ERRORES */}
+                          {(() => {
+                            const errorActual =
+                              erroresActuales[indiceErrorActual];
+                            if (errorActual?.tipo !== "oraciones_propias")
+                              return null;
+
+                            const metadata = errorActual?.metadata || {};
+                            const cantidad =
+                              metadata.cantidad_oraciones || 5;
+                            const idioma =
+                              metadata.idioma || "inglés";
+                            const tema =
+                              metadata.titulo_tema || "";
+                            const vocab =
+                              metadata.vocabulario_sugerido || [];
+                            const estructuras =
+                              metadata.estructuras_sugeridas || [];
+                            const feedbackPrevio =
+                              errorActual?.feedback ||
+                              errorActual?.feedback_ia ||
+                              "";
+                            const respuestaPreviaRaw =
+                              errorActual?.respuesta_usuario || "";
+                            const oracionesPrevias = respuestaPreviaRaw
+                              ? respuestaPreviaRaw
+                                  .split("|||")
+                                  .map((s) => s.trim())
+                              : [];
+
+                            const getOracion = (idx) =>
+                              oracionesPropError[idx] ?? "";
+
+                            const updateOracion = (idx, val) => {
+                              const arr = [...Array(cantidad)].map(
+                                (_, i) => oracionesPropError[i] ?? "",
+                              );
+                              arr[idx] = val;
+                              setOracionesPropError(arr);
+                            };
+
+                            const respuestaJunta =
+                              Array.from({ length: cantidad })
+                                .map((_, i) => getOracion(i))
+                                .join("|||");
+
+                            const hayCualquiera = Array.from({
+                              length: cantidad,
+                            }).some((_, i) => getOracion(i).trim());
+
+                            const generarPromptOracionesProp = () => {
+                              let prompt = `Evalúa las siguientes ${cantidad} oraciones escritas por un estudiante de ${idioma} (CORRECCIÓN de error).\n\n`;
+                              if (tema)
+                                prompt += `TEMA: ${tema}\n`;
+                              prompt += `INSTRUCCIÓN DEL EJERCICIO: ${errorActual?.pregunta || "Escribe oraciones propias en " + idioma}\n\n`;
+                              if (vocab.length > 0)
+                                prompt += `VOCABULARIO SUGERIDO: ${vocab.join(", ")}\n`;
+                              if (estructuras.length > 0)
+                                prompt += `ESTRUCTURAS SUGERIDAS: ${estructuras.join(", ")}\n`;
+                              prompt += `\nORACIONES DEL ESTUDIANTE:\n`;
+                              Array.from({ length: cantidad }).forEach(
+                                (_, i) => {
+                                  prompt += `${i + 1}. ${getOracion(i).trim() || "(sin respuesta)"}\n`;
+                                },
+                              );
+                              prompt += `\nEvalúa CADA oración individualmente (gramática, vocabulario, coherencia con el tema) y da una puntuación global.\n\nIMPORTANTE:\n- El campo "feedback" DEBE estar en ESPAÑOL, independientemente del idioma del ejercicio.\n- Para cada oración numerada, indica el error específico que tiene y cómo debería corregirse.\n- Responde SOLO con un JSON válido:\n{\n  "puntos_obtenidos": <0-${cantidad}>,\n  "puntos_totales": ${cantidad},\n  "porcentaje": <número>,\n  "correcto": <true si >= 60%>,\n  "feedback": "<en ESPAÑOL: evaluación de cada oración con el error específico y cómo corregirla>"\n}`;
+                              return prompt;
+                            };
+
+                            return (
+                              <div
+                                style={{
+                                  background:
+                                    "rgba(34, 197, 94, 0.08)",
+                                  border:
+                                    "1px solid rgba(34, 197, 94, 0.3)",
+                                  borderRadius: "12px",
+                                  padding: "1.5rem",
+                                  marginTop: "1rem",
+                                }}
+                              >
+                                <h4
+                                  style={{
+                                    color: "#4ade80",
+                                    marginBottom: "1rem",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "0.5rem",
+                                  }}
+                                >
+                                  <span>📝</span>
+                                  <span>
+                                    Oraciones Propias en{" "}
+                                    {idioma.charAt(0).toUpperCase() +
+                                      idioma.slice(1)}
+                                  </span>
+                                  {tema && (
+                                    <span
+                                      style={{
+                                        fontSize: "0.75rem",
+                                        padding: "2px 8px",
+                                        background:
+                                          "rgba(34, 197, 94, 0.2)",
+                                        borderRadius: "10px",
+                                        color: "#86efac",
+                                      }}
+                                    >
+                                      {tema}
+                                    </span>
+                                  )}
+                                </h4>
+
+                                {/* Vocabulario y estructuras */}
+                                {(vocab.length > 0 ||
+                                  estructuras.length > 0) && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: "0.75rem",
+                                      marginBottom: "1rem",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    {vocab.length > 0 && (
+                                      <div
+                                        style={{
+                                          flex: 1,
+                                          minWidth: "180px",
+                                          background:
+                                            "rgba(59, 130, 246, 0.1)",
+                                          border:
+                                            "1px solid rgba(59, 130, 246, 0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#93c5fd",
+                                            fontSize: "0.8rem",
+                                            fontWeight: "600",
+                                          }}
+                                        >
+                                          📖 Vocabulario:
+                                        </span>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: "0.3rem",
+                                            marginTop: "0.4rem",
+                                          }}
+                                        >
+                                          {vocab.map((v, i) => (
+                                            <span
+                                              key={i}
+                                              style={{
+                                                background:
+                                                  "rgba(59, 130, 246, 0.2)",
+                                                padding: "2px 8px",
+                                                borderRadius: "4px",
+                                                color: "#bfdbfe",
+                                                fontSize: "0.8rem",
+                                              }}
+                                            >
+                                              {v}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {estructuras.length > 0 && (
+                                      <div
+                                        style={{
+                                          flex: 1,
+                                          minWidth: "180px",
+                                          background:
+                                            "rgba(168, 85, 247, 0.1)",
+                                          border:
+                                            "1px solid rgba(168, 85, 247, 0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#c4b5fd",
+                                            fontSize: "0.8rem",
+                                            fontWeight: "600",
+                                          }}
+                                        >
+                                          🔧 Estructuras:
+                                        </span>
+                                        <div
+                                          style={{
+                                            marginTop: "0.4rem",
+                                          }}
+                                        >
+                                          {estructuras.map(
+                                            (e, i) => (
+                                              <div
+                                                key={i}
+                                                style={{
+                                                  color: "#ddd6fe",
+                                                  fontSize: "0.8rem",
+                                                  marginBottom:
+                                                    "0.2rem",
+                                                }}
+                                              >
+                                                • {e}
+                                              </div>
+                                            ),
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* UNA ORACIÓN A LA VEZ - Corrección de errores */}
+                                {!errorYaRespondido && (() => {
+                                  const idx = indiceOracionError;
+                                  const esUltima = idx === cantidad - 1;
+                                  const prevOracion = oracionesPrevias[idx] || "";
+                                  const oracionActualValor = getOracion(idx);
+
+                                  // Feedback específico para esta oración del feedbackPrevio
+                                  const lineas = feedbackPrevio ? feedbackPrevio.split("\n") : [];
+                                  let feedbackEstaOracion = "";
+                                  let capturando = false;
+                                  for (const linea of lineas) {
+                                    const trimmed = linea.trim();
+                                    if (new RegExp(`^${idx + 1}[.)\\s]`).test(trimmed)) {
+                                      feedbackEstaOracion = trimmed;
+                                      capturando = true;
+                                    } else if (capturando && /^\d+[.)\s]/.test(trimmed)) {
+                                      break;
+                                    } else if (capturando && trimmed) {
+                                      feedbackEstaOracion += "\n" + trimmed;
+                                    }
+                                  }
+                                  if (!feedbackEstaOracion && feedbackPrevio && idx === 0 && lineas.length <= 3) {
+                                    feedbackEstaOracion = feedbackPrevio;
+                                  }
+
+                                  // Helpers array por índice
+                                  const textoJsonIdx = textoJsonOracionesPropError[idx] || "";
+                                  const jsonCalifIdx = jsonCalificacionOracionesPropError[idx] || null;
+                                  const copiado = promptCopiadoOracionesPropError === idx;
+
+                                  const updateTextoJsonErr = (i, val) => {
+                                    setTextoJsonOracionesPropError(prev => {
+                                      const arr = [...prev];
+                                      while (arr.length <= i) arr.push("");
+                                      arr[i] = val;
+                                      return arr;
+                                    });
+                                  };
+                                  const updateJsonCalifErr = (i, val) => {
+                                    setJsonCalificacionOracionesPropError(prev => {
+                                      const arr = [...prev];
+                                      while (arr.length <= i) arr.push(null);
+                                      arr[i] = val;
+                                      return arr;
+                                    });
+                                  };
+
+                                  // Prompt para UNA sola oración
+                                  const generarPromptSentencia = (i) => {
+                                    const oVal = getOracion(i);
+                                    let p = `Evalúa esta oración de un estudiante de ${idioma} (oración ${i + 1} de ${cantidad}).\n\n`;
+                                    if (tema) p += `TEMA: ${tema}\n`;
+                                    p += `INSTRUCCIÓN: ${errorActual?.pregunta || "Escribe oraciones propias en " + idioma}\n`;
+                                    if (vocab.length > 0) p += `VOCABULARIO SUGERIDO: ${vocab.join(", ")}\n`;
+                                    if (estructuras.length > 0) p += `ESTRUCTURAS SUGERIDAS: ${estructuras.join(", ")}\n`;
+                                    p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
+                                    p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: error específico y cómo corregirlo>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
+                                    return p;
+                                  };
+
+                                  return (
+                                    <>
+                                      {/* Barra de progreso */}
+                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+                                        <span style={{ color: "#4ade80", fontWeight: "700", fontSize: "0.95rem" }}>
+                                          Oración {idx + 1} de {cantidad}
+                                        </span>
+                                        <div style={{ display: "flex", gap: "6px" }}>
+                                          {Array.from({ length: cantidad }).map((_, i) => (
+                                            <div key={i} style={{
+                                              width: "10px", height: "10px", borderRadius: "50%",
+                                              background: jsonCalificacionOracionesPropError[i]
+                                                ? (jsonCalificacionOracionesPropError[i].correcto ? "#22c55e" : "#ef4444")
+                                                : (oracionesPropError[i] ?? "").trim()
+                                                  ? "rgba(34,197,94,0.4)"
+                                                  : i === idx ? "rgba(34,197,94,0.5)" : "rgba(100,116,139,0.3)",
+                                              border: i === idx ? "2px solid #4ade80" : "none",
+                                              cursor: i <= idx ? "pointer" : "default",
+                                              transition: "all 0.2s",
+                                            }} onClick={() => i <= idx && setIndiceOracionError(i)} />
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Card oración actual */}
+                                      <div style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "12px", padding: "1rem", marginBottom: "0.75rem" }}>
+                                        {/* Error previo específico */}
+                                        {feedbackEstaOracion && (
+                                          <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", padding: "0.6rem 0.85rem", marginBottom: "0.65rem" }}>
+                                            <span style={{ color: "#fca5a5", fontSize: "0.72rem", fontWeight: "700", display: "block", marginBottom: "0.2rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                              ⚠️ Error detectado:
+                                            </span>
+                                            <p style={{ color: "#fecaca", margin: 0, fontSize: "0.88rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+                                              {feedbackEstaOracion}
+                                            </p>
+                                          </div>
+                                        )}
+                                        {/* Intento anterior */}
+                                        {prevOracion && (
+                                          <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: "6px", padding: "0.4rem 0.7rem", marginBottom: "0.55rem" }}>
+                                            <span style={{ color: "#fca5a5", fontSize: "0.72rem", fontWeight: "600", display: "block", marginBottom: "0.1rem" }}>📌 Intento anterior:</span>
+                                            <span style={{ color: "#fecaca", fontSize: "0.85rem", fontStyle: "italic" }}>{prevOracion}</span>
+                                          </div>
+                                        )}
+                                        {/* Input */}
+                                        <input
+                                          type="text"
+                                          value={oracionActualValor}
+                                          onChange={(e) => updateOracion(idx, e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === "Enter" && oracionActualValor.trim() && !esUltima) setIndiceOracionError(idx + 1); }}
+                                          placeholder={`Corrige la oración ${idx + 1} en ${idioma}...`}
+                                          autoFocus
+                                          style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: "8px", border: oracionActualValor.trim() ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(34,197,94,0.25)", background: "#1a1625", color: "#e2e8f0", fontSize: "0.95rem", boxSizing: "border-box" }}
+                                        />
+                                      </div>
+
+                                      {/* ── Calificación individual ── */}
+                                      <div style={{ background: "rgba(15,23,42,0.5)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "10px", padding: "0.75rem 1rem", marginBottom: "0.85rem" }}>
+                                        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+                                          <button
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(generarPromptSentencia(idx));
+                                              setPromptCopiadoOracionesPropError(idx);
+                                              setTimeout(() => setPromptCopiadoOracionesPropError(-1), 2000);
+                                            }}
+                                            style={{ padding: "6px 12px", background: copiado ? "rgba(34,197,94,0.25)" : "rgba(59,130,246,0.18)", border: `1px solid ${copiado ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`, borderRadius: "7px", color: copiado ? "#86efac" : "#93c5fd", cursor: "pointer", fontSize: "0.83rem", fontWeight: "600" }}
+                                          >
+                                            {copiado ? "✓ Copiado" : "📋 Copiar prompt"}
+                                          </button>
+                                        </div>
+                                        <textarea
+                                          value={textoJsonIdx}
+                                          onChange={(e) => {
+                                            updateTextoJsonErr(idx, e.target.value);
+                                            try {
+                                              const m = e.target.value.match(/\{[\s\S]*\}/);
+                                              if (m) updateJsonCalifErr(idx, JSON.parse(m[0]));
+                                            } catch {}
+                                          }}
+                                          placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
+                                          style={{ width: "100%", minHeight: "56px", padding: "0.5rem 0.65rem", borderRadius: "7px", border: "1px solid #374151", background: "#0f172a", color: "#94a3b8", fontSize: "0.8rem", resize: "vertical", marginBottom: "0.4rem", boxSizing: "border-box" }}
+                                        />
+                                        {textoJsonIdx.trim() && !jsonCalifIdx && (
+                                          <button
+                                            onClick={() => {
+                                              const parsed = extraerJSON(textoJsonIdx);
+                                              if (parsed) updateJsonCalifErr(idx, parsed);
+                                              else alert("❌ No se encontró JSON válido.");
+                                            }}
+                                            style={{ padding: "5px 11px", background: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.4)", borderRadius: "7px", color: "#86efac", cursor: "pointer", fontSize: "0.82rem" }}
+                                          >
+                                            ✨ Procesar
+                                          </button>
+                                        )}
+                                        {/* Resultado de esta oración */}
+                                        {jsonCalifIdx && (
+                                          <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.85rem", background: jsonCalifIdx.correcto ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", border: `1px solid ${jsonCalifIdx.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`, borderRadius: "8px" }}>
+                                            <strong style={{ color: jsonCalifIdx.correcto ? "#86efac" : "#fca5a5", fontSize: "0.88rem" }}>
+                                              {jsonCalifIdx.correcto ? "✅ Correcta" : "❌ Incorrecta"}
+                                            </strong>
+                                            {jsonCalifIdx.feedback && (
+                                              <p style={{ color: "#e2e8f0", margin: "0.35rem 0 0", fontSize: "0.86rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+                                                {jsonCalifIdx.feedback}
+                                              </p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Navegación */}
+                                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                                        {idx > 0 && (
+                                          <button className="btn-nav btn-nav-anterior" onClick={() => setIndiceOracionError(idx - 1)}>
+                                            ← Anterior
+                                          </button>
+                                        )}
+                                        {!esUltima ? (
+                                          <button
+                                            className="btn-nav btn-nav-siguiente"
+                                            disabled={!oracionActualValor.trim()}
+                                            onClick={() => setIndiceOracionError(idx + 1)}
+                                          >
+                                            Siguiente →
+                                          </button>
+                                        ) : (
+                                          <button
+                                            className="btn-nav btn-nav-siguiente"
+                                            disabled={!oracionActualValor.trim()}
+                                            onClick={() => {
+                                              // Agregar resultado del último al estado global para verificación
+                                              const primerResult = jsonCalificacionOracionesPropError.find(x => x);
+                                              setRespuestaError(respuestaJunta);
+                                              setRespuestaErrorSeleccionada(respuestaJunta);
+                                              if (primerResult) {
+                                                setTimeout(() =>
+                                                  primerResult.correcto
+                                                    ? verificarRespuestaError(respuestaJunta)
+                                                    : verificarRespuestaError("__INCORRECTO__"),
+                                                  100,
+                                                );
+                                              } else {
+                                                setErrorYaRespondido(true);
+                                              }
+                                            }}
+                                          >
+                                            ✓ Terminar
+                                          </button>
+                                        )}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             );
                           })()}
@@ -39689,6 +40735,10 @@ Devuelve SOLO este JSON:
                                     "formal_email",
                                     "picture_description",
                                     "picture_description_libre",
+                                    "oraciones_propias",
+                                    "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+                                    "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
+                                    "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
                                   ];
                                   if (
                                     !tiposEvaluadosPorIAUI.includes(
@@ -39730,7 +40780,8 @@ Devuelve SOLO este JSON:
                                 jsonCalificacionParaphraseError ||
                                 jsonCalificacionCorrectionError ||
                                 jsonCalificacionTransformationError ||
-                                jsonCalificacionSentenceBuilderError;
+                                jsonCalificacionSentenceBuilderError ||
+                                (jsonCalificacionOracionesPropError?.find?.((x) => x) ?? null);
                               if (calificacionIAActivaUI) {
                                 esRespuestaCorrecta =
                                   calificacionIAActivaUI.correcto;
@@ -39890,6 +40941,7 @@ Devuelve SOLO este JSON:
                                 "formal_email",
                                 "picture_description",
                                 "picture_description_libre",
+                                "oraciones_propias",
                               ];
                               if (
                                 tiposIARender.includes(errorActual?.tipo) &&
@@ -49578,32 +50630,63 @@ INSTRUCCIÓN: ${aciertoActual?.pregunta || "Ordena las palabras para formar orac
 
                             // 🧩 CASO SENTENCE_BUILDER_LIBRE (ACIERTOS) — solo datos del item actual
                             const esSBLAcierto =
-                              aciertoActual?.tipo === "sentence_builder_libre" ||
-                              aciertoActual?.tipo === "sentence_builder_libre_item" ||
-                              aciertoActual?.tipo_padre === "sentence_builder_libre";
+                              aciertoActual?.tipo ===
+                                "sentence_builder_libre" ||
+                              aciertoActual?.tipo ===
+                                "sentence_builder_libre_item" ||
+                              aciertoActual?.tipo_padre ===
+                                "sentence_builder_libre";
 
                             if (esSBLAcierto) {
                               // ✅ Detectar formato: sub-item expandido o padre con items[]
-                              const esSubItemAcierto = aciertoActual?.tipo === "sentence_builder_libre_item" || aciertoActual?.tipo_padre === "sentence_builder_libre";
+                              const esSubItemAcierto =
+                                aciertoActual?.tipo ===
+                                  "sentence_builder_libre_item" ||
+                                aciertoActual?.tipo_padre ===
+                                  "sentence_builder_libre";
                               let itemsParaMostrarAcierto = [];
                               if (esSubItemAcierto) {
-                                itemsParaMostrarAcierto = [{ palabras_clave: aciertoActual?.palabras_clave || [], contexto_pista: aciertoActual?.contexto_pista || "", oracion_esperada: aciertoActual?.oracion_esperada || "" }];
+                                itemsParaMostrarAcierto = [
+                                  {
+                                    palabras_clave:
+                                      aciertoActual?.palabras_clave || [],
+                                    contexto_pista:
+                                      aciertoActual?.contexto_pista || "",
+                                    oracion_esperada:
+                                      aciertoActual?.oracion_esperada || "",
+                                  },
+                                ];
                               } else {
-                                itemsParaMostrarAcierto = aciertoActual?.metadata?.items || aciertoActual?.items || [];
+                                itemsParaMostrarAcierto =
+                                  aciertoActual?.metadata?.items ||
+                                  aciertoActual?.items ||
+                                  [];
                               }
-                              const idioma = aciertoActual?.metadata?.idioma || aciertoActual?.idioma || "inglés";
-                              const preguntaItem = aciertoActual?.pregunta || aciertoActual?.instruccion || "Construye una oración usando las palabras clave.";
+                              const idioma =
+                                aciertoActual?.metadata?.idioma ||
+                                aciertoActual?.idioma ||
+                                "inglés";
+                              const preguntaItem =
+                                aciertoActual?.pregunta ||
+                                aciertoActual?.instruccion ||
+                                "Construye una oración usando las palabras clave.";
 
                               // Item actual a mostrar (un solo item a la vez)
-                              const idxItemAc = Math.min(indiceItemSBLAcierto, Math.max(0, itemsParaMostrarAcierto.length - 1));
-                              const itemActualAc = itemsParaMostrarAcierto[idxItemAc] || null;
+                              const idxItemAc = Math.min(
+                                indiceItemSBLAcierto,
+                                Math.max(0, itemsParaMostrarAcierto.length - 1),
+                              );
+                              const itemActualAc =
+                                itemsParaMostrarAcierto[idxItemAc] || null;
 
                               const generarPromptSBLAcierto = () => {
                                 const item = itemActualAc;
                                 if (!item) return "";
                                 let prompt = `Evalúa la siguiente oración construida por un estudiante de ${idioma}.\n\nINSTRUCCIÓN: ${preguntaItem}\nPALABRAS CLAVE: [${(item.palabras_clave || []).join(", ")}]`;
-                                if (item.contexto_pista) prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
-                                if (item.oracion_esperada) prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
+                                if (item.contexto_pista)
+                                  prompt += `\nCONTEXTO/PISTA: "${item.contexto_pista}"`;
+                                if (item.oracion_esperada)
+                                  prompt += `\nEJEMPLO CORRECTO: "${item.oracion_esperada}"`;
                                 prompt += `\n\nRESPUESTA DEL ESTUDIANTE: "${respuestaWritingAcierto || "(vacío)"}";
 
 EVALÚA estrictamente: uso de palabras clave, gramática y coherencia con el contexto.
@@ -49622,17 +50705,35 @@ Devuelve SOLO este JSON:
                               };
 
                               return (
-                                <div style={{
-                                  background: "rgba(139, 92, 246, 0.1)",
-                                  border: "1px solid rgba(139, 92, 246, 0.3)",
-                                  borderRadius: "12px",
-                                  padding: "1.5rem",
-                                  marginTop: "1rem",
-                                }}>
-                                  <h4 style={{ color: "#c4b5fd", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <div
+                                  style={{
+                                    background: "rgba(139, 92, 246, 0.1)",
+                                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                                    borderRadius: "12px",
+                                    padding: "1.5rem",
+                                    marginTop: "1rem",
+                                  }}
+                                >
+                                  <h4
+                                    style={{
+                                      color: "#c4b5fd",
+                                      marginBottom: "1rem",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "0.5rem",
+                                    }}
+                                  >
                                     <span>🧩</span>
                                     <span>Constructor de Oraciones Libre</span>
-                                    <span style={{ fontSize: "0.75rem", padding: "2px 8px", background: "rgba(139, 92, 246, 0.3)", borderRadius: "10px", color: "#c4b5fd" }}>
+                                    <span
+                                      style={{
+                                        fontSize: "0.75rem",
+                                        padding: "2px 8px",
+                                        background: "rgba(139, 92, 246, 0.3)",
+                                        borderRadius: "10px",
+                                        color: "#c4b5fd",
+                                      }}
+                                    >
                                       {idioma}
                                     </span>
                                   </h4>
@@ -49641,37 +50742,196 @@ Devuelve SOLO este JSON:
                                   {itemActualAc && (
                                     <div style={{ marginBottom: "1rem" }}>
                                       {itemsParaMostrarAcierto.length > 1 && (
-                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-                                          <button onClick={() => setIndiceItemSBLAcierto(i => Math.max(0, i - 1))} disabled={idxItemAc === 0}
-                                            style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemAc === 0 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemAc === 0 ? "#64748b" : "#c4b5fd", cursor: idxItemAc === 0 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
-                                          >{"←"} Anterior</button>
-                                          <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>Oración {idxItemAc + 1} de {itemsParaMostrarAcierto.length}</span>
-                                          <button onClick={() => setIndiceItemSBLAcierto(i => Math.min(itemsParaMostrarAcierto.length - 1, i + 1))} disabled={idxItemAc === itemsParaMostrarAcierto.length - 1}
-                                            style={{ padding: "4px 14px", borderRadius: "6px", border: "1px solid rgba(139,92,246,0.4)", background: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "rgba(100,116,139,0.2)" : "rgba(139,92,246,0.2)", color: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "#64748b" : "#c4b5fd", cursor: idxItemAc === itemsParaMostrarAcierto.length - 1 ? "not-allowed" : "pointer", fontSize: "0.85rem" }}
-                                          >Siguiente {"→"}</button>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            marginBottom: "0.75rem",
+                                          }}
+                                        >
+                                          <button
+                                            onClick={() =>
+                                              setIndiceItemSBLAcierto((i) =>
+                                                Math.max(0, i - 1),
+                                              )
+                                            }
+                                            disabled={idxItemAc === 0}
+                                            style={{
+                                              padding: "4px 14px",
+                                              borderRadius: "6px",
+                                              border:
+                                                "1px solid rgba(139,92,246,0.4)",
+                                              background:
+                                                idxItemAc === 0
+                                                  ? "rgba(100,116,139,0.2)"
+                                                  : "rgba(139,92,246,0.2)",
+                                              color:
+                                                idxItemAc === 0
+                                                  ? "#64748b"
+                                                  : "#c4b5fd",
+                                              cursor:
+                                                idxItemAc === 0
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              fontSize: "0.85rem",
+                                            }}
+                                          >
+                                            {"←"} Anterior
+                                          </button>
+                                          <span
+                                            style={{
+                                              color: "#a78bfa",
+                                              fontSize: "0.85rem",
+                                              fontWeight: "600",
+                                            }}
+                                          >
+                                            Oración {idxItemAc + 1} de{" "}
+                                            {itemsParaMostrarAcierto.length}
+                                          </span>
+                                          <button
+                                            onClick={() =>
+                                              setIndiceItemSBLAcierto((i) =>
+                                                Math.min(
+                                                  itemsParaMostrarAcierto.length -
+                                                    1,
+                                                  i + 1,
+                                                ),
+                                              )
+                                            }
+                                            disabled={
+                                              idxItemAc ===
+                                              itemsParaMostrarAcierto.length - 1
+                                            }
+                                            style={{
+                                              padding: "4px 14px",
+                                              borderRadius: "6px",
+                                              border:
+                                                "1px solid rgba(139,92,246,0.4)",
+                                              background:
+                                                idxItemAc ===
+                                                itemsParaMostrarAcierto.length -
+                                                  1
+                                                  ? "rgba(100,116,139,0.2)"
+                                                  : "rgba(139,92,246,0.2)",
+                                              color:
+                                                idxItemAc ===
+                                                itemsParaMostrarAcierto.length -
+                                                  1
+                                                  ? "#64748b"
+                                                  : "#c4b5fd",
+                                              cursor:
+                                                idxItemAc ===
+                                                itemsParaMostrarAcierto.length -
+                                                  1
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              fontSize: "0.85rem",
+                                            }}
+                                          >
+                                            Siguiente {"→"}
+                                          </button>
                                         </div>
                                       )}
-                                      <div style={{ background: "rgba(139, 92, 246, 0.1)", border: "1px solid rgba(139, 92, 246, 0.3)", borderRadius: "8px", padding: "1rem" }}>
-                                        <div style={{ marginBottom: "0.35rem" }}>
-                                          <span style={{ color: "#a78bfa", fontSize: "0.85rem", fontWeight: "600" }}>🔑 Palabras clave:</span>
+                                      <div
+                                        style={{
+                                          background: "rgba(139, 92, 246, 0.1)",
+                                          border:
+                                            "1px solid rgba(139, 92, 246, 0.3)",
+                                          borderRadius: "8px",
+                                          padding: "1rem",
+                                        }}
+                                      >
+                                        <div
+                                          style={{ marginBottom: "0.35rem" }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#a78bfa",
+                                              fontSize: "0.85rem",
+                                              fontWeight: "600",
+                                            }}
+                                          >
+                                            🔑 Palabras clave:
+                                          </span>
                                         </div>
-                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: itemActualAc.contexto_pista ? "0.5rem" : "0" }}>
-                                          {(itemActualAc.palabras_clave || []).map((palabra, j) => (
-                                            <span key={j} style={{ background: "rgba(139, 92, 246, 0.3)", padding: "6px 12px", borderRadius: "8px", color: "#c4b5fd", fontSize: "0.9rem", fontWeight: "500", border: "1px solid rgba(139, 92, 246, 0.5)" }}>{palabra}</span>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            gap: "0.5rem",
+                                            marginBottom:
+                                              itemActualAc.contexto_pista
+                                                ? "0.5rem"
+                                                : "0",
+                                          }}
+                                        >
+                                          {(
+                                            itemActualAc.palabras_clave || []
+                                          ).map((palabra, j) => (
+                                            <span
+                                              key={j}
+                                              style={{
+                                                background:
+                                                  "rgba(139, 92, 246, 0.3)",
+                                                padding: "6px 12px",
+                                                borderRadius: "8px",
+                                                color: "#c4b5fd",
+                                                fontSize: "0.9rem",
+                                                fontWeight: "500",
+                                                border:
+                                                  "1px solid rgba(139, 92, 246, 0.5)",
+                                              }}
+                                            >
+                                              {palabra}
+                                            </span>
                                           ))}
                                         </div>
                                         {itemActualAc.contexto_pista && (
                                           <div style={{ marginTop: "0.35rem" }}>
-                                            <span style={{ color: "#fcd34d", fontSize: "0.85rem" }}>💡 Contexto: </span>
-                                            <span style={{ color: "#fef3c7", fontSize: "0.85rem", fontStyle: "italic" }}>{itemActualAc.contexto_pista}</span>
+                                            <span
+                                              style={{
+                                                color: "#fcd34d",
+                                                fontSize: "0.85rem",
+                                              }}
+                                            >
+                                              💡 Contexto:{" "}
+                                            </span>
+                                            <span
+                                              style={{
+                                                color: "#fef3c7",
+                                                fontSize: "0.85rem",
+                                                fontStyle: "italic",
+                                              }}
+                                            >
+                                              {itemActualAc.contexto_pista}
+                                            </span>
                                           </div>
                                         )}
-                                        {aciertoYaRespondido && itemActualAc.oracion_esperada && (
-                                          <div style={{ marginTop: "0.35rem" }}>
-                                            <span style={{ color: "#86efac", fontSize: "0.8rem" }}>✓ Ejemplo: </span>
-                                            <span style={{ color: "#a5f3c4", fontSize: "0.85rem" }}>"{itemActualAc.oracion_esperada}"</span>
-                                          </div>
-                                        )}
+                                        {aciertoYaRespondido &&
+                                          itemActualAc.oracion_esperada && (
+                                            <div
+                                              style={{ marginTop: "0.35rem" }}
+                                            >
+                                              <span
+                                                style={{
+                                                  color: "#86efac",
+                                                  fontSize: "0.8rem",
+                                                }}
+                                              >
+                                                ✓ Ejemplo:{" "}
+                                              </span>
+                                              <span
+                                                style={{
+                                                  color: "#a5f3c4",
+                                                  fontSize: "0.85rem",
+                                                }}
+                                              >
+                                                "{itemActualAc.oracion_esperada}
+                                                "
+                                              </span>
+                                            </div>
+                                          )}
                                       </div>
                                     </div>
                                   )}
@@ -49680,101 +50940,233 @@ Devuelve SOLO este JSON:
                                     <>
                                       <textarea
                                         value={respuestaWritingAcierto}
-                                        onChange={(e) => setRespuestaWritingAcierto(e.target.value)}
+                                        onChange={(e) =>
+                                          setRespuestaWritingAcierto(
+                                            e.target.value,
+                                          )
+                                        }
                                         placeholder="Escribe tu oración usando las palabras clave..."
                                         style={{
-                                          width: "100%", minHeight: "90px", padding: "1rem",
-                                          borderRadius: "8px", border: "1px solid rgba(139, 92, 246, 0.4)",
-                                          background: "rgba(15, 23, 42, 0.8)", color: "#e2e8f0",
-                                          fontSize: "0.95rem", resize: "vertical", marginBottom: "1rem",
+                                          width: "100%",
+                                          minHeight: "90px",
+                                          padding: "1rem",
+                                          borderRadius: "8px",
+                                          border:
+                                            "1px solid rgba(139, 92, 246, 0.4)",
+                                          background: "rgba(15, 23, 42, 0.8)",
+                                          color: "#e2e8f0",
+                                          fontSize: "0.95rem",
+                                          resize: "vertical",
+                                          marginBottom: "1rem",
                                         }}
                                       />
-                                      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: "0.5rem",
+                                          flexWrap: "wrap",
+                                          marginBottom: "1rem",
+                                        }}
+                                      >
                                         <button
                                           onClick={() => {
-                                            navigator.clipboard.writeText(generarPromptSBLAcierto());
-                                            setPromptCopiadoWritingAcierto(true);
-                                            setTimeout(() => setPromptCopiadoWritingAcierto(false), 2000);
+                                            navigator.clipboard.writeText(
+                                              generarPromptSBLAcierto(),
+                                            );
+                                            setPromptCopiadoWritingAcierto(
+                                              true,
+                                            );
+                                            setTimeout(
+                                              () =>
+                                                setPromptCopiadoWritingAcierto(
+                                                  false,
+                                                ),
+                                              2000,
+                                            );
                                           }}
                                           style={{
-                                            padding: "8px 16px", background: "rgba(139, 92, 246, 0.2)",
-                                            border: "1px solid rgba(139, 92, 246, 0.4)", borderRadius: "8px",
-                                            color: promptCopiadoWritingAcierto ? "#86efac" : "#c4b5fd", cursor: "pointer",
+                                            padding: "8px 16px",
+                                            background:
+                                              "rgba(139, 92, 246, 0.2)",
+                                            border:
+                                              "1px solid rgba(139, 92, 246, 0.4)",
+                                            borderRadius: "8px",
+                                            color: promptCopiadoWritingAcierto
+                                              ? "#86efac"
+                                              : "#c4b5fd",
+                                            cursor: "pointer",
                                           }}
                                         >
-                                          {promptCopiadoWritingAcierto ? "✓ Copiado" : "📋 Copiar prompt ChatGPT"}
+                                          {promptCopiadoWritingAcierto
+                                            ? "✓ Copiado"
+                                            : "📋 Copiar prompt ChatGPT"}
                                         </button>
                                         <button
                                           onClick={() => {
-                                            setRespuestaAciertoSeleccionada(respuestaWritingAcierto);
+                                            setRespuestaAciertoSeleccionada(
+                                              respuestaWritingAcierto,
+                                            );
                                             setAciertoYaRespondido(true);
                                           }}
-                                          disabled={!respuestaWritingAcierto.trim()}
+                                          disabled={
+                                            !respuestaWritingAcierto.trim()
+                                          }
                                           style={{
                                             padding: "8px 16px",
-                                            background: respuestaWritingAcierto.trim() ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" : "rgba(100, 116, 139, 0.2)",
-                                            border: "none", borderRadius: "8px", color: "white",
-                                            cursor: respuestaWritingAcierto.trim() ? "pointer" : "not-allowed",
+                                            background:
+                                              respuestaWritingAcierto.trim()
+                                                ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                                                : "rgba(100, 116, 139, 0.2)",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            color: "white",
+                                            cursor:
+                                              respuestaWritingAcierto.trim()
+                                                ? "pointer"
+                                                : "not-allowed",
                                           }}
                                         >
                                           ✓ Marcar respondido
                                         </button>
                                       </div>
-                                      <label style={{ color: "#94a3b8", fontSize: "0.85rem", display: "block", marginBottom: "0.5rem" }}>
+                                      <label
+                                        style={{
+                                          color: "#94a3b8",
+                                          fontSize: "0.85rem",
+                                          display: "block",
+                                          marginBottom: "0.5rem",
+                                        }}
+                                      >
                                         📥 Pega aquí el JSON de ChatGPT:
                                       </label>
                                       <textarea
                                         value={textoJsonWritingAcierto}
                                         onChange={(e) => {
-                                          setTextoJsonWritingAcierto(e.target.value);
+                                          setTextoJsonWritingAcierto(
+                                            e.target.value,
+                                          );
                                           try {
-                                            const jsonMatch = e.target.value.match(/\{[\s\S]*\}/);
-                                            if (jsonMatch) setJsonCalificacionWritingAcierto(JSON.parse(jsonMatch[0]));
+                                            const jsonMatch =
+                                              e.target.value.match(
+                                                /\{[\s\S]*\}/,
+                                              );
+                                            if (jsonMatch)
+                                              setJsonCalificacionWritingAcierto(
+                                                JSON.parse(jsonMatch[0]),
+                                              );
                                           } catch {}
                                         }}
                                         placeholder='{"puntos_obtenidos": 8, "correcto": true, ...}'
                                         style={{
-                                          width: "100%", minHeight: "80px", padding: "0.75rem",
+                                          width: "100%",
+                                          minHeight: "80px",
+                                          padding: "0.75rem",
                                           borderRadius: "8px",
                                           border: jsonCalificacionWritingAcierto
-                                            ? (jsonCalificacionWritingAcierto.correcto ? "2px solid #22c55e" : "2px solid #ef4444")
+                                            ? jsonCalificacionWritingAcierto.correcto
+                                              ? "2px solid #22c55e"
+                                              : "2px solid #ef4444"
                                             : "1px solid rgba(139, 92, 246, 0.4)",
-                                          background: "rgba(15, 23, 42, 0.8)", color: "#c4b5fd",
-                                          fontSize: "0.85rem", fontFamily: "monospace", resize: "vertical",
+                                          background: "rgba(15, 23, 42, 0.8)",
+                                          color: "#c4b5fd",
+                                          fontSize: "0.85rem",
+                                          fontFamily: "monospace",
+                                          resize: "vertical",
                                         }}
                                       />
                                       {jsonCalificacionWritingAcierto && (
-                                        <div style={{
-                                          marginTop: "12px", padding: "12px", borderRadius: "8px",
-                                          background: jsonCalificacionWritingAcierto.correcto ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                                          border: `1px solid ${jsonCalificacionWritingAcierto.correcto ? "#22c55e" : "#ef4444"}`,
-                                        }}>
-                                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                                            <span style={{ fontSize: "1.5rem" }}>{jsonCalificacionWritingAcierto.correcto ? "✅" : "❌"}</span>
-                                            <strong style={{ color: jsonCalificacionWritingAcierto.correcto ? "#86efac" : "#fca5a5" }}>
-                                              {jsonCalificacionWritingAcierto.puntos_obtenidos}/{jsonCalificacionWritingAcierto.puntos_totales || 10}{" "}
-                                              ({jsonCalificacionWritingAcierto.porcentaje}%)
+                                        <div
+                                          style={{
+                                            marginTop: "12px",
+                                            padding: "12px",
+                                            borderRadius: "8px",
+                                            background:
+                                              jsonCalificacionWritingAcierto.correcto
+                                                ? "rgba(34, 197, 94, 0.15)"
+                                                : "rgba(239, 68, 68, 0.15)",
+                                            border: `1px solid ${jsonCalificacionWritingAcierto.correcto ? "#22c55e" : "#ef4444"}`,
+                                          }}
+                                        >
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "8px",
+                                              marginBottom: "8px",
+                                            }}
+                                          >
+                                            <span
+                                              style={{ fontSize: "1.5rem" }}
+                                            >
+                                              {jsonCalificacionWritingAcierto.correcto
+                                                ? "✅"
+                                                : "❌"}
+                                            </span>
+                                            <strong
+                                              style={{
+                                                color:
+                                                  jsonCalificacionWritingAcierto.correcto
+                                                    ? "#86efac"
+                                                    : "#fca5a5",
+                                              }}
+                                            >
+                                              {
+                                                jsonCalificacionWritingAcierto.puntos_obtenidos
+                                              }
+                                              /
+                                              {jsonCalificacionWritingAcierto.puntos_totales ||
+                                                10}{" "}
+                                              (
+                                              {
+                                                jsonCalificacionWritingAcierto.porcentaje
+                                              }
+                                              %)
                                             </strong>
                                           </div>
                                           {jsonCalificacionWritingAcierto.feedback && (
-                                            <p style={{ color: "#e2e8f0", margin: "0 0 8px 0", fontSize: "0.9rem" }}>
-                                              {jsonCalificacionWritingAcierto.feedback}
+                                            <p
+                                              style={{
+                                                color: "#e2e8f0",
+                                                margin: "0 0 8px 0",
+                                                fontSize: "0.9rem",
+                                              }}
+                                            >
+                                              {
+                                                jsonCalificacionWritingAcierto.feedback
+                                              }
                                             </p>
                                           )}
                                           {jsonCalificacionWritingAcierto.sugerencia && (
-                                            <p style={{ color: "#93c5fd", margin: "0 0 8px 0", fontSize: "0.85rem" }}>
-                                              💡 Sugerencia: {jsonCalificacionWritingAcierto.sugerencia}
+                                            <p
+                                              style={{
+                                                color: "#93c5fd",
+                                                margin: "0 0 8px 0",
+                                                fontSize: "0.85rem",
+                                              }}
+                                            >
+                                              💡 Sugerencia:{" "}
+                                              {
+                                                jsonCalificacionWritingAcierto.sugerencia
+                                              }
                                             </p>
                                           )}
                                           <button
                                             onClick={() => {
-                                              setRespuestaAciertoSeleccionada(respuestaWritingAcierto);
+                                              setRespuestaAciertoSeleccionada(
+                                                respuestaWritingAcierto,
+                                              );
                                               setAciertoYaRespondido(true);
                                             }}
                                             style={{
-                                              marginTop: "8px", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                                              color: "white", border: "none", padding: "10px 20px",
-                                              borderRadius: "8px", cursor: "pointer", fontWeight: "600",
+                                              marginTop: "8px",
+                                              background:
+                                                "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                                              color: "white",
+                                              border: "none",
+                                              padding: "10px 20px",
+                                              borderRadius: "8px",
+                                              cursor: "pointer",
+                                              fontWeight: "600",
                                             }}
                                           >
                                             ✓ Aplicar Calificación IA
@@ -49785,10 +51177,36 @@ Devuelve SOLO este JSON:
                                   )}
 
                                   {aciertoYaRespondido && (
-                                    <div style={{ padding: "1rem", background: "rgba(34, 197, 94, 0.1)", borderRadius: "8px", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
-                                      <span style={{ color: "#86efac", fontWeight: "600", fontSize: "0.85rem" }}>🧩 Tu respuesta:</span>
-                                      <p style={{ color: "#e2e8f0", margin: "0.5rem 0 0 0", fontSize: "0.95rem", whiteSpace: "pre-wrap" }}>
-                                        "{respuestaAciertoSeleccionada || respuestaWritingAcierto}"
+                                    <div
+                                      style={{
+                                        padding: "1rem",
+                                        background: "rgba(34, 197, 94, 0.1)",
+                                        borderRadius: "8px",
+                                        border:
+                                          "1px solid rgba(34, 197, 94, 0.3)",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          color: "#86efac",
+                                          fontWeight: "600",
+                                          fontSize: "0.85rem",
+                                        }}
+                                      >
+                                        🧩 Tu respuesta:
+                                      </span>
+                                      <p
+                                        style={{
+                                          color: "#e2e8f0",
+                                          margin: "0.5rem 0 0 0",
+                                          fontSize: "0.95rem",
+                                          whiteSpace: "pre-wrap",
+                                        }}
+                                      >
+                                        "
+                                        {respuestaAciertoSeleccionada ||
+                                          respuestaWritingAcierto}
+                                        "
                                       </p>
                                     </div>
                                   )}
@@ -49796,7 +51214,435 @@ Devuelve SOLO este JSON:
                               );
                             }
 
+                            // 📝 CASO ORACIONES_PROPIAS (ACIERTOS)
+                            if (
+                              aciertoActual?.tipo === "oraciones_propias"
+                            ) {
+                              const metaAc =
+                                aciertoActual?.metadata || {};
+                              const cantidadAc =
+                                metaAc.cantidad_oraciones || 5;
+                              const idiomaAc =
+                                metaAc.idioma || "inglés";
+                              const temaAc =
+                                metaAc.titulo_tema || "";
+                              const vocabAc =
+                                metaAc.vocabulario_sugerido || [];
+                              const estructurasAc =
+                                metaAc.estructuras_sugeridas || [];
+
+                              const getOrAc = (idx) =>
+                                oracionesPropAcierto[idx] ?? "";
+
+                              const updateOrAc = (idx, val) => {
+                                const arr = [
+                                  ...Array(cantidadAc),
+                                ].map(
+                                  (_, i) =>
+                                    oracionesPropAcierto[i] ?? "",
+                                );
+                                arr[idx] = val;
+                                setOracionesPropAcierto(arr);
+                              };
+
+                              const respuestaJuntaAc = Array.from({
+                                length: cantidadAc,
+                              })
+                                .map((_, i) => getOrAc(i))
+                                .join("|||");
+
+                              const hayAlgunaAc = Array.from({
+                                length: cantidadAc,
+                              }).some((_, i) => getOrAc(i).trim());
+
+                              const generarPromptOrAc = () => {
+                                let prompt = `Evalúa las siguientes ${cantidadAc} oraciones escritas por un estudiante de ${idiomaAc} (REPASO de acierto).\n\n`;
+                                if (temaAc)
+                                  prompt += `TEMA: ${temaAc}\n`;
+                                prompt += `INSTRUCCIÓN: ${aciertoActual?.pregunta || "Escribe oraciones propias"}\n\n`;
+                                if (vocabAc.length > 0)
+                                  prompt += `VOCABULARIO SUGERIDO: ${vocabAc.join(", ")}\n`;
+                                if (estructurasAc.length > 0)
+                                  prompt += `ESTRUCTURAS: ${estructurasAc.join(", ")}\n`;
+                                prompt += `\nORACIONES DEL ESTUDIANTE:\n`;
+                                Array.from({
+                                  length: cantidadAc,
+                                }).forEach((_, i) => {
+                                  prompt += `${i + 1}. ${getOrAc(i).trim() || "(sin respuesta)"}\n`;
+                                });
+                                prompt += `\nIMPORTANTE: Responde SOLO con JSON:\n{\n  "puntos_obtenidos": <0-${cantidadAc}>,\n  "puntos_totales": ${cantidadAc},\n  "porcentaje": <número>,\n  "correcto": <true si >= 60%>,\n  "feedback": "<evaluación detallada de cada oración>"\n}`;
+                                return prompt;
+                              };
+
+                              return (
+                                <div
+                                  style={{
+                                    background:
+                                      "rgba(34, 197, 94, 0.08)",
+                                    border:
+                                      "1px solid rgba(34, 197, 94, 0.3)",
+                                    borderRadius: "12px",
+                                    padding: "1.5rem",
+                                    marginTop: "1rem",
+                                  }}
+                                >
+                                  <h4
+                                    style={{
+                                      color: "#4ade80",
+                                      marginBottom: "1rem",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "0.5rem",
+                                    }}
+                                  >
+                                    <span>📝</span>
+                                    <span>
+                                      Oraciones Propias en{" "}
+                                      {idiomaAc
+                                        .charAt(0)
+                                        .toUpperCase() +
+                                        idiomaAc.slice(1)}
+                                    </span>
+                                    {temaAc && (
+                                      <span
+                                        style={{
+                                          fontSize: "0.75rem",
+                                          padding: "2px 8px",
+                                          background:
+                                            "rgba(34, 197, 94, 0.2)",
+                                          borderRadius: "10px",
+                                          color: "#86efac",
+                                        }}
+                                      >
+                                        {temaAc}
+                                      </span>
+                                    )}
+                                  </h4>
+
+                                  {(vocabAc.length > 0 ||
+                                    estructurasAc.length > 0) && (
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.75rem",
+                                        marginBottom: "1rem",
+                                        flexWrap: "wrap",
+                                      }}
+                                    >
+                                      {vocabAc.length > 0 && (
+                                        <div
+                                          style={{
+                                            flex: 1,
+                                            minWidth: "160px",
+                                            background:
+                                              "rgba(59, 130, 246, 0.1)",
+                                            border:
+                                              "1px solid rgba(59, 130, 246, 0.3)",
+                                            borderRadius: "8px",
+                                            padding: "0.6rem",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#93c5fd",
+                                              fontSize: "0.8rem",
+                                              fontWeight: "600",
+                                            }}
+                                          >
+                                            📖 Vocabulario:
+                                          </span>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexWrap: "wrap",
+                                              gap: "0.3rem",
+                                              marginTop: "0.4rem",
+                                            }}
+                                          >
+                                            {vocabAc.map(
+                                              (v, i) => (
+                                                <span
+                                                  key={i}
+                                                  style={{
+                                                    background:
+                                                      "rgba(59, 130, 246, 0.2)",
+                                                    padding:
+                                                      "2px 8px",
+                                                    borderRadius:
+                                                      "4px",
+                                                    color:
+                                                      "#bfdbfe",
+                                                    fontSize:
+                                                      "0.8rem",
+                                                  }}
+                                                >
+                                                  {v}
+                                                </span>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {estructurasAc.length > 0 && (
+                                        <div
+                                          style={{
+                                            flex: 1,
+                                            minWidth: "160px",
+                                            background:
+                                              "rgba(168, 85, 247, 0.1)",
+                                            border:
+                                              "1px solid rgba(168, 85, 247, 0.3)",
+                                            borderRadius: "8px",
+                                            padding: "0.6rem",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#c4b5fd",
+                                              fontSize: "0.8rem",
+                                              fontWeight: "600",
+                                            }}
+                                          >
+                                            🔧 Estructuras:
+                                          </span>
+                                          <div
+                                            style={{
+                                              marginTop: "0.4rem",
+                                            }}
+                                          >
+                                            {estructurasAc.map(
+                                              (e, i) => (
+                                                <div
+                                                  key={i}
+                                                  style={{
+                                                    color:
+                                                      "#ddd6fe",
+                                                    fontSize:
+                                                      "0.8rem",
+                                                    marginBottom:
+                                                      "0.2rem",
+                                                  }}
+                                                >
+                                                  • {e}
+                                                </div>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* UNA ORACIÓN A LA VEZ - Repaso de aciertos */}
+                                  {!aciertoYaRespondido && (() => {
+                                    const idx = indiceOracionAcierto;
+                                    const esUltima = idx === cantidadAc - 1;
+                                    const oracionActualValorAc = getOrAc(idx);
+
+                                    // Helpers array por índice
+                                    const textoJsonIdxAc = textoJsonOracionesPropAcierto[idx] || "";
+                                    const jsonCalifIdxAc = jsonCalificacionOracionesPropAcierto[idx] || null;
+                                    const copiadoAc = promptCopiadoOracionesPropAcierto === idx;
+
+                                    const updateTextoJsonAc = (i, val) => {
+                                      setTextoJsonOracionesPropAcierto(prev => {
+                                        const arr = [...prev];
+                                        while (arr.length <= i) arr.push("");
+                                        arr[i] = val;
+                                        return arr;
+                                      });
+                                    };
+                                    const updateJsonCalifAc = (i, val) => {
+                                      setJsonCalificacionOracionesPropAcierto(prev => {
+                                        const arr = [...prev];
+                                        while (arr.length <= i) arr.push(null);
+                                        arr[i] = val;
+                                        return arr;
+                                      });
+                                    };
+
+                                    // Prompt para UNA sola oración
+                                    const generarPromptSentenciaAc = (i) => {
+                                      const oVal = getOrAc(i);
+                                      let p = `Evalúa esta oración de un estudiante de ${idiomaAc} (oración ${i + 1} de ${cantidadAc}).\n\n`;
+                                      if (temaAc) p += `TEMA: ${temaAc}\n`;
+                                      p += `INSTRUCCIÓN: ${aciertoActual?.pregunta || "Escribe oraciones propias en " + idiomaAc}\n`;
+                                      if (vocabAc.length > 0) p += `VOCABULARIO SUGERIDO: ${vocabAc.join(", ")}\n`;
+                                      if (estructurasAc.length > 0) p += `ESTRUCTURAS: ${estructurasAc.join(", ")}\n`;
+                                      p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
+                                      p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: evaluación y corrección si es necesario>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
+                                      return p;
+                                    };
+
+                                    return (
+                                      <>
+                                        {/* Barra de progreso */}
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+                                          <span style={{ color: "#4ade80", fontWeight: "700", fontSize: "0.95rem" }}>
+                                            Oración {idx + 1} de {cantidadAc}
+                                          </span>
+                                          <div style={{ display: "flex", gap: "6px" }}>
+                                            {Array.from({ length: cantidadAc }).map((_, i) => (
+                                              <div key={i} style={{
+                                                width: "10px", height: "10px", borderRadius: "50%",
+                                                background: jsonCalificacionOracionesPropAcierto[i]
+                                                  ? (jsonCalificacionOracionesPropAcierto[i].correcto ? "#22c55e" : "#ef4444")
+                                                  : (oracionesPropAcierto[i] ?? "").trim()
+                                                    ? "rgba(34,197,94,0.4)"
+                                                    : i === idx ? "rgba(34,197,94,0.5)" : "rgba(100,116,139,0.3)",
+                                                border: i === idx ? "2px solid #4ade80" : "none",
+                                                cursor: i <= idx ? "pointer" : "default",
+                                                transition: "all 0.2s",
+                                              }} onClick={() => i <= idx && setIndiceOracionAcierto(i)} />
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {/* Card oración actual */}
+                                        <div style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "12px", padding: "1rem", marginBottom: "0.75rem" }}>
+                                          <input
+                                            type="text"
+                                            value={oracionActualValorAc}
+                                            onChange={(e) => updateOrAc(idx, e.target.value)}
+                                            onKeyDown={(e) => { if (e.key === "Enter" && oracionActualValorAc.trim() && !esUltima) setIndiceOracionAcierto(idx + 1); }}
+                                            placeholder={`Oración ${idx + 1} en ${idiomaAc}...`}
+                                            autoFocus
+                                            style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: "8px", border: oracionActualValorAc.trim() ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(34,197,94,0.25)", background: "#1a1625", color: "#e2e8f0", fontSize: "0.95rem", boxSizing: "border-box" }}
+                                          />
+                                        </div>
+
+                                        {/* ── Calificación individual ── */}
+                                        <div style={{ background: "rgba(15,23,42,0.5)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "10px", padding: "0.75rem 1rem", marginBottom: "0.85rem" }}>
+                                          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+                                            <button
+                                              onClick={() => {
+                                                navigator.clipboard?.writeText(generarPromptSentenciaAc(idx));
+                                                setPromptCopiadoOracionesPropAcierto(idx);
+                                                setTimeout(() => setPromptCopiadoOracionesPropAcierto(-1), 2000);
+                                              }}
+                                              style={{ padding: "6px 12px", background: copiadoAc ? "rgba(34,197,94,0.25)" : "rgba(59,130,246,0.18)", border: `1px solid ${copiadoAc ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`, borderRadius: "7px", color: copiadoAc ? "#86efac" : "#93c5fd", cursor: "pointer", fontSize: "0.83rem", fontWeight: "600" }}
+                                            >
+                                              {copiadoAc ? "✓ Copiado" : "📋 Copiar prompt"}
+                                            </button>
+                                          </div>
+                                          <textarea
+                                            value={textoJsonIdxAc}
+                                            onChange={(e) => {
+                                              updateTextoJsonAc(idx, e.target.value);
+                                              try {
+                                                const m = e.target.value.match(/\{[\s\S]*\}/);
+                                                if (m) updateJsonCalifAc(idx, JSON.parse(m[0]));
+                                              } catch {}
+                                            }}
+                                            placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
+                                            style={{ width: "100%", minHeight: "56px", padding: "0.5rem 0.65rem", borderRadius: "7px", border: "1px solid #374151", background: "#0f172a", color: "#94a3b8", fontSize: "0.8rem", resize: "vertical", marginBottom: "0.4rem", boxSizing: "border-box" }}
+                                          />
+                                          {/* Resultado de esta oración */}
+                                          {jsonCalifIdxAc && (
+                                            <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.85rem", background: jsonCalifIdxAc.correcto ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", border: `1px solid ${jsonCalifIdxAc.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`, borderRadius: "8px" }}>
+                                              <strong style={{ color: jsonCalifIdxAc.correcto ? "#86efac" : "#fca5a5", fontSize: "0.88rem" }}>
+                                                {jsonCalifIdxAc.correcto ? "✅ Correcta" : "❌ Incorrecta"}
+                                              </strong>
+                                              {jsonCalifIdxAc.feedback && (
+                                                <p style={{ color: "#e2e8f0", margin: "0.35rem 0 0", fontSize: "0.86rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
+                                                  {jsonCalifIdxAc.feedback}
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Navegación */}
+                                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                                          {idx > 0 && (
+                                            <button className="btn-nav btn-nav-anterior" onClick={() => setIndiceOracionAcierto(idx - 1)}>
+                                              ← Anterior
+                                            </button>
+                                          )}
+                                          {!esUltima ? (
+                                            <button
+                                              className="btn-nav btn-nav-siguiente"
+                                              disabled={!oracionActualValorAc.trim()}
+                                              onClick={() => setIndiceOracionAcierto(idx + 1)}
+                                            >
+                                              Siguiente →
+                                            </button>
+                                          ) : (
+                                            <button
+                                              className="btn-nav btn-nav-siguiente"
+                                              disabled={!oracionActualValorAc.trim()}
+                                              onClick={() => {
+                                                const primerResult = jsonCalificacionOracionesPropAcierto.find(x => x);
+                                                setRespuestaAciertoSeleccionada(respuestaJuntaAc);
+                                                if (primerResult) {
+                                                  setTimeout(() =>
+                                                    primerResult.correcto
+                                                      ? verificarRespuestaAcierto(respuestaJuntaAc)
+                                                      : verificarRespuestaAcierto("__INCORRECTO__"),
+                                                    100,
+                                                  );
+                                                } else {
+                                                  setAciertoYaRespondido(true);
+                                                }
+                                              }}
+                                            >
+                                              🎯 Terminar
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
+
+                                  {aciertoYaRespondido && (
+                                    <div
+                                      style={{
+                                        padding: "1rem",
+                                        background:
+                                          "rgba(34, 197, 94, 0.1)",
+                                        borderRadius: "8px",
+                                        border:
+                                          "1px solid rgba(34, 197, 94, 0.3)",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          color: "#86efac",
+                                          fontWeight: "600",
+                                          fontSize: "0.85rem",
+                                          display: "block",
+                                          marginBottom: "0.5rem",
+                                        }}
+                                      >
+                                        📝 Tus oraciones:
+                                      </span>
+                                      {respuestaJuntaAc
+                                        .split("|||")
+                                        .filter((s) => s.trim())
+                                        .map((or, i) => (
+                                          <div
+                                            key={i}
+                                            style={{
+                                              color: "#bbf7d0",
+                                              fontSize: "0.9rem",
+                                              marginBottom: "0.25rem",
+                                            }}
+                                          >
+                                            {i + 1}. {or.trim()}
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            }
+
                             // CASO 3: Respuesta textual
+                            // Excluir solo oraciones_propias PADRE (tiene su propio bloque)
+                            // oracion_propia_item (sub-ítems individuales) SÍ usan este bloque
+                            if (aciertoActual?.tipo === "oraciones_propias")
+                              return null;
+
                             return (
                               <div className="error-respuesta-textual">
                                 <h4 className="respuesta-textual-label">
@@ -49804,6 +51650,24 @@ Devuelve SOLO este JSON:
                                     ? "Tu respuesta:"
                                     : "✍️ Escribe tu respuesta:"}
                                 </h4>
+
+                                {/* Feedback + pistas para oracion_propia_item */}
+                                {aciertoActual?.tipo === "oracion_propia_item" && (
+                                  <>
+                                    {aciertoActual?.feedback && (
+                                      <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
+                                        <span style={{ color: "#86efac", fontWeight: "600", fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>✅ Feedback anterior:</span>
+                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.feedback}</p>
+                                      </div>
+                                    )}
+                                    {aciertoActual?.pistas_ia && (
+                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
+                                        <span style={{ color: "#fcd34d", fontWeight: "700", fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>💡 Pistas para hacerlo bien:</span>
+                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.pistas_ia}</p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
 
                                 {historialIntentosAcierto.length > 0 && (
                                   <div className="historial-intentos">
@@ -50095,6 +51959,12 @@ Devuelve SOLO este JSON:
                                                   {jsonCalificacionIA.feedback}
                                                 </p>
                                               )}
+                                              {jsonCalificacionIA.pistas && (
+                                                <div style={{ marginTop: "10px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "7px", padding: "8px 12px" }}>
+                                                  <span style={{ color: "#fcd34d", fontSize: "12px", fontWeight: "600", display: "block", marginBottom: "4px" }}>💡 Pistas para mejorar:</span>
+                                                  <p style={{ color: "#e2e8f0", margin: 0, fontSize: "13px", whiteSpace: "pre-wrap" }}>{jsonCalificacionIA.pistas}</p>
+                                                </div>
+                                              )}
                                               <button
                                                 onClick={() => {
                                                   setRespuestaAciertoSeleccionada(
@@ -50291,6 +52161,10 @@ Devuelve SOLO este JSON:
                                     "formal_email",
                                     "picture_description",
                                     "picture_description_libre",
+                                    "oraciones_propias",
+                                    "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+                                    "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
+                                    "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
                                   ];
                                   if (
                                     !tiposEvaluadosPorIAAciertoUI.includes(
@@ -50327,7 +52201,8 @@ Devuelve SOLO este JSON:
                                 jsonCalificacionIA ||
                                 jsonCalificacionPictureAcierto ||
                                 jsonCalificacionEmailAcierto ||
-                                jsonCalificacionWritingAcierto;
+                                jsonCalificacionWritingAcierto ||
+                                (jsonCalificacionOracionesPropAcierto?.find?.((x) => x) ?? null);
                               if (calificacionIAActivaAciertoUI) {
                                 esRespuestaCorrecta =
                                   calificacionIAActivaAciertoUI.correcto;
@@ -50482,6 +52357,7 @@ Devuelve SOLO este JSON:
                                 "formal_email",
                                 "picture_description",
                                 "picture_description_libre",
+                                "oraciones_propias",
                               ];
                               if (
                                 tiposIARenderAcierto.includes(
@@ -51646,6 +53522,16 @@ Devuelve SOLO este JSON:
                             <p className="evaluation-question">
                               ¿Qué tan bien recordaste esto?
                             </p>
+                            {(() => {
+                              // Calcular preview de días para cada botón
+                              const fc = flashcardsSesion[indiceFlashcardActual];
+                              const rep = fc?.repeticiones || 0;
+                              const iv = fc?.intervalo || 1;
+                              const diasOlvide = 1;
+                              const diasMeCosto = rep === 0 ? 2 : Math.min(365, Math.round(iv * 2.3));
+                              const diasFacil   = rep === 0 ? 3 : Math.min(365, Math.round(iv * 2.6));
+                              const fmt = (d) => d === 1 ? "mañana" : `en ${d} días`;
+                              return (
                             <div className="evaluation-buttons">
                               <button
                                 className="btn-evaluation btn-forgot"
@@ -51658,7 +53544,7 @@ Devuelve SOLO este JSON:
                                     Lo Olvidé
                                   </span>
                                   <span className="btn-eval-subtitle">
-                                    Revisar pronto
+                                    Revisar {fmt(diasOlvide)}
                                   </span>
                                 </div>
                               </button>
@@ -51674,7 +53560,7 @@ Devuelve SOLO este JSON:
                                     Me Costó
                                   </span>
                                   <span className="btn-eval-subtitle">
-                                    Intervalo medio
+                                    Revisar {fmt(diasMeCosto)}
                                   </span>
                                 </div>
                               </button>
@@ -51690,11 +53576,13 @@ Devuelve SOLO este JSON:
                                     Lo Recordé Fácil
                                   </span>
                                   <span className="btn-eval-subtitle">
-                                    Intervalo largo
+                                    Revisar {fmt(diasFacil)}
                                   </span>
                                 </div>
                               </button>
                             </div>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div className="flashcard-waiting">
@@ -56625,168 +58513,77 @@ Devuelve SOLO este JSON:
                           </button>
                         </div>
 
-                        {/* Botones de calificación (similar a flashcards) */}
+                        {/* Botones de calificación (mismo sistema que flashcards) */}
                         <div className="notas-calificacion">
                           <p className="calificacion-label">
                             ¿Qué tan bien recordaste esta nota?
                           </p>
+                          {(() => {
+                            // Helper: evalúa y avanza
+                            const marcarNota = async (dificultad) => {
+                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                              const notaActualizada = calcularProximaRevision(nota, dificultad);
+                              // Asegurar campos de marca de revisión
+                              const ahora = new Date().toISOString();
+                              notaActualizada.ultimoRepaso = ahora;
+                              notaActualizada.ultima_revision = ahora;
+                              notaActualizada.ultimaRevision = ahora;
+                              await guardarNotaEnCarpeta(notaActualizada);
+                              if (dificultad !== "dificil") {
+                                setEstadisticasSesion((prev) => ({
+                                  ...prev,
+                                  notasTomadas: (prev.notasTomadas || 0) + 1,
+                                }));
+                              }
+                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                                setIndiceNotaRepasoActual((prev) => prev + 1);
+                              } else {
+                                avanzarFase();
+                              }
+                              setNotaRepasoExpandida(false);
+                            };
+
+                            // Preview de días para cada botón
+                            const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                            const rep = nota?.repeticiones || 0;
+                            const iv  = nota?.intervalo || 1;
+                            const diasOlvide   = 1;
+                            const diasMeCosto  = rep === 0 ? 2 : Math.min(365, Math.round(iv * 2.3));
+                            const diasFacil    = rep === 0 ? 3 : Math.min(365, Math.round(iv * 2.6));
+                            const fmt = (d) => d === 1 ? "mañana" : `en ${d} días`;
+
+                            return (
                           <div className="calificacion-botones">
                             <button
                               className="btn-calificacion btn-again"
-                              onClick={async () => {
-                                const nota =
-                                  notasRepasoSesion[indiceNotaRepasoActual];
-                                const ahora = new Date().toISOString();
-                                // Actualizar nota con nuevo intervalo (repetir mañana)
-                                const notaActualizada = {
-                                  ...nota,
-                                  proximaRevision: new Date(
-                                    Date.now() + 24 * 60 * 60 * 1000,
-                                  ).toISOString(),
-                                  intervalo: 1,
-                                  estadoRevision: "en_progreso",
-                                  // 🔥 CAMPO CLAVE PARA SM-2: marcar que ya se revisó hoy
-                                  ultimoRepaso: ahora,
-                                  ultima_revision: ahora,
-                                  ultimaRevision: ahora,
-                                };
-                                await guardarNotaEnCarpeta(notaActualizada);
-
-                                if (
-                                  indiceNotaRepasoActual <
-                                  notasRepasoSesion.length - 1
-                                ) {
-                                  setIndiceNotaRepasoActual((prev) => prev + 1);
-                                } else {
-                                  // Última nota, avanzar de fase
-                                  avanzarFase();
-                                }
-                                setNotaRepasoExpandida(false);
-                              }}
+                              onClick={() => marcarNota("dificil")}
                             >
-                              😣 No recuerdo
+                              😰 Lo Olvidé
+                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
+                                Revisar {fmt(diasOlvide)}
+                              </span>
                             </button>
                             <button
                               className="btn-calificacion btn-hard"
-                              onClick={async () => {
-                                const nota =
-                                  notasRepasoSesion[indiceNotaRepasoActual];
-                                const ahora = new Date().toISOString();
-                                const nuevoIntervalo = Math.max(
-                                  1,
-                                  (nota.intervalo || 1) * 1.5,
-                                );
-                                const notaActualizada = {
-                                  ...nota,
-                                  proximaRevision: new Date(
-                                    Date.now() +
-                                      nuevoIntervalo * 24 * 60 * 60 * 1000,
-                                  ).toISOString(),
-                                  intervalo: nuevoIntervalo,
-                                  estadoRevision: "en_progreso",
-                                  // 🔥 CAMPO CLAVE PARA SM-2
-                                  ultimoRepaso: ahora,
-                                  ultima_revision: ahora,
-                                  ultimaRevision: ahora,
-                                };
-                                await guardarNotaEnCarpeta(notaActualizada);
-
-                                if (
-                                  indiceNotaRepasoActual <
-                                  notasRepasoSesion.length - 1
-                                ) {
-                                  setIndiceNotaRepasoActual((prev) => prev + 1);
-                                } else {
-                                  avanzarFase();
-                                }
-                                setNotaRepasoExpandida(false);
-                              }}
+                              onClick={() => marcarNota("medio")}
                             >
-                              🤔 Difícil
-                            </button>
-                            <button
-                              className="btn-calificacion btn-good"
-                              onClick={async () => {
-                                const nota =
-                                  notasRepasoSesion[indiceNotaRepasoActual];
-                                const ahora = new Date().toISOString();
-                                const nuevoIntervalo =
-                                  (nota.intervalo || 1) * 2.5;
-                                const notaActualizada = {
-                                  ...nota,
-                                  proximaRevision: new Date(
-                                    Date.now() +
-                                      nuevoIntervalo * 24 * 60 * 60 * 1000,
-                                  ).toISOString(),
-                                  intervalo: nuevoIntervalo,
-                                  estadoRevision: "aprendida",
-                                  // 🔥 CAMPO CLAVE PARA SM-2
-                                  ultimoRepaso: ahora,
-                                  ultima_revision: ahora,
-                                  ultimaRevision: ahora,
-                                };
-                                await guardarNotaEnCarpeta(notaActualizada);
-
-                                setEstadisticasSesion((prev) => ({
-                                  ...prev,
-                                  notasTomadas: (prev.notasTomadas || 0) + 1,
-                                }));
-
-                                if (
-                                  indiceNotaRepasoActual <
-                                  notasRepasoSesion.length - 1
-                                ) {
-                                  setIndiceNotaRepasoActual((prev) => prev + 1);
-                                } else {
-                                  avanzarFase();
-                                }
-                                setNotaRepasoExpandida(false);
-                              }}
-                            >
-                              👍 Bien
+                              🤔 Me Costó
+                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
+                                Revisar {fmt(diasMeCosto)}
+                              </span>
                             </button>
                             <button
                               className="btn-calificacion btn-easy"
-                              onClick={async () => {
-                                const nota =
-                                  notasRepasoSesion[indiceNotaRepasoActual];
-                                const ahora = new Date().toISOString();
-                                const nuevoIntervalo =
-                                  (nota.intervalo || 1) * 4;
-                                const notaActualizada = {
-                                  ...nota,
-                                  proximaRevision: new Date(
-                                    Date.now() +
-                                      nuevoIntervalo * 24 * 60 * 60 * 1000,
-                                  ).toISOString(),
-                                  intervalo: nuevoIntervalo,
-                                  estadoRevision: "dominada",
-                                  // 🔥 CAMPO CLAVE PARA SM-2
-                                  ultimoRepaso: ahora,
-                                  ultima_revision: ahora,
-                                  ultimaRevision: ahora,
-                                };
-                                await guardarNotaEnCarpeta(notaActualizada);
-
-                                setEstadisticasSesion((prev) => ({
-                                  ...prev,
-                                  notasTomadas: (prev.notasTomadas || 0) + 1,
-                                }));
-
-                                if (
-                                  indiceNotaRepasoActual <
-                                  notasRepasoSesion.length - 1
-                                ) {
-                                  setIndiceNotaRepasoActual((prev) => prev + 1);
-                                } else {
-                                  avanzarFase();
-                                }
-                                setNotaRepasoExpandida(false);
-                              }}
+                              onClick={() => marcarNota("facil")}
                             >
-                              🚀 Fácil
+                              😎 Lo Recordé Fácil
+                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
+                                Revisar {fmt(diasFacil)}
+                              </span>
                             </button>
                           </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Navegación */}
@@ -77236,6 +79033,7 @@ Devuelve SOLO este JSON:
                                 "formal_email",
                                 "picture_description",
                                 "picture_description_libre",
+                                "oraciones_propias",
                               ].includes(pregunta.tipo)) && (
                               <div className="ejercicio-idiomas">
                                 {/* Mostrar idioma (solo si es válido y no "undefined" literal) */}
@@ -81917,6 +83715,335 @@ Devuelve SOLO este JSON:
                                   </div>
                                 )}
 
+                                {/* ✏️ Renderizado especial para oraciones_propias */}
+                                {pregunta.tipo === "oraciones_propias" && (
+                                  <div style={{ marginBottom: "1rem" }}>
+                                    <div
+                                      style={{
+                                        background: "rgba(34, 197, 94, 0.1)",
+                                        border:
+                                          "2px solid rgba(34, 197, 94, 0.4)",
+                                        borderRadius: "12px",
+                                        padding: "1.25rem",
+                                        marginBottom: "1rem",
+                                      }}
+                                    >
+                                      <h4
+                                        style={{
+                                          color: "#4ade80",
+                                          fontSize: "1rem",
+                                          marginBottom: "1rem",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "0.5rem",
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        ✏️ Oraciones Propias
+                                        {pregunta.metadata?.idioma && (
+                                          <span
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "2px 8px",
+                                              background:
+                                                "rgba(34, 197, 94, 0.3)",
+                                              borderRadius: "10px",
+                                            }}
+                                          >
+                                            🌍{" "}
+                                            {pregunta.metadata.idioma
+                                              .charAt(0)
+                                              .toUpperCase() +
+                                              pregunta.metadata.idioma.slice(1)}
+                                          </span>
+                                        )}
+                                        {pregunta.metadata
+                                          ?.nivel_dificultad && (
+                                          <span
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "2px 8px",
+                                              background:
+                                                "rgba(251, 191, 36, 0.2)",
+                                              border:
+                                                "1px solid rgba(251, 191, 36, 0.4)",
+                                              borderRadius: "10px",
+                                              color: "#fcd34d",
+                                            }}
+                                          >
+                                            🎯{" "}
+                                            {pregunta.metadata.nivel_dificultad}
+                                          </span>
+                                        )}
+                                        {pregunta.metadata
+                                          ?.cantidad_oraciones && (
+                                          <span
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "2px 8px",
+                                              background:
+                                                "rgba(59, 130, 246, 0.2)",
+                                              border:
+                                                "1px solid rgba(59, 130, 246, 0.4)",
+                                              borderRadius: "10px",
+                                              color: "#93c5fd",
+                                            }}
+                                          >
+                                            📝{" "}
+                                            {
+                                              pregunta.metadata
+                                                .cantidad_oraciones
+                                            }{" "}
+                                            oraciones
+                                          </span>
+                                        )}
+                                      </h4>
+
+                                      {/* Tema sugerido */}
+                                      {pregunta.metadata?.titulo_tema && (
+                                        <div
+                                          style={{
+                                            background:
+                                              "rgba(34, 197, 94, 0.15)",
+                                            border:
+                                              "1px solid rgba(34, 197, 94, 0.3)",
+                                            borderRadius: "8px",
+                                            padding: "0.75rem",
+                                            marginBottom: "0.75rem",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#4ade80",
+                                              fontWeight: "600",
+                                              fontSize: "0.9rem",
+                                            }}
+                                          >
+                                            📚 Tema:{" "}
+                                          </span>
+                                          <span style={{ color: "#bbf7d0" }}>
+                                            {pregunta.metadata.titulo_tema}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Instrucción de nivel */}
+                                      {pregunta.metadata
+                                        ?.instruccion_nivel && (
+                                        <div
+                                          style={{
+                                            background:
+                                              "rgba(251, 191, 36, 0.1)",
+                                            border:
+                                              "1px solid rgba(251, 191, 36, 0.3)",
+                                            borderRadius: "8px",
+                                            padding: "0.75rem",
+                                            marginBottom: "0.75rem",
+                                            fontSize: "0.85rem",
+                                            color: "#fde68a",
+                                          }}
+                                        >
+                                          ⚡{" "}
+                                          {pregunta.metadata.instruccion_nivel}
+                                        </div>
+                                      )}
+
+                                      {/* Vocabulario sugerido */}
+                                      {pregunta.metadata?.vocabulario_sugerido
+                                        ?.length > 0 && (
+                                        <div
+                                          style={{ marginBottom: "0.75rem" }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#86efac",
+                                              fontSize: "0.85rem",
+                                              fontWeight: "600",
+                                              display: "block",
+                                              marginBottom: "0.4rem",
+                                            }}
+                                          >
+                                            💬 Vocabulario sugerido:
+                                          </span>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexWrap: "wrap",
+                                              gap: "0.4rem",
+                                            }}
+                                          >
+                                            {pregunta.metadata.vocabulario_sugerido.map(
+                                              (word, wIdx) => (
+                                                <span
+                                                  key={wIdx}
+                                                  style={{
+                                                    background:
+                                                      "rgba(34, 197, 94, 0.2)",
+                                                    border:
+                                                      "1px solid rgba(34, 197, 94, 0.4)",
+                                                    padding: "3px 10px",
+                                                    borderRadius: "12px",
+                                                    color: "#bbf7d0",
+                                                    fontSize: "0.85rem",
+                                                    fontWeight: "500",
+                                                  }}
+                                                >
+                                                  {word}
+                                                </span>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Estructuras sugeridas */}
+                                      {pregunta.metadata?.estructuras_sugeridas
+                                        ?.length > 0 && (
+                                        <div>
+                                          <span
+                                            style={{
+                                              color: "#86efac",
+                                              fontSize: "0.85rem",
+                                              fontWeight: "600",
+                                              display: "block",
+                                              marginBottom: "0.4rem",
+                                            }}
+                                          >
+                                            🔤 Estructuras gramaticales:
+                                          </span>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              flexDirection: "column",
+                                              gap: "0.3rem",
+                                            }}
+                                          >
+                                            {pregunta.metadata.estructuras_sugeridas.map(
+                                              (est, eIdx) => (
+                                                <span
+                                                  key={eIdx}
+                                                  style={{
+                                                    background:
+                                                      "rgba(16, 185, 129, 0.1)",
+                                                    border:
+                                                      "1px solid rgba(16, 185, 129, 0.3)",
+                                                    padding: "4px 10px",
+                                                    borderRadius: "6px",
+                                                    color: "#6ee7b7",
+                                                    fontSize: "0.85rem",
+                                                  }}
+                                                >
+                                                  • {est}
+                                                </span>
+                                              ),
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Inputs individuales por oración */}
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        gap: "0.6rem",
+                                      }}
+                                    >
+                                      {Array.from({
+                                        length:
+                                          pregunta.metadata
+                                            ?.cantidad_oraciones || 5,
+                                      }).map((_, oIdx) => {
+                                        const respuestasArray = (
+                                          respuestasUsuario[index] || ""
+                                        ).split("|||");
+                                        const respuestaItem =
+                                          respuestasArray[oIdx] || "";
+                                        return (
+                                          <div
+                                            key={oIdx}
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: "0.5rem",
+                                            }}
+                                          >
+                                            <span
+                                              style={{
+                                                minWidth: "26px",
+                                                height: "26px",
+                                                background:
+                                                  "rgba(34, 197, 94, 0.3)",
+                                                border:
+                                                  "1px solid rgba(34, 197, 94, 0.5)",
+                                                borderRadius: "50%",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                color: "#4ade80",
+                                                fontSize: "0.8rem",
+                                                fontWeight: "700",
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              {oIdx + 1}
+                                            </span>
+                                            <input
+                                              type="text"
+                                              placeholder={`Oración ${oIdx + 1} en ${pregunta.metadata?.idioma || "el idioma indicado"}...`}
+                                              value={respuestaItem}
+                                              onChange={(e) => {
+                                                const nuevas = [
+                                                  ...respuestasArray,
+                                                ];
+                                                while (
+                                                  nuevas.length <=
+                                                  oIdx
+                                                )
+                                                  nuevas.push("");
+                                                nuevas[oIdx] = e.target.value;
+                                                actualizarRespuesta(
+                                                  index,
+                                                  nuevas.join("|||"),
+                                                );
+                                              }}
+                                              style={{
+                                                flex: 1,
+                                                padding: "0.6rem 0.75rem",
+                                                background: "#1a1625",
+                                                border:
+                                                  respuestaItem
+                                                    ? "2px solid rgba(34, 197, 94, 0.6)"
+                                                    : "2px solid rgba(34, 197, 94, 0.25)",
+                                                borderRadius: "8px",
+                                                color: "#e2e8f0",
+                                                fontSize: "0.95rem",
+                                                outline: "none",
+                                                transition: "border-color 0.2s",
+                                              }}
+                                              onFocus={(e) => {
+                                                e.target.style.borderColor =
+                                                  "#4ade80";
+                                                e.target.style.background =
+                                                  "#211d2e";
+                                              }}
+                                              onBlur={(e) => {
+                                                e.target.style.borderColor =
+                                                  respuestaItem
+                                                    ? "rgba(34, 197, 94, 0.6)"
+                                                    : "rgba(34, 197, 94, 0.25)";
+                                                e.target.style.background =
+                                                  "#1a1625";
+                                              }}
+                                            />
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Para otros tipos de escritura sin preguntas_comprension, mostrar textarea simple */}
                                 {pregunta.tipo.startsWith("writing_") &&
                                   pregunta.tipo !== "writing_essay" &&
@@ -84898,8 +87025,52 @@ Devuelve SOLO este JSON:
 
                           <div className="resultado-respuesta">
                             <strong>Tu respuesta:</strong>
-                            {/* Para reading_cloze, formatear las respuestas */}
-                            {resultado.tipo === "reading_cloze" &&
+                            {/* Para oraciones_propias, mostrar cada oración en su línea */}
+                            {resultado.tipo === "oraciones_propias" ? (
+                              <div style={{ marginTop: "0.5rem" }}>
+                                {(resultado.respuesta_usuario || "")
+                                  .split("|||")
+                                  .filter((s) => s.trim())
+                                  .map((oracion, idx) => (
+                                    <div
+                                      key={idx}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "flex-start",
+                                        gap: "0.5rem",
+                                        padding: "0.4rem 0.6rem",
+                                        marginBottom: "0.35rem",
+                                        background: "rgba(34, 197, 94, 0.1)",
+                                        border:
+                                          "1px solid rgba(34, 197, 94, 0.3)",
+                                        borderRadius: "6px",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          minWidth: "22px",
+                                          color: "#4ade80",
+                                          fontWeight: "700",
+                                          fontSize: "0.8rem",
+                                        }}
+                                      >
+                                        {idx + 1}.
+                                      </span>
+                                      <span style={{ color: "#bbf7d0" }}>
+                                        {oracion.trim()}
+                                      </span>
+                                    </div>
+                                  ))}
+                                {!(resultado.respuesta_usuario || "")
+                                  .split("|||")
+                                  .some((s) => s.trim()) && (
+                                  <p style={{ color: "#94a3b8" }}>
+                                    (Sin respuesta)
+                                  </p>
+                                )}
+                              </div>
+                            ) : /* Para reading_cloze, formatear las respuestas */
+                            resultado.tipo === "reading_cloze" &&
                             resultado.respuesta_usuario?.includes("|||") ? (
                               <div style={{ marginTop: "0.5rem" }}>
                                 {resultado.respuesta_usuario
@@ -94073,8 +96244,7 @@ Devuelve SOLO este JSON:
                                   0 ||
                                 preguntasPropiasConfig.writing_transformation_libre >
                                   0 ||
-                                preguntasPropiasConfig.sentence_builder_libre >
-                                  0
+                                preguntasPropiasConfig.oraciones_propias > 0
                                   ? "linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
                                   : "rgba(249, 115, 22, 0.2)",
                               border: "1px solid rgba(249, 115, 22, 0.5)",
@@ -94096,32 +96266,27 @@ Devuelve SOLO este JSON:
                                 gap: "0.5rem",
                               }}
                             >
-                              {(preguntasPropiasConfig.writing_short_libre >
-                                0 ||
-                                preguntasPropiasConfig.writing_paraphrase_libre >
-                                  0 ||
-                                preguntasPropiasConfig.writing_correction_libre >
-                                  0 ||
-                                preguntasPropiasConfig.writing_transformation_libre >
-                                  0 ||
-                                preguntasPropiasConfig.sentence_builder_libre >
-                                  0) && (
-                                <span
-                                  style={{
-                                    background: "#fff",
-                                    color: "#f97316",
-                                    padding: "2px 8px",
-                                    borderRadius: "12px",
-                                    fontSize: "0.8rem",
-                                  }}
-                                >
-                                  {preguntasPropiasConfig.writing_short_libre +
-                                    preguntasPropiasConfig.writing_paraphrase_libre +
-                                    preguntasPropiasConfig.writing_correction_libre +
-                                    preguntasPropiasConfig.writing_transformation_libre +
-                                    preguntasPropiasConfig.sentence_builder_libre}
-                                </span>
-                              )}
+                              {(preguntasPropiasConfig.writing_short_libre > 0 ||
+                    preguntasPropiasConfig.writing_paraphrase_libre > 0 ||
+                    preguntasPropiasConfig.writing_correction_libre > 0 ||
+                    preguntasPropiasConfig.writing_transformation_libre > 0 ||
+                    preguntasPropiasConfig.oraciones_propias > 0) && (
+                    <span
+                      style={{
+                        background: "#fff",
+                        color: "#f97316",
+                        padding: "2px 8px",
+                        borderRadius: "12px",
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      {(preguntasPropiasConfig.writing_short_libre || 0) +
+                        (preguntasPropiasConfig.writing_paraphrase_libre || 0) +
+                        (preguntasPropiasConfig.writing_correction_libre || 0) +
+                        (preguntasPropiasConfig.writing_transformation_libre || 0) +
+                        (preguntasPropiasConfig.oraciones_propias || 0)}
+                    </span>
+                  )}
                               <span
                                 style={{
                                   transform:
@@ -94160,6 +96325,145 @@ Devuelve SOLO este JSON:
                                 CEFR. ChatGPT generará ejercicios con temas
                                 VARIADOS automáticamente.
                               </p>
+
+                              {/* ✏️ Oraciones Propias */}
+                              <div
+                                style={{
+                                  padding: "0.75rem",
+                                  background: "rgba(16, 185, 129, 0.1)",
+                                  borderRadius: "8px",
+                                  border:
+                                    preguntasPropiasConfig.oraciones_propias > 0
+                                      ? "2px solid #10b981"
+                                      : "1px solid rgba(16, 185, 129, 0.3)",
+                                  marginBottom: "1rem",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    color: "#6ee7b7",
+                                    fontWeight: "600",
+                                    display: "block",
+                                    marginBottom: "0.25rem",
+                                    fontSize: "0.85rem",
+                                  }}
+                                >
+                                  ✏️ Oraciones Propias
+                                </label>
+                                <p style={{ color: "#94a3b8", fontSize: "0.75rem", margin: "0 0 0.5rem 0", lineHeight: "1.4" }}>
+                                  Creo oraciones completamente por mi cuenta para fortalecer fluidez y dominio gramatical según el tema que estoy estudiando. Puedo aumentar la dificultad.
+                                </p>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.5rem",
+                                    alignItems: "center",
+                                    marginBottom: "0.5rem",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="20"
+                                    value={preguntasPropiasConfig.oraciones_propias ?? 0}
+                                    onChange={(e) =>
+                                      setPreguntasPropiasConfig({
+                                        ...preguntasPropiasConfig,
+                                        oraciones_propias: Math.max(0, parseInt(e.target.value) || 0),
+                                      })
+                                    }
+                                    style={{
+                                      width: "50px",
+                                      padding: "0.4rem",
+                                      borderRadius: "6px",
+                                      border: "1px solid #374151",
+                                      background: "#1f2937",
+                                      color: "#e2e8f0",
+                                      fontSize: "0.9rem",
+                                    }}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={preguntasPropiasConfig.oraciones_propias_lang}
+                                    onChange={(e) =>
+                                      setPreguntasPropiasConfig({
+                                        ...preguntasPropiasConfig,
+                                        oraciones_propias_lang: e.target.value,
+                                      })
+                                    }
+                                    style={{
+                                      flex: 1,
+                                      minWidth: "100px",
+                                      padding: "0.4rem",
+                                      background: "#1f2937",
+                                      border: "1px solid #374151",
+                                      borderRadius: "6px",
+                                      color: "#e2e8f0",
+                                      fontSize: "0.8rem",
+                                    }}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">🇮🇹 Italiano</option>
+                                    <option value="portugues">🇵🇹 Portugués</option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {preguntasPropiasConfig.oraciones_propias > 0 && (
+                                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                                    <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Oraciones por ejercicio:</span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      max="30"
+                                      value={preguntasPropiasConfig.oraciones_propias_cantidad || 5}
+                                      onChange={(e) =>
+                                        setPreguntasPropiasConfig({
+                                          ...preguntasPropiasConfig,
+                                          oraciones_propias_cantidad: Math.max(2, parseInt(e.target.value) || 5),
+                                        })
+                                      }
+                                      style={{
+                                        width: "50px",
+                                        padding: "0.3rem",
+                                        background: "#1f2937",
+                                        border: "1px solid #374151",
+                                        borderRadius: "4px",
+                                        color: "#e2e8f0",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    />
+                                    <span style={{ color: "#94a3b8", fontSize: "0.75rem", marginLeft: "0.5rem" }}>Dificultad:</span>
+                                    <select
+                                      value={preguntasPropiasConfig.oraciones_propias_dificultad || "intermedio"}
+                                      onChange={(e) =>
+                                        setPreguntasPropiasConfig({
+                                          ...preguntasPropiasConfig,
+                                          oraciones_propias_dificultad: e.target.value,
+                                        })
+                                      }
+                                      style={{
+                                        padding: "0.3rem",
+                                        background: "#1f2937",
+                                        border: "1px solid #374151",
+                                        borderRadius: "4px",
+                                        color: "#e2e8f0",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      <option value="basico">🟢 Básico</option>
+                                      <option value="intermedio">🟡 Intermedio</option>
+                                      <option value="avanzado">🔴 Avanzado</option>
+                                    </select>
+                                  </div>
+                                )}
+                              </div>
 
                               {/* Respuesta Corta Libre */}
                               <div
@@ -94772,164 +97076,6 @@ Devuelve SOLO este JSON:
                                             Math.max(
                                               2,
                                               parseInt(e.target.value) || 3,
-                                            ),
-                                        })
-                                      }
-                                      style={{
-                                        width: "50px",
-                                        padding: "0.3rem",
-                                        background: "#1f2937",
-                                        border: "1px solid #374151",
-                                        borderRadius: "4px",
-                                        color: "#e2e8f0",
-                                        fontSize: "0.75rem",
-                                      }}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* 🧩 Constructor de Oraciones Libre */}
-                              <div
-                                style={{
-                                  padding: "0.75rem",
-                                  background: "rgba(139, 92, 246, 0.1)",
-                                  borderRadius: "8px",
-                                  border:
-                                    preguntasPropiasConfig.sentence_builder_libre >
-                                    0
-                                      ? "2px solid #8b5cf6"
-                                      : "1px solid rgba(139, 92, 246, 0.3)",
-                                  marginBottom: "1rem",
-                                }}
-                              >
-                                <label
-                                  style={{
-                                    color: "#c4b5fd",
-                                    fontWeight: "600",
-                                    display: "block",
-                                    marginBottom: "0.5rem",
-                                    fontSize: "0.85rem",
-                                  }}
-                                >
-                                  🧩 Constructor de Oraciones Libre
-                                </label>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    gap: "0.5rem",
-                                    alignItems: "center",
-                                    marginBottom: "0.5rem",
-                                    flexWrap: "wrap",
-                                  }}
-                                >
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="10"
-                                    value={
-                                      preguntasPropiasConfig.sentence_builder_libre
-                                    }
-                                    onChange={(e) =>
-                                      setPreguntasPropiasConfig({
-                                        ...preguntasPropiasConfig,
-                                        sentence_builder_libre: Math.max(
-                                          0,
-                                          parseInt(e.target.value) || 0,
-                                        ),
-                                      })
-                                    }
-                                    style={{
-                                      width: "50px",
-                                      padding: "0.4rem",
-                                      borderRadius: "6px",
-                                      border: "1px solid #374151",
-                                      background: "#1f2937",
-                                      color: "#e2e8f0",
-                                      fontSize: "0.9rem",
-                                    }}
-                                    title="Cantidad"
-                                  />
-                                  <select
-                                    value={
-                                      preguntasPropiasConfig.sentence_builder_libre_lang
-                                    }
-                                    onChange={(e) =>
-                                      setPreguntasPropiasConfig({
-                                        ...preguntasPropiasConfig,
-                                        sentence_builder_libre_lang:
-                                          e.target.value,
-                                      })
-                                    }
-                                    style={{
-                                      flex: 1,
-                                      minWidth: "100px",
-                                      padding: "0.4rem",
-                                      background: "#1f2937",
-                                      border: "1px solid #374151",
-                                      borderRadius: "6px",
-                                      color: "#e2e8f0",
-                                      fontSize: "0.8rem",
-                                    }}
-                                  >
-                                    <option value="ingles">🇬🇧 Inglés</option>
-                                    <option value="frances">🇫🇷 Francés</option>
-                                    <option value="aleman">🇩🇪 Alemán</option>
-                                    <option value="italiano">
-                                      🇮🇹 Italiano
-                                    </option>
-                                    <option value="portugues">
-                                      🇵🇹 Portugués
-                                    </option>
-                                    <option value="japones">🇯🇵 Japonés</option>
-                                    <option value="chino">🇨🇳 Chino</option>
-                                    <option value="coreano">🇰🇷 Coreano</option>
-                                    <option value="ruso">🇷🇺 Ruso</option>
-                                    <option value="arabe">🇸🇦 Árabe</option>
-                                  </select>
-                                </div>
-                                {preguntasPropiasConfig.sentence_builder_libre >
-                                  0 && (
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: "0.5rem",
-                                      alignItems: "center",
-                                      flexWrap: "wrap",
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        color: "#94a3b8",
-                                        fontSize: "0.75rem",
-                                      }}
-                                    >
-                                      🧩 Te dan palabras/ideas y formas frases
-                                      correctas
-                                    </span>
-                                    <span
-                                      style={{
-                                        color: "#64748b",
-                                        fontSize: "0.75rem",
-                                        marginLeft: "auto",
-                                      }}
-                                    >
-                                      Frases:
-                                    </span>
-                                    <input
-                                      type="number"
-                                      min="2"
-                                      value={
-                                        preguntasPropiasConfig.sentence_builder_libre_items ||
-                                        5
-                                      }
-                                      onChange={(e) =>
-                                        setPreguntasPropiasConfig({
-                                          ...preguntasPropiasConfig,
-                                          sentence_builder_libre_items:
-                                            Math.max(
-                                              2,
-                                              parseInt(e.target.value) || 5,
                                             ),
                                         })
                                       }
@@ -95738,7 +97884,8 @@ Devuelve SOLO este JSON:
                           (preguntasPropiasConfig.writing_correction_libre ||
                             0) +
                           (preguntasPropiasConfig.writing_transformation_libre ||
-                            0) ===
+                            0) +
+                          (preguntasPropiasConfig.oraciones_propias || 0) ===
                         0
                       }
                       className="btn-primary"
