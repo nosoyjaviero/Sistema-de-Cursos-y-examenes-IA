@@ -508,9 +508,14 @@ function App() {
   const [respuestasMatchingError, setRespuestasMatchingError] = useState([]);
   // 📝 Estados para oraciones_propias en corrección de errores
   const [oracionesPropError, setOracionesPropError] = useState([]);
-  const [promptCopiadoOracionesPropError, setPromptCopiadoOracionesPropError] = useState(-1); // idx del prompt copiado
-  const [textoJsonOracionesPropError, setTextoJsonOracionesPropError] = useState([]); // array por oración
-  const [jsonCalificacionOracionesPropError, setJsonCalificacionOracionesPropError] = useState([]); // array por oración
+  const [promptCopiadoOracionesPropError, setPromptCopiadoOracionesPropError] =
+    useState(-1); // idx del prompt copiado
+  const [textoJsonOracionesPropError, setTextoJsonOracionesPropError] =
+    useState([]); // array por oración
+  const [
+    jsonCalificacionOracionesPropError,
+    setJsonCalificacionOracionesPropError,
+  ] = useState([]); // array por oración
   const [indiceOracionError, setIndiceOracionError] = useState(0); // índice de la oración actual en corrección
 
   const [historialIntentos, setHistorialIntentos] = useState([]); // Historial de intentos para preguntas cortas
@@ -587,9 +592,16 @@ function App() {
     useState(null);
   // 📝 Estados para oraciones_propias en repaso de aciertos
   const [oracionesPropAcierto, setOracionesPropAcierto] = useState([]);
-  const [promptCopiadoOracionesPropAcierto, setPromptCopiadoOracionesPropAcierto] = useState(-1); // idx del prompt copiado
-  const [textoJsonOracionesPropAcierto, setTextoJsonOracionesPropAcierto] = useState([]); // array por oración
-  const [jsonCalificacionOracionesPropAcierto, setJsonCalificacionOracionesPropAcierto] = useState([]); // array por oración
+  const [
+    promptCopiadoOracionesPropAcierto,
+    setPromptCopiadoOracionesPropAcierto,
+  ] = useState(-1); // idx del prompt copiado
+  const [textoJsonOracionesPropAcierto, setTextoJsonOracionesPropAcierto] =
+    useState([]); // array por oración
+  const [
+    jsonCalificacionOracionesPropAcierto,
+    setJsonCalificacionOracionesPropAcierto,
+  ] = useState([]); // array por oración
   const [indiceOracionAcierto, setIndiceOracionAcierto] = useState(0); // índice de la oración actual en aciertos
   const [historialIntentosAcierto, setHistorialIntentosAcierto] = useState([]);
   const [evaluandoRespuestaAcierto, setEvaluandoRespuestaAcierto] =
@@ -4987,6 +4999,8 @@ function App() {
           const tiposEscrLibre = [
             "oraciones_propias",
             "oracion_propia_item",
+            "constructor_oraciones",
+            "constructor_oracion_item",
             "sentence_builder_libre",
             "picture_description_libre",
             "writing_short_libre",
@@ -5009,8 +5023,7 @@ function App() {
           // 2. Obtuvo menos del 60% originalmente
           // 3. Tiene estado_error = 'fallo' o 'critical' (falló en corrección de errores)
           // 4. Tiene estado_repaso = 'fallo' (falló en repaso de aciertos)
-          const esErrorOriginal =
-            !resultado.correcto || porcentaje < 60;
+          const esErrorOriginal = !resultado.correcto || porcentaje < 60;
           const esErrorPorEstado = ["fallo", "critical"].includes(
             resultado.estado_error,
           );
@@ -5231,6 +5244,19 @@ function App() {
                   oracionesOriginalesReconstruidas,
                 );
               }
+            }
+
+            // 🔥 Para constructor_oracion_item: recuperar datos de la oración específica del padre
+            let oracionDefConstr = null;
+            if (
+              resultado.tipo === "constructor_oracion_item" &&
+              resultado.subindice !== undefined
+            ) {
+              const orcList =
+                preguntaPadre?.metadata?.oraciones ||
+                preguntaPadre?.oraciones ||
+                [];
+              oracionDefConstr = orcList[resultado.subindice] || null;
             }
 
             errores.push({
@@ -5538,14 +5564,43 @@ function App() {
                 preguntaOriginal?.metadata?.oraciones_originales ||
                 preguntaPadre?.metadata?.oraciones_originales ||
                 null,
-              // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM
+              // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM / CONSTRUCTOR_ORACION_ITEM
               palabras_clave:
                 resultado.palabras_clave ||
                 preguntaOriginal?.palabras_clave ||
+                oracionDefConstr?.palabras_clave ||
                 null,
               contexto_pista:
                 resultado.contexto_pista ||
                 preguntaOriginal?.contexto_pista ||
+                null,
+              pista:
+                resultado.pista ||
+                preguntaOriginal?.pista ||
+                oracionDefConstr?.pista ||
+                null,
+              contexto_oracion:
+                resultado.contexto_oracion ||
+                preguntaOriginal?.contexto_oracion ||
+                oracionDefConstr?.contexto_oracion ||
+                null,
+              titulo_tema:
+                resultado.titulo_tema ||
+                preguntaOriginal?.titulo_tema ||
+                preguntaOriginal?.metadata?.titulo_tema ||
+                preguntaPadre?.metadata?.titulo_tema ||
+                null,
+              nivel_dificultad:
+                resultado.nivel_dificultad ||
+                preguntaOriginal?.nivel_dificultad ||
+                preguntaOriginal?.metadata?.nivel_dificultad ||
+                preguntaPadre?.metadata?.nivel_dificultad ||
+                null,
+              instruccion_nivel:
+                resultado.instruccion_nivel ||
+                preguntaOriginal?.instruccion_nivel ||
+                preguntaOriginal?.metadata?.instruccion_nivel ||
+                preguntaPadre?.metadata?.instruccion_nivel ||
                 null,
               // 🔥 CAMPOS DE REPETICIÓN ESPACIADA
               estado_error: resultado.estado_error || "nuevo",
@@ -5677,7 +5732,9 @@ function App() {
           // EXCEPTO si ya fueron corregidas
           const esAcierto =
             !!resultado.correcto ||
-            (porcentaje >= 60 && resultado.correcto !== false && resultado.correcto !== 0) ||
+            (porcentaje >= 60 &&
+              resultado.correcto !== false &&
+              resultado.correcto !== 0) ||
             resultado.estado_error === "ok"; // Errores corregidos van a repaso
 
           if (esAcierto) {
@@ -5833,6 +5890,19 @@ function App() {
                 }
               }
 
+              // 🔥 Para constructor_oracion_item: recuperar datos de la oración específica del padre
+              let oracionDefConstr = null;
+              if (
+                resultado.tipo === "constructor_oracion_item" &&
+                resultado.subindice !== undefined
+              ) {
+                const orcList =
+                  preguntaPadre?.metadata?.oraciones ||
+                  preguntaPadre?.oraciones ||
+                  [];
+                oracionDefConstr = orcList[resultado.subindice] || null;
+              }
+
               aciertos.push({
                 ...resultado,
                 examen_id: examen.id,
@@ -5975,7 +6045,6 @@ function App() {
                   resultado.codigo_con_error ||
                   preguntaOriginal?.codigo_con_error ||
                   null,
-                pista: resultado.pista || preguntaOriginal?.pista || null,
                 codigo_corregido:
                   resultado.codigo_corregido ||
                   preguntaOriginal?.codigo_corregido ||
@@ -6033,14 +6102,25 @@ function App() {
                   preguntaOriginal?.metadata?.oraciones_originales ||
                   preguntaPadre?.metadata?.oraciones_originales ||
                   null,
-                // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM
+                // 🔥 CAMPOS PARA SENTENCE_BUILDER_LIBRE_ITEM / CONSTRUCTOR_ORACION_ITEM
                 palabras_clave:
                   resultado.palabras_clave ||
                   preguntaOriginal?.palabras_clave ||
+                  oracionDefConstr?.palabras_clave ||
                   null,
                 contexto_pista:
                   resultado.contexto_pista ||
                   preguntaOriginal?.contexto_pista ||
+                  null,
+                pista:
+                  resultado.pista ||
+                  preguntaOriginal?.pista ||
+                  oracionDefConstr?.pista ||
+                  null,
+                contexto_oracion:
+                  resultado.contexto_oracion ||
+                  preguntaOriginal?.contexto_oracion ||
+                  oracionDefConstr?.contexto_oracion ||
                   null,
                 // 🔥 CAMPOS PARA ORACION_PROPIA_ITEM
                 pistas_ia: resultado.pistas_ia || null,
@@ -6048,6 +6128,7 @@ function App() {
                   resultado.titulo_tema ||
                   preguntaOriginal?.titulo_tema ||
                   preguntaOriginal?.metadata?.titulo_tema ||
+                  preguntaPadre?.metadata?.titulo_tema ||
                   null,
                 estructuras_sugeridas:
                   resultado.estructuras_sugeridas ||
@@ -6063,6 +6144,13 @@ function App() {
                   resultado.nivel_dificultad ||
                   preguntaOriginal?.nivel_dificultad ||
                   preguntaOriginal?.metadata?.nivel_dificultad ||
+                  preguntaPadre?.metadata?.nivel_dificultad ||
+                  null,
+                instruccion_nivel:
+                  resultado.instruccion_nivel ||
+                  preguntaOriginal?.instruccion_nivel ||
+                  preguntaOriginal?.metadata?.instruccion_nivel ||
+                  preguntaPadre?.metadata?.instruccion_nivel ||
                   null,
               });
             }
@@ -7757,7 +7845,7 @@ RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
       "correcto": true,
       "puntos": ${preguntaParaCalificar.puntos_maximos},
       "puntos_maximos": ${preguntaParaCalificar.puntos_maximos},
-      "feedback": "Explicación breve de por qué está bien/mal"${tipo === "oracion_propia_item" ? ',\n      "pistas": "2-3 consejos breves (en español) sobre cómo construir bien este tipo de oración"' : ''}${(tipo === "writing_short" || tipo === "writing_short_libre") ? ',\n      "respuesta_corregida": "Versión corregida y mejorada de la respuesta del estudiante"' : ''}
+      "feedback": "Explicación breve de por qué está bien/mal"${tipo === "oracion_propia_item" || tipo === "constructor_oracion_item" ? ',\n      "pistas": "2-3 consejos breves (en español) sobre cómo construir bien este tipo de oración"' : ""}${tipo === "writing_short" || tipo === "writing_short_libre" ? ',\n      "respuesta_corregida": "Versión corregida y mejorada de la respuesta del estudiante"' : ""}
     }
   ],
   "puntos_obtenidos": 0,
@@ -7767,9 +7855,9 @@ RESPONDE SOLO CON ESTE JSON (sin markdown ni explicaciones):
 
 REGLAS:
 1. "correcto": true si puntos >= 50% de puntos_maximos
-2. "feedback": Retroalimentación constructiva breve${tipo === "case_study" ? " que indique qué hizo bien y qué puede mejorar según los criterios del tipo de caso" : ""}${tipo === "oracion_propia_item" ? '\n3. "pistas": 2-3 consejos específicos (en español) para construir bien este tipo de oración en el siguiente repaso' : ''}${(tipo === "writing_short" || tipo === "writing_short_libre") ? '\n3. "respuesta_corregida": SIEMPRE incluir la versión corregida de la respuesta del estudiante (aunque esté bien)' : ''}
-${tipo === "oracion_propia_item" ? "4" : "3"}. Calcula porcentaje = (puntos / puntos_maximos) * 100
-${tipo === "oracion_propia_item" ? "5" : "4"}. SÉ ESTRICTO pero justo con las respuestas
+2. "feedback": Retroalimentación constructiva breve${tipo === "case_study" ? " que indique qué hizo bien y qué puede mejorar según los criterios del tipo de caso" : ""}${tipo === "oracion_propia_item" || tipo === "constructor_oracion_item" ? '\n3. "pistas": 2-3 consejos específicos (en español) para construir bien este tipo de oración en el siguiente repaso' : ""}${tipo === "writing_short" || tipo === "writing_short_libre" ? '\n3. "respuesta_corregida": SIEMPRE incluir la versión corregida de la respuesta del estudiante (aunque esté bien)' : ""}
+${tipo === "oracion_propia_item" || tipo === "constructor_oracion_item" ? "4" : "3"}. Calcula porcentaje = (puntos / puntos_maximos) * 100
+${tipo === "oracion_propia_item" || tipo === "constructor_oracion_item" ? "5" : "4"}. SÉ ESTRICTO pero justo con las respuestas
 
 Califica ahora:`;
 
@@ -8293,6 +8381,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "picture_description_libre",
       "oraciones_propias",
       "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+      "constructor_oraciones", // 🧩 Constructor de Oraciones con Palabras
+      "constructor_oracion_item", // 🔥 sub-ítems individuales de constructor_oraciones
       "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
       "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
     ];
@@ -8437,9 +8527,17 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
     // 🔥 FALLBACK: si el tipo requiere IA, el usuario marcó manualmente Y no hay calificación IA
     // → confiar en el marcado explícito del usuario (tomó la responsabilidad)
-    if (!esCorrecta && esEvaluadoPorIA && respuestaErrorSeleccionada && !calificacionIAActiva && !feedbackIA) {
+    if (
+      !esCorrecta &&
+      esEvaluadoPorIA &&
+      respuestaErrorSeleccionada &&
+      !calificacionIAActiva &&
+      !feedbackIA
+    ) {
       esCorrecta = true;
-      console.log("✅ Tipo IA-evaluado con marcado manual sin IA → asumiendo correcto");
+      console.log(
+        "✅ Tipo IA-evaluado con marcado manual sin IA → asumiendo correcto",
+      );
     }
     // 🔥 CALCULAR NUEVO ESTADO DE ERROR
     const ahora = new Date();
@@ -8688,7 +8786,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       if (jsonCalificacionIA) {
         puntosObtenidos = jsonCalificacionIA.puntos || 0;
         feedbackFinal = jsonCalificacionIA.feedback || feedbackFinal;
-        if (jsonCalificacionIA.pistas) resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
+        if (jsonCalificacionIA.pistas)
+          resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
       }
 
       const entradaHistorialError = {
@@ -9005,6 +9104,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       "picture_description_libre",
       "oraciones_propias",
       "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+      "constructor_oraciones", // 🧩 Constructor de Oraciones con Palabras
+      "constructor_oracion_item", // 🔥 sub-ítems individuales de constructor_oraciones
       "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
       "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
     ];
@@ -9140,9 +9241,17 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
     // 🔥 FALLBACK: si el tipo requiere IA, el usuario marcó manualmente Y no hay calificación IA
     // → confiar en el marcado explícito del usuario (tomó la responsabilidad)
-    if (!esCorrecta && esEvaluadoPorIAAcierto && respuestaAciertoSeleccionada && !calificacionIAActivaAcierto && !feedbackIAAcierto) {
+    if (
+      !esCorrecta &&
+      esEvaluadoPorIAAcierto &&
+      respuestaAciertoSeleccionada &&
+      !calificacionIAActivaAcierto &&
+      !feedbackIAAcierto
+    ) {
       esCorrecta = true;
-      console.log("✅ Tipo IA-evaluado con marcado manual sin IA en aciertos → asumiendo correcto");
+      console.log(
+        "✅ Tipo IA-evaluado con marcado manual sin IA en aciertos → asumiendo correcto",
+      );
     }
 
     // Calcular nuevo estado según resultado
@@ -9346,7 +9455,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         puntosObtenidosAcierto = jsonCalificacionIA.puntos || 0;
         feedbackFinalAcierto =
           jsonCalificacionIA.feedback || feedbackFinalAcierto;
-        if (jsonCalificacionIA.pistas) resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
+        if (jsonCalificacionIA.pistas)
+          resultados[preguntaIndex].pistas_ia = jsonCalificacionIA.pistas;
       }
 
       // �📜 AGREGAR AL HISTORIAL DE RESPUESTAS
@@ -9569,11 +9679,13 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       nuevasRepeticiones = 0;
       nuevaFacilidad = Math.max(1.3, nuevaFacilidad - 0.2);
       if (falloAntesSesion)
-        console.log("⚠️ Flashcard fallada antes en sesión → intervalo forzado a 1 día");
+        console.log(
+          "⚠️ Flashcard fallada antes en sesión → intervalo forzado a 1 día",
+        );
     } else if (dificultad === "medio") {
       // 🤔 Me Costó → Patrón: 2 → 5 → 12 → 30 → ... (×2.3)
       if (nuevasRepeticiones === 0) {
-        nuevoIntervalo = 2;   // Primera prueba real → 2 días
+        nuevoIntervalo = 2; // Primera prueba real → 2 días
       } else {
         nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.3));
       }
@@ -9582,7 +9694,7 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
     } else if (dificultad === "facil") {
       // 😎 Lo Recordé Fácil → Patrón: 3 → 8 → 20 → 52 → 135 → ... (×2.6)
       if (nuevasRepeticiones === 0) {
-        nuevoIntervalo = 3;   // Primera prueba real → 3 días
+        nuevoIntervalo = 3; // Primera prueba real → 3 días
       } else {
         nuevoIntervalo = Math.min(365, Math.round((intervalo || 1) * 2.6));
       }
@@ -9786,12 +9898,18 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
           intervaloSim = 1;
         } else if (dificultad === "medio") {
           resultado = "costó";
-          nuevoIntervalo = repeticiones === 0 ? 2 : Math.min(365, Math.round(intervaloSim * 2.3));
+          nuevoIntervalo =
+            repeticiones === 0
+              ? 2
+              : Math.min(365, Math.round(intervaloSim * 2.3));
           repeticiones += 1;
           intervaloSim = nuevoIntervalo;
         } else {
           resultado = "fácil";
-          nuevoIntervalo = repeticiones === 0 ? 3 : Math.min(365, Math.round(intervaloSim * 2.6));
+          nuevoIntervalo =
+            repeticiones === 0
+              ? 3
+              : Math.min(365, Math.round(intervaloSim * 2.6));
           repeticiones += 1;
           intervaloSim = nuevoIntervalo;
         }
@@ -9819,7 +9937,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       fechaInicial,
       escenarios,
       sistemaIntervalos: {
-        descripcion: "😰 Olvidé→1d | 🤔 Me Costó→2→5→12→30 (×2.3) | 😎 Fácil→3→8→20→52 (×2.6)",
+        descripcion:
+          "😰 Olvidé→1d | 🤔 Me Costó→2→5→12→30 (×2.3) | 😎 Fácil→3→8→20→52 (×2.6)",
       },
     };
   };
@@ -16379,9 +16498,9 @@ JSON:`;
                   // Primera vez: diagnóstico → mañana SIEMPRE
                   diasRevision = 1;
                 } else if (aciertosConsecutivos === 1) {
-                  diasRevision = 3;  // Pasó el test del día 1 → 3 días
+                  diasRevision = 3; // Pasó el test del día 1 → 3 días
                 } else if (aciertosConsecutivos === 2) {
-                  diasRevision = 7;  // 3 × 2.5 ≈ 7
+                  diasRevision = 7; // 3 × 2.5 ≈ 7
                 } else if (aciertosConsecutivos === 3) {
                   diasRevision = 15; // 7 × 2.5 ≈ 15
                 } else if (aciertosConsecutivos === 4) {
@@ -16390,7 +16509,10 @@ JSON:`;
                   diasRevision = 60; // 30 × 2 = 60
                 } else {
                   // Crecimiento exponencial ×2.5 con techo de 365 días
-                  diasRevision = Math.min(365, Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)));
+                  diasRevision = Math.min(
+                    365,
+                    Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)),
+                  );
                 }
               } else {
                 // Fallo → mañana
@@ -17113,6 +17235,12 @@ JSON:`;
     oraciones_propias_lang: "ingles",
     oraciones_propias_cantidad: 5,
     oraciones_propias_dificultad: "intermedio",
+    // 🧩 CONSTRUCTOR DE ORACIONES CON PALABRAS - IA da palabras; estudiante construye oraciones
+    constructor_oraciones: 0,
+    constructor_oraciones_lang: "ingles",
+    constructor_oraciones_cantidad: 5,
+    constructor_oraciones_dificultad: "intermedio",
+    constructor_oraciones_contexto: false,
     writing_short_libre: 0,
     writing_short_libre_lang: "ingles",
     writing_short_libre_titulo: "",
@@ -19359,6 +19487,11 @@ ${transformacionesEjemplo.join(",\n")}
       oraciones_propias_lang = "ingles",
       oraciones_propias_cantidad = 5,
       oraciones_propias_dificultad = "intermedio",
+      constructor_oraciones = 0,
+      constructor_oraciones_lang = "ingles",
+      constructor_oraciones_cantidad = 5,
+      constructor_oraciones_dificultad = "intermedio",
+      constructor_oraciones_contexto = false,
     } = preguntasPropiasConfig;
 
     // Respuesta Corta Libre
@@ -19461,13 +19594,50 @@ ${transformacionesEjemplo.join(",\n")}
       const langName = idiomasNombre[oraciones_propias_lang] || "Inglés";
       const langNameEn = idiomasNombreEN[oraciones_propias_lang] || "English";
       const numOraciones = oraciones_propias_cantidad || 5;
-      const dificultadDesc = {
-        basico: "basic level (simple present, simple past, common vocabulary)",
-        intermedio: "intermediate level (mixed tenses, conditionals, varied vocabulary)",
-        avanzado: "advanced level (complex structures, passive voice, idiomatic expressions, nuanced vocabulary)",
-      }[oraciones_propias_dificultad] || "intermediate level";
+      const dificultadDesc =
+        {
+          basico:
+            "basic level (simple present, simple past, common vocabulary)",
+          intermedio:
+            "intermediate level (mixed tenses, conditionals, varied vocabulary)",
+          avanzado:
+            "advanced level (complex structures, passive voice, idiomatic expressions, nuanced vocabulary)",
+        }[oraciones_propias_dificultad] || "intermediate level";
 
       instrucciones += `  // ${oraciones_propias} EJERCICIO(S) DE ORACIONES PROPIAS en ${langName}:\n  // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todo el contenido DEBE estar en ${langName}\n  // El estudiante crea oraciones COMPLETAMENTE por su cuenta (sin palabras clave ni pistas)\n  {\n    "tipo": "oraciones_propias",\n    "pregunta": "Write ${numOraciones} sentences in ${langNameEn} about the topic. Express your own ideas with correct grammar and vocabulary.",\n    "metadata": {\n      "idioma": "${oraciones_propias_lang}",\n      "es_libre": true,\n      "titulo_tema": "<<⚠️ EXTRAE el tema DIRECTAMENTE del texto pegado abajo en la sección ═══. NO inventes un tema genérico. El tema debe reflejar el concepto EXACTO que se estudia en ese texto (ej: si el texto trata sobre el verbo auxiliar 'do', pon 'The auxiliary verb do in questions and negations', NO 'Daily routines'). Máximo 8 palabras en ${langName}>>",\n      "cantidad_oraciones": ${numOraciones},\n      "nivel_dificultad": "${oraciones_propias_dificultad}",\n      "instruccion_nivel": "${dificultadDesc}",\n      "estructuras_sugeridas": ["<<Extrae del texto pegado: estructura gramatical clave que el estudiante debe practicar, en ${langName}>>", "<<Extrae del texto pegado: otra estructura gramatical relevante, en ${langName}>>", "<<Extrae del texto pegado: tercera estructura o patrón importante, en ${langName}>>"],\n      "vocabulario_sugerido": ["<<Extrae del texto pegado: palabra o término clave del concepto estudiado, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: segunda palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: tercera palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: cuarta palabra clave, en ${langName.toUpperCase()}>>", "<<Extrae del texto pegado: quinta palabra clave, en ${langName.toUpperCase()}>>"],\n      "criterios_evaluacion": {\n        "gramatica": "Correct grammar and punctuation at ${oraciones_propias_dificultad} level",\n        "vocabulario": "Appropriate and varied vocabulary",\n        "coherencia": "Clear, coherent sentences that relate to the topic",\n        "originalidad": "Student's own authentic expression"\n      }\n    },\n    "puntos": ${numOraciones}\n  },\n`;
+    }
+
+    // 🧩 Constructor de Oraciones con Palabras
+    if (constructor_oraciones > 0) {
+      const langName = idiomasNombre[constructor_oraciones_lang] || "Inglés";
+      const langNameEn = idiomasNombreEN[constructor_oraciones_lang] || "English";
+      const numOraciones = constructor_oraciones_cantidad || 5;
+      const dificultadDesc = {
+        basico: "basic level (simple present / past, common vocabulary, short sentences)",
+        intermedio: "intermediate level (mixed tenses, conditionals, varied vocabulary)",
+        avanzado: "advanced level (complex structures, passive voice, idiomatic expressions)",
+      }[constructor_oraciones_dificultad] || "intermediate level";
+
+      instrucciones += `  // ${constructor_oraciones} EJERCICIO(S) DE CONSTRUCTOR DE ORACIONES CON PALABRAS en ${langName}:
+  // 🌍 IDIOMA OBLIGATORIO: ${langName.toUpperCase()} - Todas las palabras_clave y respuestas DEBEN estar en ${langName}
+  // IMPORTANTE: Las palabras_clave deben provenir del TEMA estudiado. Cada oración tiene palabras DIFERENTES.
+  // CRÍTICO: Array "oraciones" con exactamente ${numOraciones} elementos, cada uno con sus 5 campos.
+  {
+    "tipo": "constructor_oraciones",
+    "pregunta": "Build ${numOraciones} sentences in ${langNameEn}. Use ALL the given words in each sentence (you may conjugate verbs and add necessary articles or prepositions).",
+    "metadata": {
+      "idioma": "${constructor_oraciones_lang}",
+      "titulo_tema": "<<⚠️ EXTRAE el tema DIRECTAMENTE del texto pegado abajo. Refleja el concepto exacto estudiado. Máximo 8 palabras en ${langName}>>",
+      "cantidad_oraciones": ${numOraciones},
+      "nivel_dificultad": "${constructor_oraciones_dificultad}",
+      "instruccion_nivel": "${dificultadDesc}"
+    },
+    "oraciones": [
+      ${Array(numOraciones).fill(0).map((_, i) => `{\n        "id": ${i+1},\n        "palabras_clave": ["<<palabra1 en ${langName.toUpperCase()} relacionada al tema>>", "<<palabra2 en ${langName.toUpperCase()}>>", "<<palabra3 en ${langName.toUpperCase()}>>"],${constructor_oraciones_contexto ? `\n        "contexto_oracion": "<<Texto breve en ${langName.toUpperCase()} (1-3 frases) como diálogo, escenario o situación que contextualice el uso de las palabras clave — hazlo variado entre oraciones y relevante al tema estudiado>>",` : ''}\n        "pista": "<<Pista breve en ESPA\\u00d1OL (máx 1 oración): qué estructura usar o cómo conjugar>>",\n        "respuesta_correcta": "<<Oración correcta en ${langName.toUpperCase()} usando todas las palabras_clave>>",\n        "feedback": "<<Explicación breve en ESPA\\u00d1OL de por qué esa es la forma correcta>>",\n        "historial": []\n      }`).join(",\n      ")}
+    ],
+    "puntos": ${numOraciones}
+  },
+`;
     }
 
     // 🧩 Constructor de Oraciones Libre
@@ -19819,6 +19989,10 @@ ${ejerciciosPDL.join(",\n")},
       cantidades.push(
         `${oraciones_propias} tipo "oraciones_propias" en ${idiomasNombre[oraciones_propias_lang] || "Inglés"} (${oraciones_propias_cantidad || 5} oraciones libres por ejercicio, nivel ${oraciones_propias_dificultad || "intermedio"}) ⚠️ SOLO tipo oraciones_propias, NO generes mcq ni preguntas`,
       );
+    if (constructor_oraciones > 0)
+      cantidades.push(
+        `${constructor_oraciones} tipo "constructor_oraciones" en ${idiomasNombre[constructor_oraciones_lang] || "Inglés"} (${constructor_oraciones_cantidad || 5} oraciones con palabras dadas, nivel ${constructor_oraciones_dificultad || "intermedio"}${constructor_oraciones_contexto ? ", con contexto por oración" : ""}) ⚠️ INCLUYE array "oraciones" con palabras_clave, ${constructor_oraciones_contexto ? "contexto_oracion, " : ""}pista, respuesta_correcta, feedback e historial POR CADA ORACIÓN`,
+      );
     if (sentence_builder_libre > 0)
       cantidades.push(
         `${sentence_builder_libre} tipo "sentence_builder_libre" en ${idiomasNombre[sentence_builder_libre_lang] || "Inglés"}`,
@@ -19907,20 +20081,24 @@ REGLAS:
 8. Para open_question: incluye key_points con los puntos a desarrollar
 9. Para case_study: incluye un escenario detallado con contexto realista${reglasAdicionales}
 
-${oraciones_propias > 0 ? `═══════════════════════════════════════════════════════════════
+${
+  oraciones_propias > 0
+    ? `═══════════════════════════════════════════════════════════════
 📚 PEGA AQUÍ TUS NOTAS DE ESTUDIO o apuntes (reemplaza este texto):
 → ChatGPT extraerá el tema, vocabulario y estructuras de estas notas para crear el ejercicio.
 ═══════════════════════════════════════════════════════════════
 
 [Pega aquí tus notas o apuntes de estudio]
 
-═══════════════════════════════════════════════════════════════` : `═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════`
+    : `═══════════════════════════════════════════════════════════════
 📋 PEGA TUS PREGUNTAS/CONTENIDO AQUÍ ABAJO (reemplaza este texto):
 ═══════════════════════════════════════════════════════════════
 
 [Pega aquí las preguntas que quieres convertir a JSON]
 
-═══════════════════════════════════════════════════════════════`}
+═══════════════════════════════════════════════════════════════`
+}
 
 ⚠️ INSTRUCCIÓN FINAL IMPORTANTE:
 Para cualquier campo que diga "Extrae del texto pegado" o "⚠️ EXTRAE el tema DIRECTAMENTE":
@@ -20316,6 +20494,8 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
         "sentence_builder_libre",
         "picture_description_libre",
         "oraciones_propias",
+        "constructor_oraciones",
+        "constructor_oracion_item",
         // Tipos legacy (compatibilidad hacia atrás)
         "writing_sentence_builder",
         "writing_picture_description",
@@ -20975,6 +21155,46 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
               p.ejemplo_descripcion || p.metadata?.ejemplo_descripcion || "",
             criterios_evaluacion:
               p.criterios_evaluacion || p.metadata?.criterios_evaluacion || {},
+          };
+        }
+
+        // 🧩 Constructor Oraciones - Normalizar campos (OBLIGATORIO para preservar el array oraciones)
+        if (p.tipo === "constructor_oraciones") {
+          let idiomaConstructor = p.idioma || p.metadata?.idioma || "inglés";
+          if (
+            idiomaConstructor === "undefined" ||
+            idiomaConstructor === undefined
+          ) {
+            idiomaConstructor = "inglés";
+          }
+
+          // Normalizar cada oración del array oraciones
+          const oracionesRaw = p.oraciones || p.metadata?.oraciones || [];
+          const oracionesNorm = oracionesRaw.map((o, oIdx) => ({
+            id: o.id ?? oIdx + 1,
+            palabras_clave: o.palabras_clave || o.palabras || [],
+            contexto_oracion: o.contexto_oracion || "",
+            pista: o.pista || o.hint || "",
+            respuesta_correcta:
+              o.respuesta_correcta || o.respuesta || o.expected || "",
+            feedback: o.feedback || o.explicacion || "",
+            historial: o.historial || [],
+          }));
+
+          preguntaNorm.oraciones = oracionesNorm;
+          preguntaNorm.metadata = {
+            ...(p.metadata || {}),
+            idioma: idiomaConstructor,
+            titulo_tema: p.metadata?.titulo_tema || p.titulo_tema || "",
+            cantidad_oraciones:
+              oracionesNorm.length ||
+              p.metadata?.cantidad_oraciones ||
+              oracionesNorm.length,
+            nivel_dificultad:
+              p.metadata?.nivel_dificultad || p.nivel_dificultad || "intermedio",
+            instruccion_nivel:
+              p.metadata?.instruccion_nivel || p.instruccion_nivel || "",
+            oraciones: oracionesNorm,
           };
         }
 
@@ -21655,8 +21875,12 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
         // Para oraciones_propias: expandir cada oración como ítem individual
         if (pregunta.tipo === "oraciones_propias") {
           const oracionesRaw = respuestaUsuario.split("|||");
-          const numOraciones = pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
-          const puntosPorOracion = Math.round(((pregunta.puntos || numOraciones) / numOraciones) * 10) / 10;
+          const numOraciones =
+            pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
+          const puntosPorOracion =
+            Math.round(
+              ((pregunta.puntos || numOraciones) / numOraciones) * 10,
+            ) / 10;
           for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
             const respOracion = oracionesRaw[oIdx]?.trim() || "(sin respuesta)";
             preguntasConRespuestas.push({
@@ -21667,9 +21891,50 @@ Ahora convierte SOLO el contenido de arriba a JSON:`;
               pregunta: `Oración ${oIdx + 1} de ${numOraciones} — tema: ${pregunta.metadata?.titulo_tema || ""}`,
               respuesta_usuario: respOracion,
               titulo_tema: pregunta.metadata?.titulo_tema || "",
-              estructuras_sugeridas: pregunta.metadata?.estructuras_sugeridas || [],
-              vocabulario_sugerido: pregunta.metadata?.vocabulario_sugerido || [],
-              nivel_dificultad: pregunta.metadata?.nivel_dificultad || "intermedio",
+              estructuras_sugeridas:
+                pregunta.metadata?.estructuras_sugeridas || [],
+              vocabulario_sugerido:
+                pregunta.metadata?.vocabulario_sugerido || [],
+              nivel_dificultad:
+                pregunta.metadata?.nivel_dificultad || "intermedio",
+              puntos_maximos: puntosPorOracion,
+              indice_original: index,
+              subindice: oIdx,
+            });
+            numeroGlobal++;
+          }
+          return; // saltar al siguiente pregunta del forEach
+        }
+
+        // Para constructor_oraciones: expandir cada oración como ítem individual
+        if (pregunta.tipo === "constructor_oraciones") {
+          const oracionesRaw = respuestaUsuario.split("|||");
+          const oracionesDef = pregunta.oraciones || [];
+          const numOraciones = oracionesDef.length || oracionesRaw.length || 5;
+          const puntosPorOracion =
+            Math.round(
+              ((pregunta.puntos || numOraciones) / numOraciones) * 10,
+            ) / 10;
+          for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
+            const respOracion = oracionesRaw[oIdx]?.trim() || "(sin respuesta)";
+            const oracionDef = oracionesDef[oIdx] || {};
+            preguntasConRespuestas.push({
+              numero: numeroGlobal,
+              tipo: "constructor_oracion_item",
+              oracion_numero: oIdx + 1,
+              total_oraciones: numOraciones,
+              pregunta: `Oración ${oIdx + 1} de ${numOraciones} — tema: ${pregunta.metadata?.titulo_tema || ""}`,
+              respuesta_usuario: respOracion,
+              respuesta_esperada: oracionDef.respuesta_correcta || "",
+              palabras_clave: oracionDef.palabras_clave || [],
+              contexto_oracion: oracionDef.contexto_oracion || "",
+              pista: oracionDef.pista || "",
+              feedback_ia: oracionDef.feedback || "",
+              titulo_tema: pregunta.metadata?.titulo_tema || "",
+              nivel_dificultad:
+                pregunta.metadata?.nivel_dificultad || "intermedio",
+              instruccion_nivel: pregunta.metadata?.instruccion_nivel || "",
+              idioma: pregunta.metadata?.idioma || "ingles",
               puntos_maximos: puntosPorOracion,
               indice_original: index,
               subindice: oIdx,
@@ -21785,6 +22050,13 @@ Para cada pregunta numerada, evalúa la respuesta del usuario:
   * 100% si la oración es correcta y relevante al tema. 50-80% si tiene errores menores. 0% si está en blanco o es incoherente.
   * El campo feedback DEBE estar en ESPAÑOL: indica el error específico y cómo corregirlo. Ej: "✅ Correcta." o "❌ Error: el auxiliar 'do' va antes de 'not'. Debe ser: 'I do not hunt'."
   * OBLIGATORIO: incluir el campo "pistas" con 2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración
+- constructor_oracion_item: Evalúa UNA oración construida con palabras dadas. Campos relevantes: palabras_clave (palabras que DEBERÍA usar), respuesta_esperada, pista, titulo_tema, nivel_dificultad. Evaluar en ESPAÑOL:
+  * ¿El estudiante usó TODAS las palabras_clave (en sus formas conjugadas/declinadas)?
+  * ¿La oración es gramaticalmente correcta?
+  * ¿El significado es coherente con el tema?
+  * 100%: usa todas las palabras y la gramática es correcta. 50-80%: usa la mayoría pero con pequeños errores. 0-30%: muy pocos palabras usadas o gramática incorrecta.
+  * feedback OBLIGATORIO en ESPAÑOL: indica cuáles palabras no se usaron o qué error gramatical hay. Compara con respuesta_esperada.
+  * INCLUIR campo "pistas" con 2-3 consejos breves en ESPAÑOL para construir mejor la oración.
 
 ⚠️ RESPUESTAS EN BLANCO: Si respuesta_usuario está vacía, es "(sin respuesta)" o contiene solo separadores "|||", asigna 0 puntos y "correcto": false con feedback "Sin respuesta". NUNCA omitas una pregunta del resultado.
 
@@ -21829,6 +22101,7 @@ REGLAS:
 6. Calcula puntos_totales sumando todos los puntos_maximos
 7. porcentaje = (puntos_obtenidos / puntos_totales) * 100
 8. Para cada pregunta tipo oracion_propia_item: OBLIGATORIO incluir "pistas" con 2-3 consejos breves en ESPAÑOL
+9. Para cada pregunta tipo constructor_oracion_item: OBLIGATORIO incluir "pistas" con 2-3 consejos breves en ESPAÑOL sobre cómo usar las palabras
 
 Califica ahora las ${totalPreguntasReales} preguntas:`;
 
@@ -22231,17 +22504,58 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
         } else if (pregunta.tipo === "oraciones_propias") {
           // Expandir oraciones propias en ítems individuales
           const oracionesRaw = respuestaUsuarioCompleta.split("|||");
-          const numOraciones = pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
-          const puntosPorOracion = Math.round(((pregunta.puntos || numOraciones) / numOraciones) * 10) / 10;
+          const numOraciones =
+            pregunta.metadata?.cantidad_oraciones || oracionesRaw.length || 5;
+          const puntosPorOracion =
+            Math.round(
+              ((pregunta.puntos || numOraciones) / numOraciones) * 10,
+            ) / 10;
           for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
             preguntasDesglosadas.push({
               pregunta: `Oración ${oIdx + 1} de ${numOraciones}`,
               tipo: "oracion_propia_item",
-              respuesta_usuario: oracionesRaw[oIdx]?.trim() || "(sin respuesta)",
+              respuesta_usuario:
+                oracionesRaw[oIdx]?.trim() || "(sin respuesta)",
               titulo_tema: pregunta.metadata?.titulo_tema || "",
-              estructuras_sugeridas: pregunta.metadata?.estructuras_sugeridas || [],
-              vocabulario_sugerido: pregunta.metadata?.vocabulario_sugerido || [],
-              nivel_dificultad: pregunta.metadata?.nivel_dificultad || "intermedio",
+              estructuras_sugeridas:
+                pregunta.metadata?.estructuras_sugeridas || [],
+              vocabulario_sugerido:
+                pregunta.metadata?.vocabulario_sugerido || [],
+              nivel_dificultad:
+                pregunta.metadata?.nivel_dificultad || "intermedio",
+              puntos: puntosPorOracion,
+              indice_original: index,
+              subindice: oIdx,
+              es_subpregunta: true,
+            });
+          }
+        } else if (pregunta.tipo === "constructor_oraciones") {
+          // Expandir constructor de oraciones en ítems individuales
+          const oracionesRaw = respuestaUsuarioCompleta.split("|||");
+          const oracionesDef = pregunta.oraciones || [];
+          const numOraciones =
+            oracionesDef.length || oracionesRaw.length || 5;
+          const puntosPorOracion =
+            Math.round(
+              ((pregunta.puntos || numOraciones) / numOraciones) * 10,
+            ) / 10;
+          for (let oIdx = 0; oIdx < numOraciones; oIdx++) {
+            const oracionDef = oracionesDef[oIdx] || {};
+            preguntasDesglosadas.push({
+              pregunta: `Oración ${oIdx + 1} de ${numOraciones} — tema: ${pregunta.metadata?.titulo_tema || ""}`,
+              tipo: "constructor_oracion_item",
+              respuesta_usuario:
+                oracionesRaw[oIdx]?.trim() || "(sin respuesta)",
+              respuesta_esperada: oracionDef.respuesta_correcta || "",
+              palabras_clave: oracionDef.palabras_clave || [],
+              contexto_oracion: oracionDef.contexto_oracion || "",
+              pista: oracionDef.pista || "",
+              feedback_ia: oracionDef.feedback || "",
+              titulo_tema: pregunta.metadata?.titulo_tema || "",
+              nivel_dificultad:
+                pregunta.metadata?.nivel_dificultad || "intermedio",
+              instruccion_nivel: pregunta.metadata?.instruccion_nivel || "",
+              idioma: pregunta.metadata?.idioma || "ingles",
               puntos: puntosPorOracion,
               indice_original: index,
               subindice: oIdx,
@@ -22315,6 +22629,21 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           } else if (coincidePorLetra || coincideCompleto) {
             esCorrectoVerificado = true;
           }
+        }
+
+        // 🔥 UMBRAL 70% para ejercicios de escritura extensa / evaluación holística
+        // Writing essay, email formal, descripción de imagen y caso de estudio:
+        // si porcentaje < 70% → correcto = false → aparece en corrección de errores
+        // si porcentaje >= 70% → correcto = true → aparece en repaso de aciertos
+        const tiposUmbral70 = [
+          "writing_essay",
+          "formal_email",
+          "picture_description",
+          "picture_description_libre",
+          "caso_estudio",
+        ];
+        if (tiposUmbral70.includes(preguntaDesglosada.tipo)) {
+          esCorrectoVerificado = porcentajePregunta >= 70;
         }
 
         // 🧠 Repetición espaciada: primera generación SIEMPRE = mañana (día 1)
@@ -22479,9 +22808,9 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
               // Primera vez: diagnóstico → mañana SIEMPRE
               diasRevision = 1;
             } else if (aciertosConsecutivos === 1) {
-              diasRevision = 3;  // Pasó el test del día 1 → 3 días
+              diasRevision = 3; // Pasó el test del día 1 → 3 días
             } else if (aciertosConsecutivos === 2) {
-              diasRevision = 7;  // 7 días
+              diasRevision = 7; // 7 días
             } else if (aciertosConsecutivos === 3) {
               diasRevision = 15; // 15 días
             } else if (aciertosConsecutivos === 4) {
@@ -22489,7 +22818,10 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
             } else if (aciertosConsecutivos === 5) {
               diasRevision = 60; // 60 días
             } else {
-              diasRevision = Math.min(365, Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)));
+              diasRevision = Math.min(
+                365,
+                Math.round(60 * Math.pow(2.5, aciertosConsecutivos - 5)),
+              );
             }
           } else {
             diasRevision = 1;
@@ -22614,13 +22946,16 @@ Califica ahora las ${totalPreguntasReales} preguntas:`;
           ...examenesCompletados.map((e) => ({ ...e, es_practica: false })),
           ...practicas.map((p) => ({ ...p, es_practica: true })),
         ];
-        const aciertosActualizados = extraerAciertosParaRepaso(todosLosItemsActualizados);
+        const aciertosActualizados = extraerAciertosParaRepaso(
+          todosLosItemsActualizados,
+        );
         setAciertosRepaso(aciertosActualizados);
         setIndiceAciertoActual(0);
-        const erroresActualizados = extraerErroresDeExamenes(todosLosItemsActualizados);
+        const erroresActualizados = extraerErroresDeExamenes(
+          todosLosItemsActualizados,
+        );
         setErroresActuales(erroresActualizados);
         setIndiceErrorActual(0);
-
       } else {
         // 🔥 No hay práctica existente - crear una nueva usando carpetaExamen
         console.log(
@@ -34223,8 +34558,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Escribe un ensayo"}
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
-  "correcto": <true si >= 60%>,
-  "feedback": "<feedback detallado>",
+  "correcto": <true si >= 70% — umbral mínimo de aprobación>,
+  "feedback": "<feedback detallado en español: qué hizo bien, qué debe mejorar>",
   "errores_gramaticales": ["<error1>", "<error2>"],
   "sugerencias": ["<sugerencia1>", "<sugerencia2>"]
 }`;
@@ -34760,8 +35095,8 @@ IMPORTANTE: Responde SOLO con un JSON válido:
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
-  "correcto": <true si >= 60%>,
-  "feedback": "<feedback detallado>",
+  "correcto": <true si >= 70% — umbral mínimo de aprobación>,
+  "feedback": "<feedback detallado en español: estructura, tono, vocabulario y errores>",
   "formato_correcto": <true/false>,
   "tono_apropiado": <true/false>,
   "errores": ["<error1>", "<error2>"],
@@ -35519,8 +35854,8 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Describe la imagen"}
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
-  "correcto": <true si >= 60%>,
-  "feedback": "<feedback detallado>",
+  "correcto": <true si >= 70% — umbral mínimo de aprobación>,
+  "feedback": "<feedback detallado en español: qué describió bien y qué faltó>",
   "vocabulario_usado": ["<palabra1>", "<palabra2>"],
   "elementos_descritos": ["<elemento1>", "<elemento2>"],
   "errores": ["<error1>", "<error2>"],
@@ -37073,7 +37408,14 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                         marginBottom: "0.75rem",
                                       }}
                                     />
-                                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.5rem",
+                                        flexWrap: "wrap",
+                                        marginBottom: "0.75rem",
+                                      }}
+                                    >
                                       <button
                                         onClick={() => {
                                           navigator.clipboard.writeText(
@@ -37104,22 +37446,53 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                       </button>
                                     </div>
                                     {/* 🤖 Pega el JSON de calificación */}
-                                    <div style={{ background: "rgba(16,163,127,0.07)", border: "1px solid rgba(16,163,127,0.25)", borderRadius: "10px", padding: "0.75rem 1rem" }}>
-                                      <span style={{ color: "#6ee7b7", fontSize: "0.82rem", fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>🤖 Pega aquí la respuesta JSON de ChatGPT/DeepSeek:</span>
+                                    <div
+                                      style={{
+                                        background: "rgba(16,163,127,0.07)",
+                                        border:
+                                          "1px solid rgba(16,163,127,0.25)",
+                                        borderRadius: "10px",
+                                        padding: "0.75rem 1rem",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          color: "#6ee7b7",
+                                          fontSize: "0.82rem",
+                                          fontWeight: "600",
+                                          display: "block",
+                                          marginBottom: "0.4rem",
+                                        }}
+                                      >
+                                        🤖 Pega aquí la respuesta JSON de
+                                        ChatGPT/DeepSeek:
+                                      </span>
                                       <textarea
                                         value={textoJsonParaphraseError}
                                         onChange={(e) => {
-                                          setTextoJsonParaphraseError(e.target.value);
-                                          const parsed = extraerJSON(e.target.value);
+                                          setTextoJsonParaphraseError(
+                                            e.target.value,
+                                          );
+                                          const parsed = extraerJSON(
+                                            e.target.value,
+                                          );
                                           if (parsed) {
-                                            setJsonCalificacionParaphraseError(parsed);
-                                            setRespuestaError(writingParaphraseError);
+                                            setJsonCalificacionParaphraseError(
+                                              parsed,
+                                            );
+                                            setRespuestaError(
+                                              writingParaphraseError,
+                                            );
                                             if (parsed.correcto !== undefined)
                                               setTimeout(
                                                 () =>
                                                   parsed.correcto
-                                                    ? verificarRespuestaError(writingParaphraseError)
-                                                    : verificarRespuestaError("__INCORRECTO__"),
+                                                    ? verificarRespuestaError(
+                                                        writingParaphraseError,
+                                                      )
+                                                    : verificarRespuestaError(
+                                                        "__INCORRECTO__",
+                                                      ),
                                                 100,
                                               );
                                           }
@@ -37130,9 +37503,10 @@ INSTRUCCIÓN: ${errorActual?.pregunta || "Parafrasea las siguientes frases"}
                                           minHeight: "70px",
                                           padding: "0.5rem 0.65rem",
                                           borderRadius: "7px",
-                                          border: textoJsonParaphraseError.trim()
-                                            ? "1px solid rgba(34,197,94,0.4)"
-                                            : "1px solid #374151",
+                                          border:
+                                            textoJsonParaphraseError.trim()
+                                              ? "1px solid rgba(34,197,94,0.4)"
+                                              : "1px solid #374151",
                                           background: "#0f172a",
                                           color: "#94a3b8",
                                           fontSize: "0.8rem",
@@ -39607,7 +39981,10 @@ Devuelve SOLO este JSON:
                               errorActual?.tipo === "writing_short_libre";
                             const esWritingParaphrase =
                               errorActual?.tipo === "writing_paraphrase" ||
-                              errorActual?.tipo === "writing_paraphrase_libre";
+                              errorActual?.tipo === "writing_paraphrase_libre" ||
+                              errorActual?.tipo === "paraphrase_item" ||
+                              errorActual?.tipo_padre === "writing_paraphrase" ||
+                              errorActual?.tipo_padre === "writing_paraphrase_libre";
                             const esWritingCorrection =
                               errorActual?.tipo === "writing_correction" ||
                               errorActual?.tipo === "writing_correction_libre";
@@ -39620,6 +39997,11 @@ Devuelve SOLO este JSON:
                             // oracion_propia_item (sub-ítems individuales) SÍ usan el textarea normal
                             const esOracionesPropias =
                               errorActual?.tipo === "oraciones_propias";
+
+                            // Solo excluir el padre constructor_oraciones
+                            // constructor_oracion_item (sub-ítems individuales) SÍ usan el textarea normal
+                            const esConstructorOraciones =
+                              errorActual?.tipo === "constructor_oraciones";
 
                             // Si tiene opciones MCQ, es V/F, Cloze, sequence_item, sentence_builder, sentence_builder_libre, matching, writing_essay, formal_email, picture_description, tipos de writing específicos o oraciones_propias padre, no mostrar textarea
                             if (
@@ -39637,7 +40019,8 @@ Devuelve SOLO este JSON:
                               esWritingParaphrase ||
                               esWritingCorrection ||
                               esWritingTransformation ||
-                              esOracionesPropias
+                              esOracionesPropias ||
+                              esConstructorOraciones
                             )
                               return null;
 
@@ -39650,13 +40033,15 @@ Devuelve SOLO este JSON:
                                 </h4>
 
                                 {/* 📝 Feedback + pistas — para oracion_propia_item */}
-                                {errorActual?.tipo === "oracion_propia_item" && (
+                                {errorActual?.tipo ===
+                                  "oracion_propia_item" && (
                                   <>
                                     {errorActual?.feedback && (
                                       <div
                                         style={{
                                           background: "rgba(239,68,68,0.1)",
-                                          border: "1px solid rgba(239,68,68,0.35)",
+                                          border:
+                                            "1px solid rgba(239,68,68,0.35)",
                                           borderRadius: "8px",
                                           padding: "0.75rem 1rem",
                                           marginBottom: "0.75rem",
@@ -39688,7 +40073,8 @@ Devuelve SOLO este JSON:
                                       <div
                                         style={{
                                           background: "rgba(251,191,36,0.08)",
-                                          border: "1px solid rgba(251,191,36,0.3)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
                                           borderRadius: "8px",
                                           padding: "0.75rem 1rem",
                                           marginBottom: "1rem",
@@ -39714,6 +40100,116 @@ Devuelve SOLO este JSON:
                                         >
                                           {errorActual.pistas_ia}
                                         </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* 🧩 Palabras + pista + feedback — para constructor_oracion_item */}
+                                {errorActual?.tipo ===
+                                  "constructor_oracion_item" && (
+                                  <>
+                                    {/* Cabecera: tema + idioma + dificultad */}
+                                    <div
+                                      style={{
+                                        background: "rgba(99,102,241,0.1)",
+                                        border: "1px solid rgba(99,102,241,0.35)",
+                                        borderRadius: "8px",
+                                        padding: "0.75rem 1rem",
+                                        marginBottom: "0.75rem",
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: "0.4rem",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      {errorActual?.titulo_tema && (
+                                        <span style={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.88rem" }}>
+                                          📚 {errorActual.titulo_tema}
+                                        </span>
+                                      )}
+                                      {errorActual?.idioma && (
+                                        <span style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "2px 8px", borderRadius: "10px", color: "#c7d2fe", fontSize: "0.75rem" }}>
+                                          🌍 {errorActual.idioma.charAt(0).toUpperCase() + errorActual.idioma.slice(1)}
+                                        </span>
+                                      )}
+                                      {errorActual?.nivel_dificultad && (
+                                        <span style={{ background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)", padding: "2px 8px", borderRadius: "10px", color: "#fcd34d", fontSize: "0.75rem" }}>
+                                          🎯 {errorActual.nivel_dificultad}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Pregunta / enunciado */}
+                                    {errorActual?.pregunta && (
+                                      <div style={{ color: "#94a3b8", fontSize: "0.82rem", marginBottom: "0.5rem", fontStyle: "italic" }}>
+                                        {errorActual.pregunta}
+                                      </div>
+                                    )}
+                                    {/* Nivel instruccion */}
+                                    {errorActual?.instruccion_nivel && (
+                                      <div style={{ color: "#64748b", fontSize: "0.78rem", marginBottom: "0.6rem" }}>
+                                        📋 {errorActual.instruccion_nivel}
+                                      </div>
+                                    )}
+                                    {/* Contexto de la oracion */}
+                                    {errorActual?.contexto_oracion && (
+                                      <div
+                                        style={{
+                                          background: "rgba(16,185,129,0.08)",
+                                          border: "1px solid rgba(16,185,129,0.25)",
+                                          borderRadius: "8px",
+                                          padding: "0.6rem 1rem",
+                                          marginBottom: "0.75rem",
+                                          fontSize: "0.85rem",
+                                          color: "#6ee7b7",
+                                          whiteSpace: "pre-wrap",
+                                          lineHeight: "1.5",
+                                        }}
+                                      >
+                                        💬 {errorActual.contexto_oracion}
+                                      </div>
+                                    )}
+                                    {/* Palabras que debe usar */}
+                                    {errorActual?.palabras_clave?.length > 0 && (
+                                      <div
+                                        style={{
+                                          background: "rgba(99,102,241,0.1)",
+                                          border: "1px solid rgba(99,102,241,0.35)",
+                                          borderRadius: "8px",
+                                          padding: "0.75rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <p style={{ color: "#a5b4fc", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.45rem" }}>
+                                          🧩 Palabras a usar:
+                                        </p>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                                          {errorActual.palabras_clave.map((pal, pi) => (
+                                            <span key={pi} style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "3px 10px", borderRadius: "12px", color: "#c7d2fe", fontSize: "0.85rem", fontWeight: 600 }}>
+                                              {pal}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* Pista */}
+                                    {errorActual?.pista && (
+                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.6rem 1rem", marginBottom: "0.75rem", fontSize: "0.85rem", color: "#fde68a" }}>
+                                        💡 <strong>Pista:</strong> {errorActual.pista}
+                                      </div>
+                                    )}
+                                    {/* Feedback del intento original */}
+                                    {errorActual?.feedback && (
+                                      <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "0.75rem" }}>
+                                        <p style={{ color: "#fca5a5", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.35rem" }}>❌ ¿Por qué falló?</p>
+                                        <p style={{ color: "#e2e8f0", fontSize: "0.9rem", margin: 0, whiteSpace: "pre-wrap" }}>{errorActual.feedback}</p>
+                                      </div>
+                                    )}
+                                    {/* Pistas IA */}
+                                    {errorActual?.pistas_ia && (
+                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "1rem" }}>
+                                        <p style={{ color: "#fcd34d", fontWeight: 700, fontSize: "0.82rem", marginBottom: "0.3rem" }}>💡 Consejos para mejorar:</p>
+                                        <p style={{ color: "#e2e8f0", fontSize: "0.88rem", margin: 0, whiteSpace: "pre-wrap" }}>{errorActual.pistas_ia}</p>
                                       </div>
                                     )}
                                   </>
@@ -40052,9 +40548,42 @@ Devuelve SOLO este JSON:
                                                 </p>
                                               )}
                                               {jsonCalificacionIA.respuesta_corregida && (
-                                                <div style={{ marginTop: "10px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "7px", padding: "8px 12px" }}>
-                                                  <span style={{ color: "#86efac", fontSize: "12px", fontWeight: "600", display: "block", marginBottom: "4px" }}>✅ Respuesta corregida:</span>
-                                                  <p style={{ color: "#e2e8f0", margin: 0, fontSize: "13px", fontStyle: "italic" }}>"{jsonCalificacionIA.respuesta_corregida}"</p>
+                                                <div
+                                                  style={{
+                                                    marginTop: "10px",
+                                                    background:
+                                                      "rgba(34,197,94,0.1)",
+                                                    border:
+                                                      "1px solid rgba(34,197,94,0.35)",
+                                                    borderRadius: "7px",
+                                                    padding: "8px 12px",
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{
+                                                      color: "#86efac",
+                                                      fontSize: "12px",
+                                                      fontWeight: "600",
+                                                      display: "block",
+                                                      marginBottom: "4px",
+                                                    }}
+                                                  >
+                                                    ✅ Respuesta corregida:
+                                                  </span>
+                                                  <p
+                                                    style={{
+                                                      color: "#e2e8f0",
+                                                      margin: 0,
+                                                      fontSize: "13px",
+                                                      fontStyle: "italic",
+                                                    }}
+                                                  >
+                                                    "
+                                                    {
+                                                      jsonCalificacionIA.respuesta_corregida
+                                                    }
+                                                    "
+                                                  </p>
                                                 </div>
                                               )}
                                               <button
@@ -40152,14 +40681,10 @@ Devuelve SOLO este JSON:
                               return null;
 
                             const metadata = errorActual?.metadata || {};
-                            const cantidad =
-                              metadata.cantidad_oraciones || 5;
-                            const idioma =
-                              metadata.idioma || "inglés";
-                            const tema =
-                              metadata.titulo_tema || "";
-                            const vocab =
-                              metadata.vocabulario_sugerido || [];
+                            const cantidad = metadata.cantidad_oraciones || 5;
+                            const idioma = metadata.idioma || "inglés";
+                            const tema = metadata.titulo_tema || "";
+                            const vocab = metadata.vocabulario_sugerido || [];
                             const estructuras =
                               metadata.estructuras_sugeridas || [];
                             const feedbackPrevio =
@@ -40185,10 +40710,11 @@ Devuelve SOLO este JSON:
                               setOracionesPropError(arr);
                             };
 
-                            const respuestaJunta =
-                              Array.from({ length: cantidad })
-                                .map((_, i) => getOracion(i))
-                                .join("|||");
+                            const respuestaJunta = Array.from({
+                              length: cantidad,
+                            })
+                              .map((_, i) => getOracion(i))
+                              .join("|||");
 
                             const hayCualquiera = Array.from({
                               length: cantidad,
@@ -40196,8 +40722,7 @@ Devuelve SOLO este JSON:
 
                             const generarPromptOracionesProp = () => {
                               let prompt = `Evalúa las siguientes ${cantidad} oraciones escritas por un estudiante de ${idioma} (CORRECCIÓN de error).\n\n`;
-                              if (tema)
-                                prompt += `TEMA: ${tema}\n`;
+                              if (tema) prompt += `TEMA: ${tema}\n`;
                               prompt += `INSTRUCCIÓN DEL EJERCICIO: ${errorActual?.pregunta || "Escribe oraciones propias en " + idioma}\n\n`;
                               if (vocab.length > 0)
                                 prompt += `VOCABULARIO SUGERIDO: ${vocab.join(", ")}\n`;
@@ -40216,10 +40741,8 @@ Devuelve SOLO este JSON:
                             return (
                               <div
                                 style={{
-                                  background:
-                                    "rgba(34, 197, 94, 0.08)",
-                                  border:
-                                    "1px solid rgba(34, 197, 94, 0.3)",
+                                  background: "rgba(34, 197, 94, 0.08)",
+                                  border: "1px solid rgba(34, 197, 94, 0.3)",
                                   borderRadius: "12px",
                                   padding: "1.5rem",
                                   marginTop: "1rem",
@@ -40245,8 +40768,7 @@ Devuelve SOLO este JSON:
                                       style={{
                                         fontSize: "0.75rem",
                                         padding: "2px 8px",
-                                        background:
-                                          "rgba(34, 197, 94, 0.2)",
+                                        background: "rgba(34, 197, 94, 0.2)",
                                         borderRadius: "10px",
                                         color: "#86efac",
                                       }}
@@ -40272,8 +40794,7 @@ Devuelve SOLO este JSON:
                                         style={{
                                           flex: 1,
                                           minWidth: "180px",
-                                          background:
-                                            "rgba(59, 130, 246, 0.1)",
+                                          background: "rgba(59, 130, 246, 0.1)",
                                           border:
                                             "1px solid rgba(59, 130, 246, 0.3)",
                                           borderRadius: "8px",
@@ -40320,8 +40841,7 @@ Devuelve SOLO este JSON:
                                         style={{
                                           flex: 1,
                                           minWidth: "180px",
-                                          background:
-                                            "rgba(168, 85, 247, 0.1)",
+                                          background: "rgba(168, 85, 247, 0.1)",
                                           border:
                                             "1px solid rgba(168, 85, 247, 0.3)",
                                           borderRadius: "8px",
@@ -40342,21 +40862,18 @@ Devuelve SOLO este JSON:
                                             marginTop: "0.4rem",
                                           }}
                                         >
-                                          {estructuras.map(
-                                            (e, i) => (
-                                              <div
-                                                key={i}
-                                                style={{
-                                                  color: "#ddd6fe",
-                                                  fontSize: "0.8rem",
-                                                  marginBottom:
-                                                    "0.2rem",
-                                                }}
-                                              >
-                                                • {e}
-                                              </div>
-                                            ),
-                                          )}
+                                          {estructuras.map((e, i) => (
+                                            <div
+                                              key={i}
+                                              style={{
+                                                color: "#ddd6fe",
+                                                fontSize: "0.8rem",
+                                                marginBottom: "0.2rem",
+                                              }}
+                                            >
+                                              • {e}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     )}
@@ -40364,218 +40881,516 @@ Devuelve SOLO este JSON:
                                 )}
 
                                 {/* UNA ORACIÓN A LA VEZ - Corrección de errores */}
-                                {!errorYaRespondido && (() => {
-                                  const idx = indiceOracionError;
-                                  const esUltima = idx === cantidad - 1;
-                                  const prevOracion = oracionesPrevias[idx] || "";
-                                  const oracionActualValor = getOracion(idx);
+                                {!errorYaRespondido &&
+                                  (() => {
+                                    const idx = indiceOracionError;
+                                    const esUltima = idx === cantidad - 1;
+                                    const prevOracion =
+                                      oracionesPrevias[idx] || "";
+                                    const oracionActualValor = getOracion(idx);
 
-                                  // Feedback específico para esta oración del feedbackPrevio
-                                  const lineas = feedbackPrevio ? feedbackPrevio.split("\n") : [];
-                                  let feedbackEstaOracion = "";
-                                  let capturando = false;
-                                  for (const linea of lineas) {
-                                    const trimmed = linea.trim();
-                                    if (new RegExp(`^${idx + 1}[.)\\s]`).test(trimmed)) {
-                                      feedbackEstaOracion = trimmed;
-                                      capturando = true;
-                                    } else if (capturando && /^\d+[.)\s]/.test(trimmed)) {
-                                      break;
-                                    } else if (capturando && trimmed) {
-                                      feedbackEstaOracion += "\n" + trimmed;
+                                    // Feedback específico para esta oración del feedbackPrevio
+                                    const lineas = feedbackPrevio
+                                      ? feedbackPrevio.split("\n")
+                                      : [];
+                                    let feedbackEstaOracion = "";
+                                    let capturando = false;
+                                    for (const linea of lineas) {
+                                      const trimmed = linea.trim();
+                                      if (
+                                        new RegExp(`^${idx + 1}[.)\\s]`).test(
+                                          trimmed,
+                                        )
+                                      ) {
+                                        feedbackEstaOracion = trimmed;
+                                        capturando = true;
+                                      } else if (
+                                        capturando &&
+                                        /^\d+[.)\s]/.test(trimmed)
+                                      ) {
+                                        break;
+                                      } else if (capturando && trimmed) {
+                                        feedbackEstaOracion += "\n" + trimmed;
+                                      }
                                     }
-                                  }
-                                  if (!feedbackEstaOracion && feedbackPrevio && idx === 0 && lineas.length <= 3) {
-                                    feedbackEstaOracion = feedbackPrevio;
-                                  }
+                                    if (
+                                      !feedbackEstaOracion &&
+                                      feedbackPrevio &&
+                                      idx === 0 &&
+                                      lineas.length <= 3
+                                    ) {
+                                      feedbackEstaOracion = feedbackPrevio;
+                                    }
 
-                                  // Helpers array por índice
-                                  const textoJsonIdx = textoJsonOracionesPropError[idx] || "";
-                                  const jsonCalifIdx = jsonCalificacionOracionesPropError[idx] || null;
-                                  const copiado = promptCopiadoOracionesPropError === idx;
+                                    // Helpers array por índice
+                                    const textoJsonIdx =
+                                      textoJsonOracionesPropError[idx] || "";
+                                    const jsonCalifIdx =
+                                      jsonCalificacionOracionesPropError[idx] ||
+                                      null;
+                                    const copiado =
+                                      promptCopiadoOracionesPropError === idx;
 
-                                  const updateTextoJsonErr = (i, val) => {
-                                    setTextoJsonOracionesPropError(prev => {
-                                      const arr = [...prev];
-                                      while (arr.length <= i) arr.push("");
-                                      arr[i] = val;
-                                      return arr;
-                                    });
-                                  };
-                                  const updateJsonCalifErr = (i, val) => {
-                                    setJsonCalificacionOracionesPropError(prev => {
-                                      const arr = [...prev];
-                                      while (arr.length <= i) arr.push(null);
-                                      arr[i] = val;
-                                      return arr;
-                                    });
-                                  };
+                                    const updateTextoJsonErr = (i, val) => {
+                                      setTextoJsonOracionesPropError((prev) => {
+                                        const arr = [...prev];
+                                        while (arr.length <= i) arr.push("");
+                                        arr[i] = val;
+                                        return arr;
+                                      });
+                                    };
+                                    const updateJsonCalifErr = (i, val) => {
+                                      setJsonCalificacionOracionesPropError(
+                                        (prev) => {
+                                          const arr = [...prev];
+                                          while (arr.length <= i)
+                                            arr.push(null);
+                                          arr[i] = val;
+                                          return arr;
+                                        },
+                                      );
+                                    };
 
-                                  // Prompt para UNA sola oración
-                                  const generarPromptSentencia = (i) => {
-                                    const oVal = getOracion(i);
-                                    let p = `Evalúa esta oración de un estudiante de ${idioma} (oración ${i + 1} de ${cantidad}).\n\n`;
-                                    if (tema) p += `TEMA: ${tema}\n`;
-                                    p += `INSTRUCCIÓN: ${errorActual?.pregunta || "Escribe oraciones propias en " + idioma}\n`;
-                                    if (vocab.length > 0) p += `VOCABULARIO SUGERIDO: ${vocab.join(", ")}\n`;
-                                    if (estructuras.length > 0) p += `ESTRUCTURAS SUGERIDAS: ${estructuras.join(", ")}\n`;
-                                    p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
-                                    p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: error específico y cómo corregirlo>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
-                                    return p;
-                                  };
+                                    // Prompt para UNA sola oración
+                                    const generarPromptSentencia = (i) => {
+                                      const oVal = getOracion(i);
+                                      let p = `Evalúa esta oración de un estudiante de ${idioma} (oración ${i + 1} de ${cantidad}).\n\n`;
+                                      if (tema) p += `TEMA: ${tema}\n`;
+                                      p += `INSTRUCCIÓN: ${errorActual?.pregunta || "Escribe oraciones propias en " + idioma}\n`;
+                                      if (vocab.length > 0)
+                                        p += `VOCABULARIO SUGERIDO: ${vocab.join(", ")}\n`;
+                                      if (estructuras.length > 0)
+                                        p += `ESTRUCTURAS SUGERIDAS: ${estructuras.join(", ")}\n`;
+                                      p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
+                                      p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: error específico y cómo corregirlo>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
+                                      return p;
+                                    };
 
-                                  return (
-                                    <>
-                                      {/* Barra de progreso */}
-                                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-                                        <span style={{ color: "#4ade80", fontWeight: "700", fontSize: "0.95rem" }}>
-                                          Oración {idx + 1} de {cantidad}
-                                        </span>
-                                        <div style={{ display: "flex", gap: "6px" }}>
-                                          {Array.from({ length: cantidad }).map((_, i) => (
-                                            <div key={i} style={{
-                                              width: "10px", height: "10px", borderRadius: "50%",
-                                              background: jsonCalificacionOracionesPropError[i]
-                                                ? (jsonCalificacionOracionesPropError[i].correcto ? "#22c55e" : "#ef4444")
-                                                : (oracionesPropError[i] ?? "").trim()
-                                                  ? "rgba(34,197,94,0.4)"
-                                                  : i === idx ? "rgba(34,197,94,0.5)" : "rgba(100,116,139,0.3)",
-                                              border: i === idx ? "2px solid #4ade80" : "none",
-                                              cursor: i <= idx ? "pointer" : "default",
-                                              transition: "all 0.2s",
-                                            }} onClick={() => i <= idx && setIndiceOracionError(i)} />
-                                          ))}
-                                        </div>
-                                      </div>
-
-                                      {/* Card oración actual */}
-                                      <div style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "12px", padding: "1rem", marginBottom: "0.75rem" }}>
-                                        {/* Error previo específico */}
-                                        {feedbackEstaOracion && (
-                                          <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", padding: "0.6rem 0.85rem", marginBottom: "0.65rem" }}>
-                                            <span style={{ color: "#fca5a5", fontSize: "0.72rem", fontWeight: "700", display: "block", marginBottom: "0.2rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                              ⚠️ Error detectado:
-                                            </span>
-                                            <p style={{ color: "#fecaca", margin: 0, fontSize: "0.88rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
-                                              {feedbackEstaOracion}
-                                            </p>
-                                          </div>
-                                        )}
-                                        {/* Intento anterior */}
-                                        {prevOracion && (
-                                          <div style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: "6px", padding: "0.4rem 0.7rem", marginBottom: "0.55rem" }}>
-                                            <span style={{ color: "#fca5a5", fontSize: "0.72rem", fontWeight: "600", display: "block", marginBottom: "0.1rem" }}>📌 Intento anterior:</span>
-                                            <span style={{ color: "#fecaca", fontSize: "0.85rem", fontStyle: "italic" }}>{prevOracion}</span>
-                                          </div>
-                                        )}
-                                        {/* Input */}
-                                        <input
-                                          type="text"
-                                          value={oracionActualValor}
-                                          onChange={(e) => updateOracion(idx, e.target.value)}
-                                          onKeyDown={(e) => { if (e.key === "Enter" && oracionActualValor.trim() && !esUltima) setIndiceOracionError(idx + 1); }}
-                                          placeholder={`Corrige la oración ${idx + 1} en ${idioma}...`}
-                                          autoFocus
-                                          style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: "8px", border: oracionActualValor.trim() ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(34,197,94,0.25)", background: "#1a1625", color: "#e2e8f0", fontSize: "0.95rem", boxSizing: "border-box" }}
-                                        />
-                                      </div>
-
-                                      {/* ── Calificación individual ── */}
-                                      <div style={{ background: "rgba(15,23,42,0.5)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "10px", padding: "0.75rem 1rem", marginBottom: "0.85rem" }}>
-                                        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
-                                          <button
-                                            onClick={() => {
-                                              navigator.clipboard.writeText(generarPromptSentencia(idx));
-                                              setPromptCopiadoOracionesPropError(idx);
-                                              setTimeout(() => setPromptCopiadoOracionesPropError(-1), 2000);
-                                            }}
-                                            style={{ padding: "6px 12px", background: copiado ? "rgba(34,197,94,0.25)" : "rgba(59,130,246,0.18)", border: `1px solid ${copiado ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`, borderRadius: "7px", color: copiado ? "#86efac" : "#93c5fd", cursor: "pointer", fontSize: "0.83rem", fontWeight: "600" }}
-                                          >
-                                            {copiado ? "✓ Copiado" : "📋 Copiar prompt"}
-                                          </button>
-                                        </div>
-                                        <textarea
-                                          value={textoJsonIdx}
-                                          onChange={(e) => {
-                                            updateTextoJsonErr(idx, e.target.value);
-                                            try {
-                                              const m = e.target.value.match(/\{[\s\S]*\}/);
-                                              if (m) updateJsonCalifErr(idx, JSON.parse(m[0]));
-                                            } catch {}
+                                    return (
+                                      <>
+                                        {/* Barra de progreso */}
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                            marginBottom: "1rem",
                                           }}
-                                          placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
-                                          style={{ width: "100%", minHeight: "56px", padding: "0.5rem 0.65rem", borderRadius: "7px", border: "1px solid #374151", background: "#0f172a", color: "#94a3b8", fontSize: "0.8rem", resize: "vertical", marginBottom: "0.4rem", boxSizing: "border-box" }}
-                                        />
-                                        {textoJsonIdx.trim() && !jsonCalifIdx && (
-                                          <button
-                                            onClick={() => {
-                                              const parsed = extraerJSON(textoJsonIdx);
-                                              if (parsed) updateJsonCalifErr(idx, parsed);
-                                              else alert("❌ No se encontró JSON válido.");
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#4ade80",
+                                              fontWeight: "700",
+                                              fontSize: "0.95rem",
                                             }}
-                                            style={{ padding: "5px 11px", background: "rgba(34,197,94,0.18)", border: "1px solid rgba(34,197,94,0.4)", borderRadius: "7px", color: "#86efac", cursor: "pointer", fontSize: "0.82rem" }}
                                           >
-                                            ✨ Procesar
-                                          </button>
-                                        )}
-                                        {/* Resultado de esta oración */}
-                                        {jsonCalifIdx && (
-                                          <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.85rem", background: jsonCalifIdx.correcto ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", border: `1px solid ${jsonCalifIdx.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`, borderRadius: "8px" }}>
-                                            <strong style={{ color: jsonCalifIdx.correcto ? "#86efac" : "#fca5a5", fontSize: "0.88rem" }}>
-                                              {jsonCalifIdx.correcto ? "✅ Correcta" : "❌ Incorrecta"}
-                                            </strong>
-                                            {jsonCalifIdx.feedback && (
-                                              <p style={{ color: "#e2e8f0", margin: "0.35rem 0 0", fontSize: "0.86rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
-                                                {jsonCalifIdx.feedback}
-                                              </p>
-                                            )}
+                                            Oración {idx + 1} de {cantidad}
+                                          </span>
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              gap: "6px",
+                                            }}
+                                          >
+                                            {Array.from({
+                                              length: cantidad,
+                                            }).map((_, i) => (
+                                              <div
+                                                key={i}
+                                                style={{
+                                                  width: "10px",
+                                                  height: "10px",
+                                                  borderRadius: "50%",
+                                                  background:
+                                                    jsonCalificacionOracionesPropError[
+                                                      i
+                                                    ]
+                                                      ? jsonCalificacionOracionesPropError[
+                                                          i
+                                                        ].correcto
+                                                        ? "#22c55e"
+                                                        : "#ef4444"
+                                                      : (
+                                                            oracionesPropError[
+                                                              i
+                                                            ] ?? ""
+                                                          ).trim()
+                                                        ? "rgba(34,197,94,0.4)"
+                                                        : i === idx
+                                                          ? "rgba(34,197,94,0.5)"
+                                                          : "rgba(100,116,139,0.3)",
+                                                  border:
+                                                    i === idx
+                                                      ? "2px solid #4ade80"
+                                                      : "none",
+                                                  cursor:
+                                                    i <= idx
+                                                      ? "pointer"
+                                                      : "default",
+                                                  transition: "all 0.2s",
+                                                }}
+                                                onClick={() =>
+                                                  i <= idx &&
+                                                  setIndiceOracionError(i)
+                                                }
+                                              />
+                                            ))}
                                           </div>
-                                        )}
-                                      </div>
+                                        </div>
 
-                                      {/* Navegación */}
-                                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                                        {idx > 0 && (
-                                          <button className="btn-nav btn-nav-anterior" onClick={() => setIndiceOracionError(idx - 1)}>
-                                            ← Anterior
-                                          </button>
-                                        )}
-                                        {!esUltima ? (
-                                          <button
-                                            className="btn-nav btn-nav-siguiente"
-                                            disabled={!oracionActualValor.trim()}
-                                            onClick={() => setIndiceOracionError(idx + 1)}
-                                          >
-                                            Siguiente →
-                                          </button>
-                                        ) : (
-                                          <button
-                                            className="btn-nav btn-nav-siguiente"
-                                            disabled={!oracionActualValor.trim()}
-                                            onClick={() => {
-                                              // Agregar resultado del último al estado global para verificación
-                                              const primerResult = jsonCalificacionOracionesPropError.find(x => x);
-                                              setRespuestaError(respuestaJunta);
-                                              setRespuestaErrorSeleccionada(respuestaJunta);
-                                              if (primerResult) {
-                                                setTimeout(() =>
-                                                  primerResult.correcto
-                                                    ? verificarRespuestaError(respuestaJunta)
-                                                    : verificarRespuestaError("__INCORRECTO__"),
-                                                  100,
-                                                );
-                                              } else {
-                                                setErrorYaRespondido(true);
-                                              }
+                                        {/* Card oración actual */}
+                                        <div
+                                          style={{
+                                            background: "rgba(15,23,42,0.7)",
+                                            border:
+                                              "1px solid rgba(34,197,94,0.25)",
+                                            borderRadius: "12px",
+                                            padding: "1rem",
+                                            marginBottom: "0.75rem",
+                                          }}
+                                        >
+                                          {/* Error previo específico */}
+                                          {feedbackEstaOracion && (
+                                            <div
+                                              style={{
+                                                background:
+                                                  "rgba(239,68,68,0.1)",
+                                                border:
+                                                  "1px solid rgba(239,68,68,0.3)",
+                                                borderRadius: "8px",
+                                                padding: "0.6rem 0.85rem",
+                                                marginBottom: "0.65rem",
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  color: "#fca5a5",
+                                                  fontSize: "0.72rem",
+                                                  fontWeight: "700",
+                                                  display: "block",
+                                                  marginBottom: "0.2rem",
+                                                  textTransform: "uppercase",
+                                                  letterSpacing: "0.05em",
+                                                }}
+                                              >
+                                                ⚠️ Error detectado:
+                                              </span>
+                                              <p
+                                                style={{
+                                                  color: "#fecaca",
+                                                  margin: 0,
+                                                  fontSize: "0.88rem",
+                                                  lineHeight: "1.5",
+                                                  whiteSpace: "pre-wrap",
+                                                }}
+                                              >
+                                                {feedbackEstaOracion}
+                                              </p>
+                                            </div>
+                                          )}
+                                          {/* Intento anterior */}
+                                          {prevOracion && (
+                                            <div
+                                              style={{
+                                                background:
+                                                  "rgba(239,68,68,0.06)",
+                                                border:
+                                                  "1px solid rgba(239,68,68,0.18)",
+                                                borderRadius: "6px",
+                                                padding: "0.4rem 0.7rem",
+                                                marginBottom: "0.55rem",
+                                              }}
+                                            >
+                                              <span
+                                                style={{
+                                                  color: "#fca5a5",
+                                                  fontSize: "0.72rem",
+                                                  fontWeight: "600",
+                                                  display: "block",
+                                                  marginBottom: "0.1rem",
+                                                }}
+                                              >
+                                                📌 Intento anterior:
+                                              </span>
+                                              <span
+                                                style={{
+                                                  color: "#fecaca",
+                                                  fontSize: "0.85rem",
+                                                  fontStyle: "italic",
+                                                }}
+                                              >
+                                                {prevOracion}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {/* Input */}
+                                          <input
+                                            type="text"
+                                            value={oracionActualValor}
+                                            onChange={(e) =>
+                                              updateOracion(idx, e.target.value)
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (
+                                                e.key === "Enter" &&
+                                                oracionActualValor.trim() &&
+                                                !esUltima
+                                              )
+                                                setIndiceOracionError(idx + 1);
+                                            }}
+                                            placeholder={`Corrige la oración ${idx + 1} en ${idioma}...`}
+                                            autoFocus
+                                            style={{
+                                              width: "100%",
+                                              padding: "0.65rem 0.85rem",
+                                              borderRadius: "8px",
+                                              border: oracionActualValor.trim()
+                                                ? "1px solid rgba(34,197,94,0.5)"
+                                                : "1px solid rgba(34,197,94,0.25)",
+                                              background: "#1a1625",
+                                              color: "#e2e8f0",
+                                              fontSize: "0.95rem",
+                                              boxSizing: "border-box",
+                                            }}
+                                          />
+                                        </div>
+
+                                        {/* ── Calificación individual ── */}
+                                        <div
+                                          style={{
+                                            background: "rgba(15,23,42,0.5)",
+                                            border:
+                                              "1px solid rgba(34,197,94,0.15)",
+                                            borderRadius: "10px",
+                                            padding: "0.75rem 1rem",
+                                            marginBottom: "0.85rem",
+                                          }}
+                                        >
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              gap: "0.5rem",
+                                              marginBottom: "0.5rem",
+                                              flexWrap: "wrap",
                                             }}
                                           >
-                                            ✓ Terminar
-                                          </button>
-                                        )}
-                                      </div>
-                                    </>
-                                  );
-                                })()}
+                                            <button
+                                              onClick={() => {
+                                                navigator.clipboard.writeText(
+                                                  generarPromptSentencia(idx),
+                                                );
+                                                setPromptCopiadoOracionesPropError(
+                                                  idx,
+                                                );
+                                                setTimeout(
+                                                  () =>
+                                                    setPromptCopiadoOracionesPropError(
+                                                      -1,
+                                                    ),
+                                                  2000,
+                                                );
+                                              }}
+                                              style={{
+                                                padding: "6px 12px",
+                                                background: copiado
+                                                  ? "rgba(34,197,94,0.25)"
+                                                  : "rgba(59,130,246,0.18)",
+                                                border: `1px solid ${copiado ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`,
+                                                borderRadius: "7px",
+                                                color: copiado
+                                                  ? "#86efac"
+                                                  : "#93c5fd",
+                                                cursor: "pointer",
+                                                fontSize: "0.83rem",
+                                                fontWeight: "600",
+                                              }}
+                                            >
+                                              {copiado
+                                                ? "✓ Copiado"
+                                                : "📋 Copiar prompt"}
+                                            </button>
+                                          </div>
+                                          <textarea
+                                            value={textoJsonIdx}
+                                            onChange={(e) => {
+                                              updateTextoJsonErr(
+                                                idx,
+                                                e.target.value,
+                                              );
+                                              try {
+                                                const m =
+                                                  e.target.value.match(
+                                                    /\{[\s\S]*\}/,
+                                                  );
+                                                if (m)
+                                                  updateJsonCalifErr(
+                                                    idx,
+                                                    JSON.parse(m[0]),
+                                                  );
+                                              } catch {}
+                                            }}
+                                            placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
+                                            style={{
+                                              width: "100%",
+                                              minHeight: "56px",
+                                              padding: "0.5rem 0.65rem",
+                                              borderRadius: "7px",
+                                              border: "1px solid #374151",
+                                              background: "#0f172a",
+                                              color: "#94a3b8",
+                                              fontSize: "0.8rem",
+                                              resize: "vertical",
+                                              marginBottom: "0.4rem",
+                                              boxSizing: "border-box",
+                                            }}
+                                          />
+                                          {textoJsonIdx.trim() &&
+                                            !jsonCalifIdx && (
+                                              <button
+                                                onClick={() => {
+                                                  const parsed =
+                                                    extraerJSON(textoJsonIdx);
+                                                  if (parsed)
+                                                    updateJsonCalifErr(
+                                                      idx,
+                                                      parsed,
+                                                    );
+                                                  else
+                                                    alert(
+                                                      "❌ No se encontró JSON válido.",
+                                                    );
+                                                }}
+                                                style={{
+                                                  padding: "5px 11px",
+                                                  background:
+                                                    "rgba(34,197,94,0.18)",
+                                                  border:
+                                                    "1px solid rgba(34,197,94,0.4)",
+                                                  borderRadius: "7px",
+                                                  color: "#86efac",
+                                                  cursor: "pointer",
+                                                  fontSize: "0.82rem",
+                                                }}
+                                              >
+                                                ✨ Procesar
+                                              </button>
+                                            )}
+                                          {/* Resultado de esta oración */}
+                                          {jsonCalifIdx && (
+                                            <div
+                                              style={{
+                                                marginTop: "0.5rem",
+                                                padding: "0.6rem 0.85rem",
+                                                background:
+                                                  jsonCalifIdx.correcto
+                                                    ? "rgba(34,197,94,0.12)"
+                                                    : "rgba(239,68,68,0.12)",
+                                                border: `1px solid ${jsonCalifIdx.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+                                                borderRadius: "8px",
+                                              }}
+                                            >
+                                              <strong
+                                                style={{
+                                                  color: jsonCalifIdx.correcto
+                                                    ? "#86efac"
+                                                    : "#fca5a5",
+                                                  fontSize: "0.88rem",
+                                                }}
+                                              >
+                                                {jsonCalifIdx.correcto
+                                                  ? "✅ Correcta"
+                                                  : "❌ Incorrecta"}
+                                              </strong>
+                                              {jsonCalifIdx.feedback && (
+                                                <p
+                                                  style={{
+                                                    color: "#e2e8f0",
+                                                    margin: "0.35rem 0 0",
+                                                    fontSize: "0.86rem",
+                                                    lineHeight: "1.5",
+                                                    whiteSpace: "pre-wrap",
+                                                  }}
+                                                >
+                                                  {jsonCalifIdx.feedback}
+                                                </p>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Navegación */}
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            gap: "0.5rem",
+                                            alignItems: "center",
+                                            flexWrap: "wrap",
+                                          }}
+                                        >
+                                          {idx > 0 && (
+                                            <button
+                                              className="btn-nav btn-nav-anterior"
+                                              onClick={() =>
+                                                setIndiceOracionError(idx - 1)
+                                              }
+                                            >
+                                              ← Anterior
+                                            </button>
+                                          )}
+                                          {!esUltima ? (
+                                            <button
+                                              className="btn-nav btn-nav-siguiente"
+                                              disabled={
+                                                !oracionActualValor.trim()
+                                              }
+                                              onClick={() =>
+                                                setIndiceOracionError(idx + 1)
+                                              }
+                                            >
+                                              Siguiente →
+                                            </button>
+                                          ) : (
+                                            <button
+                                              className="btn-nav btn-nav-siguiente"
+                                              disabled={
+                                                !oracionActualValor.trim()
+                                              }
+                                              onClick={() => {
+                                                // Agregar resultado del último al estado global para verificación
+                                                const primerResult =
+                                                  jsonCalificacionOracionesPropError.find(
+                                                    (x) => x,
+                                                  );
+                                                setRespuestaError(
+                                                  respuestaJunta,
+                                                );
+                                                setRespuestaErrorSeleccionada(
+                                                  respuestaJunta,
+                                                );
+                                                if (primerResult) {
+                                                  setTimeout(
+                                                    () =>
+                                                      primerResult.correcto
+                                                        ? verificarRespuestaError(
+                                                            respuestaJunta,
+                                                          )
+                                                        : verificarRespuestaError(
+                                                            "__INCORRECTO__",
+                                                          ),
+                                                    100,
+                                                  );
+                                                } else {
+                                                  setErrorYaRespondido(true);
+                                                }
+                                              }}
+                                            >
+                                              ✓ Terminar
+                                            </button>
+                                          )}
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
                               </div>
                             );
                           })()}
@@ -40737,6 +41552,8 @@ Devuelve SOLO este JSON:
                                     "picture_description_libre",
                                     "oraciones_propias",
                                     "oracion_propia_item", // 🔥 sub-ítems individuales de oraciones_propias
+                                    "constructor_oraciones", // 🧩 Constructor de Oraciones con Palabras
+                                    "constructor_oracion_item", // 🔥 sub-ítems individuales de constructor_oraciones
                                     "paraphrase_item", // 🔥 sub-ítems individuales de writing_paraphrase
                                     "sentence_builder_item", // 🔥 sub-ítems individuales de sentence_builder
                                   ];
@@ -40781,7 +41598,10 @@ Devuelve SOLO este JSON:
                                 jsonCalificacionCorrectionError ||
                                 jsonCalificacionTransformationError ||
                                 jsonCalificacionSentenceBuilderError ||
-                                (jsonCalificacionOracionesPropError?.find?.((x) => x) ?? null);
+                                (jsonCalificacionOracionesPropError?.find?.(
+                                  (x) => x,
+                                ) ??
+                                  null);
                               if (calificacionIAActivaUI) {
                                 esRespuestaCorrecta =
                                   calificacionIAActivaUI.correcto;
@@ -41141,6 +41961,9 @@ Devuelve SOLO este JSON:
                               setJsonCalificacionIA(null);
                               setHistorialIntentos([]);
                               setFeedbackIA(null);
+                              setWritingParaphraseError(""); // 🔥 Limpiar paraphrase
+                              setTextoJsonParaphraseError("");
+                              setJsonCalificacionParaphraseError(null);
                               if (
                                 indiceErrorActual <
                                 erroresActuales.length - 1
@@ -41197,6 +42020,9 @@ Devuelve SOLO este JSON:
                               setJsonCalificacionIA(null);
                               setHistorialIntentos([]);
                               setFeedbackIA(null);
+                              setWritingParaphraseError(""); // 🔥 Limpiar paraphrase
+                              setTextoJsonParaphraseError("");
+                              setJsonCalificacionParaphraseError(null);
                               if (
                                 indiceErrorActual <
                                 erroresActuales.length - 1
@@ -41254,6 +42080,9 @@ Devuelve SOLO este JSON:
                                   setJsonCalificacionIA(null);
                                   setHistorialIntentos([]);
                                   setFeedbackIA(null);
+                                  setWritingParaphraseError(""); // 🔥 Limpiar paraphrase
+                                  setTextoJsonParaphraseError("");
+                                  setJsonCalificacionParaphraseError(null);
                                   setIndiceErrorActual(indiceErrorActual - 1);
                                 }
                               }}
@@ -41299,6 +42128,9 @@ Devuelve SOLO este JSON:
                                   setJsonCalificacionIA(null);
                                   setHistorialIntentos([]);
                                   setFeedbackIA(null);
+                                  setWritingParaphraseError(""); // 🔥 Limpiar paraphrase
+                                  setTextoJsonParaphraseError("");
+                                  setJsonCalificacionParaphraseError(null);
                                   setIndiceErrorActual(indiceErrorActual + 1);
                                 }
                               }}
@@ -45667,8 +46499,8 @@ RESPONDE SOLO CON UN JSON VÁLIDO:
   "puntos_obtenidos": <número de 0 a 100>,
   "puntos_totales": 100,
   "porcentaje": <igual que puntos_obtenidos>,
-  "correcto": <true si >= 60>,
-  "feedback": "<feedback constructivo>",
+  "correcto": <true si >= 70 — umbral mínimo de aprobación>,
+  "feedback": "<feedback constructivo en español: qué describió bien y qué debe mejorar>",
   "vocabulario_usado": ["palabra1", "palabra2"],
   "errores_gramaticales": ["error1 -> corrección1"],
   "sugerencias": ["sugerencia1", "sugerencia2"]
@@ -47041,8 +47873,8 @@ IMPORTANTE: Responde SOLO con un JSON válido:
   "puntos_obtenidos": <0-10>,
   "puntos_totales": 10,
   "porcentaje": <número>,
-  "correcto": <true si >= 60%>,
-  "feedback": "<feedback detallado>",
+  "correcto": <true si >= 70% — umbral mínimo de aprobación>,
+  "feedback": "<feedback detallado en español: estructura, tono, vocabulario y errores>",
   "formato_correcto": <true/false>,
   "tono_apropiado": <true/false>,
   "errores": ["<error1>", "<error2>"],
@@ -51215,19 +52047,12 @@ Devuelve SOLO este JSON:
                             }
 
                             // 📝 CASO ORACIONES_PROPIAS (ACIERTOS)
-                            if (
-                              aciertoActual?.tipo === "oraciones_propias"
-                            ) {
-                              const metaAc =
-                                aciertoActual?.metadata || {};
-                              const cantidadAc =
-                                metaAc.cantidad_oraciones || 5;
-                              const idiomaAc =
-                                metaAc.idioma || "inglés";
-                              const temaAc =
-                                metaAc.titulo_tema || "";
-                              const vocabAc =
-                                metaAc.vocabulario_sugerido || [];
+                            if (aciertoActual?.tipo === "oraciones_propias") {
+                              const metaAc = aciertoActual?.metadata || {};
+                              const cantidadAc = metaAc.cantidad_oraciones || 5;
+                              const idiomaAc = metaAc.idioma || "inglés";
+                              const temaAc = metaAc.titulo_tema || "";
+                              const vocabAc = metaAc.vocabulario_sugerido || [];
                               const estructurasAc =
                                 metaAc.estructuras_sugeridas || [];
 
@@ -51235,11 +52060,8 @@ Devuelve SOLO este JSON:
                                 oracionesPropAcierto[idx] ?? "";
 
                               const updateOrAc = (idx, val) => {
-                                const arr = [
-                                  ...Array(cantidadAc),
-                                ].map(
-                                  (_, i) =>
-                                    oracionesPropAcierto[i] ?? "",
+                                const arr = [...Array(cantidadAc)].map(
+                                  (_, i) => oracionesPropAcierto[i] ?? "",
                                 );
                                 arr[idx] = val;
                                 setOracionesPropAcierto(arr);
@@ -51257,8 +52079,7 @@ Devuelve SOLO este JSON:
 
                               const generarPromptOrAc = () => {
                                 let prompt = `Evalúa las siguientes ${cantidadAc} oraciones escritas por un estudiante de ${idiomaAc} (REPASO de acierto).\n\n`;
-                                if (temaAc)
-                                  prompt += `TEMA: ${temaAc}\n`;
+                                if (temaAc) prompt += `TEMA: ${temaAc}\n`;
                                 prompt += `INSTRUCCIÓN: ${aciertoActual?.pregunta || "Escribe oraciones propias"}\n\n`;
                                 if (vocabAc.length > 0)
                                   prompt += `VOCABULARIO SUGERIDO: ${vocabAc.join(", ")}\n`;
@@ -51277,10 +52098,8 @@ Devuelve SOLO este JSON:
                               return (
                                 <div
                                   style={{
-                                    background:
-                                      "rgba(34, 197, 94, 0.08)",
-                                    border:
-                                      "1px solid rgba(34, 197, 94, 0.3)",
+                                    background: "rgba(34, 197, 94, 0.08)",
+                                    border: "1px solid rgba(34, 197, 94, 0.3)",
                                     borderRadius: "12px",
                                     padding: "1.5rem",
                                     marginTop: "1rem",
@@ -51298,9 +52117,7 @@ Devuelve SOLO este JSON:
                                     <span>📝</span>
                                     <span>
                                       Oraciones Propias en{" "}
-                                      {idiomaAc
-                                        .charAt(0)
-                                        .toUpperCase() +
+                                      {idiomaAc.charAt(0).toUpperCase() +
                                         idiomaAc.slice(1)}
                                     </span>
                                     {temaAc && (
@@ -51308,8 +52125,7 @@ Devuelve SOLO este JSON:
                                         style={{
                                           fontSize: "0.75rem",
                                           padding: "2px 8px",
-                                          background:
-                                            "rgba(34, 197, 94, 0.2)",
+                                          background: "rgba(34, 197, 94, 0.2)",
                                           borderRadius: "10px",
                                           color: "#86efac",
                                         }}
@@ -51359,27 +52175,21 @@ Devuelve SOLO este JSON:
                                               marginTop: "0.4rem",
                                             }}
                                           >
-                                            {vocabAc.map(
-                                              (v, i) => (
-                                                <span
-                                                  key={i}
-                                                  style={{
-                                                    background:
-                                                      "rgba(59, 130, 246, 0.2)",
-                                                    padding:
-                                                      "2px 8px",
-                                                    borderRadius:
-                                                      "4px",
-                                                    color:
-                                                      "#bfdbfe",
-                                                    fontSize:
-                                                      "0.8rem",
-                                                  }}
-                                                >
-                                                  {v}
-                                                </span>
-                                              ),
-                                            )}
+                                            {vocabAc.map((v, i) => (
+                                              <span
+                                                key={i}
+                                                style={{
+                                                  background:
+                                                    "rgba(59, 130, 246, 0.2)",
+                                                  padding: "2px 8px",
+                                                  borderRadius: "4px",
+                                                  color: "#bfdbfe",
+                                                  fontSize: "0.8rem",
+                                                }}
+                                              >
+                                                {v}
+                                              </span>
+                                            ))}
                                           </div>
                                         </div>
                                       )}
@@ -51410,23 +52220,18 @@ Devuelve SOLO este JSON:
                                               marginTop: "0.4rem",
                                             }}
                                           >
-                                            {estructurasAc.map(
-                                              (e, i) => (
-                                                <div
-                                                  key={i}
-                                                  style={{
-                                                    color:
-                                                      "#ddd6fe",
-                                                    fontSize:
-                                                      "0.8rem",
-                                                    marginBottom:
-                                                      "0.2rem",
-                                                  }}
-                                                >
-                                                  • {e}
-                                                </div>
-                                              ),
-                                            )}
+                                            {estructurasAc.map((e, i) => (
+                                              <div
+                                                key={i}
+                                                style={{
+                                                  color: "#ddd6fe",
+                                                  fontSize: "0.8rem",
+                                                  marginBottom: "0.2rem",
+                                                }}
+                                              >
+                                                • {e}
+                                              </div>
+                                            ))}
                                           </div>
                                         </div>
                                       )}
@@ -51434,172 +52239,395 @@ Devuelve SOLO este JSON:
                                   )}
 
                                   {/* UNA ORACIÓN A LA VEZ - Repaso de aciertos */}
-                                  {!aciertoYaRespondido && (() => {
-                                    const idx = indiceOracionAcierto;
-                                    const esUltima = idx === cantidadAc - 1;
-                                    const oracionActualValorAc = getOrAc(idx);
+                                  {!aciertoYaRespondido &&
+                                    (() => {
+                                      const idx = indiceOracionAcierto;
+                                      const esUltima = idx === cantidadAc - 1;
+                                      const oracionActualValorAc = getOrAc(idx);
 
-                                    // Helpers array por índice
-                                    const textoJsonIdxAc = textoJsonOracionesPropAcierto[idx] || "";
-                                    const jsonCalifIdxAc = jsonCalificacionOracionesPropAcierto[idx] || null;
-                                    const copiadoAc = promptCopiadoOracionesPropAcierto === idx;
+                                      // Helpers array por índice
+                                      const textoJsonIdxAc =
+                                        textoJsonOracionesPropAcierto[idx] ||
+                                        "";
+                                      const jsonCalifIdxAc =
+                                        jsonCalificacionOracionesPropAcierto[
+                                          idx
+                                        ] || null;
+                                      const copiadoAc =
+                                        promptCopiadoOracionesPropAcierto ===
+                                        idx;
 
-                                    const updateTextoJsonAc = (i, val) => {
-                                      setTextoJsonOracionesPropAcierto(prev => {
-                                        const arr = [...prev];
-                                        while (arr.length <= i) arr.push("");
-                                        arr[i] = val;
-                                        return arr;
-                                      });
-                                    };
-                                    const updateJsonCalifAc = (i, val) => {
-                                      setJsonCalificacionOracionesPropAcierto(prev => {
-                                        const arr = [...prev];
-                                        while (arr.length <= i) arr.push(null);
-                                        arr[i] = val;
-                                        return arr;
-                                      });
-                                    };
+                                      const updateTextoJsonAc = (i, val) => {
+                                        setTextoJsonOracionesPropAcierto(
+                                          (prev) => {
+                                            const arr = [...prev];
+                                            while (arr.length <= i)
+                                              arr.push("");
+                                            arr[i] = val;
+                                            return arr;
+                                          },
+                                        );
+                                      };
+                                      const updateJsonCalifAc = (i, val) => {
+                                        setJsonCalificacionOracionesPropAcierto(
+                                          (prev) => {
+                                            const arr = [...prev];
+                                            while (arr.length <= i)
+                                              arr.push(null);
+                                            arr[i] = val;
+                                            return arr;
+                                          },
+                                        );
+                                      };
 
-                                    // Prompt para UNA sola oración
-                                    const generarPromptSentenciaAc = (i) => {
-                                      const oVal = getOrAc(i);
-                                      let p = `Evalúa esta oración de un estudiante de ${idiomaAc} (oración ${i + 1} de ${cantidadAc}).\n\n`;
-                                      if (temaAc) p += `TEMA: ${temaAc}\n`;
-                                      p += `INSTRUCCIÓN: ${aciertoActual?.pregunta || "Escribe oraciones propias en " + idiomaAc}\n`;
-                                      if (vocabAc.length > 0) p += `VOCABULARIO SUGERIDO: ${vocabAc.join(", ")}\n`;
-                                      if (estructurasAc.length > 0) p += `ESTRUCTURAS: ${estructurasAc.join(", ")}\n`;
-                                      p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
-                                      p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: evaluación y corrección si es necesario>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
-                                      return p;
-                                    };
+                                      // Prompt para UNA sola oración
+                                      const generarPromptSentenciaAc = (i) => {
+                                        const oVal = getOrAc(i);
+                                        let p = `Evalúa esta oración de un estudiante de ${idiomaAc} (oración ${i + 1} de ${cantidadAc}).\n\n`;
+                                        if (temaAc) p += `TEMA: ${temaAc}\n`;
+                                        p += `INSTRUCCIÓN: ${aciertoActual?.pregunta || "Escribe oraciones propias en " + idiomaAc}\n`;
+                                        if (vocabAc.length > 0)
+                                          p += `VOCABULARIO SUGERIDO: ${vocabAc.join(", ")}\n`;
+                                        if (estructurasAc.length > 0)
+                                          p += `ESTRUCTURAS: ${estructurasAc.join(", ")}\n`;
+                                        p += `\nORACIÓN DEL ESTUDIANTE:\n"${oVal.trim() || "(sin respuesta)"}"\n\n`;
+                                        p += `Evalúa gramática, vocabulario y coherencia. Feedback SIEMPRE en ESPAÑOL.\nResponde SOLO con JSON:\n{\n  "puntos_obtenidos": <0 o 1>,\n  "puntos_totales": 1,\n  "porcentaje": <0 o 100>,\n  "correcto": <true/false>,\n  "feedback": "<en ESPAÑOL: evaluación y corrección si es necesario>",\n  "pistas": "<2-3 consejos breves en ESPAÑOL sobre cómo construir bien este tipo de oración>"\n}`;
+                                        return p;
+                                      };
 
-                                    return (
-                                      <>
-                                        {/* Barra de progreso */}
-                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
-                                          <span style={{ color: "#4ade80", fontWeight: "700", fontSize: "0.95rem" }}>
-                                            Oración {idx + 1} de {cantidadAc}
-                                          </span>
-                                          <div style={{ display: "flex", gap: "6px" }}>
-                                            {Array.from({ length: cantidadAc }).map((_, i) => (
-                                              <div key={i} style={{
-                                                width: "10px", height: "10px", borderRadius: "50%",
-                                                background: jsonCalificacionOracionesPropAcierto[i]
-                                                  ? (jsonCalificacionOracionesPropAcierto[i].correcto ? "#22c55e" : "#ef4444")
-                                                  : (oracionesPropAcierto[i] ?? "").trim()
-                                                    ? "rgba(34,197,94,0.4)"
-                                                    : i === idx ? "rgba(34,197,94,0.5)" : "rgba(100,116,139,0.3)",
-                                                border: i === idx ? "2px solid #4ade80" : "none",
-                                                cursor: i <= idx ? "pointer" : "default",
-                                                transition: "all 0.2s",
-                                              }} onClick={() => i <= idx && setIndiceOracionAcierto(i)} />
-                                            ))}
-                                          </div>
-                                        </div>
-
-                                        {/* Card oración actual */}
-                                        <div style={{ background: "rgba(15,23,42,0.7)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "12px", padding: "1rem", marginBottom: "0.75rem" }}>
-                                          <input
-                                            type="text"
-                                            value={oracionActualValorAc}
-                                            onChange={(e) => updateOrAc(idx, e.target.value)}
-                                            onKeyDown={(e) => { if (e.key === "Enter" && oracionActualValorAc.trim() && !esUltima) setIndiceOracionAcierto(idx + 1); }}
-                                            placeholder={`Oración ${idx + 1} en ${idiomaAc}...`}
-                                            autoFocus
-                                            style={{ width: "100%", padding: "0.65rem 0.85rem", borderRadius: "8px", border: oracionActualValorAc.trim() ? "1px solid rgba(34,197,94,0.5)" : "1px solid rgba(34,197,94,0.25)", background: "#1a1625", color: "#e2e8f0", fontSize: "0.95rem", boxSizing: "border-box" }}
-                                          />
-                                        </div>
-
-                                        {/* ── Calificación individual ── */}
-                                        <div style={{ background: "rgba(15,23,42,0.5)", border: "1px solid rgba(34,197,94,0.15)", borderRadius: "10px", padding: "0.75rem 1rem", marginBottom: "0.85rem" }}>
-                                          <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
-                                            <button
-                                              onClick={() => {
-                                                navigator.clipboard?.writeText(generarPromptSentenciaAc(idx));
-                                                setPromptCopiadoOracionesPropAcierto(idx);
-                                                setTimeout(() => setPromptCopiadoOracionesPropAcierto(-1), 2000);
-                                              }}
-                                              style={{ padding: "6px 12px", background: copiadoAc ? "rgba(34,197,94,0.25)" : "rgba(59,130,246,0.18)", border: `1px solid ${copiadoAc ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`, borderRadius: "7px", color: copiadoAc ? "#86efac" : "#93c5fd", cursor: "pointer", fontSize: "0.83rem", fontWeight: "600" }}
-                                            >
-                                              {copiadoAc ? "✓ Copiado" : "📋 Copiar prompt"}
-                                            </button>
-                                          </div>
-                                          <textarea
-                                            value={textoJsonIdxAc}
-                                            onChange={(e) => {
-                                              updateTextoJsonAc(idx, e.target.value);
-                                              try {
-                                                const m = e.target.value.match(/\{[\s\S]*\}/);
-                                                if (m) updateJsonCalifAc(idx, JSON.parse(m[0]));
-                                              } catch {}
+                                      return (
+                                        <>
+                                          {/* Barra de progreso */}
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "space-between",
+                                              marginBottom: "1rem",
                                             }}
-                                            placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
-                                            style={{ width: "100%", minHeight: "56px", padding: "0.5rem 0.65rem", borderRadius: "7px", border: "1px solid #374151", background: "#0f172a", color: "#94a3b8", fontSize: "0.8rem", resize: "vertical", marginBottom: "0.4rem", boxSizing: "border-box" }}
-                                          />
-                                          {/* Resultado de esta oración */}
-                                          {jsonCalifIdxAc && (
-                                            <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.85rem", background: jsonCalifIdxAc.correcto ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", border: `1px solid ${jsonCalifIdxAc.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`, borderRadius: "8px" }}>
-                                              <strong style={{ color: jsonCalifIdxAc.correcto ? "#86efac" : "#fca5a5", fontSize: "0.88rem" }}>
-                                                {jsonCalifIdxAc.correcto ? "✅ Correcta" : "❌ Incorrecta"}
-                                              </strong>
-                                              {jsonCalifIdxAc.feedback && (
-                                                <p style={{ color: "#e2e8f0", margin: "0.35rem 0 0", fontSize: "0.86rem", lineHeight: "1.5", whiteSpace: "pre-wrap" }}>
-                                                  {jsonCalifIdxAc.feedback}
-                                                </p>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* Navegación */}
-                                        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                                          {idx > 0 && (
-                                            <button className="btn-nav btn-nav-anterior" onClick={() => setIndiceOracionAcierto(idx - 1)}>
-                                              ← Anterior
-                                            </button>
-                                          )}
-                                          {!esUltima ? (
-                                            <button
-                                              className="btn-nav btn-nav-siguiente"
-                                              disabled={!oracionActualValorAc.trim()}
-                                              onClick={() => setIndiceOracionAcierto(idx + 1)}
-                                            >
-                                              Siguiente →
-                                            </button>
-                                          ) : (
-                                            <button
-                                              className="btn-nav btn-nav-siguiente"
-                                              disabled={!oracionActualValorAc.trim()}
-                                              onClick={() => {
-                                                const primerResult = jsonCalificacionOracionesPropAcierto.find(x => x);
-                                                setRespuestaAciertoSeleccionada(respuestaJuntaAc);
-                                                if (primerResult) {
-                                                  setTimeout(() =>
-                                                    primerResult.correcto
-                                                      ? verificarRespuestaAcierto(respuestaJuntaAc)
-                                                      : verificarRespuestaAcierto("__INCORRECTO__"),
-                                                    100,
-                                                  );
-                                                } else {
-                                                  setAciertoYaRespondido(true);
-                                                }
+                                          >
+                                            <span
+                                              style={{
+                                                color: "#4ade80",
+                                                fontWeight: "700",
+                                                fontSize: "0.95rem",
                                               }}
                                             >
-                                              🎯 Terminar
-                                            </button>
-                                          )}
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
+                                              Oración {idx + 1} de {cantidadAc}
+                                            </span>
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                gap: "6px",
+                                              }}
+                                            >
+                                              {Array.from({
+                                                length: cantidadAc,
+                                              }).map((_, i) => (
+                                                <div
+                                                  key={i}
+                                                  style={{
+                                                    width: "10px",
+                                                    height: "10px",
+                                                    borderRadius: "50%",
+                                                    background:
+                                                      jsonCalificacionOracionesPropAcierto[
+                                                        i
+                                                      ]
+                                                        ? jsonCalificacionOracionesPropAcierto[
+                                                            i
+                                                          ].correcto
+                                                          ? "#22c55e"
+                                                          : "#ef4444"
+                                                        : (
+                                                              oracionesPropAcierto[
+                                                                i
+                                                              ] ?? ""
+                                                            ).trim()
+                                                          ? "rgba(34,197,94,0.4)"
+                                                          : i === idx
+                                                            ? "rgba(34,197,94,0.5)"
+                                                            : "rgba(100,116,139,0.3)",
+                                                    border:
+                                                      i === idx
+                                                        ? "2px solid #4ade80"
+                                                        : "none",
+                                                    cursor:
+                                                      i <= idx
+                                                        ? "pointer"
+                                                        : "default",
+                                                    transition: "all 0.2s",
+                                                  }}
+                                                  onClick={() =>
+                                                    i <= idx &&
+                                                    setIndiceOracionAcierto(i)
+                                                  }
+                                                />
+                                              ))}
+                                            </div>
+                                          </div>
+
+                                          {/* Card oración actual */}
+                                          <div
+                                            style={{
+                                              background: "rgba(15,23,42,0.7)",
+                                              border:
+                                                "1px solid rgba(34,197,94,0.25)",
+                                              borderRadius: "12px",
+                                              padding: "1rem",
+                                              marginBottom: "0.75rem",
+                                            }}
+                                          >
+                                            <input
+                                              type="text"
+                                              value={oracionActualValorAc}
+                                              onChange={(e) =>
+                                                updateOrAc(idx, e.target.value)
+                                              }
+                                              onKeyDown={(e) => {
+                                                if (
+                                                  e.key === "Enter" &&
+                                                  oracionActualValorAc.trim() &&
+                                                  !esUltima
+                                                )
+                                                  setIndiceOracionAcierto(
+                                                    idx + 1,
+                                                  );
+                                              }}
+                                              placeholder={`Oración ${idx + 1} en ${idiomaAc}...`}
+                                              autoFocus
+                                              style={{
+                                                width: "100%",
+                                                padding: "0.65rem 0.85rem",
+                                                borderRadius: "8px",
+                                                border:
+                                                  oracionActualValorAc.trim()
+                                                    ? "1px solid rgba(34,197,94,0.5)"
+                                                    : "1px solid rgba(34,197,94,0.25)",
+                                                background: "#1a1625",
+                                                color: "#e2e8f0",
+                                                fontSize: "0.95rem",
+                                                boxSizing: "border-box",
+                                              }}
+                                            />
+                                          </div>
+
+                                          {/* ── Calificación individual ── */}
+                                          <div
+                                            style={{
+                                              background: "rgba(15,23,42,0.5)",
+                                              border:
+                                                "1px solid rgba(34,197,94,0.15)",
+                                              borderRadius: "10px",
+                                              padding: "0.75rem 1rem",
+                                              marginBottom: "0.85rem",
+                                            }}
+                                          >
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                gap: "0.5rem",
+                                                marginBottom: "0.5rem",
+                                                flexWrap: "wrap",
+                                              }}
+                                            >
+                                              <button
+                                                onClick={() => {
+                                                  navigator.clipboard?.writeText(
+                                                    generarPromptSentenciaAc(
+                                                      idx,
+                                                    ),
+                                                  );
+                                                  setPromptCopiadoOracionesPropAcierto(
+                                                    idx,
+                                                  );
+                                                  setTimeout(
+                                                    () =>
+                                                      setPromptCopiadoOracionesPropAcierto(
+                                                        -1,
+                                                      ),
+                                                    2000,
+                                                  );
+                                                }}
+                                                style={{
+                                                  padding: "6px 12px",
+                                                  background: copiadoAc
+                                                    ? "rgba(34,197,94,0.25)"
+                                                    : "rgba(59,130,246,0.18)",
+                                                  border: `1px solid ${copiadoAc ? "rgba(34,197,94,0.5)" : "rgba(59,130,246,0.4)"}`,
+                                                  borderRadius: "7px",
+                                                  color: copiadoAc
+                                                    ? "#86efac"
+                                                    : "#93c5fd",
+                                                  cursor: "pointer",
+                                                  fontSize: "0.83rem",
+                                                  fontWeight: "600",
+                                                }}
+                                              >
+                                                {copiadoAc
+                                                  ? "✓ Copiado"
+                                                  : "📋 Copiar prompt"}
+                                              </button>
+                                            </div>
+                                            <textarea
+                                              value={textoJsonIdxAc}
+                                              onChange={(e) => {
+                                                updateTextoJsonAc(
+                                                  idx,
+                                                  e.target.value,
+                                                );
+                                                try {
+                                                  const m =
+                                                    e.target.value.match(
+                                                      /\{[\s\S]*\}/,
+                                                    );
+                                                  if (m)
+                                                    updateJsonCalifAc(
+                                                      idx,
+                                                      JSON.parse(m[0]),
+                                                    );
+                                                } catch {}
+                                              }}
+                                              placeholder={`Pega el JSON de ChatGPT para la oración ${idx + 1}...`}
+                                              style={{
+                                                width: "100%",
+                                                minHeight: "56px",
+                                                padding: "0.5rem 0.65rem",
+                                                borderRadius: "7px",
+                                                border: "1px solid #374151",
+                                                background: "#0f172a",
+                                                color: "#94a3b8",
+                                                fontSize: "0.8rem",
+                                                resize: "vertical",
+                                                marginBottom: "0.4rem",
+                                                boxSizing: "border-box",
+                                              }}
+                                            />
+                                            {/* Resultado de esta oración */}
+                                            {jsonCalifIdxAc && (
+                                              <div
+                                                style={{
+                                                  marginTop: "0.5rem",
+                                                  padding: "0.6rem 0.85rem",
+                                                  background:
+                                                    jsonCalifIdxAc.correcto
+                                                      ? "rgba(34,197,94,0.12)"
+                                                      : "rgba(239,68,68,0.12)",
+                                                  border: `1px solid ${jsonCalifIdxAc.correcto ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+                                                  borderRadius: "8px",
+                                                }}
+                                              >
+                                                <strong
+                                                  style={{
+                                                    color:
+                                                      jsonCalifIdxAc.correcto
+                                                        ? "#86efac"
+                                                        : "#fca5a5",
+                                                    fontSize: "0.88rem",
+                                                  }}
+                                                >
+                                                  {jsonCalifIdxAc.correcto
+                                                    ? "✅ Correcta"
+                                                    : "❌ Incorrecta"}
+                                                </strong>
+                                                {jsonCalifIdxAc.feedback && (
+                                                  <p
+                                                    style={{
+                                                      color: "#e2e8f0",
+                                                      margin: "0.35rem 0 0",
+                                                      fontSize: "0.86rem",
+                                                      lineHeight: "1.5",
+                                                      whiteSpace: "pre-wrap",
+                                                    }}
+                                                  >
+                                                    {jsonCalifIdxAc.feedback}
+                                                  </p>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          {/* Navegación */}
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              gap: "0.5rem",
+                                              alignItems: "center",
+                                              flexWrap: "wrap",
+                                            }}
+                                          >
+                                            {idx > 0 && (
+                                              <button
+                                                className="btn-nav btn-nav-anterior"
+                                                onClick={() =>
+                                                  setIndiceOracionAcierto(
+                                                    idx - 1,
+                                                  )
+                                                }
+                                              >
+                                                ← Anterior
+                                              </button>
+                                            )}
+                                            {!esUltima ? (
+                                              <button
+                                                className="btn-nav btn-nav-siguiente"
+                                                disabled={
+                                                  !oracionActualValorAc.trim()
+                                                }
+                                                onClick={() =>
+                                                  setIndiceOracionAcierto(
+                                                    idx + 1,
+                                                  )
+                                                }
+                                              >
+                                                Siguiente →
+                                              </button>
+                                            ) : (
+                                              <button
+                                                className="btn-nav btn-nav-siguiente"
+                                                disabled={
+                                                  !oracionActualValorAc.trim()
+                                                }
+                                                onClick={() => {
+                                                  const primerResult =
+                                                    jsonCalificacionOracionesPropAcierto.find(
+                                                      (x) => x,
+                                                    );
+                                                  setRespuestaAciertoSeleccionada(
+                                                    respuestaJuntaAc,
+                                                  );
+                                                  if (primerResult) {
+                                                    setTimeout(
+                                                      () =>
+                                                        primerResult.correcto
+                                                          ? verificarRespuestaAcierto(
+                                                              respuestaJuntaAc,
+                                                            )
+                                                          : verificarRespuestaAcierto(
+                                                              "__INCORRECTO__",
+                                                            ),
+                                                      100,
+                                                    );
+                                                  } else {
+                                                    setAciertoYaRespondido(
+                                                      true,
+                                                    );
+                                                  }
+                                                }}
+                                              >
+                                                🎯 Terminar
+                                              </button>
+                                            )}
+                                          </div>
+                                        </>
+                                      );
+                                    })()}
 
                                   {aciertoYaRespondido && (
                                     <div
                                       style={{
                                         padding: "1rem",
-                                        background:
-                                          "rgba(34, 197, 94, 0.1)",
+                                        background: "rgba(34, 197, 94, 0.1)",
                                         borderRadius: "8px",
                                         border:
                                           "1px solid rgba(34, 197, 94, 0.3)",
@@ -51643,6 +52671,11 @@ Devuelve SOLO este JSON:
                             if (aciertoActual?.tipo === "oraciones_propias")
                               return null;
 
+                            // Excluir constructor_oraciones PADRE
+                            // constructor_oracion_item (sub-ítems) SÍ usan este bloque
+                            if (aciertoActual?.tipo === "constructor_oraciones")
+                              return null;
+
                             return (
                               <div className="error-respuesta-textual">
                                 <h4 className="respuesta-textual-label">
@@ -51652,17 +52685,174 @@ Devuelve SOLO este JSON:
                                 </h4>
 
                                 {/* Feedback + pistas para oracion_propia_item */}
-                                {aciertoActual?.tipo === "oracion_propia_item" && (
+                                {aciertoActual?.tipo ===
+                                  "oracion_propia_item" && (
                                   <>
                                     {aciertoActual?.feedback && (
-                                      <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
-                                        <span style={{ color: "#86efac", fontWeight: "600", fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>✅ Feedback anterior:</span>
-                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.feedback}</p>
+                                      <div
+                                        style={{
+                                          background: "rgba(34,197,94,0.07)",
+                                          border:
+                                            "1px solid rgba(34,197,94,0.25)",
+                                          borderRadius: "8px",
+                                          padding: "0.7rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#86efac",
+                                            fontWeight: "600",
+                                            fontSize: "0.82rem",
+                                            display: "block",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          ✅ Feedback anterior:
+                                        </span>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            margin: 0,
+                                            fontSize: "0.88rem",
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {aciertoActual.feedback}
+                                        </p>
                                       </div>
                                     )}
                                     {aciertoActual?.pistas_ia && (
+                                      <div
+                                        style={{
+                                          background: "rgba(251,191,36,0.08)",
+                                          border:
+                                            "1px solid rgba(251,191,36,0.3)",
+                                          borderRadius: "8px",
+                                          padding: "0.7rem 1rem",
+                                          marginBottom: "0.75rem",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#fcd34d",
+                                            fontWeight: "700",
+                                            fontSize: "0.82rem",
+                                            display: "block",
+                                            marginBottom: "0.3rem",
+                                          }}
+                                        >
+                                          💡 Pistas para hacerlo bien:
+                                        </span>
+                                        <p
+                                          style={{
+                                            color: "#e2e8f0",
+                                            margin: 0,
+                                            fontSize: "0.88rem",
+                                            whiteSpace: "pre-wrap",
+                                          }}
+                                        >
+                                          {aciertoActual.pistas_ia}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </>
+                                )}
+
+                                {/* 🧩 Palabras + pista + feedback para constructor_oracion_item */}
+                                {aciertoActual?.tipo ===
+                                  "constructor_oracion_item" && (
+                                  <>
+                                    {/* Cabecera: tema + idioma + dificultad */}
+                                    <div
+                                      style={{
+                                        background: "rgba(99,102,241,0.1)",
+                                        border: "1px solid rgba(99,102,241,0.35)",
+                                        borderRadius: "8px",
+                                        padding: "0.75rem 1rem",
+                                        marginBottom: "0.75rem",
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: "0.4rem",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      {aciertoActual?.titulo_tema && (
+                                        <span style={{ color: "#a5b4fc", fontWeight: 700, fontSize: "0.88rem" }}>
+                                          📚 {aciertoActual.titulo_tema}
+                                        </span>
+                                      )}
+                                      {aciertoActual?.idioma && (
+                                        <span style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "2px 8px", borderRadius: "10px", color: "#c7d2fe", fontSize: "0.75rem" }}>
+                                          🌍 {aciertoActual.idioma.charAt(0).toUpperCase() + aciertoActual.idioma.slice(1)}
+                                        </span>
+                                      )}
+                                      {aciertoActual?.nivel_dificultad && (
+                                        <span style={{ background: "rgba(251,191,36,0.15)", border: "1px solid rgba(251,191,36,0.35)", padding: "2px 8px", borderRadius: "10px", color: "#fcd34d", fontSize: "0.75rem" }}>
+                                          🎯 {aciertoActual.nivel_dificultad}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Pregunta / enunciado */}
+                                    {aciertoActual?.pregunta && (
+                                      <div style={{ color: "#94a3b8", fontSize: "0.82rem", marginBottom: "0.5rem", fontStyle: "italic" }}>
+                                        {aciertoActual.pregunta}
+                                      </div>
+                                    )}
+                                    {/* Nivel instruccion */}
+                                    {aciertoActual?.instruccion_nivel && (
+                                      <div style={{ color: "#64748b", fontSize: "0.78rem", marginBottom: "0.6rem" }}>
+                                        📋 {aciertoActual.instruccion_nivel}
+                                      </div>
+                                    )}
+                                    {/* Contexto de la oracion */}
+                                    {aciertoActual?.contexto_oracion && (
+                                      <div
+                                        style={{
+                                          background: "rgba(16,185,129,0.08)",
+                                          border: "1px solid rgba(16,185,129,0.25)",
+                                          borderRadius: "8px",
+                                          padding: "0.6rem 1rem",
+                                          marginBottom: "0.75rem",
+                                          fontSize: "0.85rem",
+                                          color: "#6ee7b7",
+                                          whiteSpace: "pre-wrap",
+                                          lineHeight: "1.5",
+                                        }}
+                                      >
+                                        💬 {aciertoActual.contexto_oracion}
+                                      </div>
+                                    )}
+                                    {/* Palabras que debe usar */}
+                                    {aciertoActual?.palabras_clave?.length > 0 && (
+                                      <div style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.35)", borderRadius: "8px", padding: "0.75rem 1rem", marginBottom: "0.75rem" }}>
+                                        <p style={{ color: "#a5b4fc", fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.45rem" }}>🧩 Palabras a usar:</p>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                                          {aciertoActual.palabras_clave.map((pal, pi) => (
+                                            <span key={pi} style={{ background: "rgba(99,102,241,0.25)", border: "1px solid rgba(99,102,241,0.5)", padding: "3px 10px", borderRadius: "12px", color: "#c7d2fe", fontSize: "0.85rem", fontWeight: 600 }}>
+                                              {pal}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* Pista */}
+                                    {aciertoActual?.pista && (
+                                      <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.6rem 1rem", marginBottom: "0.75rem", fontSize: "0.85rem", color: "#fde68a" }}>
+                                        💡 <strong>Pista:</strong> {aciertoActual.pista}
+                                      </div>
+                                    )}
+                                    {/* Feedback anterior */}
+                                    {aciertoActual?.feedback && (
+                                      <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.25)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
+                                        <span style={{ color: "#86efac", fontWeight: 600, fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>✅ Feedback anterior:</span>
+                                        <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.feedback}</p>
+                                      </div>
+                                    )}
+                                    {/* Pistas IA */}
+                                    {aciertoActual?.pistas_ia && (
                                       <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "8px", padding: "0.7rem 1rem", marginBottom: "0.75rem" }}>
-                                        <span style={{ color: "#fcd34d", fontWeight: "700", fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>💡 Pistas para hacerlo bien:</span>
+                                        <span style={{ color: "#fcd34d", fontWeight: 700, fontSize: "0.82rem", display: "block", marginBottom: "0.3rem" }}>💡 Consejos:</span>
                                         <p style={{ color: "#e2e8f0", margin: 0, fontSize: "0.88rem", whiteSpace: "pre-wrap" }}>{aciertoActual.pistas_ia}</p>
                                       </div>
                                     )}
@@ -51960,9 +53150,38 @@ Devuelve SOLO este JSON:
                                                 </p>
                                               )}
                                               {jsonCalificacionIA.pistas && (
-                                                <div style={{ marginTop: "10px", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "7px", padding: "8px 12px" }}>
-                                                  <span style={{ color: "#fcd34d", fontSize: "12px", fontWeight: "600", display: "block", marginBottom: "4px" }}>💡 Pistas para mejorar:</span>
-                                                  <p style={{ color: "#e2e8f0", margin: 0, fontSize: "13px", whiteSpace: "pre-wrap" }}>{jsonCalificacionIA.pistas}</p>
+                                                <div
+                                                  style={{
+                                                    marginTop: "10px",
+                                                    background:
+                                                      "rgba(251,191,36,0.1)",
+                                                    border:
+                                                      "1px solid rgba(251,191,36,0.3)",
+                                                    borderRadius: "7px",
+                                                    padding: "8px 12px",
+                                                  }}
+                                                >
+                                                  <span
+                                                    style={{
+                                                      color: "#fcd34d",
+                                                      fontSize: "12px",
+                                                      fontWeight: "600",
+                                                      display: "block",
+                                                      marginBottom: "4px",
+                                                    }}
+                                                  >
+                                                    💡 Pistas para mejorar:
+                                                  </span>
+                                                  <p
+                                                    style={{
+                                                      color: "#e2e8f0",
+                                                      margin: 0,
+                                                      fontSize: "13px",
+                                                      whiteSpace: "pre-wrap",
+                                                    }}
+                                                  >
+                                                    {jsonCalificacionIA.pistas}
+                                                  </p>
                                                 </div>
                                               )}
                                               <button
@@ -52202,7 +53421,10 @@ Devuelve SOLO este JSON:
                                 jsonCalificacionPictureAcierto ||
                                 jsonCalificacionEmailAcierto ||
                                 jsonCalificacionWritingAcierto ||
-                                (jsonCalificacionOracionesPropAcierto?.find?.((x) => x) ?? null);
+                                (jsonCalificacionOracionesPropAcierto?.find?.(
+                                  (x) => x,
+                                ) ??
+                                  null);
                               if (calificacionIAActivaAciertoUI) {
                                 esRespuestaCorrecta =
                                   calificacionIAActivaAciertoUI.correcto;
@@ -53524,63 +54746,71 @@ Devuelve SOLO este JSON:
                             </p>
                             {(() => {
                               // Calcular preview de días para cada botón
-                              const fc = flashcardsSesion[indiceFlashcardActual];
+                              const fc =
+                                flashcardsSesion[indiceFlashcardActual];
                               const rep = fc?.repeticiones || 0;
                               const iv = fc?.intervalo || 1;
                               const diasOlvide = 1;
-                              const diasMeCosto = rep === 0 ? 2 : Math.min(365, Math.round(iv * 2.3));
-                              const diasFacil   = rep === 0 ? 3 : Math.min(365, Math.round(iv * 2.6));
-                              const fmt = (d) => d === 1 ? "mañana" : `en ${d} días`;
+                              const diasMeCosto =
+                                rep === 0
+                                  ? 2
+                                  : Math.min(365, Math.round(iv * 2.3));
+                              const diasFacil =
+                                rep === 0
+                                  ? 3
+                                  : Math.min(365, Math.round(iv * 2.6));
+                              const fmt = (d) =>
+                                d === 1 ? "mañana" : `en ${d} días`;
                               return (
-                            <div className="evaluation-buttons">
-                              <button
-                                className="btn-evaluation btn-forgot"
-                                onClick={() => evaluarFlashcard("dificil")}
-                                title="Reiniciar ciclo - Verás esta tarjeta pronto"
-                              >
-                                <div className="btn-eval-icon">😰</div>
-                                <div className="btn-eval-text">
-                                  <span className="btn-eval-title">
-                                    Lo Olvidé
-                                  </span>
-                                  <span className="btn-eval-subtitle">
-                                    Revisar {fmt(diasOlvide)}
-                                  </span>
-                                </div>
-                              </button>
+                                <div className="evaluation-buttons">
+                                  <button
+                                    className="btn-evaluation btn-forgot"
+                                    onClick={() => evaluarFlashcard("dificil")}
+                                    title="Reiniciar ciclo - Verás esta tarjeta pronto"
+                                  >
+                                    <div className="btn-eval-icon">😰</div>
+                                    <div className="btn-eval-text">
+                                      <span className="btn-eval-title">
+                                        Lo Olvidé
+                                      </span>
+                                      <span className="btn-eval-subtitle">
+                                        Revisar {fmt(diasOlvide)}
+                                      </span>
+                                    </div>
+                                  </button>
 
-                              <button
-                                className="btn-evaluation btn-hard"
-                                onClick={() => evaluarFlashcard("medio")}
-                                title="Intervalo medio - Revisar en unos días"
-                              >
-                                <div className="btn-eval-icon">🤔</div>
-                                <div className="btn-eval-text">
-                                  <span className="btn-eval-title">
-                                    Me Costó
-                                  </span>
-                                  <span className="btn-eval-subtitle">
-                                    Revisar {fmt(diasMeCosto)}
-                                  </span>
-                                </div>
-                              </button>
+                                  <button
+                                    className="btn-evaluation btn-hard"
+                                    onClick={() => evaluarFlashcard("medio")}
+                                    title="Intervalo medio - Revisar en unos días"
+                                  >
+                                    <div className="btn-eval-icon">🤔</div>
+                                    <div className="btn-eval-text">
+                                      <span className="btn-eval-title">
+                                        Me Costó
+                                      </span>
+                                      <span className="btn-eval-subtitle">
+                                        Revisar {fmt(diasMeCosto)}
+                                      </span>
+                                    </div>
+                                  </button>
 
-                              <button
-                                className="btn-evaluation btn-easy"
-                                onClick={() => evaluarFlashcard("facil")}
-                                title="Intervalo largo - Revisar en más tiempo"
-                              >
-                                <div className="btn-eval-icon">😎</div>
-                                <div className="btn-eval-text">
-                                  <span className="btn-eval-title">
-                                    Lo Recordé Fácil
-                                  </span>
-                                  <span className="btn-eval-subtitle">
-                                    Revisar {fmt(diasFacil)}
-                                  </span>
+                                  <button
+                                    className="btn-evaluation btn-easy"
+                                    onClick={() => evaluarFlashcard("facil")}
+                                    title="Intervalo largo - Revisar en más tiempo"
+                                  >
+                                    <div className="btn-eval-icon">😎</div>
+                                    <div className="btn-eval-text">
+                                      <span className="btn-eval-title">
+                                        Lo Recordé Fácil
+                                      </span>
+                                      <span className="btn-eval-subtitle">
+                                        Revisar {fmt(diasFacil)}
+                                      </span>
+                                    </div>
+                                  </button>
                                 </div>
-                              </button>
-                            </div>
                               );
                             })()}
                           </div>
@@ -58521,8 +59751,12 @@ Devuelve SOLO este JSON:
                           {(() => {
                             // Helper: evalúa y avanza
                             const marcarNota = async (dificultad) => {
-                              const nota = notasRepasoSesion[indiceNotaRepasoActual];
-                              const notaActualizada = calcularProximaRevision(nota, dificultad);
+                              const nota =
+                                notasRepasoSesion[indiceNotaRepasoActual];
+                              const notaActualizada = calcularProximaRevision(
+                                nota,
+                                dificultad,
+                              );
                               // Asegurar campos de marca de revisión
                               const ahora = new Date().toISOString();
                               notaActualizada.ultimoRepaso = ahora;
@@ -58535,7 +59769,10 @@ Devuelve SOLO este JSON:
                                   notasTomadas: (prev.notasTomadas || 0) + 1,
                                 }));
                               }
-                              if (indiceNotaRepasoActual < notasRepasoSesion.length - 1) {
+                              if (
+                                indiceNotaRepasoActual <
+                                notasRepasoSesion.length - 1
+                              ) {
                                 setIndiceNotaRepasoActual((prev) => prev + 1);
                               } else {
                                 avanzarFase();
@@ -58544,44 +59781,70 @@ Devuelve SOLO este JSON:
                             };
 
                             // Preview de días para cada botón
-                            const nota = notasRepasoSesion[indiceNotaRepasoActual];
+                            const nota =
+                              notasRepasoSesion[indiceNotaRepasoActual];
                             const rep = nota?.repeticiones || 0;
-                            const iv  = nota?.intervalo || 1;
-                            const diasOlvide   = 1;
-                            const diasMeCosto  = rep === 0 ? 2 : Math.min(365, Math.round(iv * 2.3));
-                            const diasFacil    = rep === 0 ? 3 : Math.min(365, Math.round(iv * 2.6));
-                            const fmt = (d) => d === 1 ? "mañana" : `en ${d} días`;
+                            const iv = nota?.intervalo || 1;
+                            const diasOlvide = 1;
+                            const diasMeCosto =
+                              rep === 0
+                                ? 2
+                                : Math.min(365, Math.round(iv * 2.3));
+                            const diasFacil =
+                              rep === 0
+                                ? 3
+                                : Math.min(365, Math.round(iv * 2.6));
+                            const fmt = (d) =>
+                              d === 1 ? "mañana" : `en ${d} días`;
 
                             return (
-                          <div className="calificacion-botones">
-                            <button
-                              className="btn-calificacion btn-again"
-                              onClick={() => marcarNota("dificil")}
-                            >
-                              😰 Lo Olvidé
-                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
-                                Revisar {fmt(diasOlvide)}
-                              </span>
-                            </button>
-                            <button
-                              className="btn-calificacion btn-hard"
-                              onClick={() => marcarNota("medio")}
-                            >
-                              🤔 Me Costó
-                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
-                                Revisar {fmt(diasMeCosto)}
-                              </span>
-                            </button>
-                            <button
-                              className="btn-calificacion btn-easy"
-                              onClick={() => marcarNota("facil")}
-                            >
-                              😎 Lo Recordé Fácil
-                              <span style={{ display: "block", fontSize: "0.75rem", opacity: 0.8 }}>
-                                Revisar {fmt(diasFacil)}
-                              </span>
-                            </button>
-                          </div>
+                              <div className="calificacion-botones">
+                                <button
+                                  className="btn-calificacion btn-again"
+                                  onClick={() => marcarNota("dificil")}
+                                >
+                                  😰 Lo Olvidé
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.75rem",
+                                      opacity: 0.8,
+                                    }}
+                                  >
+                                    Revisar {fmt(diasOlvide)}
+                                  </span>
+                                </button>
+                                <button
+                                  className="btn-calificacion btn-hard"
+                                  onClick={() => marcarNota("medio")}
+                                >
+                                  🤔 Me Costó
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.75rem",
+                                      opacity: 0.8,
+                                    }}
+                                  >
+                                    Revisar {fmt(diasMeCosto)}
+                                  </span>
+                                </button>
+                                <button
+                                  className="btn-calificacion btn-easy"
+                                  onClick={() => marcarNota("facil")}
+                                >
+                                  😎 Lo Recordé Fácil
+                                  <span
+                                    style={{
+                                      display: "block",
+                                      fontSize: "0.75rem",
+                                      opacity: 0.8,
+                                    }}
+                                  >
+                                    Revisar {fmt(diasFacil)}
+                                  </span>
+                                </button>
+                              </div>
                             );
                           })()}
                         </div>
@@ -61608,7 +62871,9 @@ Devuelve SOLO este JSON:
                                       0) +
                                     (preguntasPropiasConfig.writing_transformation_libre ||
                                       0) +
-                                    (preguntasPropiasConfig.sentence_builder_libre ||
+                                    (preguntasPropiasConfig.oraciones_propias ||
+                                      0) +
+                                    (preguntasPropiasConfig.constructor_oraciones ||
                                       0) +
                                     (preguntasPropiasConfig.picture_description_libre ||
                                       0) >
@@ -61631,7 +62896,9 @@ Devuelve SOLO este JSON:
                                           0) +
                                         (preguntasPropiasConfig.writing_transformation_libre ||
                                           0) +
-                                        (preguntasPropiasConfig.sentence_builder_libre ||
+                                        (preguntasPropiasConfig.oraciones_propias ||
+                                          0) +
+                                        (preguntasPropiasConfig.constructor_oraciones ||
                                           0) +
                                         (preguntasPropiasConfig.picture_description_libre ||
                                           0)}
@@ -61739,6 +63006,223 @@ Devuelve SOLO este JSON:
                                         </option>
                                       </select>
                                     </div>
+                                  </div>
+                                  {/* 🧩 Constructor de Oraciones con Palabras */}
+                                  <div
+                                    style={{
+                                      padding: "0.5rem",
+                                      background: "rgba(99, 102, 241, 0.1)",
+                                      borderRadius: "6px",
+                                      border:
+                                        preguntasPropiasConfig.constructor_oraciones >
+                                        0
+                                          ? "2px solid #6366f1"
+                                          : "1px solid rgba(99, 102, 241, 0.2)",
+                                    }}
+                                  >
+                                    <label
+                                      style={{
+                                        color: "#a5b4fc",
+                                        fontSize: "0.75rem",
+                                        display: "block",
+                                        marginBottom: "0.3rem",
+                                      }}
+                                    >
+                                      🧩 Constructor con Palabras
+                                    </label>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.3rem",
+                                        marginBottom: "0.3rem",
+                                      }}
+                                    >
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="20"
+                                        value={
+                                          preguntasPropiasConfig.constructor_oraciones ??
+                                          0
+                                        }
+                                        onChange={(e) =>
+                                          setPreguntasPropiasConfig({
+                                            ...preguntasPropiasConfig,
+                                            constructor_oraciones: Math.max(
+                                              0,
+                                              parseInt(e.target.value) || 0,
+                                            ),
+                                          })
+                                        }
+                                        style={{
+                                          width: "50px",
+                                          padding: "0.3rem",
+                                          borderRadius: "4px",
+                                          border: "1px solid #374151",
+                                          background: "#1f2937",
+                                          color: "#e2e8f0",
+                                          fontSize: "0.8rem",
+                                        }}
+                                      />
+                                      <select
+                                        value={
+                                          preguntasPropiasConfig.constructor_oraciones_lang ||
+                                          "ingles"
+                                        }
+                                        onChange={(e) =>
+                                          setPreguntasPropiasConfig({
+                                            ...preguntasPropiasConfig,
+                                            constructor_oraciones_lang:
+                                              e.target.value,
+                                          })
+                                        }
+                                        style={{
+                                          flex: 1,
+                                          padding: "0.3rem",
+                                          background: "#1f2937",
+                                          border: "1px solid #374151",
+                                          borderRadius: "4px",
+                                          color: "#e2e8f0",
+                                          fontSize: "0.7rem",
+                                        }}
+                                      >
+                                        <option value="ingles">
+                                          🇬🇧 Inglés
+                                        </option>
+                                        <option value="frances">
+                                          🇫🇷 Francés
+                                        </option>
+                                        <option value="aleman">
+                                          🇩🇪 Alemán
+                                        </option>
+                                        <option value="italiano">
+                                          🇮🇹 Italiano
+                                        </option>
+                                        <option value="portugues">
+                                          🇵🇹 Portugués
+                                        </option>
+                                      </select>
+                                    </div>
+                                    {preguntasPropiasConfig.constructor_oraciones >
+                                      0 && (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: "0.3rem",
+                                          alignItems: "center",
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#94a3b8",
+                                            fontSize: "0.68rem",
+                                          }}
+                                        >
+                                          Oracs:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min="2"
+                                          max="20"
+                                          value={
+                                            preguntasPropiasConfig.constructor_oraciones_cantidad ||
+                                            5
+                                          }
+                                          onChange={(e) =>
+                                            setPreguntasPropiasConfig({
+                                              ...preguntasPropiasConfig,
+                                              constructor_oraciones_cantidad:
+                                                Math.max(
+                                                  2,
+                                                  parseInt(e.target.value) || 5,
+                                                ),
+                                            })
+                                          }
+                                          style={{
+                                            width: "40px",
+                                            padding: "0.25rem",
+                                            borderRadius: "4px",
+                                            border: "1px solid #374151",
+                                            background: "#1f2937",
+                                            color: "#e2e8f0",
+                                            fontSize: "0.7rem",
+                                          }}
+                                        />
+                                        <select
+                                          value={
+                                            preguntasPropiasConfig.constructor_oraciones_dificultad ||
+                                            "intermedio"
+                                          }
+                                          onChange={(e) =>
+                                            setPreguntasPropiasConfig({
+                                              ...preguntasPropiasConfig,
+                                              constructor_oraciones_dificultad:
+                                                e.target.value,
+                                            })
+                                          }
+                                          style={{
+                                            flex: 1,
+                                            padding: "0.25rem",
+                                            background: "#1f2937",
+                                            border: "1px solid #374151",
+                                            borderRadius: "4px",
+                                            color: "#e2e8f0",
+                                            fontSize: "0.68rem",
+                                          }}
+                                        >
+                                          <option value="basico">
+                                            🟢 Básico
+                                          </option>
+                                          <option value="intermedio">
+                                            🟡 Medio
+                                          </option>
+                                          <option value="avanzado">
+                                            🔴 Avanzado
+                                          </option>
+                                        </select>
+                                      </div>
+                                    )}
+                                    {preguntasPropiasConfig.constructor_oraciones >
+                                      0 && (
+                                      <div
+                                        style={{
+                                          marginTop: "0.3rem",
+                                          padding: "0.3rem 0.5rem",
+                                          background: "rgba(99,102,241,0.1)",
+                                          borderRadius: "4px",
+                                          border: "1px solid rgba(99,102,241,0.25)",
+                                        }}
+                                      >
+                                        <label
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.4rem",
+                                            cursor: "pointer",
+                                            color: "#a5b4fc",
+                                            fontSize: "0.68rem",
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={
+                                              preguntasPropiasConfig.constructor_oraciones_contexto ||
+                                              false
+                                            }
+                                            onChange={(e) =>
+                                              setPreguntasPropiasConfig({
+                                                ...preguntasPropiasConfig,
+                                                constructor_oraciones_contexto:
+                                                  e.target.checked,
+                                              })
+                                            }
+                                            style={{ accentColor: "#6366f1" }}
+                                          />
+                                          💬 Texto de contexto por oración
+                                        </label>
+                                      </div>
+                                    )}
                                   </div>
                                   {/* Parafraseo Libre */}
                                   <div
@@ -62113,44 +63597,48 @@ Devuelve SOLO este JSON:
                                       </select>
                                     </div>
                                   </div>
-                                  {/* Constructor Oraciones Libre */}
+                                  {/* ✏️ Oraciones Propias */}
                                   <div
                                     style={{
                                       padding: "0.5rem",
-                                      background: "rgba(34, 197, 94, 0.1)",
+                                      background: "rgba(16, 185, 129, 0.1)",
                                       borderRadius: "6px",
                                       border:
-                                        preguntasPropiasConfig.sentence_builder_libre >
+                                        preguntasPropiasConfig.oraciones_propias >
                                         0
-                                          ? "2px solid #22c55e"
-                                          : "1px solid rgba(34, 197, 94, 0.2)",
+                                          ? "2px solid #10b981"
+                                          : "1px solid rgba(16, 185, 129, 0.2)",
                                     }}
                                   >
                                     <label
                                       style={{
-                                        color: "#86efac",
+                                        color: "#6ee7b7",
                                         fontSize: "0.75rem",
                                         display: "block",
                                         marginBottom: "0.3rem",
                                       }}
                                     >
-                                      🧩 Constructor Libre
+                                      ✏️ Oraciones Propias
                                     </label>
                                     <div
-                                      style={{ display: "flex", gap: "0.3rem" }}
+                                      style={{
+                                        display: "flex",
+                                        gap: "0.3rem",
+                                        marginBottom: "0.3rem",
+                                      }}
                                     >
                                       <input
                                         type="number"
                                         min="0"
-                                        max="10"
+                                        max="20"
                                         value={
-                                          preguntasPropiasConfig.sentence_builder_libre ||
+                                          preguntasPropiasConfig.oraciones_propias ??
                                           0
                                         }
                                         onChange={(e) =>
                                           setPreguntasPropiasConfig({
                                             ...preguntasPropiasConfig,
-                                            sentence_builder_libre: Math.max(
+                                            oraciones_propias: Math.max(
                                               0,
                                               parseInt(e.target.value) || 0,
                                             ),
@@ -62168,13 +63656,13 @@ Devuelve SOLO este JSON:
                                       />
                                       <select
                                         value={
-                                          preguntasPropiasConfig.sentence_builder_libre_lang ||
+                                          preguntasPropiasConfig.oraciones_propias_lang ||
                                           "ingles"
                                         }
                                         onChange={(e) =>
                                           setPreguntasPropiasConfig({
                                             ...preguntasPropiasConfig,
-                                            sentence_builder_libre_lang:
+                                            oraciones_propias_lang:
                                               e.target.value,
                                           })
                                         }
@@ -62205,6 +63693,86 @@ Devuelve SOLO este JSON:
                                         </option>
                                       </select>
                                     </div>
+                                    {preguntasPropiasConfig.oraciones_propias >
+                                      0 && (
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          gap: "0.3rem",
+                                          alignItems: "center",
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            color: "#94a3b8",
+                                            fontSize: "0.68rem",
+                                          }}
+                                        >
+                                          Oracs:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          min="2"
+                                          max="30"
+                                          value={
+                                            preguntasPropiasConfig.oraciones_propias_cantidad ||
+                                            5
+                                          }
+                                          onChange={(e) =>
+                                            setPreguntasPropiasConfig({
+                                              ...preguntasPropiasConfig,
+                                              oraciones_propias_cantidad:
+                                                Math.max(
+                                                  2,
+                                                  parseInt(e.target.value) || 5,
+                                                ),
+                                            })
+                                          }
+                                          style={{
+                                            width: "40px",
+                                            padding: "0.25rem",
+                                            borderRadius: "4px",
+                                            border: "1px solid #374151",
+                                            background: "#1f2937",
+                                            color: "#e2e8f0",
+                                            fontSize: "0.7rem",
+                                          }}
+                                        />
+                                        <select
+                                          value={
+                                            preguntasPropiasConfig.oraciones_propias_dificultad ||
+                                            "intermedio"
+                                          }
+                                          onChange={(e) =>
+                                            setPreguntasPropiasConfig({
+                                              ...preguntasPropiasConfig,
+                                              oraciones_propias_dificultad:
+                                                e.target.value,
+                                            })
+                                          }
+                                          style={{
+                                            flex: 1,
+                                            padding: "0.25rem",
+                                            background: "#1f2937",
+                                            border: "1px solid #374151",
+                                            borderRadius: "4px",
+                                            color: "#e2e8f0",
+                                            fontSize: "0.68rem",
+                                          }}
+                                        >
+                                          <option value="basico">
+                                            🟢 Básico
+                                          </option>
+                                          <option value="intermedio">
+                                            🟡 Medio
+                                          </option>
+                                          <option value="avanzado">
+                                            🔴 Avanzado
+                                          </option>
+                                        </select>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </details>
@@ -63021,6 +64589,10 @@ Devuelve SOLO este JSON:
                                       0) +
                                     (preguntasPropiasConfig.picture_description_libre ||
                                       0) +
+                                    (preguntasPropiasConfig.oraciones_propias ||
+                                      0) +
+                                    (preguntasPropiasConfig.constructor_oraciones ||
+                                      0) +
                                     (preguntasPropiasConfig.codigo_mcq || 0) +
                                     (preguntasPropiasConfig.codigo_encontrar_error ||
                                       0) +
@@ -63073,6 +64645,8 @@ Devuelve SOLO este JSON:
                                 0) +
                               (preguntasPropiasConfig.picture_description_libre ||
                                 0) +
+                              (preguntasPropiasConfig.oraciones_propias || 0) +
+                              (preguntasPropiasConfig.constructor_oraciones || 0) +
                               (preguntasPropiasConfig.codigo_mcq || 0) +
                               (preguntasPropiasConfig.codigo_encontrar_error ||
                                 0) +
@@ -79034,6 +80608,7 @@ Devuelve SOLO este JSON:
                                 "picture_description",
                                 "picture_description_libre",
                                 "oraciones_propias",
+                                "constructor_oraciones",
                               ].includes(pregunta.tipo)) && (
                               <div className="ejercicio-idiomas">
                                 {/* Mostrar idioma (solo si es válido y no "undefined" literal) */}
@@ -83828,8 +85403,7 @@ Devuelve SOLO este JSON:
                                       )}
 
                                       {/* Instrucción de nivel */}
-                                      {pregunta.metadata
-                                        ?.instruccion_nivel && (
+                                      {pregunta.metadata?.instruccion_nivel && (
                                         <div
                                           style={{
                                             background:
@@ -83997,10 +85571,7 @@ Devuelve SOLO este JSON:
                                                 const nuevas = [
                                                   ...respuestasArray,
                                                 ];
-                                                while (
-                                                  nuevas.length <=
-                                                  oIdx
-                                                )
+                                                while (nuevas.length <= oIdx)
                                                   nuevas.push("");
                                                 nuevas[oIdx] = e.target.value;
                                                 actualizarRespuesta(
@@ -84012,10 +85583,9 @@ Devuelve SOLO este JSON:
                                                 flex: 1,
                                                 padding: "0.6rem 0.75rem",
                                                 background: "#1a1625",
-                                                border:
-                                                  respuestaItem
-                                                    ? "2px solid rgba(34, 197, 94, 0.6)"
-                                                    : "2px solid rgba(34, 197, 94, 0.25)",
+                                                border: respuestaItem
+                                                  ? "2px solid rgba(34, 197, 94, 0.6)"
+                                                  : "2px solid rgba(34, 197, 94, 0.25)",
                                                 borderRadius: "8px",
                                                 color: "#e2e8f0",
                                                 fontSize: "0.95rem",
@@ -84040,6 +85610,295 @@ Devuelve SOLO este JSON:
                                           </div>
                                         );
                                       })}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* 🧩 Renderizado especial para constructor_oraciones */}
+                                {pregunta.tipo === "constructor_oraciones" && (
+                                  <div style={{ marginBottom: "1rem" }}>
+                                    <div
+                                      style={{
+                                        background: "rgba(99, 102, 241, 0.1)",
+                                        border:
+                                          "2px solid rgba(99, 102, 241, 0.4)",
+                                        borderRadius: "12px",
+                                        padding: "1.25rem",
+                                        marginBottom: "1rem",
+                                      }}
+                                    >
+                                      <h4
+                                        style={{
+                                          color: "#a5b4fc",
+                                          fontSize: "1rem",
+                                          marginBottom: "1rem",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: "0.5rem",
+                                          flexWrap: "wrap",
+                                        }}
+                                      >
+                                        🧩 Constructor de Oraciones con Palabras
+                                        {pregunta.metadata?.idioma && (
+                                          <span
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "2px 8px",
+                                              background:
+                                                "rgba(99, 102, 241, 0.3)",
+                                              borderRadius: "10px",
+                                            }}
+                                          >
+                                            🌍{" "}
+                                            {pregunta.metadata.idioma
+                                              .charAt(0)
+                                              .toUpperCase() +
+                                              pregunta.metadata.idioma.slice(1)}
+                                          </span>
+                                        )}
+                                        {pregunta.metadata
+                                          ?.nivel_dificultad && (
+                                          <span
+                                            style={{
+                                              fontSize: "0.75rem",
+                                              padding: "2px 8px",
+                                              background:
+                                                "rgba(251, 191, 36, 0.2)",
+                                              border:
+                                                "1px solid rgba(251, 191, 36, 0.4)",
+                                              borderRadius: "10px",
+                                              color: "#fcd34d",
+                                            }}
+                                          >
+                                            🎯{" "}
+                                            {pregunta.metadata.nivel_dificultad}
+                                          </span>
+                                        )}
+                                      </h4>
+                                      {/* Tema */}
+                                      {pregunta.metadata?.titulo_tema && (
+                                        <div
+                                          style={{
+                                            background:
+                                              "rgba(99, 102, 241, 0.15)",
+                                            border:
+                                              "1px solid rgba(99, 102, 241, 0.3)",
+                                            borderRadius: "8px",
+                                            padding: "0.75rem",
+                                            marginBottom: "0.75rem",
+                                          }}
+                                        >
+                                          <span
+                                            style={{
+                                              color: "#a5b4fc",
+                                              fontWeight: "600",
+                                              fontSize: "0.9rem",
+                                            }}
+                                          >
+                                            📚 Tema:{" "}
+                                          </span>
+                                          <span style={{ color: "#c7d2fe" }}>
+                                            {pregunta.metadata.titulo_tema}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {/* Instrucción */}
+                                      <div
+                                        style={{
+                                          background:
+                                            "rgba(99, 102, 241, 0.08)",
+                                          border:
+                                            "1px solid rgba(99, 102, 241, 0.25)",
+                                          borderRadius: "8px",
+                                          padding: "0.6rem 0.9rem",
+                                          marginBottom: "1rem",
+                                          fontSize: "0.85rem",
+                                          color: "#c7d2fe",
+                                        }}
+                                      >
+                                        💡 <strong>Instrucción:</strong> Usa
+                                        TODAS las palabras dadas para formar
+                                        cada oración. Puedes conjugar verbos y
+                                        añadir artículos o preposiciones
+                                        necesarios.
+                                      </div>
+                                    </div>
+
+                                    {/* Inputs individuales por oración */}
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        gap: "1rem",
+                                      }}
+                                    >
+                                      {(pregunta.oraciones || []).map(
+                                        (oracion, oIdx) => {
+                                          const respuestasArray = (
+                                            respuestasUsuario[index] || ""
+                                          ).split("|||");
+                                          const respuestaItem =
+                                            respuestasArray[oIdx] || "";
+                                          return (
+                                            <div
+                                              key={oIdx}
+                                              style={{
+                                                background:
+                                                  "rgba(99, 102, 241, 0.08)",
+                                                border:
+                                                  respuestaItem
+                                                    ? "1px solid rgba(99, 102, 241, 0.5)"
+                                                    : "1px solid rgba(99, 102, 241, 0.2)",
+                                                borderRadius: "10px",
+                                                padding: "0.9rem",
+                                              }}
+                                            >
+                                              {/* Header oración */}
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.5rem",
+                                                  marginBottom: "0.6rem",
+                                                  flexWrap: "wrap",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    minWidth: "28px",
+                                                    height: "28px",
+                                                    background:
+                                                      "rgba(99, 102, 241, 0.4)",
+                                                    border:
+                                                      "1px solid rgba(99, 102, 241, 0.6)",
+                                                    borderRadius: "50%",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    color: "#a5b4fc",
+                                                    fontSize: "0.8rem",
+                                                    fontWeight: "700",
+                                                    flexShrink: 0,
+                                                  }}
+                                                >
+                                                  {oIdx + 1}
+                                                </span>
+                                                {/* Palabras clave */}
+                                                {(
+                                                  oracion.palabras_clave || []
+                                                ).map((palabra, pIdx) => (
+                                                  <span
+                                                    key={pIdx}
+                                                    style={{
+                                                      background:
+                                                        "rgba(99, 102, 241, 0.25)",
+                                                      border:
+                                                        "1px solid rgba(99, 102, 241, 0.5)",
+                                                      padding: "3px 10px",
+                                                      borderRadius: "12px",
+                                                      color: "#c7d2fe",
+                                                      fontSize: "0.85rem",
+                                                      fontWeight: "600",
+                                                    }}
+                                                  >
+                                                    {palabra}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                              {/* Contexto de oración */}
+                                              {oracion.contexto_oracion && (
+                                                <div
+                                                  style={{
+                                                    background: "rgba(16, 185, 129, 0.08)",
+                                                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                                                    borderRadius: "8px",
+                                                    padding: "0.6rem 0.9rem",
+                                                    marginBottom: "0.6rem",
+                                                    fontSize: "0.85rem",
+                                                    color: "#6ee7b7",
+                                                    whiteSpace: "pre-wrap",
+                                                    lineHeight: "1.5",
+                                                  }}
+                                                >
+                                                  💬 {oracion.contexto_oracion}
+                                                </div>
+                                              )}
+                                              {/* Pista */}
+                                              {oracion.pista && (
+                                                <div
+                                                  style={{
+                                                    background:
+                                                      "rgba(251, 191, 36, 0.08)",
+                                                    border:
+                                                      "1px solid rgba(251, 191, 36, 0.25)",
+                                                    borderRadius: "6px",
+                                                    padding: "0.4rem 0.7rem",
+                                                    marginBottom: "0.6rem",
+                                                    fontSize: "0.82rem",
+                                                    color: "#fde68a",
+                                                  }}
+                                                >
+                                                  💡 {oracion.pista}
+                                                </div>
+                                              )}
+                                              {/* Input */}
+                                              <input
+                                                type="text"
+                                                placeholder={`Construye la oración ${oIdx + 1}…`}
+                                                value={respuestaItem}
+                                                onChange={(e) => {
+                                                  const arr = [
+                                                    ...(
+                                                      respuestasUsuario[
+                                                        index
+                                                      ] || ""
+                                                    ).split("|||"),
+                                                  ];
+                                                  while (
+                                                    arr.length <=
+                                                    oIdx
+                                                  ) {
+                                                    arr.push("");
+                                                  }
+                                                  arr[oIdx] = e.target.value;
+                                                  actualizarRespuesta(
+                                                    index,
+                                                    arr.join("|||"),
+                                                  );
+                                                }}
+                                                style={{
+                                                  width: "100%",
+                                                  padding: "0.55rem 0.75rem",
+                                                  background: "#1a1833",
+                                                  border: respuestaItem
+                                                    ? "1px solid rgba(99, 102, 241, 0.6)"
+                                                    : "1px solid rgba(99, 102, 241, 0.25)",
+                                                  borderRadius: "6px",
+                                                  color: "#e2e8f0",
+                                                  fontSize: "0.9rem",
+                                                  boxSizing: "border-box",
+                                                  transition:
+                                                    "border-color 0.15s",
+                                                }}
+                                                onFocus={(e) => {
+                                                  e.target.style.borderColor =
+                                                    "rgba(99, 102, 241, 0.8)";
+                                                  e.target.style.background =
+                                                    "#201e3a";
+                                                }}
+                                                onBlur={(e) => {
+                                                  e.target.style.borderColor =
+                                                    respuestaItem
+                                                      ? "rgba(99, 102, 241, 0.6)"
+                                                      : "rgba(99, 102, 241, 0.25)";
+                                                  e.target.style.background =
+                                                    "#1a1833";
+                                                }}
+                                              />
+                                            </div>
+                                          );
+                                        },
+                                      )}
                                     </div>
                                   </div>
                                 )}
@@ -87071,7 +88930,7 @@ Devuelve SOLO este JSON:
                               </div>
                             ) : /* Para reading_cloze, formatear las respuestas */
                             resultado.tipo === "reading_cloze" &&
-                            resultado.respuesta_usuario?.includes("|||") ? (
+                              resultado.respuesta_usuario?.includes("|||") ? (
                               <div style={{ marginTop: "0.5rem" }}>
                                 {resultado.respuesta_usuario
                                   .split("|||")
@@ -96244,7 +98103,8 @@ Devuelve SOLO este JSON:
                                   0 ||
                                 preguntasPropiasConfig.writing_transformation_libre >
                                   0 ||
-                                preguntasPropiasConfig.oraciones_propias > 0
+                                preguntasPropiasConfig.oraciones_propias > 0 ||
+                                preguntasPropiasConfig.constructor_oraciones > 0
                                   ? "linear-gradient(135deg, #f97316 0%, #ea580c 100%)"
                                   : "rgba(249, 115, 22, 0.2)",
                               border: "1px solid rgba(249, 115, 22, 0.5)",
@@ -96266,27 +98126,41 @@ Devuelve SOLO este JSON:
                                 gap: "0.5rem",
                               }}
                             >
-                              {(preguntasPropiasConfig.writing_short_libre > 0 ||
-                    preguntasPropiasConfig.writing_paraphrase_libre > 0 ||
-                    preguntasPropiasConfig.writing_correction_libre > 0 ||
-                    preguntasPropiasConfig.writing_transformation_libre > 0 ||
-                    preguntasPropiasConfig.oraciones_propias > 0) && (
-                    <span
-                      style={{
-                        background: "#fff",
-                        color: "#f97316",
-                        padding: "2px 8px",
-                        borderRadius: "12px",
-                        fontSize: "0.8rem",
-                      }}
-                    >
-                      {(preguntasPropiasConfig.writing_short_libre || 0) +
-                        (preguntasPropiasConfig.writing_paraphrase_libre || 0) +
-                        (preguntasPropiasConfig.writing_correction_libre || 0) +
-                        (preguntasPropiasConfig.writing_transformation_libre || 0) +
-                        (preguntasPropiasConfig.oraciones_propias || 0)}
-                    </span>
-                  )}
+                              {(preguntasPropiasConfig.writing_short_libre >
+                                0 ||
+                                preguntasPropiasConfig.writing_paraphrase_libre >
+                                  0 ||
+                                preguntasPropiasConfig.writing_correction_libre >
+                                  0 ||
+                                preguntasPropiasConfig.writing_transformation_libre >
+                                  0 ||
+                                preguntasPropiasConfig.oraciones_propias >
+                                  0 ||
+                                preguntasPropiasConfig.constructor_oraciones >
+                                  0) && (
+                                <span
+                                  style={{
+                                    background: "#fff",
+                                    color: "#f97316",
+                                    padding: "2px 8px",
+                                    borderRadius: "12px",
+                                    fontSize: "0.8rem",
+                                  }}
+                                >
+                                  {(preguntasPropiasConfig.writing_short_libre ||
+                                    0) +
+                                    (preguntasPropiasConfig.writing_paraphrase_libre ||
+                                      0) +
+                                    (preguntasPropiasConfig.writing_correction_libre ||
+                                      0) +
+                                    (preguntasPropiasConfig.writing_transformation_libre ||
+                                      0) +
+                                    (preguntasPropiasConfig.oraciones_propias ||
+                                      0) +
+                                    (preguntasPropiasConfig.constructor_oraciones ||
+                                      0)}
+                                </span>
+                              )}
                               <span
                                 style={{
                                   transform:
@@ -96350,8 +98224,18 @@ Devuelve SOLO este JSON:
                                 >
                                   ✏️ Oraciones Propias
                                 </label>
-                                <p style={{ color: "#94a3b8", fontSize: "0.75rem", margin: "0 0 0.5rem 0", lineHeight: "1.4" }}>
-                                  Creo oraciones completamente por mi cuenta para fortalecer fluidez y dominio gramatical según el tema que estoy estudiando. Puedo aumentar la dificultad.
+                                <p
+                                  style={{
+                                    color: "#94a3b8",
+                                    fontSize: "0.75rem",
+                                    margin: "0 0 0.5rem 0",
+                                    lineHeight: "1.4",
+                                  }}
+                                >
+                                  Creo oraciones completamente por mi cuenta
+                                  para fortalecer fluidez y dominio gramatical
+                                  según el tema que estoy estudiando. Puedo
+                                  aumentar la dificultad.
                                 </p>
                                 <div
                                   style={{
@@ -96366,11 +98250,17 @@ Devuelve SOLO este JSON:
                                     type="number"
                                     min="0"
                                     max="20"
-                                    value={preguntasPropiasConfig.oraciones_propias ?? 0}
+                                    value={
+                                      preguntasPropiasConfig.oraciones_propias ??
+                                      0
+                                    }
                                     onChange={(e) =>
                                       setPreguntasPropiasConfig({
                                         ...preguntasPropiasConfig,
-                                        oraciones_propias: Math.max(0, parseInt(e.target.value) || 0),
+                                        oraciones_propias: Math.max(
+                                          0,
+                                          parseInt(e.target.value) || 0,
+                                        ),
                                       })
                                     }
                                     style={{
@@ -96385,11 +98275,209 @@ Devuelve SOLO este JSON:
                                     title="Cantidad de ejercicios"
                                   />
                                   <select
-                                    value={preguntasPropiasConfig.oraciones_propias_lang}
+                                    value={
+                                      preguntasPropiasConfig.oraciones_propias_lang
+                                    }
                                     onChange={(e) =>
                                       setPreguntasPropiasConfig({
                                         ...preguntasPropiasConfig,
                                         oraciones_propias_lang: e.target.value,
+                                      })
+                                    }
+                                    style={{
+                                      flex: 1,
+                                      minWidth: "100px",
+                                      padding: "0.4rem",
+                                      background: "#1f2937",
+                                      border: "1px solid #374151",
+                                      borderRadius: "6px",
+                                      color: "#e2e8f0",
+                                      fontSize: "0.8rem",
+                                    }}
+                                  >
+                                    <option value="ingles">🇬🇧 Inglés</option>
+                                    <option value="frances">🇫🇷 Francés</option>
+                                    <option value="aleman">🇩🇪 Alemán</option>
+                                    <option value="italiano">
+                                      🇮🇹 Italiano
+                                    </option>
+                                    <option value="portugues">
+                                      🇵🇹 Portugués
+                                    </option>
+                                    <option value="japones">🇯🇵 Japonés</option>
+                                    <option value="chino">🇨🇳 Chino</option>
+                                    <option value="coreano">🇰🇷 Coreano</option>
+                                    <option value="ruso">🇷🇺 Ruso</option>
+                                    <option value="arabe">🇸🇦 Árabe</option>
+                                  </select>
+                                </div>
+                                {preguntasPropiasConfig.oraciones_propias >
+                                  0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: "0.5rem",
+                                      alignItems: "center",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: "#94a3b8",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      Oraciones por ejercicio:
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min="2"
+                                      max="30"
+                                      value={
+                                        preguntasPropiasConfig.oraciones_propias_cantidad ||
+                                        5
+                                      }
+                                      onChange={(e) =>
+                                        setPreguntasPropiasConfig({
+                                          ...preguntasPropiasConfig,
+                                          oraciones_propias_cantidad: Math.max(
+                                            2,
+                                            parseInt(e.target.value) || 5,
+                                          ),
+                                        })
+                                      }
+                                      style={{
+                                        width: "50px",
+                                        padding: "0.3rem",
+                                        background: "#1f2937",
+                                        border: "1px solid #374151",
+                                        borderRadius: "4px",
+                                        color: "#e2e8f0",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    />
+                                    <span
+                                      style={{
+                                        color: "#94a3b8",
+                                        fontSize: "0.75rem",
+                                        marginLeft: "0.5rem",
+                                      }}
+                                    >
+                                      Dificultad:
+                                    </span>
+                                    <select
+                                      value={
+                                        preguntasPropiasConfig.oraciones_propias_dificultad ||
+                                        "intermedio"
+                                      }
+                                      onChange={(e) =>
+                                        setPreguntasPropiasConfig({
+                                          ...preguntasPropiasConfig,
+                                          oraciones_propias_dificultad:
+                                            e.target.value,
+                                        })
+                                      }
+                                      style={{
+                                        padding: "0.3rem",
+                                        background: "#1f2937",
+                                        border: "1px solid #374151",
+                                        borderRadius: "4px",
+                                        color: "#e2e8f0",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      <option value="basico">🟢 Básico</option>
+                                      <option value="intermedio">
+                                        🟡 Intermedio
+                                      </option>
+                                      <option value="avanzado">
+                                        🔴 Avanzado
+                                      </option>
+                                    </select>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 🧩 Constructor de Oraciones con Palabras */}
+                              <div
+                                style={{
+                                  padding: "0.75rem",
+                                  background: "rgba(99, 102, 241, 0.1)",
+                                  borderRadius: "8px",
+                                  border:
+                                    preguntasPropiasConfig.constructor_oraciones > 0
+                                      ? "2px solid #6366f1"
+                                      : "1px solid rgba(99, 102, 241, 0.3)",
+                                  marginBottom: "1rem",
+                                }}
+                              >
+                                <label
+                                  style={{
+                                    color: "#a5b4fc",
+                                    fontWeight: "600",
+                                    display: "block",
+                                    marginBottom: "0.25rem",
+                                    fontSize: "0.85rem",
+                                  }}
+                                >
+                                  🧩 Constructor de Oraciones con Palabras
+                                </label>
+                                <p
+                                  style={{
+                                    color: "#94a3b8",
+                                    fontSize: "0.75rem",
+                                    margin: "0 0 0.5rem 0",
+                                    lineHeight: "1.4",
+                                  }}
+                                >
+                                  Recibo palabras específicas del tema y debo construir una oración correcta usándolas todas. Cada oración incluye pista, respuesta esperada y feedback.
+                                </p>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "0.5rem",
+                                    alignItems: "center",
+                                    marginBottom: "0.5rem",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="20"
+                                    value={
+                                      preguntasPropiasConfig.constructor_oraciones ??
+                                      0
+                                    }
+                                    onChange={(e) =>
+                                      setPreguntasPropiasConfig({
+                                        ...preguntasPropiasConfig,
+                                        constructor_oraciones: Math.max(
+                                          0,
+                                          parseInt(e.target.value) || 0,
+                                        ),
+                                      })
+                                    }
+                                    style={{
+                                      width: "50px",
+                                      padding: "0.4rem",
+                                      borderRadius: "6px",
+                                      border: "1px solid #374151",
+                                      background: "#1f2937",
+                                      color: "#e2e8f0",
+                                      fontSize: "0.9rem",
+                                    }}
+                                    title="Cantidad de ejercicios"
+                                  />
+                                  <select
+                                    value={
+                                      preguntasPropiasConfig.constructor_oraciones_lang ||
+                                      "ingles"
+                                    }
+                                    onChange={(e) =>
+                                      setPreguntasPropiasConfig({
+                                        ...preguntasPropiasConfig,
+                                        constructor_oraciones_lang: e.target.value,
                                       })
                                     }
                                     style={{
@@ -96415,18 +98503,39 @@ Devuelve SOLO este JSON:
                                     <option value="arabe">🇸🇦 Árabe</option>
                                   </select>
                                 </div>
-                                {preguntasPropiasConfig.oraciones_propias > 0 && (
-                                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
-                                    <span style={{ color: "#94a3b8", fontSize: "0.75rem" }}>Oraciones por ejercicio:</span>
+                                {preguntasPropiasConfig.constructor_oraciones >
+                                  0 && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: "0.5rem",
+                                      alignItems: "center",
+                                      flexWrap: "wrap",
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: "#94a3b8",
+                                        fontSize: "0.75rem",
+                                      }}
+                                    >
+                                      Oraciones por ejercicio:
+                                    </span>
                                     <input
                                       type="number"
                                       min="2"
-                                      max="30"
-                                      value={preguntasPropiasConfig.oraciones_propias_cantidad || 5}
+                                      max="20"
+                                      value={
+                                        preguntasPropiasConfig.constructor_oraciones_cantidad ||
+                                        5
+                                      }
                                       onChange={(e) =>
                                         setPreguntasPropiasConfig({
                                           ...preguntasPropiasConfig,
-                                          oraciones_propias_cantidad: Math.max(2, parseInt(e.target.value) || 5),
+                                          constructor_oraciones_cantidad: Math.max(
+                                            2,
+                                            parseInt(e.target.value) || 5,
+                                          ),
                                         })
                                       }
                                       style={{
@@ -96439,13 +98548,25 @@ Devuelve SOLO este JSON:
                                         fontSize: "0.75rem",
                                       }}
                                     />
-                                    <span style={{ color: "#94a3b8", fontSize: "0.75rem", marginLeft: "0.5rem" }}>Dificultad:</span>
+                                    <span
+                                      style={{
+                                        color: "#94a3b8",
+                                        fontSize: "0.75rem",
+                                        marginLeft: "0.5rem",
+                                      }}
+                                    >
+                                      Dificultad:
+                                    </span>
                                     <select
-                                      value={preguntasPropiasConfig.oraciones_propias_dificultad || "intermedio"}
+                                      value={
+                                        preguntasPropiasConfig.constructor_oraciones_dificultad ||
+                                        "intermedio"
+                                      }
                                       onChange={(e) =>
                                         setPreguntasPropiasConfig({
                                           ...preguntasPropiasConfig,
-                                          oraciones_propias_dificultad: e.target.value,
+                                          constructor_oraciones_dificultad:
+                                            e.target.value,
                                         })
                                       }
                                       style={{
@@ -96461,6 +98582,56 @@ Devuelve SOLO este JSON:
                                       <option value="intermedio">🟡 Intermedio</option>
                                       <option value="avanzado">🔴 Avanzado</option>
                                     </select>
+                                  </div>
+                                )}
+                                {/* Toggle contexto */}
+                                {preguntasPropiasConfig.constructor_oraciones >
+                                  0 && (
+                                  <div
+                                    style={{
+                                      marginTop: "0.5rem",
+                                      padding: "0.5rem 0.75rem",
+                                      background: "rgba(99,102,241,0.08)",
+                                      borderRadius: "6px",
+                                      border: "1px solid rgba(99,102,241,0.25)",
+                                    }}
+                                  >
+                                    <label
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.5rem",
+                                        cursor: "pointer",
+                                        color: "#a5b4fc",
+                                        fontSize: "0.8rem",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          preguntasPropiasConfig.constructor_oraciones_contexto ||
+                                          false
+                                        }
+                                        onChange={(e) =>
+                                          setPreguntasPropiasConfig({
+                                            ...preguntasPropiasConfig,
+                                            constructor_oraciones_contexto:
+                                              e.target.checked,
+                                          })
+                                        }
+                                        style={{ accentColor: "#6366f1" }}
+                                      />
+                                      💬 Activar texto de contexto por oración
+                                      <span
+                                        style={{
+                                          fontSize: "0.7rem",
+                                          color: "#64748b",
+                                          marginLeft: "0.25rem",
+                                        }}
+                                      >
+                                        (diálogo, escenario o situación)
+                                      </span>
+                                    </label>
                                   </div>
                                 )}
                               </div>
@@ -97836,7 +100007,8 @@ Devuelve SOLO este JSON:
                             (preguntasPropiasConfig.sentence_builder_libre ||
                               0) +
                             (preguntasPropiasConfig.picture_description_libre ||
-                              0)}
+                              0) +
+                            (preguntasPropiasConfig.constructor_oraciones || 0)}
                         </strong>{" "}
                         preguntas
                       </p>
@@ -97885,7 +100057,8 @@ Devuelve SOLO este JSON:
                             0) +
                           (preguntasPropiasConfig.writing_transformation_libre ||
                             0) +
-                          (preguntasPropiasConfig.oraciones_propias || 0) ===
+                          (preguntasPropiasConfig.oraciones_propias || 0) +
+                          (preguntasPropiasConfig.constructor_oraciones || 0) ===
                         0
                       }
                       className="btn-primary"
