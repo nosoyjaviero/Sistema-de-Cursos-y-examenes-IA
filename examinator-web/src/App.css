@@ -11572,6 +11572,92 @@
   font-weight: 600;
 }
 
+/* Heatmap Flashcards - Niveles de intensidad */
+.cal-heatmap-0 {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.cal-heatmap-1 {
+  background-color: #c6efce;
+  color: #333;
+}
+
+.cal-heatmap-2 {
+  background-color: #a9d08e;
+  color: #333;
+}
+
+.cal-heatmap-3 {
+  background-color: #70ad47;
+  color: #fff;
+}
+
+.cal-heatmap-4 {
+  background-color: #4a7c3e;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Leyenda visual del calendario */
+.calendario-leyenda {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+
+.leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.leyenda-color {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* Mejorar div del calendario para aplicar heatmap */
+.cal-dia {
+  transition: all 0.2s ease;
+}
+
+.cal-dia.cal-heatmap-0:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(240, 240, 240, 0.2);
+}
+
+.cal-dia.cal-heatmap-1:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(198, 239, 206, 0.4);
+}
+
+.cal-dia.cal-heatmap-2:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(169, 208, 142, 0.4);
+}
+
+.cal-dia.cal-heatmap-3:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 8px rgba(112, 173, 71, 0.4);
+}
+
+.cal-dia.cal-heatmap-4:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 12px rgba(74, 124, 62, 0.6);
+}
+
+
 .estado-valor {
   font-size: 1.1rem;
   font-weight: bold;
@@ -12005,6 +12091,148 @@
   margin: 1.5rem 0;
 }
 
+.mini-calendario-flashcards {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92) 0%, rgba(15, 23, 42, 0.88) 100%);
+  border-color: rgba(59, 130, 246, 0.22);
+}
+
+.calendario-flashcards-section {
+  padding-bottom: 0.5rem;
+}
+
+.flashcards-filtro-barra {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.flashcards-filtro-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.flashcards-filtro-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #93c5fd;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.flashcards-filtro-select,
+.flashcards-filtro-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5eefc;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.95rem;
+}
+
+.flashcards-filtro-btn {
+  align-self: end;
+  border: none;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: #08111f;
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+}
+
+.flashcards-filtro-btn.secundaria {
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(96, 165, 250, 0.22);
+}
+
+.flashcards-resumen-config {
+  margin: 1rem 0 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.18);
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.flashcards-resumen-titulo {
+  font-weight: 700;
+  color: #f8fafc;
+  text-transform: capitalize;
+}
+
+.flashcards-resumen-subtitulo {
+  margin-top: 0.35rem;
+  color: #93c5fd;
+  font-size: 0.92rem;
+}
+
+.flashcards-lista-config {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.85rem;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.flashcard-config-item {
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.15);
+  background: rgba(15, 23, 42, 0.7);
+  padding: 0.95rem;
+}
+
+.flashcard-config-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.flashcard-config-item-header h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.98rem;
+}
+
+.flashcard-config-item-header p {
+  margin: 0.35rem 0 0;
+  color: #93c5fd;
+  font-size: 0.8rem;
+}
+
+.flashcard-config-badge {
+  flex-shrink: 0;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: rgba(96, 165, 250, 0.14);
+  color: #bfdbfe;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.flashcard-config-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: #9ca3af;
+  font-size: 0.78rem;
+}
+
+.flashcard-config-meta span {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.no-data-flashcards-config {
+  margin-top: 0.5rem;
+}
+
 .mini-calendario-titulo {
   color: #fff;
   font-size: 1.1rem;
@@ -12251,6 +12479,14 @@
 @media (max-width: 768px) {
   .mini-calendario-wrapper {
     padding: 1rem;
+  }
+
+  .flashcards-filtro-barra {
+    grid-template-columns: 1fr;
+  }
+
+  .flashcards-filtro-btn {
+    width: 100%;
   }
 
   .calendario-grid-compacto {

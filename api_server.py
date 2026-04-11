@@ -5632,7 +5632,7 @@ def get_datos(tipo: str):
                     continue
                 try:
                     # Calcular la carpeta real basada en la ubicación física
-                    carpeta_real = str(archivo_flashcard.parent.relative_to(EXTRACCIONES_PATH))
+                    carpeta_real = str(archivo_flashcard.parent.relative_to(EXTRACCIONES_PATH)).replace("\\", "/")
                     if carpeta_real == ".":
                         carpeta_real = ""
                     
@@ -5642,7 +5642,7 @@ def get_datos(tipo: str):
                     flashcards_actualizadas = False
                     for fc in flashcards_carpeta:
                         fc_id = str(fc.get("id"))
-                        carpeta_en_fc = fc.get("carpeta", "")
+                        carpeta_en_fc = (fc.get("carpeta", "") or "").replace("\\", "/")
                         
                         # Si la carpeta guardada no coincide con la ubicación física, actualizar
                         if carpeta_en_fc != carpeta_real:
@@ -6029,6 +6029,96 @@ def delete_flashcard(flashcard_id: str, carpeta: str = ""):
         import traceback
         traceback.print_exc()
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+@app.post("/datos/flashcards/mover-carpeta")
+async def mover_carpeta_flashcards(request: Request):
+    """Mueve una carpeta de flashcards a otra ubicación dentro de extracciones/"""
+    try:
+        data = await request.json()
+        ruta_origen = data.get("ruta_origen", "").strip()
+        ruta_destino = data.get("ruta_destino", "").strip()
+
+        if not ruta_origen:
+            raise HTTPException(status_code=400, detail="La ruta de origen es requerida")
+
+        # Normalizar separadores
+        ruta_origen = ruta_origen.replace("\\", "/")
+        ruta_destino = ruta_destino.replace("\\", "/")
+
+        carpeta_origen = EXTRACCIONES_PATH / ruta_origen
+        if not carpeta_origen.exists():
+            raise HTTPException(status_code=404, detail=f"La carpeta origen no existe: {ruta_origen}")
+
+        nombre_carpeta = carpeta_origen.name
+
+        # Construir ruta de destino final
+        if ruta_destino:
+            carpeta_destino_final = EXTRACCIONES_PATH / ruta_destino / nombre_carpeta
+        else:
+            carpeta_destino_final = EXTRACCIONES_PATH / nombre_carpeta
+
+        # Validar que no se mueva a sí misma
+        if carpeta_origen.resolve() == carpeta_destino_final.resolve():
+            raise HTTPException(status_code=400, detail="No puedes mover una carpeta a su misma ubicación")
+
+        # Validar que no se mueva dentro de sí misma
+        try:
+            carpeta_destino_final.resolve().relative_to(carpeta_origen.resolve())
+            raise HTTPException(status_code=400, detail="No puedes mover una carpeta dentro de sí misma")
+        except ValueError:
+            pass  # OK, no es subdirectorio
+
+        # Validar que el destino no exista ya
+        if carpeta_destino_final.exists():
+            raise HTTPException(status_code=400, detail=f"Ya existe una carpeta con ese nombre en el destino: {carpeta_destino_final.relative_to(EXTRACCIONES_PATH)}")
+
+        # Crear directorio padre del destino si no existe
+        carpeta_destino_final.parent.mkdir(parents=True, exist_ok=True)
+
+        # Mover la carpeta
+        shutil.move(str(carpeta_origen), str(carpeta_destino_final))
+        print(f"📁 Carpeta movida: {carpeta_origen} → {carpeta_destino_final}")
+
+        # Actualizar campo 'carpeta' en todos los flashcards.json dentro de la carpeta movida
+        nueva_ruta_relativa = str(carpeta_destino_final.relative_to(EXTRACCIONES_PATH)).replace("\\", "/")
+        archivos_actualizados = 0
+
+        for archivo_fc in carpeta_destino_final.rglob("flashcards.json"):
+            try:
+                carpeta_real = str(archivo_fc.parent.relative_to(EXTRACCIONES_PATH)).replace("\\", "/")
+                with open(archivo_fc, "r", encoding="utf-8") as f:
+                    flashcards = json.load(f)
+
+                modificado = False
+                for fc in flashcards:
+                    if fc.get("carpeta") != carpeta_real:
+                        fc["carpeta"] = carpeta_real
+                        modificado = True
+
+                if modificado:
+                    with open(archivo_fc, "w", encoding="utf-8") as f:
+                        json.dump(flashcards, f, indent=2, ensure_ascii=False)
+                    archivos_actualizados += 1
+                    print(f"   ✅ Actualizado: {archivo_fc}")
+            except Exception as e:
+                print(f"   ⚠️ Error actualizando {archivo_fc}: {e}")
+
+        print(f"✅ Movimiento completado. Archivos actualizados: {archivos_actualizados}")
+
+        return JSONResponse(content={
+            "success": True,
+            "ruta_nueva": nueva_ruta_relativa,
+            "archivos_actualizados": archivos_actualizados
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error moviendo carpeta de flashcards: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============================================
 # ENDPOINTS PARA EXÁMENES Y PRÁCTICAS POR CARPETA

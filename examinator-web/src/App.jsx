@@ -67711,7 +67711,30 @@ Devuelve SOLO este JSON:
                         📅 Selecciona un día
                       </h3>
 
-                      <div className="mini-calendario-compacto">
+                      
+                       <div className="calendario-leyenda">
+                         <div className="leyenda-item">
+                           <div className="leyenda-color cal-heatmap-0"></div>
+                           <span>Sin items</span>
+                         </div>
+                         <div className="leyenda-item">
+                           <div className="leyenda-color cal-heatmap-1"></div>
+                           <span>1-3</span>
+                         </div>
+                         <div className="leyenda-item">
+                           <div className="leyenda-color cal-heatmap-2"></div>
+                           <span>4-6</span>
+                         </div>
+                         <div className="leyenda-item">
+                           <div className="leyenda-color cal-heatmap-3"></div>
+                           <span>7-10</span>
+                         </div>
+                         <div className="leyenda-item">
+                           <div className="leyenda-color cal-heatmap-4"></div>
+                           <span>11+</span>
+                         </div>
+                       </div>
+                       <div className="mini-calendario-compacto">
                         <div className="calendario-nav">
                           <button
                             className="btn-nav-cal"
@@ -67798,7 +67821,10 @@ Devuelve SOLO este JSON:
 
                               // Contar items para este día
                               let itemsCount = 0;
-                              [...practicas, ...examenes].forEach((item) => {
+                               let flashcardsCount = 0;
+                               let notasCount = 0;
+                               let practicasCount = 0;
+                               [...practicas, ...examenes].forEach((item) => {
                                 const resultados =
                                   item.resultados ||
                                   item.resultado?.resultados ||
@@ -67853,13 +67879,21 @@ Devuelve SOLO este JSON:
                               dias.push(
                                 <div
                                   key={dia}
-                                  className={`cal-dia ${esHoy ? "es-hoy" : ""} ${esFechaSeleccionada ? "seleccionado" : ""} ${tieneItems ? "tiene-items" : ""}`}
+                                  className={`cal-dia ${(() => {
+                                    if (itemsCount <= 0) return "cal-heatmap-0";
+                                    if (itemsCount <= 3) return "cal-heatmap-1";
+                                    if (itemsCount <= 6) return "cal-heatmap-2";
+                                    if (itemsCount <= 10) return "cal-heatmap-3";
+                                    return "cal-heatmap-4";
+                                  })()} ${esHoy ? "es-hoy" : ""} ${esFechaSeleccionada ? "seleccionado" : ""} ${tieneItems ? "tiene-items" : ""}`}
                                   onClick={() => {
                                     setFechaSeleccionada(
                                       fechaDia.toISOString(),
                                     );
                                   }}
                                   style={{ cursor: "pointer" }}
+                                    title={`${itemsCount} item${itemsCount !== 1 ? "s" : ""}: ${flashcardsCount} flashcards, ${notasCount} notas, ${practicasCount} prácticas`}
+                                    aria-label={`${dia} de ${new Date(anioCalendario, mesCalendario).toLocaleDateString("es-ES", { month: "long" })}: ${itemsCount} item${itemsCount !== 1 ? "s" : ""}`}
                                 >
                                   <span>{dia}</span>
                                   {tieneItems && (
@@ -115283,3 +115317,5 @@ Ejemplo:
 }
 
 export default App;
+
+
