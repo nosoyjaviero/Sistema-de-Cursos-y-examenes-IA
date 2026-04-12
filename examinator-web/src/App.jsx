@@ -4473,6 +4473,7 @@ function App() {
     // 🔥 Pasar filtros de fecha según prioridad
     let filtrosFlashcards = {};
     let filtrosErrores = {};
+    let filtrosAciertos = {};
 
     if (prioridadSesion === "flashcards") {
       filtrosFlashcards = {
@@ -4490,8 +4491,16 @@ function App() {
       };
     }
 
+    if (prioridadSesion === "repaso_aciertos") {
+      filtrosAciertos = {
+        fechaDesde: fechaDesdeAciertosRepasoSesion,
+        fechaHasta: fechaHastaAciertosRepasoSesion,
+        orden: ordenAciertosRepasoSesion || "desc",
+      };
+    }
+
     // Cargar datos para cada fase
-    await cargarDatosSesion(filtrosFlashcards, filtrosErrores);
+    await cargarDatosSesion(filtrosFlashcards, filtrosErrores, filtrosAciertos);
 
     // Cargar carpetas para fase de calentamiento
     await cargarCarpetasCalentamiento("");
@@ -4759,6 +4768,7 @@ function App() {
   const cargarDatosSesion = async (
     filtrosFlashcards = {},
     filtrosErrores = {},
+    filtrosAciertos = {},
   ) => {
     try {
       // 🔥 CARGAR TANTO EXÁMENES COMO PRÁCTICAS
@@ -4837,8 +4847,46 @@ function App() {
       setIndiceErrorActual(0);
 
       // 🔥 CARGAR ACIERTOS PARA REPASO
-      const aciertos = extraerAciertosParaRepaso(todosLosItems);
+      let aciertos = extraerAciertosParaRepaso(todosLosItems);
       console.log("✅ Aciertos para repaso:", aciertos.length);
+
+      // 🔥 APLICAR FILTROS DE FECHA para aciertos
+      if (filtrosAciertos.fechaDesde || filtrosAciertos.fechaHasta) {
+        const desde = filtrosAciertos.fechaDesde
+          ? new Date(filtrosAciertos.fechaDesde)
+          : null;
+        const hasta = filtrosAciertos.fechaHasta
+          ? new Date(filtrosAciertos.fechaHasta)
+          : null;
+
+        aciertos = aciertos.filter((a) => {
+          const fechaA = new Date(a.proximaRevision || a.proxima_revision || a.fechaCreacion);
+          if (desde && fechaA < desde) return false;
+          if (hasta) {
+            hasta.setHours(23, 59, 59, 999);
+            if (fechaA > hasta) return false;
+          }
+          return true;
+        });
+
+        console.log(`🔍 Aciertos filtrados por fecha (${desde?.toISOString().split("T")[0]} a ${hasta?.toISOString().split("T")[0]}): ${aciertos.length}`);
+      }
+
+      // 🔥 APLICAR ORDEN para aciertos
+      const ordenAciertos = filtrosAciertos.orden || "desc";
+      aciertos.sort((a, b) => {
+        const fechaA = new Date(a.proximaRevision || a.proxima_revision || a.fechaCreacion);
+        const fechaB = new Date(b.proximaRevision || b.proxima_revision || b.fechaCreacion);
+        return ordenAciertos === "desc"
+          ? fechaB - fechaA
+          : fechaA - fechaB;
+      });
+
+      console.log("✅ Aciertos después de filtros:", {
+        total: aciertos.length,
+        orden: ordenAciertos
+      });
+
       setAciertosRepaso(aciertos);
       setIndiceAciertoActual(0);
 
