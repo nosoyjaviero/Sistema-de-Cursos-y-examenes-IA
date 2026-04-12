@@ -113649,10 +113649,13 @@ Ejemplo:
                         ahora.setHours(0, 0, 0, 0);
                         const flashcardsParaRepasar = (datosCalendarioRepasos.flashcards || []).filter((f) => {
                           const proximaRev = f.proximaRevision || f.proxima_revision;
-                          if (!proximaRev) return false;
-                          const fechaRev = new Date(proximaRev);
-                          fechaRev.setHours(0, 0, 0, 0);
-                          return fechaRev.getTime() <= ahora.getTime();
+                          // Incluir flashcards que:
+                          // 1. Tienen proximaRevision programada (sin importar si es futura/pasada)
+                          // 2. O son nuevas (no tienen proximaRevision ni ultimaRevision)
+                          if (proximaRev) return true;
+                          const ultimaRev = f.ultimaRevision || f.ultima_revision || f.fechaRevision;
+                          if (!proximaRev && !ultimaRev) return true;
+                          return false;
                         });
 
                         let flashcardsFilterados = flashcardsParaRepasar;
