@@ -11657,6 +11657,109 @@
   box-shadow: 0 0 12px rgba(74, 124, 62, 0.6);
 }
 
+/* Estilos para filtro de aciertos */
+.calendario-aciertos-section {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, rgba(74, 124, 62, 0.05) 100%);
+  border: 1px solid rgba(74, 124, 62, 0.2);
+  border-radius: 8px;
+}
+
+.config-description {
+  font-size: 0.9rem;
+  color: #888;
+  margin-bottom: 1rem;
+  font-style: italic;
+}
+
+.filtro-aciertos-controles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.filtro-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filtro-grupo label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #aaa;
+}
+
+.filtro-select,
+.filtro-input {
+  padding: 0.6rem 0.8rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(74, 124, 62, 0.3);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.filtro-select:hover,
+.filtro-input:hover {
+  border-color: rgba(74, 124, 62, 0.5);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.filtro-select:focus,
+.filtro-input:focus {
+  outline: none;
+  border-color: #4a7c3e;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.btn-filtro-rapido {
+  padding: 0.6rem 1rem;
+  background-color: rgba(74, 124, 62, 0.3);
+  border: 1px solid rgba(74, 124, 62, 0.5);
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  align-self: flex-end;
+}
+
+.btn-filtro-rapido:hover {
+  background-color: rgba(74, 124, 62, 0.5);
+  border-color: #4a7c3e;
+  transform: translateY(-2px);
+}
+
+.aciertos-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: rgba(74, 124, 62, 0.1);
+  border-radius: 6px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #888;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.stat-valor {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #4ade80;
+}
 
 .estado-valor {
   font-size: 1.1rem;

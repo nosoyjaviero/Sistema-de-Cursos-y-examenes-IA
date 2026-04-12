@@ -379,6 +379,12 @@ function App() {
   const [modoLibreActivo, setModoLibreActivo] = useState(false); // sin límite de tiempo
   const [prioridadSesion, setPrioridadSesion] = useState("errores"); // 'errores', 'flashcards', 'contenido', 'notas', 'todo'
   const [fasesExcluidas, setFasesExcluidas] = useState([]); // fases que el usuario no quiere en su sesión
+  const [fechaDesdeAciertosRepasoSesion, setFechaDesdeAciertosRepasoSesion] =
+    useState("");
+  const [fechaHastaAciertosRepasoSesion, setFechaHastaAciertosRepasoSesion] =
+    useState("");
+  const [ordenAciertosRepasoSesion, setOrdenAciertosRepasoSesion] =
+    useState("desc");
   const [sesionActiva, setSesionActiva] = useState(false);
   const [sesionPersistente, setSesionPersistente] = useState(null); // datos de sesión guardada
   const [estadoGuardado, setEstadoGuardado] = useState(false); // indicador de guardado
@@ -67711,30 +67717,29 @@ Devuelve SOLO este JSON:
                         📅 Selecciona un día
                       </h3>
 
-                      
-                       <div className="calendario-leyenda">
-                         <div className="leyenda-item">
-                           <div className="leyenda-color cal-heatmap-0"></div>
-                           <span>Sin items</span>
-                         </div>
-                         <div className="leyenda-item">
-                           <div className="leyenda-color cal-heatmap-1"></div>
-                           <span>1-3</span>
-                         </div>
-                         <div className="leyenda-item">
-                           <div className="leyenda-color cal-heatmap-2"></div>
-                           <span>4-6</span>
-                         </div>
-                         <div className="leyenda-item">
-                           <div className="leyenda-color cal-heatmap-3"></div>
-                           <span>7-10</span>
-                         </div>
-                         <div className="leyenda-item">
-                           <div className="leyenda-color cal-heatmap-4"></div>
-                           <span>11+</span>
-                         </div>
-                       </div>
-                       <div className="mini-calendario-compacto">
+                      <div className="calendario-leyenda">
+                        <div className="leyenda-item">
+                          <div className="leyenda-color cal-heatmap-0"></div>
+                          <span>Sin items</span>
+                        </div>
+                        <div className="leyenda-item">
+                          <div className="leyenda-color cal-heatmap-1"></div>
+                          <span>1-3</span>
+                        </div>
+                        <div className="leyenda-item">
+                          <div className="leyenda-color cal-heatmap-2"></div>
+                          <span>4-6</span>
+                        </div>
+                        <div className="leyenda-item">
+                          <div className="leyenda-color cal-heatmap-3"></div>
+                          <span>7-10</span>
+                        </div>
+                        <div className="leyenda-item">
+                          <div className="leyenda-color cal-heatmap-4"></div>
+                          <span>11+</span>
+                        </div>
+                      </div>
+                      <div className="mini-calendario-compacto">
                         <div className="calendario-nav">
                           <button
                             className="btn-nav-cal"
@@ -67821,10 +67826,10 @@ Devuelve SOLO este JSON:
 
                               // Contar items para este día
                               let itemsCount = 0;
-                               let flashcardsCount = 0;
-                               let notasCount = 0;
-                               let practicasCount = 0;
-                               [...practicas, ...examenes].forEach((item) => {
+                              let flashcardsCount = 0;
+                              let notasCount = 0;
+                              let practicasCount = 0;
+                              [...practicas, ...examenes].forEach((item) => {
                                 const resultados =
                                   item.resultados ||
                                   item.resultado?.resultados ||
@@ -67883,7 +67888,8 @@ Devuelve SOLO este JSON:
                                     if (itemsCount <= 0) return "cal-heatmap-0";
                                     if (itemsCount <= 3) return "cal-heatmap-1";
                                     if (itemsCount <= 6) return "cal-heatmap-2";
-                                    if (itemsCount <= 10) return "cal-heatmap-3";
+                                    if (itemsCount <= 10)
+                                      return "cal-heatmap-3";
                                     return "cal-heatmap-4";
                                   })()} ${esHoy ? "es-hoy" : ""} ${esFechaSeleccionada ? "seleccionado" : ""} ${tieneItems ? "tiene-items" : ""}`}
                                   onClick={() => {
@@ -67892,8 +67898,8 @@ Devuelve SOLO este JSON:
                                     );
                                   }}
                                   style={{ cursor: "pointer" }}
-                                    title={`${itemsCount} item${itemsCount !== 1 ? "s" : ""}: ${flashcardsCount} flashcards, ${notasCount} notas, ${practicasCount} prácticas`}
-                                    aria-label={`${dia} de ${new Date(anioCalendario, mesCalendario).toLocaleDateString("es-ES", { month: "long" })}: ${itemsCount} item${itemsCount !== 1 ? "s" : ""}`}
+                                  title={`${itemsCount} item${itemsCount !== 1 ? "s" : ""}: ${flashcardsCount} flashcards, ${notasCount} notas, ${practicasCount} prácticas`}
+                                  aria-label={`${dia} de ${new Date(anioCalendario, mesCalendario).toLocaleDateString("es-ES", { month: "long" })}: ${itemsCount} item${itemsCount !== 1 ? "s" : ""}`}
                                 >
                                   <span>{dia}</span>
                                   {tieneItems && (
@@ -113146,6 +113152,214 @@ Ejemplo:
                   </div>
                 </div>
 
+                {/* FILTRO DE ACIERTOS POR FECHA */}
+                {prioridadSesion === "repaso_aciertos" && (
+                  <div className="config-section calendario-aciertos-section">
+                    <label className="config-label">
+                      📅 Calendario de Aciertos para Repasar
+                    </label>
+                    <p className="config-description">
+                      Selecciona un rango de fechas para estudiar los aciertos
+                      que necesitan repaso
+                    </p>
+
+                    {/* Leyenda del heatmap */}
+                    <div className="calendario-leyenda">
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-0"></div>
+                        <span>Sin items</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-1"></div>
+                        <span>1-3</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-2"></div>
+                        <span>4-6</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-3"></div>
+                        <span>7-10</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-4"></div>
+                        <span>11+</span>
+                      </div>
+                    </div>
+
+                    {/* Controles de filtro */}
+                    <div className="filtro-aciertos-controles">
+                      <div className="filtro-grupo">
+                        <label>Orden</label>
+                        <select
+                          value={ordenAciertosRepasoSesion || "desc"}
+                          onChange={(e) =>
+                            setOrdenAciertosRepasoSesion(e.target.value)
+                          }
+                          className="filtro-select"
+                        >
+                          <option value="desc">Más recientes primero</option>
+                          <option value="asc">Más antiguas primero</option>
+                        </select>
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Desde</label>
+                        <input
+                          type="date"
+                          value={fechaDesdeAciertosRepasoSesion || ""}
+                          onChange={(e) =>
+                            setFechaDesdeAciertosRepasoSesion(e.target.value)
+                          }
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Hasta</label>
+                        <input
+                          type="date"
+                          value={fechaHastaAciertosRepasoSesion || ""}
+                          onChange={(e) =>
+                            setFechaHastaAciertosRepasoSesion(e.target.value)
+                          }
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <button
+                        className="btn-filtro-rapido"
+                        onClick={() => {
+                          const hoy = new Date();
+                          hoy.setHours(0, 0, 0, 0);
+                          const hace7Dias = new Date(hoy);
+                          hace7Dias.setDate(hace7Dias.getDate() - 7);
+                          setFechaDesdeAciertosRepasoSesion(
+                            hace7Dias.toISOString().split("T")[0],
+                          );
+                          setFechaHastaAciertosRepasoSesion(
+                            hoy.toISOString().split("T")[0],
+                          );
+                        }}
+                      >
+                        Última semana
+                      </button>
+                    </div>
+
+                    {/* Estadísticas de aciertos */}
+                    {(() => {
+                      // Calcular aciertos para repasar (con SM-2)
+                      const ahora = new Date();
+                      ahora.setHours(0, 0, 0, 0);
+                      const aciertosParaRepasar = [];
+
+                      // Obtener aciertos de prácticas
+                      const practicas = datosCalendarioRepasos.practicas || [];
+                      practicas.forEach((practica) => {
+                        const resultados =
+                          practica.resultados ||
+                          practica.resultado?.resultados ||
+                          [];
+                        resultados.forEach((r) => {
+                          // Acierto: esCorrecta true O correcto true
+                          const esAcierto =
+                            r.esCorrecta === true || r.correcto === true;
+                          if (esAcierto && r.proximaRevision) {
+                            const fechaRevision = new Date(r.proximaRevision);
+                            fechaRevision.setHours(0, 0, 0, 0);
+                            // Incluir solo si está programado para hoy o antes
+                            if (fechaRevision.getTime() <= ahora.getTime()) {
+                              aciertosParaRepasar.push({
+                                pregunta: r.pregunta || "Sin pregunta",
+                                proximaRevision: r.proximaRevision,
+                                intervalo: r.intervalo || 0,
+                                repeticiones: r.repeticiones || 0,
+                                facilidad: r.facilidad || 2.5,
+                                origen: practica.titulo || "Práctica",
+                              });
+                            }
+                          }
+                        });
+                      });
+
+                      // Filtrar por rango si está especificado
+                      let aciertosFilterados = aciertosParaRepasar;
+                      if (
+                        fechaDesdeAciertosRepasoSesion ||
+                        fechaHastaAciertosRepasoSesion
+                      ) {
+                        const desde = fechaDesdeAciertosRepasoSesion
+                          ? new Date(fechaDesdeAciertosRepasoSesion)
+                          : null;
+                        const hasta = fechaHastaAciertosRepasoSesion
+                          ? new Date(fechaHastaAciertosRepasoSesion)
+                          : null;
+
+                        aciertosFilterados = aciertosParaRepasar.filter((a) => {
+                          const fechaA = new Date(a.proximaRevision);
+                          if (desde && fechaA < desde) return false;
+                          if (hasta) {
+                            hasta.setHours(23, 59, 59, 999);
+                            if (fechaA > hasta) return false;
+                          }
+                          return true;
+                        });
+                      }
+
+                      // Ordenar
+                      const orden = ordenAciertosRepasoSesion || "desc";
+                      aciertosFilterados.sort((a, b) => {
+                        const fechaA = new Date(a.proximaRevision);
+                        const fechaB = new Date(b.proximaRevision);
+                        return orden === "desc"
+                          ? fechaB - fechaA
+                          : fechaA - fechaB;
+                      });
+
+                      return (
+                        <div className="aciertos-stats">
+                          <div className="stat-item">
+                            <span className="stat-label">Total</span>
+                            <span className="stat-valor">
+                              {aciertosFilterados.length}
+                            </span>
+                          </div>
+                          {aciertosFilterados.length > 0 && (
+                            <>
+                              <div className="stat-item">
+                                <span className="stat-label">
+                                  Repeticiones (prom)
+                                </span>
+                                <span className="stat-valor">
+                                  {(
+                                    aciertosFilterados.reduce(
+                                      (sum, a) => sum + a.repeticiones,
+                                      0,
+                                    ) / aciertosFilterados.length
+                                  ).toFixed(1)}
+                                </span>
+                              </div>
+                              <div className="stat-item">
+                                <span className="stat-label">
+                                  Facilidad (prom)
+                                </span>
+                                <span className="stat-valor">
+                                  {(
+                                    aciertosFilterados.reduce(
+                                      (sum, a) => sum + a.facilidad,
+                                      0,
+                                    ) / aciertosFilterados.length
+                                  ).toFixed(1)}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {!modoLibreActivo && (
                   <div className="fases-preview">
                     <div className="fases-preview-header">
@@ -115317,5 +115531,3 @@ Ejemplo:
 }
 
 export default App;
-
-
