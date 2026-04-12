@@ -385,6 +385,12 @@ function App() {
     useState("");
   const [ordenAciertosRepasoSesion, setOrdenAciertosRepasoSesion] =
     useState("desc");
+  const [fechaDesdeErroresRefuerzoSesion, setFechaDesdeErroresRefuerzoSesion] =
+    useState("");
+  const [fechaHastaErroresRefuerzoSesion, setFechaHastaErroresRefuerzoSesion] =
+    useState("");
+  const [ordenErroresRefuerzoSesion, setOrdenErroresRefuerzoSesion] =
+    useState("desc");
   const [sesionActiva, setSesionActiva] = useState(false);
   const [sesionPersistente, setSesionPersistente] = useState(null); // datos de sesión guardada
   const [estadoGuardado, setEstadoGuardado] = useState(false); // indicador de guardado
@@ -113350,6 +113356,181 @@ Ejemplo:
                                       0,
                                     ) / aciertosFilterados.length
                                   ).toFixed(1)}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                
+
+                {/* FILTRO DE ERRORES POR FECHA */}
+                {prioridadSesion === "errores" && (
+                  <div className="config-section calendario-errores-section">
+                    <label className="config-label">
+                      📅 Calendario de Errores Clave para Repasar
+                    </label>
+                    <p className="config-description">
+                      Selecciona un rango de fechas para estudiar los errores
+                      que necesitan refuerzo
+                    </p>
+
+                    {/* Leyenda del heatmap */}
+                    <div className="calendario-leyenda">
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-0"></div>
+                        <span>Sin items</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-1"></div>
+                        <span>1-3</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-2"></div>
+                        <span>4-6</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-3"></div>
+                        <span>7-10</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-4"></div>
+                        <span>11+</span>
+                      </div>
+                    </div>
+
+                    {/* Controles de filtro */}
+                    <div className="filtro-errores-controles">
+                      <div className="filtro-grupo">
+                        <label>Orden</label>
+                        <select 
+                          value={ordenErroresRefuerzoSesion || "desc"}
+                          onChange={(e) => setOrdenErroresRefuerzoSesion(e.target.value)}
+                          className="filtro-select"
+                        >
+                          <option value="desc">Más recientes primero</option>
+                          <option value="asc">Más antiguas primero</option>
+                        </select>
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Desde</label>
+                        <input
+                          type="date"
+                          value={fechaDesdeErroresRefuerzoSesion || ""}
+                          onChange={(e) => setFechaDesdeErroresRefuerzoSesion(e.target.value)}
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Hasta</label>
+                        <input
+                          type="date"
+                          value={fechaHastaErroresRefuerzoSesion || ""}
+                          onChange={(e) => setFechaHastaErroresRefuerzoSesion(e.target.value)}
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <button
+                        className="btn-filtro-rapido"
+                        onClick={() => {
+                          const hoy = new Date();
+                          hoy.setHours(0, 0, 0, 0);
+                          const hace7Dias = new Date(hoy);
+                          hace7Dias.setDate(hace7Dias.getDate() - 7);
+                          setFechaDesdeErroresRefuerzoSesion(
+                            hace7Dias.toISOString().split("T")[0],
+                          );
+                          setFechaHastaErroresRefuerzoSesion(
+                            hoy.toISOString().split("T")[0],
+                          );
+                        }}
+                      >
+                        Última semana
+                      </button>
+                    </div>
+
+                    {/* Estadísticas de errores */}
+                    {(() => {
+                      // Calcular errores para repasar (con SM-2)
+                      const ahora = new Date();
+                      ahora.setHours(0, 0, 0, 0);
+                      const erroresParaRepasar = [];
+
+                      // Obtener errores de prácticas/exámenes
+                      const practicas = datosCalendarioRepasos.practicas || [];
+                      practicas.forEach((practica) => {
+                        const resultados = practica.resultados || practica.resultado?.resultados || [];
+                        resultados.forEach((r) => {
+                          // Error: esCorrecta false O correcto false
+                          const esError = r.esCorrecta === false || r.correcto === false;
+                          if (esError && r.proximaRevision) {
+                            const fechaRevision = new Date(r.proximaRevision);
+                            fechaRevision.setHours(0, 0, 0, 0);
+                            // Incluir solo si está programado para hoy o antes
+                            if (fechaRevision.getTime() <= ahora.getTime()) {
+                              erroresParaRepasar.push({
+                                pregunta: r.pregunta || "Sin pregunta",
+                                proximaRevision: r.proximaRevision,
+                                intervalo: r.intervalo || 0,
+                                repeticiones: r.repeticiones || 0,
+                                facilidad: r.facilidad || 2.5,
+                                origen: practica.titulo || "Práctica",
+                              });
+                            }
+                          }
+                        });
+                      });
+
+                      // Filtrar por rango si está especificado
+                      let erroresFilterados = erroresParaRepasar;
+                      if (fechaDesdeErroresRefuerzoSesion || fechaHastaErroresRefuerzoSesion) {
+                        const desde = fechaDesdeErroresRefuerzoSesion ? new Date(fechaDesdeErroresRefuerzoSesion) : null;
+                        const hasta = fechaHastaErroresRefuerzoSesion ? new Date(fechaHastaErroresRefuerzoSesion) : null;
+                        
+                        erroresFilterados = erroresParaRepasar.filter((e) => {
+                          const fechaE = new Date(e.proximaRevision);
+                          if (desde && fechaE < desde) return false;
+                          if (hasta) {
+                            hasta.setHours(23, 59, 59, 999);
+                            if (fechaE > hasta) return false;
+                          }
+                          return true;
+                        });
+                      }
+
+                      // Ordenar
+                      const orden = ordenErroresRefuerzoSesion || "desc";
+                      erroresFilterados.sort((a, b) => {
+                        const fechaA = new Date(a.proximaRevision);
+                        const fechaB = new Date(b.proximaRevision);
+                        return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+                      });
+
+                      return (
+                        <div className="errores-stats">
+                          <div className="stat-item">
+                            <span className="stat-label">Total</span>
+                            <span className="stat-valor">{erroresFilterados.length}</span>
+                          </div>
+                          {erroresFilterados.length > 0 && (
+                            <>
+                              <div className="stat-item">
+                                <span className="stat-label">Repeticiones (prom)</span>
+                                <span className="stat-valor">
+                                  {(erroresFilterados.reduce((sum, e) => sum + e.repeticiones, 0) / erroresFilterados.length).toFixed(1)}
+                                </span>
+                              </div>
+                              <div className="stat-item">
+                                <span className="stat-label">Facilidad (prom)</span>
+                                <span className="stat-valor">
+                                  {(erroresFilterados.reduce((sum, e) => sum + e.facilidad, 0) / erroresFilterados.length).toFixed(1)}
                                 </span>
                               </div>
                             </>
