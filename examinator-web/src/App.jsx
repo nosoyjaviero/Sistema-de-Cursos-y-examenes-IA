@@ -391,10 +391,14 @@ function App() {
     useState("");
   const [ordenErroresRefuerzoSesion, setOrdenErroresRefuerzoSesion] =
     useState("desc");
-  const [fechaDesdeFlashcardsRepasoSesion, setFechaDesdeFlashcardsRepasoSesion] =
-    useState("");
-  const [fechaHastaFlashcardsRepasoSesion, setFechaHastaFlashcardsRepasoSesion] =
-    useState("");
+  const [
+    fechaDesdeFlashcardsRepasoSesion,
+    setFechaDesdeFlashcardsRepasoSesion,
+  ] = useState("");
+  const [
+    fechaHastaFlashcardsRepasoSesion,
+    setFechaHastaFlashcardsRepasoSesion,
+  ] = useState("");
   const [ordenFlashcardsRepasoSesion, setOrdenFlashcardsRepasoSesion] =
     useState("desc");
 
@@ -4466,8 +4470,28 @@ function App() {
     setTituloApuntesAvanzados("");
     setEtapaApuntesActual(0);
 
+    // 🔥 Pasar filtros de fecha según prioridad
+    let filtrosFlashcards = {};
+    let filtrosErrores = {};
+
+    if (prioridadSesion === "flashcards") {
+      filtrosFlashcards = {
+        fechaDesde: fechaDesdeFlashcardsRepasoSesion,
+        fechaHasta: fechaHastaFlashcardsRepasoSesion,
+        orden: ordenFlashcardsRepasoSesion || "desc",
+      };
+    }
+
+    if (prioridadSesion === "errores") {
+      filtrosErrores = {
+        fechaDesde: fechaDesdeErroresRefuerzoSesion,
+        fechaHasta: fechaHastaErroresRefuerzoSesion,
+        orden: ordenErroresRefuerzoSesion || "desc",
+      };
+    }
+
     // Cargar datos para cada fase
-    await cargarDatosSesion();
+    await cargarDatosSesion(filtrosFlashcards, filtrosErrores);
 
     // Cargar carpetas para fase de calentamiento
     await cargarCarpetasCalentamiento("");
@@ -4732,7 +4756,10 @@ function App() {
     });
   };
 
-  const cargarDatosSesion = async () => {
+  const cargarDatosSesion = async (
+    filtrosFlashcards = {},
+    filtrosErrores = {},
+  ) => {
     try {
       // 🔥 CARGAR TANTO EXÁMENES COMO PRÁCTICAS
       // Cargar exámenes
@@ -4760,8 +4787,52 @@ function App() {
       });
 
       // Cargar errores (preguntas con bajo rendimiento)
-      const errores = extraerErroresDeExamenes(todosLosItems);
+      let errores = extraerErroresDeExamenes(todosLosItems);
       console.log("❌ Errores encontrados:", errores.length);
+
+      // 🔥 APLICAR FILTROS DE FECHA para errores
+      if (filtrosErrores.fechaDesde || filtrosErrores.fechaHasta) {
+        const desde = filtrosErrores.fechaDesde
+          ? new Date(filtrosErrores.fechaDesde)
+          : null;
+        const hasta = filtrosErrores.fechaHasta
+          ? new Date(filtrosErrores.fechaHasta)
+          : null;
+
+        errores = errores.filter((e) => {
+          const fechaE = new Date(
+            e.proximaRevision || e.proxima_revision || e.fechaCreacion,
+          );
+          if (desde && fechaE < desde) return false;
+          if (hasta) {
+            hasta.setHours(23, 59, 59, 999);
+            if (fechaE > hasta) return false;
+          }
+          return true;
+        });
+
+        console.log(
+          `🔍 Errores filtrados por fecha (${desde?.toISOString().split("T")[0]} a ${hasta?.toISOString().split("T")[0]}): ${errores.length}`,
+        );
+      }
+
+      // 🔥 APLICAR ORDEN para errores
+      const orden = filtrosErrores.orden || "desc";
+      errores.sort((a, b) => {
+        const fechaA = new Date(
+          a.proximaRevision || a.proxima_revision || a.fechaCreacion,
+        );
+        const fechaB = new Date(
+          b.proximaRevision || b.proxima_revision || b.fechaCreacion,
+        );
+        return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+      });
+
+      console.log("❌ Errores después de filtros:", {
+        total: errores.length,
+        orden: orden,
+      });
+
       setErroresActuales(errores);
       setIndiceErrorActual(0);
 
@@ -4856,6 +4927,53 @@ function App() {
           // 🔥 En sesión de estudio NO filtrar por carpeta - repasar TODO lo que toca
           let flashcardsFiltradas = flashcardsParaRepasar;
 
+          // 🔥 APLICAR FILTROS DE FECHA si vienen del modal
+          if (filtrosFlashcards.fechaDesde || filtrosFlashcards.fechaHasta) {
+            const desde = filtrosFlashcards.fechaDesde
+              ? new Date(filtrosFlashcards.fechaDesde)
+              : null;
+            const hasta = filtrosFlashcards.fechaHasta
+              ? new Date(filtrosFlashcards.fechaHasta)
+              : null;
+
+            flashcardsFiltradas = flashcardsFiltradas.filter((f) => {
+              const fechaF = new Date(
+                f.proximaRevision ||
+                  f.proxima_revision ||
+                  f.fecha ||
+                  f.fechaCreacion,
+              );
+              if (desde && fechaF < desde) return false;
+              if (hasta) {
+                hasta.setHours(23, 59, 59, 999);
+                if (fechaF > hasta) return false;
+              }
+              return true;
+            });
+
+            console.log(
+              `🔍 Flashcards filtrados por fecha (${desde?.toISOString().split("T")[0]} a ${hasta?.toISOString().split("T")[0]}): ${flashcardsFiltradas.length}`,
+            );
+          }
+
+          // 🔥 APLICAR ORDEN si viene del modal
+          const orden = filtrosFlashcards.orden || "desc";
+          flashcardsFiltradas.sort((a, b) => {
+            const fechaA = new Date(
+              a.proximaRevision ||
+                a.proxima_revision ||
+                a.fecha ||
+                a.fechaCreacion,
+            );
+            const fechaB = new Date(
+              b.proximaRevision ||
+                b.proxima_revision ||
+                b.fecha ||
+                b.fechaCreacion,
+            );
+            return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+          });
+
           // 🔥 ELIMINAR DUPLICADOS por ID
           const idsVistos = new Set();
           flashcardsFiltradas = flashcardsFiltradas.filter((f) => {
@@ -4876,6 +4994,7 @@ function App() {
             enProgreso: flashcardsParaRepasar.filter(
               (f) => f.estadoRevision === "en_progreso",
             ).length,
+            orden: orden,
           });
 
           // 🔥 SOLO mostrar flashcards que realmente necesitan repaso
@@ -113373,8 +113492,6 @@ Ejemplo:
                   </div>
                 )}
 
-                
-
                 {/* FILTRO DE ERRORES POR FECHA */}
                 {prioridadSesion === "errores" && (
                   <div className="config-section calendario-errores-section">
@@ -113414,9 +113531,11 @@ Ejemplo:
                     <div className="filtro-errores-controles">
                       <div className="filtro-grupo">
                         <label>Orden</label>
-                        <select 
+                        <select
                           value={ordenErroresRefuerzoSesion || "desc"}
-                          onChange={(e) => setOrdenErroresRefuerzoSesion(e.target.value)}
+                          onChange={(e) =>
+                            setOrdenErroresRefuerzoSesion(e.target.value)
+                          }
                           className="filtro-select"
                         >
                           <option value="desc">Más recientes primero</option>
@@ -113429,7 +113548,9 @@ Ejemplo:
                         <input
                           type="date"
                           value={fechaDesdeErroresRefuerzoSesion || ""}
-                          onChange={(e) => setFechaDesdeErroresRefuerzoSesion(e.target.value)}
+                          onChange={(e) =>
+                            setFechaDesdeErroresRefuerzoSesion(e.target.value)
+                          }
                           className="filtro-input"
                         />
                       </div>
@@ -113439,7 +113560,9 @@ Ejemplo:
                         <input
                           type="date"
                           value={fechaHastaErroresRefuerzoSesion || ""}
-                          onChange={(e) => setFechaHastaErroresRefuerzoSesion(e.target.value)}
+                          onChange={(e) =>
+                            setFechaHastaErroresRefuerzoSesion(e.target.value)
+                          }
                           className="filtro-input"
                         />
                       </div>
@@ -113473,10 +113596,14 @@ Ejemplo:
                       // Obtener errores de prácticas/exámenes
                       const practicas = datosCalendarioRepasos.practicas || [];
                       practicas.forEach((practica) => {
-                        const resultados = practica.resultados || practica.resultado?.resultados || [];
+                        const resultados =
+                          practica.resultados ||
+                          practica.resultado?.resultados ||
+                          [];
                         resultados.forEach((r) => {
                           // Error: esCorrecta false O correcto false
-                          const esError = r.esCorrecta === false || r.correcto === false;
+                          const esError =
+                            r.esCorrecta === false || r.correcto === false;
                           if (esError && r.proximaRevision) {
                             const fechaRevision = new Date(r.proximaRevision);
                             fechaRevision.setHours(0, 0, 0, 0);
@@ -113497,10 +113624,17 @@ Ejemplo:
 
                       // Filtrar por rango si está especificado
                       let erroresFilterados = erroresParaRepasar;
-                      if (fechaDesdeErroresRefuerzoSesion || fechaHastaErroresRefuerzoSesion) {
-                        const desde = fechaDesdeErroresRefuerzoSesion ? new Date(fechaDesdeErroresRefuerzoSesion) : null;
-                        const hasta = fechaHastaErroresRefuerzoSesion ? new Date(fechaHastaErroresRefuerzoSesion) : null;
-                        
+                      if (
+                        fechaDesdeErroresRefuerzoSesion ||
+                        fechaHastaErroresRefuerzoSesion
+                      ) {
+                        const desde = fechaDesdeErroresRefuerzoSesion
+                          ? new Date(fechaDesdeErroresRefuerzoSesion)
+                          : null;
+                        const hasta = fechaHastaErroresRefuerzoSesion
+                          ? new Date(fechaHastaErroresRefuerzoSesion)
+                          : null;
+
                         erroresFilterados = erroresParaRepasar.filter((e) => {
                           const fechaE = new Date(e.proximaRevision);
                           if (desde && fechaE < desde) return false;
@@ -113517,27 +113651,45 @@ Ejemplo:
                       erroresFilterados.sort((a, b) => {
                         const fechaA = new Date(a.proximaRevision);
                         const fechaB = new Date(b.proximaRevision);
-                        return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+                        return orden === "desc"
+                          ? fechaB - fechaA
+                          : fechaA - fechaB;
                       });
 
                       return (
                         <div className="errores-stats">
                           <div className="stat-item">
                             <span className="stat-label">Total</span>
-                            <span className="stat-valor">{erroresFilterados.length}</span>
+                            <span className="stat-valor">
+                              {erroresFilterados.length}
+                            </span>
                           </div>
                           {erroresFilterados.length > 0 && (
                             <>
                               <div className="stat-item">
-                                <span className="stat-label">Repeticiones (prom)</span>
+                                <span className="stat-label">
+                                  Repeticiones (prom)
+                                </span>
                                 <span className="stat-valor">
-                                  {(erroresFilterados.reduce((sum, e) => sum + e.repeticiones, 0) / erroresFilterados.length).toFixed(1)}
+                                  {(
+                                    erroresFilterados.reduce(
+                                      (sum, e) => sum + e.repeticiones,
+                                      0,
+                                    ) / erroresFilterados.length
+                                  ).toFixed(1)}
                                 </span>
                               </div>
                               <div className="stat-item">
-                                <span className="stat-label">Facilidad (prom)</span>
+                                <span className="stat-label">
+                                  Facilidad (prom)
+                                </span>
                                 <span className="stat-valor">
-                                  {(erroresFilterados.reduce((sum, e) => sum + e.facilidad, 0) / erroresFilterados.length).toFixed(1)}
+                                  {(
+                                    erroresFilterados.reduce(
+                                      (sum, e) => sum + e.facilidad,
+                                      0,
+                                    ) / erroresFilterados.length
+                                  ).toFixed(1)}
                                 </span>
                               </div>
                             </>
@@ -113644,10 +113796,16 @@ Ejemplo:
 
                     {/* Estadísticas de flashcards */}
                     {(() => {
-                      const flashcardsParaRepasar = (datosCalendarioRepasos.flashcards || []).filter((f) => {
-                        const proximaRev = f.proximaRevision || f.proxima_revision;
+                      const flashcardsParaRepasar = (
+                        datosCalendarioRepasos.flashcards || []
+                      ).filter((f) => {
+                        const proximaRev =
+                          f.proximaRevision || f.proxima_revision;
                         if (proximaRev) return true;
-                        const ultimaRev = f.ultimaRevision || f.ultima_revision || f.fechaRevision;
+                        const ultimaRev =
+                          f.ultimaRevision ||
+                          f.ultima_revision ||
+                          f.fechaRevision;
                         if (!proximaRev && !ultimaRev) return true;
                         return false;
                       });
@@ -113664,22 +113822,32 @@ Ejemplo:
                           ? new Date(fechaHastaFlashcardsRepasoSesion)
                           : null;
 
-                        flashcardsFilterados = flashcardsParaRepasar.filter((f) => {
-                          const fechaF = new Date(f.proximaRevision || f.proxima_revision || f.fecha);
-                          if (desde && fechaF < desde) return false;
-                          if (hasta) {
-                            hasta.setHours(23, 59, 59, 999);
-                            if (fechaF > hasta) return false;
-                          }
-                          return true;
-                        });
+                        flashcardsFilterados = flashcardsParaRepasar.filter(
+                          (f) => {
+                            const fechaF = new Date(
+                              f.proximaRevision ||
+                                f.proxima_revision ||
+                                f.fecha,
+                            );
+                            if (desde && fechaF < desde) return false;
+                            if (hasta) {
+                              hasta.setHours(23, 59, 59, 999);
+                              if (fechaF > hasta) return false;
+                            }
+                            return true;
+                          },
+                        );
                       }
 
                       // Ordenar
                       const orden = ordenFlashcardsRepasoSesion || "desc";
                       flashcardsFilterados.sort((a, b) => {
-                        const fechaA = new Date(a.proximaRevision || a.proxima_revision || a.fecha);
-                        const fechaB = new Date(b.proximaRevision || b.proxima_revision || b.fecha);
+                        const fechaA = new Date(
+                          a.proximaRevision || a.proxima_revision || a.fecha,
+                        );
+                        const fechaB = new Date(
+                          b.proximaRevision || b.proxima_revision || b.fecha,
+                        );
                         return orden === "desc"
                           ? fechaB - fechaA
                           : fechaA - fechaB;
@@ -113699,7 +113867,6 @@ Ejemplo:
                   </div>
                 )}
 
-
                 {/* FILTROS PARA SESIÓN COMPLETA */}
                 {prioridadSesion === "todo" && (
                   <div className="config-section calendario-sesion-completa">
@@ -113707,15 +113874,32 @@ Ejemplo:
                       📅 Configurar Repasos por Tipo
                     </label>
                     <p className="config-description">
-                      Personaliza qué elementos quieres repasar en esta sesión completa
+                      Personaliza qué elementos quieres repasar en esta sesión
+                      completa
                     </p>
 
                     {/* TAB 1: FLASHCARDS */}
-                    <div style={{ marginBottom: "2rem", padding: "1rem", background: "rgba(79, 172, 254, 0.08)", borderRadius: "10px", border: "1px solid rgba(79, 172, 254, 0.3)" }}>
-                      <h4 style={{ color: "#4facfe", margin: "0 0 1rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        marginBottom: "2rem",
+                        padding: "1rem",
+                        background: "rgba(79, 172, 254, 0.08)",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(79, 172, 254, 0.3)",
+                      }}
+                    >
+                      <h4
+                        style={{
+                          color: "#4facfe",
+                          margin: "0 0 1rem 0",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                        }}
+                      >
                         🃏 Mantener Memoria (Flashcards)
                       </h4>
-                      
+
                       <div className="calendario-leyenda">
                         <div className="leyenda-item">
                           <div className="leyenda-color cal-heatmap-0"></div>
@@ -113760,7 +113944,9 @@ Ejemplo:
                             type="date"
                             value={fechaDesdeFlashcardsRepasoSesion || ""}
                             onChange={(e) =>
-                              setFechaDesdeFlashcardsRepasoSesion(e.target.value)
+                              setFechaDesdeFlashcardsRepasoSesion(
+                                e.target.value,
+                              )
                             }
                             className="filtro-input"
                           />
@@ -113772,7 +113958,9 @@ Ejemplo:
                             type="date"
                             value={fechaHastaFlashcardsRepasoSesion || ""}
                             onChange={(e) =>
-                              setFechaHastaFlashcardsRepasoSesion(e.target.value)
+                              setFechaHastaFlashcardsRepasoSesion(
+                                e.target.value,
+                              )
                             }
                             className="filtro-input"
                           />
@@ -113786,10 +113974,10 @@ Ejemplo:
                             const hace7Dias = new Date(hoy);
                             hace7Dias.setDate(hace7Dias.getDate() - 7);
                             setFechaDesdeFlashcardsRepasoSesion(
-                              hace7Dias.toISOString().split("T")[0]
+                              hace7Dias.toISOString().split("T")[0],
                             );
                             setFechaHastaFlashcardsRepasoSesion(
-                              hoy.toISOString().split("T")[0]
+                              hoy.toISOString().split("T")[0],
                             );
                           }}
                         >
@@ -113800,38 +113988,61 @@ Ejemplo:
                       {(() => {
                         const ahora = new Date();
                         ahora.setHours(0, 0, 0, 0);
-                        const flashcardsParaRepasar = (datosCalendarioRepasos.flashcards || []).filter((f) => {
-                          const proximaRev = f.proximaRevision || f.proxima_revision;
+                        const flashcardsParaRepasar = (
+                          datosCalendarioRepasos.flashcards || []
+                        ).filter((f) => {
+                          const proximaRev =
+                            f.proximaRevision || f.proxima_revision;
                           // Incluir flashcards que:
                           // 1. Tienen proximaRevision programada (sin importar si es futura/pasada)
                           // 2. O son nuevas (no tienen proximaRevision ni ultimaRevision)
                           if (proximaRev) return true;
-                          const ultimaRev = f.ultimaRevision || f.ultima_revision || f.fechaRevision;
+                          const ultimaRev =
+                            f.ultimaRevision ||
+                            f.ultima_revision ||
+                            f.fechaRevision;
                           if (!proximaRev && !ultimaRev) return true;
                           return false;
                         });
 
                         let flashcardsFilterados = flashcardsParaRepasar;
-                        if (fechaDesdeFlashcardsRepasoSesion || fechaHastaFlashcardsRepasoSesion) {
-                          const desde = fechaDesdeFlashcardsRepasoSesion ? new Date(fechaDesdeFlashcardsRepasoSesion) : null;
-                          const hasta = fechaHastaFlashcardsRepasoSesion ? new Date(fechaHastaFlashcardsRepasoSesion) : null;
-                          
-                          flashcardsFilterados = flashcardsParaRepasar.filter((f) => {
-                            const fechaF = new Date(f.proximaRevision || f.proxima_revision);
-                            if (desde && fechaF < desde) return false;
-                            if (hasta) {
-                              hasta.setHours(23, 59, 59, 999);
-                              if (fechaF > hasta) return false;
-                            }
-                            return true;
-                          });
+                        if (
+                          fechaDesdeFlashcardsRepasoSesion ||
+                          fechaHastaFlashcardsRepasoSesion
+                        ) {
+                          const desde = fechaDesdeFlashcardsRepasoSesion
+                            ? new Date(fechaDesdeFlashcardsRepasoSesion)
+                            : null;
+                          const hasta = fechaHastaFlashcardsRepasoSesion
+                            ? new Date(fechaHastaFlashcardsRepasoSesion)
+                            : null;
+
+                          flashcardsFilterados = flashcardsParaRepasar.filter(
+                            (f) => {
+                              const fechaF = new Date(
+                                f.proximaRevision || f.proxima_revision,
+                              );
+                              if (desde && fechaF < desde) return false;
+                              if (hasta) {
+                                hasta.setHours(23, 59, 59, 999);
+                                if (fechaF > hasta) return false;
+                              }
+                              return true;
+                            },
+                          );
                         }
 
                         const orden = ordenFlashcardsRepasoSesion || "desc";
                         flashcardsFilterados.sort((a, b) => {
-                          const fechaA = new Date(a.proximaRevision || a.proxima_revision);
-                          const fechaB = new Date(b.proximaRevision || b.proxima_revision);
-                          return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+                          const fechaA = new Date(
+                            a.proximaRevision || a.proxima_revision,
+                          );
+                          const fechaB = new Date(
+                            b.proximaRevision || b.proxima_revision,
+                          );
+                          return orden === "desc"
+                            ? fechaB - fechaA
+                            : fechaA - fechaB;
                         });
 
                         return (
@@ -113848,11 +114059,27 @@ Ejemplo:
                     </div>
 
                     {/* TAB 2: ACIERTOS */}
-                    <div style={{ marginBottom: "2rem", padding: "1rem", background: "rgba(34, 197, 94, 0.08)", borderRadius: "10px", border: "1px solid rgba(34, 197, 94, 0.3)" }}>
-                      <h4 style={{ color: "#22c55e", margin: "0 0 1rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        marginBottom: "2rem",
+                        padding: "1rem",
+                        background: "rgba(34, 197, 94, 0.08)",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(34, 197, 94, 0.3)",
+                      }}
+                    >
+                      <h4
+                        style={{
+                          color: "#22c55e",
+                          margin: "0 0 1rem 0",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                        }}
+                      >
                         🔄 Repaso de Aciertos
                       </h4>
-                      
+
                       <div className="calendario-leyenda">
                         <div className="leyenda-item">
                           <div className="leyenda-color cal-heatmap-0"></div>
@@ -113923,10 +114150,10 @@ Ejemplo:
                             const hace7Dias = new Date(hoy);
                             hace7Dias.setDate(hace7Dias.getDate() - 7);
                             setFechaDesdeAciertosRepasoSesion(
-                              hace7Dias.toISOString().split("T")[0]
+                              hace7Dias.toISOString().split("T")[0],
                             );
                             setFechaHastaAciertosRepasoSesion(
-                              hoy.toISOString().split("T")[0]
+                              hoy.toISOString().split("T")[0],
                             );
                           }}
                         >
@@ -113939,11 +114166,16 @@ Ejemplo:
                         ahora.setHours(0, 0, 0, 0);
                         const aciertosParaRepasar = [];
 
-                        const practicas = datosCalendarioRepasos.practicas || [];
+                        const practicas =
+                          datosCalendarioRepasos.practicas || [];
                         practicas.forEach((practica) => {
-                          const resultados = practica.resultados || practica.resultado?.resultados || [];
+                          const resultados =
+                            practica.resultados ||
+                            practica.resultado?.resultados ||
+                            [];
                           resultados.forEach((r) => {
-                            const esAcierto = r.esCorrecta === true || r.correcto === true;
+                            const esAcierto =
+                              r.esCorrecta === true || r.correcto === true;
                             if (esAcierto && r.proximaRevision) {
                               const fechaRevision = new Date(r.proximaRevision);
                               fechaRevision.setHours(0, 0, 0, 0);
@@ -113962,26 +114194,37 @@ Ejemplo:
                         });
 
                         let aciertosFilterados = aciertosParaRepasar;
-                        if (fechaDesdeAciertosRepasoSesion || fechaHastaAciertosRepasoSesion) {
-                          const desde = fechaDesdeAciertosRepasoSesion ? new Date(fechaDesdeAciertosRepasoSesion) : null;
-                          const hasta = fechaHastaAciertosRepasoSesion ? new Date(fechaHastaAciertosRepasoSesion) : null;
-                          
-                          aciertosFilterados = aciertosParaRepasar.filter((a) => {
-                            const fechaA = new Date(a.proximaRevision);
-                            if (desde && fechaA < desde) return false;
-                            if (hasta) {
-                              hasta.setHours(23, 59, 59, 999);
-                              if (fechaA > hasta) return false;
-                            }
-                            return true;
-                          });
+                        if (
+                          fechaDesdeAciertosRepasoSesion ||
+                          fechaHastaAciertosRepasoSesion
+                        ) {
+                          const desde = fechaDesdeAciertosRepasoSesion
+                            ? new Date(fechaDesdeAciertosRepasoSesion)
+                            : null;
+                          const hasta = fechaHastaAciertosRepasoSesion
+                            ? new Date(fechaHastaAciertosRepasoSesion)
+                            : null;
+
+                          aciertosFilterados = aciertosParaRepasar.filter(
+                            (a) => {
+                              const fechaA = new Date(a.proximaRevision);
+                              if (desde && fechaA < desde) return false;
+                              if (hasta) {
+                                hasta.setHours(23, 59, 59, 999);
+                                if (fechaA > hasta) return false;
+                              }
+                              return true;
+                            },
+                          );
                         }
 
                         const orden = ordenAciertosRepasoSesion || "desc";
                         aciertosFilterados.sort((a, b) => {
                           const fechaA = new Date(a.proximaRevision);
                           const fechaB = new Date(b.proximaRevision);
-                          return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+                          return orden === "desc"
+                            ? fechaB - fechaA
+                            : fechaA - fechaB;
                         });
 
                         return (
@@ -113995,7 +114238,9 @@ Ejemplo:
                             {aciertosFilterados.length > 0 && (
                               <>
                                 <div className="stat-item">
-                                  <span className="stat-label">Repeticiones (prom)</span>
+                                  <span className="stat-label">
+                                    Repeticiones (prom)
+                                  </span>
                                   <span className="stat-valor">
                                     {(
                                       aciertosFilterados.reduce(
@@ -114013,11 +114258,27 @@ Ejemplo:
                     </div>
 
                     {/* TAB 3: ERRORES */}
-                    <div style={{ marginBottom: "2rem", padding: "1rem", background: "rgba(239, 68, 68, 0.08)", borderRadius: "10px", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
-                      <h4 style={{ color: "#ef4444", margin: "0 0 1rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div
+                      style={{
+                        marginBottom: "2rem",
+                        padding: "1rem",
+                        background: "rgba(239, 68, 68, 0.08)",
+                        borderRadius: "10px",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                      }}
+                    >
+                      <h4
+                        style={{
+                          color: "#ef4444",
+                          margin: "0 0 1rem 0",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.5rem",
+                        }}
+                      >
                         🎯 Reforzar Errores
                       </h4>
-                      
+
                       <div className="calendario-leyenda">
                         <div className="leyenda-item">
                           <div className="leyenda-color cal-heatmap-0"></div>
@@ -114088,10 +114349,10 @@ Ejemplo:
                             const hace7Dias = new Date(hoy);
                             hace7Dias.setDate(hace7Dias.getDate() - 7);
                             setFechaDesdeErroresRefuerzoSesion(
-                              hace7Dias.toISOString().split("T")[0]
+                              hace7Dias.toISOString().split("T")[0],
                             );
                             setFechaHastaErroresRefuerzoSesion(
-                              hoy.toISOString().split("T")[0]
+                              hoy.toISOString().split("T")[0],
                             );
                           }}
                         >
@@ -114104,11 +114365,16 @@ Ejemplo:
                         ahora.setHours(0, 0, 0, 0);
                         const erroresParaRepasar = [];
 
-                        const practicas = datosCalendarioRepasos.practicas || [];
+                        const practicas =
+                          datosCalendarioRepasos.practicas || [];
                         practicas.forEach((practica) => {
-                          const resultados = practica.resultados || practica.resultado?.resultados || [];
+                          const resultados =
+                            practica.resultados ||
+                            practica.resultado?.resultados ||
+                            [];
                           resultados.forEach((r) => {
-                            const esError = r.esCorrecta === false || r.correcto === false;
+                            const esError =
+                              r.esCorrecta === false || r.correcto === false;
                             if (esError && r.proximaRevision) {
                               const fechaRevision = new Date(r.proximaRevision);
                               fechaRevision.setHours(0, 0, 0, 0);
@@ -114127,10 +114393,17 @@ Ejemplo:
                         });
 
                         let erroresFilterados = erroresParaRepasar;
-                        if (fechaDesdeErroresRefuerzoSesion || fechaHastaErroresRefuerzoSesion) {
-                          const desde = fechaDesdeErroresRefuerzoSesion ? new Date(fechaDesdeErroresRefuerzoSesion) : null;
-                          const hasta = fechaHastaErroresRefuerzoSesion ? new Date(fechaHastaErroresRefuerzoSesion) : null;
-                          
+                        if (
+                          fechaDesdeErroresRefuerzoSesion ||
+                          fechaHastaErroresRefuerzoSesion
+                        ) {
+                          const desde = fechaDesdeErroresRefuerzoSesion
+                            ? new Date(fechaDesdeErroresRefuerzoSesion)
+                            : null;
+                          const hasta = fechaHastaErroresRefuerzoSesion
+                            ? new Date(fechaHastaErroresRefuerzoSesion)
+                            : null;
+
                           erroresFilterados = erroresParaRepasar.filter((e) => {
                             const fechaE = new Date(e.proximaRevision);
                             if (desde && fechaE < desde) return false;
@@ -114146,7 +114419,9 @@ Ejemplo:
                         erroresFilterados.sort((a, b) => {
                           const fechaA = new Date(a.proximaRevision);
                           const fechaB = new Date(b.proximaRevision);
-                          return orden === "desc" ? fechaB - fechaA : fechaA - fechaB;
+                          return orden === "desc"
+                            ? fechaB - fechaA
+                            : fechaA - fechaB;
                         });
 
                         return (
@@ -114160,7 +114435,9 @@ Ejemplo:
                             {erroresFilterados.length > 0 && (
                               <>
                                 <div className="stat-item">
-                                  <span className="stat-label">Repeticiones (prom)</span>
+                                  <span className="stat-label">
+                                    Repeticiones (prom)
+                                  </span>
                                   <span className="stat-valor">
                                     {(
                                       erroresFilterados.reduce(
@@ -114178,9 +114455,6 @@ Ejemplo:
                     </div>
                   </div>
                 )}
-
-
-
 
                 {!modoLibreActivo && (
                   <div className="fases-preview">
