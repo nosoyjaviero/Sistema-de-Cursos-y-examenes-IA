@@ -113547,6 +113547,159 @@ Ejemplo:
                     })()}
                   </div>
                 )}
+
+                {/* FILTRO DE FLASHCARDS POR FECHA */}
+                {prioridadSesion === "flashcards" && (
+                  <div className="config-section calendario-flashcards-section">
+                    <label className="config-label">
+                      📅 Calendario de Flashcards para Repasar
+                    </label>
+                    <p className="config-description">
+                      Selecciona un rango de fechas para estudiar los flashcards
+                      que necesitan repaso
+                    </p>
+
+                    {/* Leyenda del heatmap */}
+                    <div className="calendario-leyenda">
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-0"></div>
+                        <span>Sin items</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-1"></div>
+                        <span>1-3</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-2"></div>
+                        <span>4-6</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-3"></div>
+                        <span>7-10</span>
+                      </div>
+                      <div className="leyenda-item">
+                        <div className="leyenda-color cal-heatmap-4"></div>
+                        <span>11+</span>
+                      </div>
+                    </div>
+
+                    {/* Controles de filtro */}
+                    <div className="filtro-aciertos-controles">
+                      <div className="filtro-grupo">
+                        <label>Orden</label>
+                        <select
+                          value={ordenFlashcardsRepasoSesion || "desc"}
+                          onChange={(e) =>
+                            setOrdenFlashcardsRepasoSesion(e.target.value)
+                          }
+                          className="filtro-select"
+                        >
+                          <option value="desc">Más recientes primero</option>
+                          <option value="asc">Más antiguas primero</option>
+                        </select>
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Desde</label>
+                        <input
+                          type="date"
+                          value={fechaDesdeFlashcardsRepasoSesion || ""}
+                          onChange={(e) =>
+                            setFechaDesdeFlashcardsRepasoSesion(e.target.value)
+                          }
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <div className="filtro-grupo">
+                        <label>Hasta</label>
+                        <input
+                          type="date"
+                          value={fechaHastaFlashcardsRepasoSesion || ""}
+                          onChange={(e) =>
+                            setFechaHastaFlashcardsRepasoSesion(e.target.value)
+                          }
+                          className="filtro-input"
+                        />
+                      </div>
+
+                      <button
+                        className="btn-filtro-rapido"
+                        onClick={() => {
+                          const hoy = new Date();
+                          hoy.setHours(0, 0, 0, 0);
+                          const hace7Dias = new Date(hoy);
+                          hace7Dias.setDate(hace7Dias.getDate() - 7);
+                          setFechaDesdeFlashcardsRepasoSesion(
+                            hace7Dias.toISOString().split("T")[0],
+                          );
+                          setFechaHastaFlashcardsRepasoSesion(
+                            hoy.toISOString().split("T")[0],
+                          );
+                        }}
+                      >
+                        Última semana
+                      </button>
+                    </div>
+
+                    {/* Estadísticas de flashcards */}
+                    {(() => {
+                      const flashcardsParaRepasar = (datosCalendarioRepasos.flashcards || []).filter((f) => {
+                        const proximaRev = f.proximaRevision || f.proxima_revision;
+                        if (proximaRev) return true;
+                        const ultimaRev = f.ultimaRevision || f.ultima_revision || f.fechaRevision;
+                        if (!proximaRev && !ultimaRev) return true;
+                        return false;
+                      });
+
+                      let flashcardsFilterados = flashcardsParaRepasar;
+                      if (
+                        fechaDesdeFlashcardsRepasoSesion ||
+                        fechaHastaFlashcardsRepasoSesion
+                      ) {
+                        const desde = fechaDesdeFlashcardsRepasoSesion
+                          ? new Date(fechaDesdeFlashcardsRepasoSesion)
+                          : null;
+                        const hasta = fechaHastaFlashcardsRepasoSesion
+                          ? new Date(fechaHastaFlashcardsRepasoSesion)
+                          : null;
+
+                        flashcardsFilterados = flashcardsParaRepasar.filter((f) => {
+                          const fechaF = new Date(f.proximaRevision || f.proxima_revision || f.fecha);
+                          if (desde && fechaF < desde) return false;
+                          if (hasta) {
+                            hasta.setHours(23, 59, 59, 999);
+                            if (fechaF > hasta) return false;
+                          }
+                          return true;
+                        });
+                      }
+
+                      // Ordenar
+                      const orden = ordenFlashcardsRepasoSesion || "desc";
+                      flashcardsFilterados.sort((a, b) => {
+                        const fechaA = new Date(a.proximaRevision || a.proxima_revision || a.fecha);
+                        const fechaB = new Date(b.proximaRevision || b.proxima_revision || b.fecha);
+                        return orden === "desc"
+                          ? fechaB - fechaA
+                          : fechaA - fechaB;
+                      });
+
+                      return (
+                        <div className="aciertos-stats">
+                          <div className="stat-item">
+                            <span className="stat-label">Total</span>
+                            <span className="stat-valor">
+                              {flashcardsFilterados.length}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+
                 {/* FILTROS PARA SESIÓN COMPLETA */}
                 {prioridadSesion === "todo" && (
                   <div className="config-section calendario-sesion-completa">
