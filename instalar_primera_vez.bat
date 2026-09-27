@@ -50,28 +50,30 @@ echo [OK] Python encontrado: %PYTHON_VER%
 
 echo.
 echo [2/10] Verificando Node.js...
-where node >nul 2>&1
-if %errorlevel% neq 0 (
+node --version >nul 2>&1
+if errorlevel 1 (
     echo ERROR: Node.js no esta instalado.
     echo.
     echo    Descarga Node.js desde: https://nodejs.org/
     echo    Instala la version LTS (recomendada)
+    echo    Si ya lo instalaste, cierra esta ventana y abre CMD de nuevo.
     echo.
     pause
     exit /b 1
 )
-for /f "tokens=1" %%i in ('node --version 2^>^&1') do set NODE_VER=%%i
+for /f "tokens=1" %%i in ('node --version 2^>nul') do set NODE_VER=%%i
 echo [OK] Node.js encontrado: %NODE_VER%
 
 echo.
 echo [3/10] Verificando npm...
-where npm >nul 2>&1
-if %errorlevel% neq 0 (
+call npm --version >nul 2>&1
+if errorlevel 1 (
     echo ERROR: npm no esta instalado. Deberia venir con Node.js.
+    echo    Repara o reinstala Node.js LTS desde https://nodejs.org/
     pause
     exit /b 1
 )
-for /f "tokens=1" %%i in ('npm --version 2^>^&1') do set NPM_VER=%%i
+for /f "tokens=1" %%i in ('call npm --version 2^>nul') do set NPM_VER=%%i
 echo [OK] npm encontrado: v%NPM_VER%
 
 :: ============================================================================
