@@ -55,7 +55,7 @@ if errorlevel 1 (
     echo ERROR: Node.js no esta instalado.
     echo.
     echo    Descarga Node.js desde: https://nodejs.org/
-    echo    Instala la version LTS (recomendada)
+    echo    Instala la version LTS recomendada.
     echo    Si ya lo instalaste, cierra esta ventana y abre CMD de nuevo.
     echo.
     pause
