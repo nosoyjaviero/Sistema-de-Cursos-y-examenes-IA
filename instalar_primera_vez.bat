@@ -246,6 +246,13 @@ pip install --progress-bar on pypdf PyPDF2 python-docx numpy tqdm ddgs
 if errorlevel 1 goto :pip_install_failed
 echo        [OK] Utilidades instaladas
 
+echo    [INFO] [6/6] Instalando llama-cpp-python para modelos locales...
+pip install --progress-bar on --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
+if errorlevel 1 goto :pip_install_failed
+python -c "import llama_cpp" >nul 2>&1
+if errorlevel 1 goto :pip_install_failed
+echo        [OK] llama-cpp-python instalado y verificado
+
 echo.
 echo [OK] Todas las dependencias Python instaladas
 

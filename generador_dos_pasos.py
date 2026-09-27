@@ -7,7 +7,6 @@ Paso 2: Formatear preguntas al JSON requerido
 from pathlib import Path
 from typing import List, Dict
 from dataclasses import dataclass
-from llama_cpp import Llama
 import json
 import re
 from datetime import datetime
@@ -121,6 +120,17 @@ class GeneradorDosPasos:
     def _cargar_modelo(self):
         """Carga el modelo LLM"""
         try:
+            try:
+                from llama_cpp import Llama
+            except ImportError as error:
+                print(
+                    "⚠️ llama-cpp-python no está instalado. "
+                    "Instálalo con: python -m pip install llama-cpp-python"
+                )
+                print(f"   Detalle: {error}")
+                self.llm = None
+                return
+
             print(f"📦 Cargando modelo: {self.modelo_path}")
             print(f"⚙️  Configuración GPU: {self.n_gpu_layers} capas")
             

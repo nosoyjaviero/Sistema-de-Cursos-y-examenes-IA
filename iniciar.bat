@@ -67,6 +67,7 @@ REM VERIFICACION DE PRIMERA EJECUCION / VENV CORRUPTO
 REM ============================================================================
 
 set NECESITA_INSTALACION=0
+set NECESITA_LLAMA=0
 
 REM Caso 1: No existe el venv
 if not exist "venv\Scripts\activate.bat" (
@@ -111,6 +112,11 @@ if !errorlevel! neq 0 (
 
 echo    [OK] Dependencias instaladas
 echo    [OK] Entorno virtual valido
+call "venv\Scripts\python.exe" -c "import llama_cpp" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo    [AVISO] Falta llama-cpp-python; se instalara antes de iniciar.
+    set NECESITA_LLAMA=1
+)
 
 :check_instalacion
 if !NECESITA_INSTALACION!==0 goto :venv_ok
@@ -240,17 +246,21 @@ echo    [4.6] Instalando PyTorch CPU...
 echo       [OK] PyTorch instalado
 
 echo    [4.7] Instalando llama-cpp (para modelos locales)...
-"%VENV_PIP%" install llama-cpp-python 2>nul
+"%VENV_PYTHON%" -m pip install --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
 if !errorlevel! neq 0 (
-    echo       ADVERTENCIA: llama-cpp-python no se pudo instalar automaticamente
-    echo       Intentando instalacion alternativa...
-    "%VENV_PIP%" install llama-cpp-python --prefer-binary 2>nul
-    if !errorlevel! neq 0 (
-        echo       ADVERTENCIA: Usando version pre-compilada...
-        "%VENV_PIP%" install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu 2>nul
-    )
+    echo       ERROR: No se pudo instalar llama-cpp-python.
+    echo       Comprueba la conexion y vuelve a ejecutar iniciar.bat.
+    pause
+    exit /b 1
 )
-echo       [OK] llama-cpp instalado
+"%VENV_PYTHON%" -c "import llama_cpp" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo       ERROR: llama_cpp no se puede importar despues de instalarlo.
+    echo       Comprueba la instalacion y vuelve a ejecutar iniciar.bat.
+    pause
+    exit /b 1
+)
+echo       [OK] llama-cpp instalado y verificado
 
 echo    [4.8] Instalando busqueda web...
 "%VENV_PIP%" install ddgs
@@ -315,6 +325,26 @@ echo ===========================================================================
 echo.
 
 :venv_ok
+
+if "!NECESITA_LLAMA!"=="1" (
+    echo.
+    echo Instalando llama-cpp-python para habilitar modelos GGUF...
+    "venv\Scripts\python.exe" -m pip install --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
+    if !errorlevel! neq 0 (
+        echo ERROR: No se pudo instalar llama-cpp-python.
+        echo Revisa tu conexion e intenta de nuevo.
+        pause
+        exit /b 1
+    )
+    "venv\Scripts\python.exe" -c "import llama_cpp" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo ERROR: La instalacion termino, pero llama_cpp no se puede importar.
+        echo Ejecuta: venv\Scripts\python.exe -m pip install llama-cpp-python
+        pause
+        exit /b 1
+    )
+    echo [OK] llama-cpp-python instalado y verificado.
+)
 
 REM Verificar Node.js ejecutandolo directamente
 set TIENE_NODE=0

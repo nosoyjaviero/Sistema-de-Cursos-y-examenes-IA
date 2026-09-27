@@ -93,6 +93,27 @@ if not exist "venv\Scripts\activate.bat" (
 set PYTHON_EXE=venv\Scripts\python.exe
 echo       ✅ Entorno virtual listo
 
+:: Instalar la dependencia nativa faltante sin detener el servidor con ImportError
+"%PYTHON_EXE%" -c "import llama_cpp" >nul 2>&1
+if errorlevel 1 (
+    echo       📥 Instalando llama-cpp-python para modelos locales...
+    "%PYTHON_EXE%" -m pip install --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
+    if errorlevel 1 (
+        echo.
+        echo       ❌ No se pudo instalar llama-cpp-python.
+        echo       Verifica tu conexion e intenta ejecutar start_server.bat de nuevo.
+        pause
+        exit /b 1
+    )
+)
+"%PYTHON_EXE%" -c "import llama_cpp" >nul 2>&1
+if errorlevel 1 (
+    echo       ❌ llama-cpp-python se instalo, pero no se puede importar.
+    pause
+    exit /b 1
+)
+echo       ✅ llama-cpp-python verificado
+
 :: ============================================================================
 :: INICIAR SERVIDOR
 :: ============================================================================

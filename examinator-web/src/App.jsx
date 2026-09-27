@@ -76,6 +76,80 @@ import {
 // 🔥 API siempre en localhost (sin soporte de red para mejor rendimiento)
 const SERVER_IP = "localhost";
 const API_URL_GLOBAL = "http://localhost:8000";
+const STORAGE_KEY_CARPETAS_DESACTIVADAS_REPASO =
+  "examinator_carpetas_desactivadas_repaso_v1";
+
+const normalizarRutaRepaso = (ruta) => {
+  const normalizada = String(ruta || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((parte) => parte.trim())
+    .filter((parte) => parte && parte !== ".")
+    .join("/")
+    .toLocaleLowerCase();
+  return normalizada.startsWith("extracciones/")
+    ? normalizada.slice("extracciones/".length)
+    : normalizada;
+};
+
+const leerCarpetasDesactivadasRepaso = () => {
+  try {
+    const guardadas = JSON.parse(
+      localStorage.getItem(STORAGE_KEY_CARPETAS_DESACTIVADAS_REPASO) || "{}",
+    );
+    return guardadas && typeof guardadas === "object" && !Array.isArray(guardadas)
+      ? guardadas
+      : {};
+  } catch (error) {
+    console.error("Error leyendo carpetas excluidas del repaso:", error);
+    return {};
+  }
+};
+
+const obtenerRutaCarpetaItemRepaso = (item) => {
+  const carpeta =
+    item?.carpeta_ruta ??
+    item?.carpetaRuta ??
+    item?.carpeta ??
+    item?.folder_path ??
+    item?.folder;
+  const rutaCarpeta =
+    typeof carpeta === "string" ? carpeta : carpeta?.ruta || "";
+  if (rutaCarpeta) return rutaCarpeta;
+
+  const rutaArchivo = item?.ruta || item?.ruta_archivo || item?.path || "";
+  if (typeof rutaArchivo !== "string") return "";
+  return /\.[^\\/]+$/.test(rutaArchivo)
+    ? rutaArchivo.replace(/[\\/][^\\/]+$/, "")
+    : rutaArchivo;
+};
+
+const carpetaDesactivadaEnRepaso = (configuracion, tipo, ruta) => {
+  const rutaNormalizada = normalizarRutaRepaso(ruta);
+  const desactivadas = configuracion?.[tipo] || {};
+  const partes = rutaNormalizada ? rutaNormalizada.split("/") : [""];
+  let rutaParcial = "";
+  let desactivada = false;
+
+  for (const parte of partes) {
+    rutaParcial = rutaParcial ? `${rutaParcial}/${parte}` : parte;
+    if (Object.prototype.hasOwnProperty.call(desactivadas, rutaParcial)) {
+      desactivada = desactivadas[rutaParcial] === true;
+    }
+  }
+
+  return desactivada;
+};
+
+const itemPerteneceACarpetaSesion = (item, rutaCarpetaSesion) => {
+  const rutaBase = normalizarRutaRepaso(rutaCarpetaSesion);
+  if (!rutaBase) return true;
+
+  const rutaItem = normalizarRutaRepaso(
+    obtenerRutaCarpetaItemRepaso(item),
+  );
+  return rutaItem === rutaBase || rutaItem.startsWith(`${rutaBase}/`);
+};
 
 /**
  * Obtiene datos (notas, flashcards, practicas, examenes) desde el backend
@@ -289,6 +363,8 @@ function App() {
     // Recuperar última carpeta visitada de localStorage
     return localStorage.getItem("ultimaCarpetaCursos") || "";
   });
+  const [carpetasDesactivadasRepaso, setCarpetasDesactivadasRepaso] =
+    useState(leerCarpetasDesactivadasRepaso);
   const [carpetas, setCarpetas] = useState([]);
   const [documentos, setDocumentos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -325,6 +401,108 @@ function App() {
   const [contenidoContexto, setContenidoContexto] = useState("");
   const [nombreArchivoContexto, setNombreArchivoContexto] = useState("");
   const [busquedaWebActiva, setBusquedaWebActiva] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_CARPETAS_DESACTIVADAS_REPASO,
+        JSON.stringify(carpetasDesactivadasRepaso),
+      );
+    } catch (error) {
+      console.error("Error guardando carpetas excluidas del repaso:", error);
+    }
+  }, [carpetasDesactivadasRepaso]);
+
+  const estaCarpetaDesactivadaRepaso = (tipo, ruta) =>
+    carpetaDesactivadaEnRepaso(carpetasDesactivadasRepaso, tipo, ruta);
+
+  const alternarCarpetaRepaso = (tipo, ruta) => {
+    const rutaNormalizada = normalizarRutaRepaso(ruta);
+    if (!rutaNormalizada) return;
+
+    setCarpetasDesactivadasRepaso((actual) => ({
+      ...actual,
+      [tipo]: {
+        ...(actual[tipo] || {}),
+        [rutaNormalizada]: !carpetaDesactivadaEnRepaso(actual, tipo, ruta),
+      },
+    }));
+  };
+
+  const renderAlternarCarpetaRepaso = (tipo, ruta) => {
+    if (!ruta) return null;
+    const desactivada = estaCarpetaDesactivadaRepaso(tipo, ruta);
+    return (
+      <button
+        type="button"
+        aria-pressed={!desactivada}
+        title={
+          desactivada
+            ? "Incluir esta carpeta en la sesión de repaso"
+            : "Excluir esta carpeta de la sesión de repaso"
+        }
+        onClick={(event) => {
+          event.stopPropagation();
+          alternarCarpetaRepaso(tipo, ruta);
+        }}
+        style={{
+          flexShrink: 0,
+          border: `1px solid ${desactivada ? "#f59e0b" : "#64748b"}`,
+          borderRadius: "999px",
+          padding: "0.45rem 0.75rem",
+          background: desactivada
+            ? "rgba(245, 158, 11, 0.14)"
+            : "rgba(100, 116, 139, 0.14)",
+          color: desactivada ? "#fbbf24" : "#cbd5e1",
+          fontSize: "0.78rem",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        {desactivada ? "Activar carpeta" : "Desactivar carpeta"}
+      </button>
+    );
+  };
+
+  const cargarCarpetasSelectorSesion = async (ruta = "") => {
+    setCargandoCarpetasSelectorSesion(true);
+    setErrorSelectorCarpetaSesion("");
+    setCarpetasSelectorSesion([]);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/carpetas?ruta=${encodeURIComponent(ruta)}`,
+      );
+      if (!response.ok) {
+        throw new Error(`Error al cargar carpetas: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data.carpetas)) {
+        throw new Error("El servidor devolvió una lista de carpetas inválida");
+      }
+
+      setRutaSelectorCarpetaSesion(ruta);
+      setCarpetasSelectorSesion(data.carpetas);
+    } catch (error) {
+      console.error("Error cargando carpetas para limitar la sesión:", error);
+      setErrorSelectorCarpetaSesion(
+        "No se pudieron cargar las carpetas. Intenta nuevamente.",
+      );
+    } finally {
+      setCargandoCarpetasSelectorSesion(false);
+    }
+  };
+
+  const abrirSelectorCarpetaSesion = () => {
+    setSelectorCarpetaSesionAbierto(true);
+    cargarCarpetasSelectorSesion(rutaLimiteSesion);
+  };
+
+  const seleccionarCarpetaLimiteSesion = () => {
+    if (!rutaSelectorCarpetaSesion) return;
+    setRutaLimiteSesion(rutaSelectorCarpetaSesion);
+    setSelectorCarpetaSesionAbierto(false);
+  };
 
   // Estados para carpetas de chats (proyectos)
   const [carpetasChats, setCarpetasChats] = useState([]);
@@ -379,6 +557,18 @@ function App() {
   const [modoLibreActivo, setModoLibreActivo] = useState(false); // sin límite de tiempo
   const [prioridadSesion, setPrioridadSesion] = useState("errores"); // 'errores', 'flashcards', 'contenido', 'notas', 'todo'
   const [fasesExcluidas, setFasesExcluidas] = useState([]); // fases que el usuario no quiere en su sesión
+  const [limitarSesionAUnaCarpeta, setLimitarSesionAUnaCarpeta] =
+    useState(false);
+  const [rutaLimiteSesion, setRutaLimiteSesion] = useState("");
+  const [selectorCarpetaSesionAbierto, setSelectorCarpetaSesionAbierto] =
+    useState(false);
+  const [rutaSelectorCarpetaSesion, setRutaSelectorCarpetaSesion] =
+    useState("");
+  const [carpetasSelectorSesion, setCarpetasSelectorSesion] = useState([]);
+  const [cargandoCarpetasSelectorSesion, setCargandoCarpetasSelectorSesion] =
+    useState(false);
+  const [errorSelectorCarpetaSesion, setErrorSelectorCarpetaSesion] =
+    useState("");
   const [fechaDesdeAciertosRepasoSesion, setFechaDesdeAciertosRepasoSesion] =
     useState("");
   const [fechaHastaAciertosRepasoSesion, setFechaHastaAciertosRepasoSesion] =
@@ -4372,11 +4562,23 @@ function App() {
   };
 
   const iniciarSesionEstudio = async () => {
+    if (limitarSesionAUnaCarpeta && !rutaLimiteSesion) {
+      setMensaje({
+        tipo: "warning",
+        texto: "Selecciona la carpeta que quieres estudiar antes de iniciar.",
+      });
+      return;
+    }
+
+    const carpetaSesionSeleccionada = limitarSesionAUnaCarpeta
+      ? rutaLimiteSesion
+      : "";
+
     // Limpiar cualquier sesión persistente anterior antes de iniciar nueva
     await eliminarSesionGuardada();
 
-    // Limpiar ruta actual para cargar notas/flashcards de TODAS las carpetas
-    setRutaActual("");
+    setRutaActual(carpetaSesionSeleccionada);
+    setRutaContenidoActual(carpetaSesionSeleccionada);
 
     // Calcular tiempo de descanso óptimo según el tiempo de sesión
     const tiempoDescansoOptimo = modoLibreActivo
@@ -4500,10 +4702,15 @@ function App() {
     }
 
     // Cargar datos para cada fase
-    await cargarDatosSesion(filtrosFlashcards, filtrosErrores, filtrosAciertos);
+    await cargarDatosSesion(
+      filtrosFlashcards,
+      filtrosErrores,
+      filtrosAciertos,
+      carpetaSesionSeleccionada,
+    );
 
     // Cargar carpetas para fase de calentamiento
-    await cargarCarpetasCalentamiento("");
+    await cargarCarpetasCalentamiento(carpetaSesionSeleccionada);
 
     // Cambiar a la vista de sesión
     setSelectedMenu("sesion");
@@ -4769,16 +4976,39 @@ function App() {
     filtrosFlashcards = {},
     filtrosErrores = {},
     filtrosAciertos = {},
+    carpetaSesionSeleccionada = "",
   ) => {
     try {
       // 🔥 CARGAR TANTO EXÁMENES COMO PRÁCTICAS
       // Cargar exámenes
       const responseExamenes = await fetch(`${API_URL}/datos/examenes`);
-      const examenes = await responseExamenes.json();
+      const examenesRecibidos = await responseExamenes.json();
+      if (!Array.isArray(examenesRecibidos)) {
+        throw new Error("La respuesta de exámenes no contiene una lista");
+      }
+      const examenes = examenesRecibidos.filter(
+        (examen) =>
+          itemPerteneceACarpetaSesion(examen, carpetaSesionSeleccionada) &&
+          !estaCarpetaDesactivadaRepaso(
+            "examenes",
+            obtenerRutaCarpetaItemRepaso(examen),
+          ),
+      );
 
       // Cargar prácticas
       const responsePracticas = await fetch(`${API_URL}/datos/practicas`);
-      const practicas = await responsePracticas.json();
+      const practicasRecibidas = await responsePracticas.json();
+      if (!Array.isArray(practicasRecibidas)) {
+        throw new Error("La respuesta de prácticas no contiene una lista");
+      }
+      const practicas = practicasRecibidas.filter(
+        (practica) =>
+          itemPerteneceACarpetaSesion(practica, carpetaSesionSeleccionada) &&
+          !estaCarpetaDesactivadaRepaso(
+            "practicas",
+            obtenerRutaCarpetaItemRepaso(practica),
+          ),
+      );
 
       console.log("📊 Datos cargados para errores:", {
         examenes: examenes.length,
@@ -4893,7 +5123,14 @@ function App() {
       // 🔥 CARGAR NOTAS PARA REPASO
       const cargarNotasParaRepaso = async () => {
         try {
-          const todasNotas = await getDatos("notas");
+          const todasNotas = (await getDatos("notas")).filter(
+            (nota) =>
+              itemPerteneceACarpetaSesion(nota, carpetaSesionSeleccionada) &&
+              !estaCarpetaDesactivadaRepaso(
+                "notas",
+                obtenerRutaCarpetaItemRepaso(nota),
+              ),
+          );
           const hoy = new Date();
           const hoyStr = hoy.toISOString().split("T")[0]; // YYYY-MM-DD
           hoy.setHours(0, 0, 0, 0);
@@ -4969,8 +5206,19 @@ function App() {
           const todasFlashcards = await cargarTodasFlashcards();
 
           // Filtrar flashcards que necesitan repaso (según repetición espaciada)
-          const flashcardsParaRepasar =
-            filtrarItemsParaRepasar(todasFlashcards);
+          const flashcardsParaRepasar = filtrarItemsParaRepasar(
+            todasFlashcards.filter(
+              (flashcard) =>
+                itemPerteneceACarpetaSesion(
+                  flashcard,
+                  carpetaSesionSeleccionada,
+                ) &&
+                !estaCarpetaDesactivadaRepaso(
+                  "flashcards",
+                  obtenerRutaCarpetaItemRepaso(flashcard),
+                ),
+            ),
+          );
 
           // 🔥 En sesión de estudio NO filtrar por carpeta - repasar TODO lo que toca
           let flashcardsFiltradas = flashcardsParaRepasar;
@@ -6576,6 +6824,19 @@ function App() {
   };
 
   const avanzarFase = async () => {
+    if (
+      faseActual === "calentamiento" &&
+      rutaCalentamientoActual &&
+      estaCarpetaDesactivadaRepaso("cursos", rutaCalentamientoActual)
+    ) {
+      setMensaje({
+        tipo: "warning",
+        texto:
+          "La carpeta esta desactivada para el repaso. Selecciona otra carpeta o actívala desde Mis Cursos.",
+      });
+      return;
+    }
+
     // 📝 Si estamos en modo apuntes avanzado y en fase de contenido, guardar automáticamente
     if (modoApuntesAvanzado && faseActual === "contenido") {
       await guardarApuntesAvanzadosAutomatico();
@@ -11231,23 +11492,56 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
 
   const cargarContenidoFase4 = async () => {
     try {
+      const rutaCursoSesion = limitarSesionAUnaCarpeta
+        ? rutaLimiteSesion
+        : cursoActual?.carpeta_trabajo ||
+          rutaActual ||
+          datosCalentamiento?.cursoSeleccionado ||
+          "";
+      if (
+        rutaCursoSesion &&
+        estaCarpetaDesactivadaRepaso("cursos", rutaCursoSesion)
+      ) {
+        setDocumentoActual(null);
+        setMensaje({
+          tipo: "warning",
+          texto:
+            "La carpeta seleccionada esta desactivada para el repaso. Actívala desde Mis Cursos para cargar su contenido.",
+        });
+        return;
+      }
+
       // Lógica de selección de documento
       let documentoSeleccionado = null;
 
+      if (limitarSesionAUnaCarpeta && rutaLimiteSesion) {
+        documentoSeleccionado =
+          await obtenerSiguienteDocumento(rutaLimiteSesion);
+      }
+
       // 1. Si hay curso seleccionado en Fase 1
-      if (datosCalentamiento && datosCalentamiento.cursoSeleccionado) {
+      if (
+        !documentoSeleccionado &&
+        !limitarSesionAUnaCarpeta &&
+        datosCalentamiento &&
+        datosCalentamiento.cursoSeleccionado
+      ) {
         documentoSeleccionado = await obtenerSiguienteDocumento(
           datosCalentamiento.cursoSeleccionado,
         );
       }
 
       // 2. Si prioridad es contenido en Fase 0
-      if (!documentoSeleccionado && prioridadSesion === "contenido") {
+      if (
+        !documentoSeleccionado &&
+        !limitarSesionAUnaCarpeta &&
+        prioridadSesion === "contenido"
+      ) {
         documentoSeleccionado = await obtenerDocumentoCursoConMasProgreso();
       }
 
       // 3. Último curso accedido
-      if (!documentoSeleccionado) {
+      if (!documentoSeleccionado && !limitarSesionAUnaCarpeta) {
         const ultimoCurso = localStorage.getItem("ultimoCursoAccedido");
         if (ultimoCurso) {
           documentoSeleccionado = await obtenerSiguienteDocumento(ultimoCurso);
@@ -12076,6 +12370,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         configuracion: {
           duracion_planificada: tiempoSesion,
           prioridad: prioridadSesion,
+          limitar_a_carpeta: limitarSesionAUnaCarpeta,
+          carpeta_seleccionada: rutaLimiteSesion,
         },
         tiempos: {
           total_minutos: resumenSesion.tiempoTotal,
@@ -12285,6 +12581,8 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
         tiempoPersonalizado,
         modoLibreActivo,
         prioridadSesion,
+        limitarSesionAUnaCarpeta,
+        rutaLimiteSesion,
       },
 
       // Estado de la sesión
@@ -12382,6 +12680,10 @@ ${evaluacion.sugerencias ? `💡 Sugerencias: ${evaluacion.sugerencias}` : ""}`;
       setTiempoPersonalizado(estado.configuracion.tiempoPersonalizado || "");
       setModoLibreActivo(estado.configuracion.modoLibreActivo || false);
       setPrioridadSesion(estado.configuracion.prioridadSesion);
+      setLimitarSesionAUnaCarpeta(
+        estado.configuracion.limitarSesionAUnaCarpeta || false,
+      );
+      setRutaLimiteSesion(estado.configuracion.rutaLimiteSesion || "");
 
       // Restaurar estado de sesión
       setSesionActiva(estado.estado.sesionActiva);
@@ -28781,33 +29083,50 @@ Generate an educational reading passage about this topic that would be suitable 
                       <div className="explorador-carpetas-calentamiento">
                         {/* Breadcrumb navigation */}
                         <div className="breadcrumb-explorador">
-                          <button
-                            onClick={() => cargarCarpetasCalentamiento("")}
-                            className="breadcrumb-btn-explorador"
-                          >
-                            🏠 Inicio
-                          </button>
+                          {!limitarSesionAUnaCarpeta && (
+                            <button
+                              onClick={() => cargarCarpetasCalentamiento("")}
+                              className="breadcrumb-btn-explorador"
+                            >
+                              🏠 Inicio
+                            </button>
+                          )}
                           {rutaCalentamientoActual &&
                             rutaCalentamientoActual
-                              .split("\\")
+                              .split(/[\\/]/)
                               .filter(Boolean)
                               .map((parte, idx, arr) => {
                                 const rutaParcial = arr
                                   .slice(0, idx + 1)
                                   .join("\\");
+                                const profundidadLimite = limitarSesionAUnaCarpeta
+                                  ? normalizarRutaRepaso(
+                                      rutaLimiteSesion,
+                                    ).split("/")
+                                      .filter(Boolean).length
+                                  : 0;
+                                const esAncestroDeLimite =
+                                  limitarSesionAUnaCarpeta &&
+                                  idx < profundidadLimite - 1;
                                 return (
                                   <span key={idx}>
                                     <span className="breadcrumb-separador">
                                       /
                                     </span>
-                                    <button
-                                      onClick={() =>
-                                        cargarCarpetasCalentamiento(rutaParcial)
-                                      }
-                                      className="breadcrumb-btn-explorador"
-                                    >
-                                      {parte}
-                                    </button>
+                                    {esAncestroDeLimite ? (
+                                      <span>{parte}</span>
+                                    ) : (
+                                      <button
+                                        onClick={() =>
+                                          cargarCarpetasCalentamiento(
+                                            rutaParcial,
+                                          )
+                                        }
+                                        className="breadcrumb-btn-explorador"
+                                      >
+                                        {parte}
+                                      </button>
+                                    )}
                                   </span>
                                 );
                               })}
@@ -28820,13 +29139,26 @@ Generate an educational reading passage about this topic that would be suitable 
                             onClick={() => {
                               if (rutaCalentamientoActual) {
                                 const partes =
-                                  rutaCalentamientoActual.split("\\");
+                                  rutaCalentamientoActual.split(/[\\/]/);
                                 partes.pop();
                                 const rutaPadre = partes.join("\\");
-                                cargarCarpetasCalentamiento(rutaPadre);
+                                if (
+                                  !limitarSesionAUnaCarpeta ||
+                                  itemPerteneceACarpetaSesion(
+                                    { carpeta: rutaPadre },
+                                    rutaLimiteSesion,
+                                  )
+                                ) {
+                                  cargarCarpetasCalentamiento(rutaPadre);
+                                }
                               }
                             }}
-                            disabled={!rutaCalentamientoActual}
+                            disabled={
+                              !rutaCalentamientoActual ||
+                              (limitarSesionAUnaCarpeta &&
+                                normalizarRutaRepaso(rutaCalentamientoActual) ===
+                                  normalizarRutaRepaso(rutaLimiteSesion))
+                            }
                           >
                             ⬅️ Volver Atrás
                           </button>
@@ -28857,30 +29189,40 @@ Generate an educational reading passage about this topic that would be suitable 
                         {/* Lista de carpetas */}
                         <div className="carpetas-grid">
                           {carpetasCalentamiento.length > 0 ? (
-                            carpetasCalentamiento.map((carpeta, idx) => (
-                              <button
-                                key={idx}
-                                className="carpeta-card"
-                                onClick={() => {
-                                  const nuevaRuta = rutaCalentamientoActual
-                                    ? `${rutaCalentamientoActual}\\${carpeta.nombre}`
-                                    : carpeta.nombre;
-                                  cargarCarpetasCalentamiento(nuevaRuta);
-                                }}
-                              >
-                                <div className="carpeta-icono">📁</div>
-                                <div className="carpeta-nombre">
-                                  {carpeta.nombre}
-                                </div>
-                                <div className="carpeta-info">
-                                  {carpeta.archivos > 0 && (
-                                    <span className="carpeta-stat">
-                                      📄 {carpeta.archivos}
-                                    </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))
+                            carpetasCalentamiento
+                              .filter((carpeta) => {
+                                const rutaCarpeta = rutaCalentamientoActual
+                                  ? `${rutaCalentamientoActual}\\${carpeta.nombre}`
+                                  : carpeta.nombre;
+                                return !estaCarpetaDesactivadaRepaso(
+                                  "cursos",
+                                  rutaCarpeta,
+                                );
+                              })
+                              .map((carpeta, idx) => (
+                                <button
+                                  key={idx}
+                                  className="carpeta-card"
+                                  onClick={() => {
+                                    const nuevaRuta = rutaCalentamientoActual
+                                      ? `${rutaCalentamientoActual}\\${carpeta.nombre}`
+                                      : carpeta.nombre;
+                                    cargarCarpetasCalentamiento(nuevaRuta);
+                                  }}
+                                >
+                                  <div className="carpeta-icono">📁</div>
+                                  <div className="carpeta-nombre">
+                                    {carpeta.nombre}
+                                  </div>
+                                  <div className="carpeta-info">
+                                    {carpeta.archivos > 0 && (
+                                      <span className="carpeta-stat">
+                                        📄 {carpeta.archivos}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              ))
                           ) : (
                             <div className="carpetas-vacio">
                               <p className="vacio-icon">📭</p>
@@ -66754,6 +67096,10 @@ Devuelve SOLO este JSON:
                                 {carpeta.num_subcarpetas} carpetas
                               </p>
                             </div>
+                            {renderAlternarCarpetaRepaso(
+                              "cursos",
+                              carpeta.ruta,
+                            )}
                             <div className="item-actions">
                               <button
                                 onClick={(e) => {
@@ -67261,6 +67607,10 @@ Devuelve SOLO este JSON:
                               )}
                             </div>
                           </div>
+                          {renderAlternarCarpetaRepaso(
+                            "examenes",
+                            carpeta.ruta,
+                          )}
                           <div className="carpeta-menu">
                             <button
                               className="btn-menu-dots"
@@ -69990,20 +70340,43 @@ Devuelve SOLO este JSON:
             {carpetasNotas.length > 0 && (
               <div className="carpetas-grid" style={{ marginBottom: "2rem" }}>
                 {carpetasNotas.map((carpeta, idx) => (
-                  <button
+                  <div
                     key={idx}
                     className="carpeta-card"
-                    onClick={() => {
-                      const nuevaRuta = rutaNotasActual
-                        ? `${rutaNotasActual}\\${carpeta.nombre}`
-                        : carpeta.nombre;
-                      setRutaNotasActual(nuevaRuta);
-                      cargarCarpetasNotas(nuevaRuta);
-                    }}
                   >
-                    <span className="carpeta-icon">📁</span>
-                    <span className="carpeta-nombre">{carpeta.nombre}</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nuevaRuta = rutaNotasActual
+                          ? `${rutaNotasActual}\\${carpeta.nombre}`
+                          : carpeta.nombre;
+                        setRutaNotasActual(nuevaRuta);
+                        cargarCarpetasNotas(nuevaRuta);
+                      }}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        minWidth: 0,
+                        border: 0,
+                        padding: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span className="carpeta-icon">📁</span>
+                      <span className="carpeta-nombre">{carpeta.nombre}</span>
+                    </button>
+                    {renderAlternarCarpetaRepaso(
+                      "notas",
+                      rutaNotasActual
+                        ? `${rutaNotasActual}\\${carpeta.nombre}`
+                        : carpeta.nombre,
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -70301,20 +70674,43 @@ Devuelve SOLO este JSON:
             {carpetasPracticas.length > 0 && (
               <div className="carpetas-grid" style={{ marginBottom: "2rem" }}>
                 {carpetasPracticas.map((carpeta, idx) => (
-                  <button
+                  <div
                     key={idx}
                     className="carpeta-card"
-                    onClick={() => {
-                      const nuevaRuta = rutaPracticasActual
-                        ? `${rutaPracticasActual}\\${carpeta.nombre}`
-                        : carpeta.nombre;
-                      setRutaPracticasActual(nuevaRuta);
-                      cargarCarpetasPracticas(nuevaRuta);
-                    }}
                   >
-                    <span className="carpeta-icon">📁</span>
-                    <span className="carpeta-nombre">{carpeta.nombre}</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nuevaRuta = rutaPracticasActual
+                          ? `${rutaPracticasActual}\\${carpeta.nombre}`
+                          : carpeta.nombre;
+                        setRutaPracticasActual(nuevaRuta);
+                        cargarCarpetasPracticas(nuevaRuta);
+                      }}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        minWidth: 0,
+                        border: 0,
+                        padding: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span className="carpeta-icon">📁</span>
+                      <span className="carpeta-nombre">{carpeta.nombre}</span>
+                    </button>
+                    {renderAlternarCarpetaRepaso(
+                      "practicas",
+                      rutaPracticasActual
+                        ? `${rutaPracticasActual}\\${carpeta.nombre}`
+                        : carpeta.nombre,
+                    )}
+                  </div>
                 ))}
               </div>
             )}
@@ -71496,6 +71892,13 @@ Devuelve SOLO este JSON:
                             )}
                           </div>
                         </div>
+                        {renderAlternarCarpetaRepaso(
+                          "flashcards",
+                          carpeta.ruta ||
+                            (rutaFlashcardsActual
+                              ? `${rutaFlashcardsActual}/${carpeta.nombre}`
+                              : carpeta.nombre),
+                        )}
                       </div>
                     );
                   })}
@@ -113245,6 +113648,177 @@ Ejemplo:
                       </label>
                     </div>
                   </div>
+                </div>
+
+                <div className="config-section">
+                  <label className="config-label">
+                    📂 ¿Qué carpetas quieres incluir?
+                  </label>
+                  <p className="config-description">
+                    Puedes estudiar todo el material o limitar la sesión a una
+                    carpeta y sus subcarpetas. El resto se ignorará.
+                  </p>
+                  <label className="toggle-container">
+                    <input
+                      type="checkbox"
+                      checked={limitarSesionAUnaCarpeta}
+                      onChange={(event) => {
+                        setLimitarSesionAUnaCarpeta(event.target.checked);
+                        setSelectorCarpetaSesionAbierto(false);
+                      }}
+                    />
+                    <span className="toggle-slider"></span>
+                    <span className="toggle-label">
+                      Limitar la sesión a una carpeta
+                    </span>
+                  </label>
+
+                  {limitarSesionAUnaCarpeta && (
+                    <div style={{ marginTop: "1rem" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "1rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span>
+                          {rutaLimiteSesion
+                            ? `Carpeta: ${rutaLimiteSesion}`
+                            : "Todavía no has elegido una carpeta."}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-filtro-rapido"
+                          onClick={abrirSelectorCarpetaSesion}
+                        >
+                          📁 Elegir carpeta
+                        </button>
+                      </div>
+
+                      {selectorCarpetaSesionAbierto && (
+                        <div
+                          style={{
+                            marginTop: "1rem",
+                            padding: "1rem",
+                            borderRadius: "12px",
+                            border: "1px solid rgba(148, 163, 184, 0.3)",
+                            background: "rgba(15, 23, 42, 0.6)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: "0.75rem",
+                              flexWrap: "wrap",
+                              marginBottom: "0.75rem",
+                            }}
+                          >
+                            <strong>
+                              Ubicación: {rutaSelectorCarpetaSesion || "Inicio"}
+                            </strong>
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                              <button
+                                type="button"
+                                className="btn-filtro-rapido"
+                                onClick={() => {
+                                  const partes =
+                                    rutaSelectorCarpetaSesion.split(/[\\/]/);
+                                  partes.pop();
+                                  cargarCarpetasSelectorSesion(
+                                    partes.join("\\"),
+                                  );
+                                }}
+                                disabled={!rutaSelectorCarpetaSesion}
+                              >
+                                ⬅️ Atrás
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-filtro-rapido"
+                                onClick={() => setSelectorCarpetaSesionAbierto(false)}
+                              >
+                                Cerrar
+                              </button>
+                            </div>
+                          </div>
+
+                          {rutaSelectorCarpetaSesion && (
+                            <button
+                              type="button"
+                              className="btn-filtro-rapido"
+                              onClick={seleccionarCarpetaLimiteSesion}
+                              disabled={cargandoCarpetasSelectorSesion}
+                            >
+                              Usar esta carpeta y sus subcarpetas
+                            </button>
+                          )}
+
+                          {errorSelectorCarpetaSesion && (
+                            <p role="alert" style={{ color: "#fca5a5" }}>
+                              {errorSelectorCarpetaSesion}
+                            </p>
+                          )}
+
+                          {cargandoCarpetasSelectorSesion ? (
+                            <p>Cargando carpetas...</p>
+                          ) : carpetasSelectorSesion.length > 0 ? (
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: "0.5rem",
+                                marginTop: "0.75rem",
+                              }}
+                            >
+                              {carpetasSelectorSesion.map((carpeta) => (
+                                <div
+                                  key={carpeta.ruta}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: "0.75rem",
+                                    flexWrap: "wrap",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="btn-filtro-rapido"
+                                    onClick={() =>
+                                      cargarCarpetasSelectorSesion(
+                                        carpeta.ruta,
+                                      )
+                                    }
+                                  >
+                                    📁 {carpeta.nombre}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-filtro-rapido"
+                                    onClick={() => {
+                                      setRutaLimiteSesion(carpeta.ruta);
+                                      setSelectorCarpetaSesionAbierto(false);
+                                    }}
+                                  >
+                                    Elegir esta carpeta
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            !errorSelectorCarpetaSesion &&
+                            !cargandoCarpetasSelectorSesion && (
+                              <p>No hay subcarpetas en esta ubicación.</p>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="config-section">

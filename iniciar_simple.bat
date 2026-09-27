@@ -61,6 +61,7 @@ echo.
 :: ============================================================================
 
 set NECESITA_INSTALACION=0
+set NECESITA_LLAMA=0
 
 :: Caso 1: No existe el venv
 if not exist "venv\Scripts\activate.bat" (
@@ -103,6 +104,11 @@ if !errorlevel! neq 0 (
 )
 
 echo [OK] Entorno virtual y dependencias validos
+call "venv\Scripts\python.exe" -c "import llama_cpp" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo ADVERTENCIA: falta llama-cpp-python; se instalara antes de iniciar.
+    set NECESITA_LLAMA=1
+)
 
 :check_instalacion
 if !NECESITA_INSTALACION!==0 goto :venv_ok
@@ -197,8 +203,19 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 echo       [OK] PyTorch instalado
 
 echo    [4.6] Instalando llama-cpp (para modelos locales)...
-pip install llama-cpp-python --quiet
-echo       [OK] llama-cpp instalado
+python -m pip install --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
+if !errorlevel! neq 0 (
+    echo ERROR: No se pudo instalar llama-cpp-python.
+    pause
+    exit /b 1
+)
+python -c "import llama_cpp" >nul 2>&1
+if !errorlevel! neq 0 (
+    echo ERROR: llama_cpp no se puede importar despues de instalarlo.
+    pause
+    exit /b 1
+)
+echo       [OK] llama-cpp instalado y verificado
 
 echo    [4.7] Instalando busqueda web...
 pip install ddgs --quiet
@@ -240,6 +257,26 @@ echo ================================================================
 echo.
 
 :venv_ok
+
+if "!NECESITA_LLAMA!"=="1" (
+    echo.
+    echo Instalando llama-cpp-python para habilitar modelos GGUF...
+    "venv\Scripts\python.exe" -m pip install --retries 10 --timeout 60 --prefer-binary --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
+    if !errorlevel! neq 0 (
+        echo ERROR: No se pudo instalar llama-cpp-python.
+        echo Revisa tu conexion e intenta de nuevo.
+        pause
+        exit /b 1
+    )
+    "venv\Scripts\python.exe" -c "import llama_cpp" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo ERROR: La instalacion termino, pero llama_cpp no se puede importar.
+        echo Ejecuta: venv\Scripts\python.exe -m pip install llama-cpp-python
+        pause
+        exit /b 1
+    )
+    echo [OK] llama-cpp-python instalado y verificado.
+)
 
 :: Verificar si las dependencias de Node estan instaladas
 set "TIENE_NODE=0"
