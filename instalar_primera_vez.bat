@@ -2,6 +2,8 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 setlocal EnableDelayedExpansion
+set "PIP_RETRIES=10"
+set "PIP_TIMEOUT=60"
 title Examinator - Instalacion Primera Vez
 
 echo.
@@ -195,6 +197,7 @@ call venv\Scripts\activate.bat
 :: Actualizar pip
 echo    Actualizando pip...
 python -m pip install --upgrade pip --progress-bar on
+if errorlevel 1 goto :pip_install_failed
 
 :: ============================================================================
 :: INSTALAR DEPENDENCIAS PYTHON
@@ -210,31 +213,37 @@ if %GPU_DISPONIBLE% equ 1 (
     echo    [INFO] [1/5] Instalando PyTorch con soporte CUDA...
     echo        pip mostrara el progreso de descarga de cada paquete...
     pip install --progress-bar on torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    if errorlevel 1 goto :pip_install_failed
     echo        [OK] PyTorch CUDA instalado
 ) else (
     echo    [INFO] [1/5] Instalando PyTorch en modo CPU...
     pip install --progress-bar on torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+    if errorlevel 1 goto :pip_install_failed
     echo        [OK] PyTorch CPU instalado
 )
 
 :: Dependencias del servidor FastAPI
 echo    [INFO] [2/5] Instalando FastAPI y servidor...
 pip install --progress-bar on fastapi uvicorn python-multipart requests beautifulsoup4
+if errorlevel 1 goto :pip_install_failed
 echo        [OK] FastAPI instalado
 
 :: Dependencias del buscador IA
 echo    [INFO] [3/5] Instalando buscador IA (puede tardar)...
 pip install --progress-bar on sentence-transformers faiss-cpu rank-bm25
+if errorlevel 1 goto :pip_install_failed
 echo        [OK] Buscador IA instalado
 
 :: Servidor Flask para buscador
 echo    [INFO] [4/5] Instalando Flask...
 pip install --progress-bar on Flask Flask-Cors waitress
+if errorlevel 1 goto :pip_install_failed
 echo        [OK] Flask instalado
 
 :: Utilidades
 echo    [INFO] [5/5] Instalando utilidades...
 pip install --progress-bar on pypdf PyPDF2 python-docx numpy tqdm ddgs
+if errorlevel 1 goto :pip_install_failed
 echo        [OK] Utilidades instaladas
 
 echo.
@@ -345,3 +354,14 @@ echo.
 echo ======================================================================
 echo.
 pause
+exit /b 0
+
+:pip_install_failed
+echo.
+echo ERROR: No se pudieron descargar o instalar las dependencias Python.
+echo pip reintentara cada descarga hasta 10 veces y esperara hasta 60 segundos.
+echo Verifica la conexion a internet y vuelve a ejecutar este instalador.
+echo Las dependencias instaladas anteriormente se conservaran.
+echo.
+pause
+exit /b 1
