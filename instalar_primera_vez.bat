@@ -194,7 +194,7 @@ call venv\Scripts\activate.bat
 
 :: Actualizar pip
 echo    Actualizando pip...
-python -m pip install --upgrade pip -q
+python -m pip install --upgrade pip --progress-bar on
 
 :: ============================================================================
 :: INSTALAR DEPENDENCIAS PYTHON
@@ -208,33 +208,33 @@ echo.
 :: Instalar PyTorch (con o sin CUDA segun GPU)
 if %GPU_DISPONIBLE% equ 1 (
     echo    [INFO] [1/5] Instalando PyTorch con soporte CUDA...
-    echo        Descargando ~2GB - por favor espera...
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 -q
+    echo        pip mostrara el progreso de descarga de cada paquete...
+    pip install --progress-bar on torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
     echo        [OK] PyTorch CUDA instalado
 ) else (
     echo    [INFO] [1/5] Instalando PyTorch en modo CPU...
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu -q
+    pip install --progress-bar on torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
     echo        [OK] PyTorch CPU instalado
 )
 
 :: Dependencias del servidor FastAPI
 echo    [INFO] [2/5] Instalando FastAPI y servidor...
-pip install fastapi uvicorn python-multipart requests beautifulsoup4 -q
+pip install --progress-bar on fastapi uvicorn python-multipart requests beautifulsoup4
 echo        [OK] FastAPI instalado
 
 :: Dependencias del buscador IA
 echo    [INFO] [3/5] Instalando buscador IA (puede tardar)...
-pip install sentence-transformers faiss-cpu rank-bm25 -q
+pip install --progress-bar on sentence-transformers faiss-cpu rank-bm25
 echo        [OK] Buscador IA instalado
 
 :: Servidor Flask para buscador
 echo    [INFO] [4/5] Instalando Flask...
-pip install Flask Flask-Cors waitress -q
+pip install --progress-bar on Flask Flask-Cors waitress
 echo        [OK] Flask instalado
 
 :: Utilidades
 echo    [INFO] [5/5] Instalando utilidades...
-pip install pypdf PyPDF2 python-docx numpy tqdm ddgs -q
+pip install --progress-bar on pypdf PyPDF2 python-docx numpy tqdm ddgs
 echo        [OK] Utilidades instaladas
 
 echo.
